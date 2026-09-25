@@ -124,7 +124,7 @@ in the backend — `express-openapi-validator` rejects drift at runtime, so a
 mismatch surfaces as a 400 nobody expected.
 
 ```sh
-pnpm spec:validate && pnpm spec:bundle && pnpm spec:codegen
+pnpm spec:validate && pnpm spec:codegen
 ```
 
 Generated artefacts land in their own commit.
