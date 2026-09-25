@@ -79,6 +79,19 @@ const PROTOCOL_FIELDS = new Set([
   'updatedAt',
 ]);
 
+/**
+ * The one path both `create` and `set` route through to enforce
+ * `PROTOCOL_FIELDS`, so the check cannot drift between the two branches the
+ * way the accidental spread-order protection once did.
+ */
+function protocolFieldRejection(field: string): Outcome | null {
+  if (!PROTOCOL_FIELDS.has(field)) return null;
+  return {
+    status: 'rejected',
+    reason: `${field} is protocol-owned and cannot be set directly`,
+  };
+}
+
 function clamp(ts: string, now: Date): string {
   const t = new Date(ts).getTime();
   const hi = now.getTime() + MAX_SKEW_AHEAD_MS;
@@ -103,6 +116,10 @@ export function applyOp(op: Op, current: Row | null, now: Date): Outcome {
     if (!isFieldsRecord(op.fields)) {
       return { status: 'rejected', reason: 'fields is missing or not an object' };
     }
+    for (const key of Object.keys(op.fields)) {
+      const blocked = protocolFieldRejection(key);
+      if (blocked) return blocked;
+    }
     if (!isParseableTimestamp(op.ts)) {
       return { status: 'rejected', reason: 'ts is missing or not a valid timestamp' };
     }
@@ -116,12 +133,8 @@ export function applyOp(op: Op, current: Row | null, now: Date): Outcome {
   }
 
   if (op.kind === 'set') {
-    if (PROTOCOL_FIELDS.has(op.field)) {
-      return {
-        status: 'rejected',
-        reason: `${op.field} is protocol-owned and cannot be set directly`,
-      };
-    }
+    const blockedField = protocolFieldRejection(op.field);
+    if (blockedField) return blockedField;
     if (!isParseableTimestamp(op.ts)) {
       return { status: 'rejected', reason: 'ts is missing or not a valid timestamp' };
     }
