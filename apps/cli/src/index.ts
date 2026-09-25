@@ -4,6 +4,7 @@ import { dirname } from 'node:path';
 import { uuidv7 } from 'uuidv7';
 import { planAdd } from './parse-quick-add.js';
 import { BASE, TOKEN, STATE } from './config.js';
+import { HELP, unknownCommand, wantsHelp } from './usage.js';
 import {
   applyChanges, assertNotRefused, liveTasks, readSyncResponse,
   ConflictError, NetworkError, RefusalError, UsageError, type State,
@@ -44,50 +45,9 @@ async function sync(ops: unknown[]) {
   return { state, results: body.results };
 }
 
-/**
- * Everything a caller has to know that is not in the wire contract: what the
- * quick-add markers do and do not do, where the token comes from and how long
- * it lasts, what each exit code means, and the one sharp edge — `add` is not
- * idempotent. That last paragraph was, until now, written down only in the
- * plan, where the agent retrying a failed `add` was never going to read it.
- */
-const HELP = `todoer — a client for a todoer instance
-
-usage:
-  todoer add "<text>" [--json]    create a task
-  todoer list [--json]            list the tasks that are not deleted
-  todoer --help
-
-quick-add markers:
-  p0..p4      priority
-  #project    parsed, not stored yet — projects arrive with the outbox
-  @tag        parsed, not stored yet — tags arrive with the outbox
-
-environment:
-  TODOER_URL     instance base URL, default http://localhost:3000/api/v1
-  TODOER_TOKEN   bearer token. It expires 15 minutes after it is issued and
-                 this CLI has no login command yet — mint one with
-                 POST $TODOER_URL/auth/login and export it.
-
-exit codes (ADR 0015 §2):
-  0  done
-  1  the server refused: a rejected operation, or any 4xx. A 401 means the
-     token is missing, invalid or expired — get a new one, do not retry
-  2  usage error — nothing was sent
-  3  the server could not be reached, or answered 5xx. The only code a
-     caller may retry unchanged
-  4  conflict — the server holds a newer version of the row
-
-add is NOT safe to retry. Each invocation mints a fresh operation id, so a
-retry after a lost response creates the task twice; the server's idempotency
-is keyed on that id (ADR 0005, ADR 0015 §4). Treat a failed add as
-indeterminate and run list before deciding. The persistent outbox that makes
-a retry reuse the original id is plan B.
-`;
-
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
-  if (argv.includes('--help') || argv.includes('-h')) {
+  if (wantsHelp(argv)) {
     console.log(HELP);
     return;
   }
@@ -125,9 +85,7 @@ async function main(): Promise<void> {
       }
     }
   } else {
-    throw new UsageError(
-      command === undefined ? 'no command given' : `unknown command: ${command}`,
-    );
+    throw unknownCommand(command);
   }
 }
 
