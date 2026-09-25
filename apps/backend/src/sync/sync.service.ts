@@ -152,12 +152,25 @@ function unpermittedField(table: TableName, op: Op): string | null {
 }
 
 /**
- * The foreign key this op writes that points at a row the user does not own,
- * or `null` if there is nothing to object to. A value that is not a uuid
- * counts as unowned: it references no row of theirs either, and letting it
- * through would send client input into the raw lock query below.
+ * Why this op's foreign keys cannot be written, or `null` if there is nothing
+ * to object to. Two rules, one lookup of the referenced row:
+ *
+ * - it must belong to the same user (reads are scoped by `userId`; these
+ *   columns were not, and the migration's foreign keys are global);
+ * - a `parentId` must point at a task with no parent of its own.
+ *
+ * The second is the whole depth rule for a hierarchy the design caps at two
+ * levels (project → task → subtask), and it is also what makes every cycle
+ * impossible: a cycle needs every row in it to have a parent, so the edge
+ * that would close one always points at a row that already has one. No cycle
+ * detection, no recursive query, no depth counter — one row, already loaded
+ * for the ownership check.
+ *
+ * A value that is not a uuid counts as unowned: it references no row of
+ * theirs either, and letting it through would send client input into the raw
+ * lock query below.
  */
-async function unownedReference(
+async function referenceRejection(
   client: unknown,
   table: TableName,
   op: Op,
@@ -181,12 +194,18 @@ async function unownedReference(
     const target = refs[field];
     // `null` clears the reference, which needs no owner.
     if (target === undefined || value === null || value === undefined) continue;
-    if (typeof value !== 'string' || !UUID.test(value)) return field;
+    if (typeof value !== 'string' || !UUID.test(value)) {
+      return `${field} does not reference a row you own`;
+    }
+    const isParent = field === 'parentId';
     const found = await delegateFor(client, target).findFirst({
       where: { id: value, userId },
-      select: { id: true },
+      select: isParent ? { id: true, parentId: true } : { id: true },
     });
-    if (found === null) return field;
+    if (found === null) return `${field} does not reference a row you own`;
+    if (isParent && (found as { parentId?: string | null }).parentId !== null) {
+      return 'parentId must point at a task that has no parent of its own';
+    }
   }
   return null;
 }
@@ -272,6 +291,22 @@ const RETRYABLE_PRISMA_CODES = new Set([
 ]);
 
 /**
+ * A Postgres CHECK constraint violation (SQLSTATE 23514) as it reaches this
+ * process. Matched on the message because there is nothing else to match on:
+ * Prisma raises a check violation as `PrismaClientUnknownRequestError`, which
+ * carries no `code` and no `meta` at all — unlike a unique or foreign-key
+ * violation, which arrive as `PrismaClientKnownRequestError` with P2002 and
+ * P2003. A constraint violation is as permanent as those two, so defaulting
+ * it to retryable (see below) answers a deterministic refusal with a 5xx the
+ * client is invited to retry forever.
+ *
+ * Pinned by a test that provokes the real constraint rather than building an
+ * error object by hand, so a change in how Prisma renders this reaches the
+ * suite instead of production.
+ */
+const CHECK_VIOLATION = /PostgresError \{ code: "23514"/;
+
+/**
  * Whether a thrown error means "this operation may well succeed on a
  * retry" (true) or "this operation is wrong and retrying will not help"
  * (false). The boundary is retryability, not error class: a constraint
@@ -287,6 +322,12 @@ function isRetryable(error: unknown): boolean {
     return RETRYABLE_PRISMA_CODES.has(error.code);
   }
   if (error instanceof Prisma.PrismaClientValidationError) return false;
+  // Narrowed to one SQLSTATE, not widened to the class: everything else that
+  // arrives as PrismaClientUnknownRequestError keeps the default below,
+  // which is a separate decision from this one and deliberately unchanged.
+  if (error instanceof Prisma.PrismaClientUnknownRequestError) {
+    return !CHECK_VIOLATION.test(error.message);
+  }
   // PrismaClientInitializationError, PrismaClientRustPanicError, and
   // anything unrecognised default to retryable: none of these say the
   // *data* was the problem, so none of them is an honest `rejected`.
@@ -366,9 +407,9 @@ export class SyncService {
           // per-operation rejection it is.
           outcome = { status: 'rejected', reason: 'id is not a uuid' };
         } else {
-          const unowned = await unownedReference(tx, table, op, userId);
-          if (unowned !== null) {
-            outcome = { status: 'rejected', reason: `${unowned} does not reference a row you own` };
+          const badReference = await referenceRejection(tx, table, op, userId);
+          if (badReference !== null) {
+            outcome = { status: 'rejected', reason: badReference };
           } else {
             delegate = delegateFor(tx, table);
             // Before the read, not after: the lock is what makes this read

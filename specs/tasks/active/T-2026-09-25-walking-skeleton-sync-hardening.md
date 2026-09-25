@@ -15,6 +15,9 @@
     problem+json, and the OpenAPI document bounds the field.
   - An operation whose `projectId`/`parentId`/`taskId`/`tagId` points at a row
     owned by someone else is rejected.
+  - A task cannot become its own parent, cannot be parented under a task that
+    already has a parent, and cannot close a cycle — each refused as that
+    operation's own `rejected`, with a reason, never as a 5xx.
 - Tests: integration (`apps/backend/src/sync/sync.service.spec.ts`) — the
   concurrency case stages two genuinely overlapping transactions through
   `prisma.$extends`, not two sequential calls.
@@ -23,5 +26,8 @@
   - [x] C2 — scope operation dedup by `(userId, opId)`, in the schema and the lookup
   - [x] I3 — bound `since` in the contract and in the service guard
   - [x] I9 — reject a foreign key that points outside the account
+  - [x] M17 — refuse a self-parent by the rules, not by the constraint
+  - [x] M17 — refuse a third level and every cycle, on the lookup I9 already does
+  - [x] M17 — classify SQLSTATE 23514 as not retryable, so it is not a 5xx
 - Status: in-progress
 - Blockers: —

@@ -103,6 +103,24 @@ function protocolFieldRejection(field: string): Outcome | null {
   };
 }
 
+/**
+ * A task may not be its own parent. The rule lives here rather than only in
+ * the database's CHECK constraint (see the 20260925200000 migration) because
+ * it is a rule about the operation, not about storage: decided here, the
+ * client is told which operation was refused and why, instead of the whole
+ * batch failing on a constraint error that names a column. The constraint
+ * stays as defence in depth, for write paths that do not exist yet.
+ *
+ * The depth rule's other half — that the *parent* must have no parent of its
+ * own, which is also what makes every cycle impossible — needs a second row
+ * and therefore the database; it lives in SyncService, beside the ownership
+ * check that already loads the referenced row.
+ */
+function selfParentRejection(field: string, value: unknown, id: string): Outcome | null {
+  if (field !== 'parentId' || value !== id) return null;
+  return { status: 'rejected', reason: 'a task cannot be its own parent' };
+}
+
 function clamp(ts: string, now: Date): string {
   const t = new Date(ts).getTime();
   const hi = now.getTime() + MAX_SKEW_AHEAD_MS;
@@ -141,6 +159,8 @@ export function applyOp(op: Op, current: Row | null, now: Date): Outcome {
       const blocked = protocolFieldRejection(key);
       if (blocked) return blocked;
     }
+    const selfParent = selfParentRejection('parentId', op.fields.parentId, op.id);
+    if (selfParent) return selfParent;
     if (!isParseableTimestamp(op.ts)) {
       return { status: 'rejected', reason: 'ts is missing or not a valid timestamp' };
     }
@@ -159,6 +179,8 @@ export function applyOp(op: Op, current: Row | null, now: Date): Outcome {
     }
     const blockedField = protocolFieldRejection(op.field);
     if (blockedField) return blockedField;
+    const selfParent = selfParentRejection(op.field, op.value, op.id);
+    if (selfParent) return selfParent;
     if (!isParseableTimestamp(op.ts)) {
       return { status: 'rejected', reason: 'ts is missing or not a valid timestamp' };
     }

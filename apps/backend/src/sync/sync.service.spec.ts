@@ -78,24 +78,131 @@ describe('SyncService', () => {
       opId: uuidv7(), kind: 'set' as const, table: 'task' as const,
       id: op.id, field: 'parentId', value: op.id, ts: new Date().toISOString(),
     };
-    // The invariant, and the whole of what this pass can enforce: no row can
-    // carry itself as its parent, on any write path there will ever be. The
-    // rule is a CHECK constraint (see the 20260925200000 migration).
-    //
-    // KNOWN GAP, deliberately pinned rather than hidden: the refusal surfaces
-    // as a thrown error — a 500 — instead of `{ status: 'rejected' }` for
-    // this one operation. Postgres reports a check violation as SQLSTATE
-    // 23514, which Prisma raises as PrismaClientUnknownRequestError, and
-    // `isRetryable` in sync.service.ts defaults an unrecognised class to
-    // retryable. Turning it into a per-operation rejection is one line in
-    // that file (or three in apply-op.ts), and both belong to the pass that
-    // owns them.
-    await expect(
-      service.sync(USER, { since: created.cursor, ops: [selfParent] }),
-    ).rejects.toThrow();
+    // The invariant: no row can carry itself as its parent, on any write path
+    // there will ever be. Two things hold it, and they are not redundant —
+    // the CHECK constraint (the 20260925200000 migration) holds it for paths
+    // that do not exist yet, and applyOp's rule holds it for *this* one, which
+    // is what lets the refusal reach the client as this operation's own
+    // `rejected` with a reason rather than as an opaque constraint error that
+    // fails the whole batch.
+    const { results } = await service.sync(USER, { since: created.cursor, ops: [selfParent] });
+
+    expect(results[0]).toMatchObject({ status: 'rejected' });
+    expect(results[0]?.reason).toMatch(/own parent/i);
 
     const row = await prisma.task.findUnique({ where: { id: op.id } });
     expect(row?.parentId).toBeNull();
+  });
+
+  // M17: the design allows exactly two levels, project → task → subtask, so
+  // the rule is that a parent must not itself have a parent. The test that
+  // matters is the third level: setting a parent on a *top-level* task passes
+  // with or without the rule.
+  it('refuses a third level in the task tree', async () => {
+    const grandparent = createTask('grandparent');
+    const parent = createTask('parent');
+    const child = createTask('child');
+    await service.sync(USER, { since: 0, ops: [grandparent, parent, child] });
+
+    const secondLevel = {
+      opId: uuidv7(), kind: 'set' as const, table: 'task' as const,
+      id: parent.id, field: 'parentId', value: grandparent.id,
+      ts: new Date().toISOString(),
+    };
+    const thirdLevel = {
+      opId: uuidv7(), kind: 'set' as const, table: 'task' as const,
+      id: child.id, field: 'parentId', value: parent.id,
+      ts: new Date().toISOString(),
+    };
+
+    // A positive control in the same batch, so the rule cannot pass by
+    // refusing every parent: a `create` that lands directly under a
+    // top-level task is the second level, which is legal.
+    const secondLevelCreate = {
+      opId: uuidv7(), kind: 'create' as const, table: 'task' as const,
+      id: uuidv7(), fields: { title: 'subtask', rank: 'a1', parentId: grandparent.id },
+      ts: new Date().toISOString(),
+    };
+
+    const { results } = await service.sync(USER, {
+      since: 0,
+      ops: [secondLevel, thirdLevel, secondLevelCreate],
+    });
+
+    expect(results[0]).toMatchObject({ status: 'applied' });
+    expect(results[1]).toMatchObject({ status: 'rejected' });
+    expect(results[1]?.reason).toMatch(/no parent of its own/i);
+    expect(results[2]).toMatchObject({ status: 'applied' });
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: child.id } })).parentId).toBeNull();
+  });
+
+  // M17: the same one check closes every cycle, which is why it is worth
+  // more than a depth rule looks. A two-node cycle needs *both* rows to have
+  // a parent, and the second edge is refused because the row it would point
+  // at already has one. No cycle detection, no recursive query.
+  it('refuses a two-task cycle', async () => {
+    const a = createTask('a');
+    const b = createTask('b');
+    await service.sync(USER, { since: 0, ops: [a, b] });
+
+    const aUnderB = {
+      opId: uuidv7(), kind: 'set' as const, table: 'task' as const,
+      id: a.id, field: 'parentId', value: b.id, ts: new Date().toISOString(),
+    };
+    const bUnderA = {
+      opId: uuidv7(), kind: 'set' as const, table: 'task' as const,
+      id: b.id, field: 'parentId', value: a.id, ts: new Date().toISOString(),
+    };
+
+    const { results } = await service.sync(USER, { since: 0, ops: [aUnderB, bUnderA] });
+
+    expect(results[0]).toMatchObject({ status: 'applied' });
+    expect(results[1]).toMatchObject({ status: 'rejected' });
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: b.id } })).parentId).toBeNull();
+  });
+
+  // M17: the CHECK constraint stays as defence in depth, so what it does to
+  // a client still matters. Postgres reports a check violation as SQLSTATE
+  // 23514, which Prisma raises as PrismaClientUnknownRequestError — no
+  // P-code at all — and isRetryable defaults an unrecognised class to
+  // retryable, so a permanent, deterministic refusal escaped as a 5xx the
+  // client was invited to retry forever.
+  //
+  // The violation is staged the only honest way left now that applyOp
+  // refuses a self-parent upstream: a $extends seam rewrites the row write
+  // to the shape the constraint forbids, standing in for the future write
+  // path the constraint exists for. The error object is Postgres's real one,
+  // not a hand-built instance, which is what makes this test see a change in
+  // how Prisma reports it.
+  it('reports a check-constraint violation as a rejected operation, not a 5xx', async () => {
+    const parent = createTask('parent');
+    const orphan = createTask('orphan');
+    await service.sync(USER, { since: 0, ops: [parent, orphan] });
+
+    const sabotaged = prisma.$extends({
+      query: {
+        task: {
+          async update({ args, query }) {
+            const where = args.where as { id?: string };
+            return query({ ...args, data: { ...args.data, parentId: where.id } });
+          },
+        },
+      },
+    });
+    const service2 = new SyncService(sabotaged as unknown as PrismaService);
+
+    const legal = {
+      opId: uuidv7(), kind: 'set' as const, table: 'task' as const,
+      id: orphan.id, field: 'parentId', value: parent.id, ts: new Date().toISOString(),
+    };
+
+    const { results } = await service2.sync(USER, { since: 0, ops: [legal] });
+
+    expect(results[0]).toMatchObject({ status: 'rejected' });
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: orphan.id } })).parentId).toBeNull();
+    // Rolled back with the row write, so a client that fixes the operation
+    // and retries is not answered with a duplicate of a rejection.
+    expect(await prisma.appliedOp.count({ where: { opId: legal.opId } })).toBe(0);
   });
 
   it('returns a tombstone rather than dropping a deleted row', async () => {

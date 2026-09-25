@@ -113,6 +113,25 @@ describe('applyOp — create', () => {
 
     expect(applyOp(op, null, NOW).status).toBe('rejected');
   });
+
+  // M17: a task that is its own parent is a rule, not a storage detail. A
+  // CHECK constraint holds it for every write path, but the database can
+  // only refuse — it cannot tell the client *what* it did wrong, and the
+  // refusal arrives as an opaque constraint error rather than as this
+  // operation's own `rejected`.
+  it('rejects a create that makes the row its own parent', () => {
+    const op: Op = {
+      opId: 'o25', kind: 'create', table: 'task', id: '0192-g',
+      fields: { title: 'ouroboros', parentId: '0192-g' },
+      ts: '2026-09-25T11:00:00.000Z',
+    };
+
+    const out = applyOp(op, null, NOW);
+
+    expect(out.status).toBe('rejected');
+    if (out.status !== 'rejected') throw new Error('unreachable');
+    expect(out.reason).toMatch(/own parent/i);
+  });
 });
 
 describe('applyOp — set', () => {
@@ -320,6 +339,33 @@ describe('applyOp — set', () => {
     } as unknown as Op;
 
     expect(applyOp(op, row(), NOW).status).toBe('rejected');
+  });
+
+  // M17: the path the CHECK constraint was added for — the row exists, it
+  // belongs to the caller, and nothing upstream of the database had an
+  // opinion about it.
+  it('rejects a set that makes a task its own parent', () => {
+    const op: Op = {
+      opId: 'o26', kind: 'set', table: 'task', id: '0192-a', field: 'parentId',
+      value: '0192-a', ts: '2026-09-25T11:00:00.000Z',
+    };
+
+    const out = applyOp(op, row(), NOW);
+
+    expect(out.status).toBe('rejected');
+    if (out.status !== 'rejected') throw new Error('unreachable');
+    expect(out.reason).toMatch(/own parent/i);
+  });
+
+  // The neighbouring case, so the rule above cannot be written as "parentId
+  // is unwritable": a parent that is a different task is an ordinary edit.
+  it('applies a set that parents a task under a different one', () => {
+    const op: Op = {
+      opId: 'o27', kind: 'set', table: 'task', id: '0192-a', field: 'parentId',
+      value: '0192-b', ts: '2026-09-25T11:00:00.000Z',
+    };
+
+    expect(applyOp(op, row(), NOW).status).toBe('applied');
   });
 });
 

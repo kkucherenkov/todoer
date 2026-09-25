@@ -189,6 +189,22 @@ For each operation, in the order given:
    points at a row that also belongs to this user, a `parent_id` points at a
    row whose own `parent_id` is null (D9), a subtask carries no `rrule`.
    Otherwise `rejected` with a reason.
+
+   The depth rule is two checks in two places, because they need different
+   things. "A task is not its own parent" is decided in the pure conflict
+   module, which needs only the operation, and a CHECK constraint holds it
+   again in the database for write paths that do not exist yet. "The parent
+   has no parent of its own" needs a second row, so it rides along with the
+   ownership lookup above. The second check is also what makes cycles
+   impossible: every row in a cycle has a parent, so the edge that would
+   close one always points at a row that already has one — no cycle
+   detection, no recursive query.
+
+   One direction of the depth rule is **not** enforced yet: giving a parent
+   to a task that already has children reaches three levels without ever
+   pointing at a parented row. Closing it is a second lookup ("does this row
+   have children?") on `set parent_id`, and it waits on a decision about
+   whether re-parenting a subtree is allowed at all.
 3. **`set`:** clamp `ts` to at most `now + 5min` (only the future is bounded —
    see ADR 0004), then apply only if it is newer than `field_ts[field]`.
    Otherwise `superseded` — which is an outcome, not an error.
