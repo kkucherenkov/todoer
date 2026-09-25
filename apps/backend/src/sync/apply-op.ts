@@ -30,6 +30,24 @@ export type Outcome =
 const MAX_SKEW_AHEAD_MS = 5 * 60_000;
 const MAX_SKEW_BEHIND_MS = 24 * 60 * 60_000;
 
+/**
+ * Columns the sync protocol owns. `set` may never target them directly:
+ * `deletedAt` would let a client tombstone or resurrect a row without the
+ * base-version check `delete` requires, and `id`/`version`/`fieldTs` would
+ * let it rewrite the primary key or the bookkeeping conflict resolution
+ * itself depends on.
+ */
+const PROTOCOL_FIELDS = new Set([
+  'id',
+  'userId',
+  'version',
+  'fieldTs',
+  'seq',
+  'deletedAt',
+  'createdAt',
+  'updatedAt',
+]);
+
 function clamp(ts: string, now: Date): string {
   const t = new Date(ts).getTime();
   const lo = now.getTime() - MAX_SKEW_BEHIND_MS;
@@ -52,6 +70,12 @@ export function applyOp(op: Op, current: Row | null, now: Date): Outcome {
   }
 
   if (op.kind === 'set') {
+    if (PROTOCOL_FIELDS.has(op.field)) {
+      return {
+        status: 'rejected',
+        reason: `${op.field} is protocol-owned and cannot be set directly`,
+      };
+    }
     if (current === null) {
       return { status: 'rejected', reason: 'no such row' };
     }
