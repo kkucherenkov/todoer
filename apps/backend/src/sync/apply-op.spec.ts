@@ -103,6 +103,21 @@ describe('applyOp — set', () => {
       .toBeLessThanOrEqual(NOW.getTime() + 5 * 60_000);
   });
 
+  it('clamps a timestamp from the far past', () => {
+    const current = row({ fieldTs: {} });
+    const op: Op = {
+      opId: 'o10', kind: 'set', table: 'task', id: '0192-a',
+      field: 'title', value: 'from the past', ts: '2020-01-01T00:00:00.000Z',
+    };
+
+    const out = applyOp(op, current, NOW);
+
+    expect(out.status).toBe('applied');
+    if (out.status !== 'applied') throw new Error('unreachable');
+    expect(new Date(out.row.fieldTs.title!).getTime())
+      .toBeGreaterThanOrEqual(NOW.getTime() - 24 * 60 * 60_000);
+  });
+
   it('rejects a set against an absent row', () => {
     const op: Op = {
       opId: 'o6', kind: 'set', table: 'task', id: '0192-a',
@@ -137,5 +152,17 @@ describe('applyOp — delete', () => {
     expect(out.status).toBe('conflict');
     if (out.status !== 'conflict') throw new Error('unreachable');
     expect(out.currentVersion).toBe(3);
+  });
+
+  it('rejects a delete against an absent row', () => {
+    const op: Op = {
+      opId: 'o9', kind: 'delete', table: 'task', id: '0192-a', baseVersion: 1,
+    };
+
+    const out = applyOp(op, null, NOW);
+
+    expect(out.status).toBe('rejected');
+    if (out.status !== 'rejected') throw new Error('unreachable');
+    expect(out.reason).toMatch(/no such row/i);
   });
 });
