@@ -1,0 +1,47 @@
+name: PR title
+
+# `on: pull_request` with no `types:` defaults to
+# `[opened, synchronize, reopened]`. `edited` is not in that list, so retitling
+# a PR never re-runs the job: the check stays red describing a title that no
+# longer exists, and the only way to clear it is to push something unrelated.
+# The one correction this gate exists to catch is the one it cannot see.
+#
+# Adding `edited` to a larger workflow's trigger would re-run the whole suite
+# every time somebody fixed a typo in a PR body, and gating the expensive jobs
+# behind `github.event.action != 'edited'` is worse: branch protection counts a
+# skipped required job as blocking rather than passing, so an edit would leave
+# the PR unmergeable. One small job in its own file takes the trigger without
+# dragging anything along.
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, edited]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-title-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # A squash merge takes the PR TITLE as the commit subject on the default
+  # branch, and a local commit-msg hook only ever sees local commits. So a PR
+  # whose commits are all conventional can still land an unconventional
+  # subject, and a changelog generator drops what it cannot parse.
+  #
+  # The title is author-controlled text. It reaches the shell through `env:`,
+  # never through `${{ }}` interpolation inside `run:`, which would let a title
+  # containing shell metacharacters execute as code.
+  pr-title:
+    name: PR title (conventional commit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Lint the PR title
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        run: sh scripts/check-pr-title.sh "$PR_TITLE"

@@ -1,0 +1,36 @@
+name: Tests
+
+# `pr-title.yml` runs the gate. Nothing ran the gate's own tests, so a change to
+# the regex in `check-pr-title.sh` could reach the default branch — and from
+# there every repository created from this template — without anything noticing.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  shell-tests:
+    name: Shell tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Run the PR-title gate's tests
+        run: sh scripts/check-pr-title.test.sh
+
+      # The runner's /bin/sh is dash, whose ${#var} counts bytes rather than
+      # characters. The suite pins that case itself, but running the whole
+      # thing under a non-UTF-8 locale catches any future assertion that
+      # silently depends on the ambient one.
+      - name: Run them again with a byte-counting locale
+        run: LC_ALL=C sh scripts/check-pr-title.test.sh
