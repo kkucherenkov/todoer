@@ -37,6 +37,9 @@ export type Options<
   meta?: Record<string, unknown>;
 };
 
+/**
+ * Liveness and version
+ */
 export const getHealth = <ThrowOnError extends boolean = false>(
   options?: Options<GetHealthData, ThrowOnError>,
 ) => {
@@ -50,6 +53,9 @@ export const getHealth = <ThrowOnError extends boolean = false>(
   });
 };
 
+/**
+ * Sign in
+ */
 export const postAuthLogin = <ThrowOnError extends boolean = false>(
   options: Options<PostAuthLoginData, ThrowOnError>,
 ) => {
@@ -67,6 +73,9 @@ export const postAuthLogin = <ThrowOnError extends boolean = false>(
   });
 };
 
+/**
+ * Create an account and sign in
+ */
 export const postAuthRegister = <ThrowOnError extends boolean = false>(
   options: Options<PostAuthRegisterData, ThrowOnError>,
 ) => {
@@ -84,6 +93,9 @@ export const postAuthRegister = <ThrowOnError extends boolean = false>(
   });
 };
 
+/**
+ * Push operations and pull changes
+ */
 export const postSync = <ThrowOnError extends boolean = false>(
   options: Options<PostSyncData, ThrowOnError>,
 ) => {
