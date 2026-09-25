@@ -132,9 +132,25 @@ ALTER TABLE "TaskTag" ADD CONSTRAINT "TaskTag_taskId_fkey" FOREIGN KEY ("taskId"
 ALTER TABLE "TaskTag" ADD CONSTRAINT "TaskTag_tagId_fkey" FOREIGN KEY ("tagId") REFERENCES "Tag"("id") ON DELETE RESTRICT ON UPDATE CASCADE;
 
 -- CreateSequence
--- One sequence shared by every synchronised table, so a single cursor orders
--- changes across all of them. Prisma has no declarative form for a shared
--- sequence default, so it is appended here by hand.
+--
+-- WARNING: this default is invisible to prisma/schema.prisma. Prisma has no
+-- declarative form for a default shared across tables, so this sequence and
+-- the four ALTER TABLE statements below it were appended to the generated
+-- migration by hand, after `prisma migrate dev --create-only` and before
+-- applying it.
+--
+-- change_seq is shared by every synchronised table on purpose: one sequence
+-- means one cursor can order changes across Task, Project, Tag and TaskTag
+-- together. Do not split it into a per-table sequence or an identity column.
+--
+-- Any later migration that touches one of those four models will diff the
+-- live database (which has this default) against schema.prisma (which does
+-- not), and Prisma may generate SQL that drops it. Read that generated SQL
+-- before applying it, and re-add the matching
+-- `ALTER TABLE ... SET DEFAULT nextval('change_seq')` if it is missing — a
+-- dropped default fails silently: seq starts coming back null, nothing
+-- errors at migration or boot time, and the symptom only shows up later as a
+-- sync cursor that never advances.
 CREATE SEQUENCE change_seq AS bigint START 1;
 
 ALTER TABLE "Task"    ALTER COLUMN "seq" SET DEFAULT nextval('change_seq');
