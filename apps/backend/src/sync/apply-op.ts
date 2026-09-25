@@ -13,11 +13,14 @@
  * `undefined` `op` is not covered: `op.kind` is read on the first line, so a
  * non-object `op` still throws. That is the caller's responsibility, not
  * this module's — the contract's `oneOf` discriminator on `kind` rejects a
- * non-object body before it ever reaches here. Task 6 applies a batch of
- * operations inside one transaction, so a throw here would fail every other
- * operation in the same request alongside it, and the client's outbox would
- * never drain. `current` and `now` are not part of this guarantee: they are
- * server-constructed (a database row, the server's own clock), not client
+ * non-object body before it ever reaches here. `SyncService` gives each
+ * operation its own transaction and its own catch, but that catch only
+ * turns a *Prisma* error into a clean per-operation rejection — a throw
+ * from this module would not be one, so it would still escape as an
+ * unrecognized error and fail the whole request rather than the one
+ * operation, and the client's outbox would never drain. `current` and `now`
+ * are not part of this guarantee: they are server-constructed (a database
+ * row, the server's own clock), not client
  * input, so the module trusts their shape.
  */
 

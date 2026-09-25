@@ -164,6 +164,14 @@ describe('SyncService', () => {
     expect(await prisma.task.count({ where: { userId: USER } })).toBe(3);
   });
 
+  // M3: both the correct path and a findFirst that dropped its userId
+  // scope end in `rejected` here, so `status` alone cannot tell them apart
+  // — a findFirst that ignored userId would resolve `current` to the real
+  // row and let applyOp proceed to 'applied', which the update's own
+  // userId scope (a separate defense) then turns into a Prisma
+  // "record not found" and a *different*, generic reason. Asserting the
+  // specific reason is what makes this test see that difference instead of
+  // reading as coverage while passing either way.
   it('does not let one user modify another user’s row', async () => {
     const op = createTask('mine');
     await service.sync(USER, { since: 0, ops: [op] });
@@ -179,7 +187,7 @@ describe('SyncService', () => {
 
     const result = await service.sync(OTHER, { since: 0, ops: [hijack] });
 
-    expect(result.results[0]).toMatchObject({ status: 'rejected' });
+    expect(result.results[0]).toMatchObject({ status: 'rejected', reason: 'no such row' });
     expect((await prisma.task.findUniqueOrThrow({ where: { id: op.id } })).title).toBe('mine');
   });
 
@@ -205,22 +213,24 @@ describe('SyncService', () => {
     expect(results[2]).toMatchObject({ status: 'rejected' });
   });
 
-  // C3: the four tables now share one snapshot (and the cursor is read
-  // before them, not derived from what came back) — this is the regression
-  // test for a pull spanning more than one table staying correctly ordered.
+  // C3/M6: TABLES iterates task before project, so a project created before
+  // a task gives project the *lower* seq while still landing second in the
+  // per-table scan order. Only changesSince's final sort can put it first
+  // — creating task before project here would let a missing (or reverted)
+  // sort go unnoticed, since insertion order would already be ascending.
   it('orders changes by seq across two different tables in one pull', async () => {
-    const task = createTask('first');
     const project = {
       opId: uuidv7(), kind: 'create' as const, table: 'project' as const,
-      id: uuidv7(), fields: { name: 'second', rank: 'a0' },
+      id: uuidv7(), fields: { name: 'first', rank: 'a0' },
       ts: new Date().toISOString(),
     };
+    const task = createTask('second');
 
-    await service.sync(USER, { since: 0, ops: [task, project] });
+    await service.sync(USER, { since: 0, ops: [project, task] });
     const pull = await service.sync(USER, { since: 0, ops: [] });
 
     const relevant = pull.changes.filter((c) => c.id === task.id || c.id === project.id);
-    expect(relevant.map((c) => c.table)).toEqual(['task', 'project']);
+    expect(relevant.map((c) => c.table)).toEqual(['project', 'task']);
     expect(relevant[0]!.seq).toBeLessThan(relevant[1]!.seq);
   });
 
@@ -281,4 +291,32 @@ describe('SyncService', () => {
 
     expect(result.results[0]).toMatchObject({ status: 'applied' });
   });
+
+  // M9 and M10 are not pinned here, and this note says why rather than
+  // shipping a test that would pass with or without the fix.
+  //
+  // M9 — removing RepeatableRead from changesSince's transaction. The
+  // difference it makes is one snapshot shared across the four scans
+  // instead of a fresh one per statement, which is only observable if a
+  // second write lands *between* two of those scans while the first is
+  // still running. That needs a real second connection racing against a
+  // controllable pause inside changesSince, and changesSince has no seam
+  // to pause at from outside — adding one would mean instrumenting
+  // production code purely for a test to hook into. Reviewing that the
+  // isolation level is set, rather than asserting its runtime effect, is
+  // the honest way to cover this one.
+  //
+  // M10 — removing userId from update's own where. Task.id (and every
+  // other table's id) is a global primary key, not scoped by user, so
+  // `update({ where: { id } })` and `update({ where: { id, userId } })`
+  // resolve to the exact same row whenever `current` was already found
+  // through a correctly userId-scoped findFirst — which is every case a
+  // single-threaded, single-connection test can construct. The clause is
+  // real defense in depth (it stops relying on findFirst's scope alone),
+  // but by itself it only diverges from its absence either through a
+  // concurrent write racing between the find and the update (same
+  // constraint as M9), or in combination with M3 — which the M3 test above
+  // does catch: reverting both together turns the cross-user `set` from
+  // `rejected` into a silent `applied` that overwrites the other user's
+  // row, and that test's reason assertion fails.
 });

@@ -1,7 +1,7 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { applyOp, type Op, type Row } from './apply-op.js';
+import { applyOp, type Op, type Outcome, type Row } from './apply-op.js';
 
 type SyncRequest = { since: number; ops: Op[] };
 type OpResult = {
@@ -143,19 +143,7 @@ export class SyncService {
     const now = new Date();
 
     for (const op of body.ops) {
-      if (!TABLES.includes(op.table as TableName)) {
-        results.push({ opId: op.opId, status: 'rejected', reason: 'unknown table' });
-        continue;
-      }
-      const table = op.table as TableName;
-
-      const badField = unpermittedField(table, op);
-      if (badField !== null) {
-        results.push({ opId: op.opId, status: 'rejected', reason: `unknown field: ${badField}` });
-        continue;
-      }
-
-      results.push(await this.applyOne(userId, table, op, now));
+      results.push(await this.applyOne(userId, op, now));
     }
 
     const { cursor, changes } = await this.changesSince(userId, body.since);
@@ -163,18 +151,39 @@ export class SyncService {
     return { cursor, results, changes };
   }
 
-  private async applyOne(userId: string, table: TableName, op: Op, now: Date): Promise<OpResult> {
+  private async applyOne(userId: string, op: Op, now: Date): Promise<OpResult> {
     try {
       // The whole operation is one transaction: recording the op id and
       // applying its effect must either both happen or neither, or a crash
       // between them turns a retry into a duplicate.
       return await this.prisma.$transaction(async (tx) => {
+        // Step 1 of the design doc's section 3: "seen before?" — a retry
+        // after a lost response is a no-op, whatever today's schema thinks
+        // of the op's table or field.
         const seen = await tx.appliedOp.findUnique({ where: { opId: op.opId } });
         if (seen !== null) return replay(op.opId, seen);
 
-        const delegate = delegateFor(tx, table);
-        const current = await delegate.findFirst({ where: { id: op.id, userId } });
-        const outcome = applyOp(op, current, now);
+        // Step 2: "Permitted?" — the table must be one this protocol
+        // writes, and (for create/set) the field must be a real column.
+        // This comes after step 1, not before, for the same reason: a
+        // previously applied op whose table or field the schema has since
+        // narrowed must still replay as itself on redelivery, not fail a
+        // fresh check against today's allow-list.
+        const table = TABLES.includes(op.table as TableName) ? (op.table as TableName) : null;
+        const badField = table !== null ? unpermittedField(table, op) : null;
+
+        let delegate: SyncDelegate | null = null;
+        let current: Row | null = null;
+        let outcome: Outcome;
+        if (table === null) {
+          outcome = { status: 'rejected', reason: 'unknown table' };
+        } else if (badField !== null) {
+          outcome = { status: 'rejected', reason: `unknown field: ${badField}` };
+        } else {
+          delegate = delegateFor(tx, table);
+          current = await delegate.findFirst({ where: { id: op.id, userId } });
+          outcome = applyOp(op, current, now);
+        }
 
         // Recorded before the row write, not after: both still land in the
         // same transaction either way, but writing appliedOp first is what
@@ -194,6 +203,14 @@ export class SyncService {
         });
 
         if (outcome.status === 'applied') {
+          // Guaranteed set together above: `outcome.status` can only be
+          // 'applied' when the permitted-checks passed and `delegate` was
+          // resolved. TS cannot see that coupling across the earlier
+          // if/else, so this makes it an explicit, checked invariant
+          // instead of a silent assumption.
+          if (delegate === null) {
+            throw new Error('unreachable: applied outcome without a resolved delegate');
+          }
           // seq is a protocol/storage column applyOp never touches — it comes
           // from the one sequence shared by all four tables, and it has to be
           // reassigned on *every* applied write (create or update). Postgres
