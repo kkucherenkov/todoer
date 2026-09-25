@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { applyOp, type Op, type Row } from './apply-op.js';
 
@@ -17,6 +17,24 @@ type TableName = (typeof TABLES)[number];
 const DELEGATE = {
   task: 'task', project: 'project', tag: 'tag', task_tag: 'taskTag',
 } as const;
+
+/**
+ * Columns a client may set through `create`/`set`, per table. `applyOp`
+ * already guards the protocol-owned columns (id, version, fieldTs, seq,
+ * deletedAt, ...); this guards the opposite direction — a field that is not
+ * a column at all, which applyOp has no way to know and would otherwise
+ * reach Prisma as an "unknown argument" and throw. See the sync design
+ * doc's section 3, "Permitted?".
+ */
+const WRITABLE_FIELDS: Record<TableName, ReadonlySet<string>> = {
+  task: new Set([
+    'title', 'notes', 'projectId', 'parentId', 'priority',
+    'scheduledOn', 'dueOn', 'rrule', 'dtstart', 'rank',
+  ]),
+  project: new Set(['name', 'rank']),
+  tag: new Set(['name', 'color']),
+  task_tag: new Set(['taskId', 'tagId']),
+};
 
 /**
  * The minimal shape this module needs from a Prisma model delegate, picked
@@ -50,8 +68,32 @@ function toChangeRow(row: Record<string, unknown>): Record<string, unknown> {
   return rest;
 }
 
+/**
+ * The field an op targets that is not one of `table`'s writable columns, or
+ * `null` if there is nothing to object to here. A malformed `fields`/`field`
+ * (wrong type, missing) is left to `applyOp`, which already rejects those —
+ * this only adds the one check `applyOp` cannot make, because it does not
+ * know the schema.
+ */
+function unpermittedField(table: TableName, op: Op): string | null {
+  if (op.kind === 'create') {
+    if (typeof op.fields !== 'object' || op.fields === null || Array.isArray(op.fields)) return null;
+    for (const key of Object.keys(op.fields)) {
+      if (!WRITABLE_FIELDS[table].has(key)) return key;
+    }
+    return null;
+  }
+  if (op.kind === 'set') {
+    if (typeof op.field !== 'string') return null;
+    return WRITABLE_FIELDS[table].has(op.field) ? null : op.field;
+  }
+  return null;
+}
+
 @Injectable()
 export class SyncService {
+  private readonly logger = new Logger(SyncService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
   async sync(
@@ -72,10 +114,27 @@ export class SyncService {
       }
       const table = op.table as TableName;
 
+      const badField = unpermittedField(table, op);
+      if (badField !== null) {
+        results.push({ opId: op.opId, status: 'rejected', reason: `unknown field: ${badField}` });
+        continue;
+      }
+
+      results.push(await this.applyOne(userId, table, op, now));
+    }
+
+    const changes = await this.changesSince(userId, body.since);
+    const cursor = changes.reduce((m, c) => Math.max(m, c.seq), body.since);
+
+    return { cursor, results, changes };
+  }
+
+  private async applyOne(userId: string, table: TableName, op: Op, now: Date): Promise<OpResult> {
+    try {
       // The whole operation is one transaction: recording the op id and
       // applying its effect must either both happen or neither, or a crash
       // between them turns a retry into a duplicate.
-      const result = await this.prisma.$transaction(async (tx) => {
+      return await this.prisma.$transaction(async (tx) => {
         const seen = await tx.appliedOp.findUnique({ where: { opId: op.opId } });
         if (seen !== null) return { opId: op.opId, status: 'duplicate' as const };
 
@@ -119,14 +178,21 @@ export class SyncService {
         }
         return { opId: op.opId, status: 'rejected' as const, reason: outcome.reason };
       });
-
-      results.push(result);
+    } catch (error) {
+      // A Prisma error here — a foreign key pointing at a row deleted from
+      // under it, a value that violates a column constraint, a connection
+      // blip — must reject only this operation, not the batch: the client's
+      // outbox has no other way to make progress on the operations behind
+      // it, and applyOp's own never-throws guarantee would otherwise be
+      // undone from the persistence side. The transaction above has already
+      // rolled back in full by the time this runs, so neither the row write
+      // nor the appliedOp record exist. The database's own words for why
+      // are logged, not returned — a 5xx never explains itself to the
+      // caller in this codebase, and this is the same rule applied to a
+      // per-operation rejection instead of a response status.
+      this.logger.error(error);
+      return { opId: op.opId, status: 'rejected', reason: 'could not be applied' };
     }
-
-    const changes = await this.changesSince(userId, body.since);
-    const cursor = changes.reduce((m, c) => Math.max(m, c.seq), body.since);
-
-    return { cursor, results, changes };
   }
 
   // Tombstoned rows are returned on purpose: they are how a client learns

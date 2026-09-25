@@ -103,4 +103,92 @@ describe('SyncService', () => {
     expect(change?.row).not.toHaveProperty('updatedAt');
     expect(change?.row).not.toHaveProperty('seq');
   });
+
+  // C1, part 1: a field that is not a column must be rejected before it
+  // ever reaches Prisma — applyOp has no idea what the schema is, so this is
+  // a check the service owes, not the conflict engine.
+  it('rejects a field that is not a column, without touching the database', async () => {
+    const bogus = {
+      opId: uuidv7(), kind: 'create' as const, table: 'task' as const,
+      id: uuidv7(), fields: { title: 'x', sneaky: 'nope' },
+      ts: new Date().toISOString(),
+    };
+
+    const result = await service.sync(USER, { since: 0, ops: [bogus] });
+
+    expect(result.results[0]).toMatchObject({ status: 'rejected' });
+    expect(await prisma.task.count({ where: { id: bogus.id } })).toBe(0);
+  });
+
+  // C1, part 2: a Prisma error (here, a foreign key pointing at a project
+  // that does not exist) must reject only the operation that caused it. The
+  // transaction it happened in rolls back in full — neither the row nor the
+  // appliedOp record survive — and the rest of the batch still applies.
+  it('rejects an operation Prisma refuses, and still applies the rest of the batch', async () => {
+    const bad = {
+      opId: uuidv7(), kind: 'create' as const, table: 'task' as const,
+      id: uuidv7(), fields: { title: 'orphaned', rank: 'a0', projectId: uuidv7() },
+      ts: new Date().toISOString(),
+    };
+    const good = createTask('unrelated');
+
+    const { results } = await service.sync(USER, { since: 0, ops: [bad, good] });
+
+    expect(results[0]).toMatchObject({ status: 'rejected' });
+    expect(results[1]).toMatchObject({ status: 'applied' });
+    expect(await prisma.task.count({ where: { id: bad.id } })).toBe(0);
+    expect(await prisma.appliedOp.count({ where: { opId: bad.opId } })).toBe(0);
+    expect(await prisma.task.count({ where: { id: good.id } })).toBe(1);
+  });
+
+  it('applies a batch of several operations, aligning results to their operations', async () => {
+    const ops = [createTask('one'), createTask('two'), createTask('three')];
+
+    const { results } = await service.sync(USER, { since: 0, ops });
+
+    expect(results.map((r) => r.opId)).toEqual(ops.map((o) => o.opId));
+    expect(results.every((r) => r.status === 'applied')).toBe(true);
+    expect(await prisma.task.count({ where: { userId: USER } })).toBe(3);
+  });
+
+  it('does not let one user modify another user’s row', async () => {
+    const op = createTask('mine');
+    await service.sync(USER, { since: 0, ops: [op] });
+
+    const OTHER = '22222222-2222-2222-2222-222222222222';
+    await prisma.user.create({
+      data: { id: OTHER, email: 'x@y.z', passwordHash: 'x' },
+    });
+    const hijack = {
+      opId: uuidv7(), kind: 'set' as const, table: 'task' as const,
+      id: op.id, field: 'title', value: 'hijacked', ts: new Date().toISOString(),
+    };
+
+    const result = await service.sync(OTHER, { since: 0, ops: [hijack] });
+
+    expect(result.results[0]).toMatchObject({ status: 'rejected' });
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: op.id } })).title).toBe('mine');
+  });
+
+  it('surfaces conflict, superseded and rejected through the service', async () => {
+    const op = createTask('base');
+    await service.sync(USER, { since: 0, ops: [op] });
+
+    const stale = {
+      opId: uuidv7(), kind: 'set' as const, table: 'task' as const,
+      id: op.id, field: 'title', value: 'stale',
+      ts: new Date(Date.now() - 60_000).toISOString(),
+    };
+    const conflictOp = {
+      opId: uuidv7(), kind: 'delete' as const, table: 'task' as const,
+      id: op.id, baseVersion: 99,
+    };
+    const dupCreate = { ...op, opId: uuidv7() };
+
+    const { results } = await service.sync(USER, { since: 0, ops: [stale, conflictOp, dupCreate] });
+
+    expect(results[0]).toMatchObject({ status: 'superseded' });
+    expect(results[1]).toMatchObject({ status: 'conflict', currentVersion: 1 });
+    expect(results[2]).toMatchObject({ status: 'rejected' });
+  });
 });
