@@ -1,4 +1,5 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { applyOp, type Op, type Row } from './apply-op.js';
 
@@ -123,8 +124,7 @@ export class SyncService {
       results.push(await this.applyOne(userId, table, op, now));
     }
 
-    const changes = await this.changesSince(userId, body.since);
-    const cursor = changes.reduce((m, c) => Math.max(m, c.seq), body.since);
+    const { cursor, changes } = await this.changesSince(userId, body.since);
 
     return { cursor, results, changes };
   }
@@ -195,21 +195,52 @@ export class SyncService {
     }
   }
 
-  // Tombstoned rows are returned on purpose: they are how a client learns
-  // about a deletion, and filtering them out is silent data corruption, not
-  // a missing feature (see D15).
-  private async changesSince(userId: string, since: number): Promise<Change[]> {
-    const out: Change[] = [];
-    for (const table of TABLES) {
-      const delegate = delegateFor(this.prisma, table);
-      const rows = await delegate.findMany({
-        where: { userId, seq: { gt: BigInt(since) } },
-        orderBy: { seq: 'asc' },
-      });
-      for (const row of rows) {
-        out.push({ table, id: String(row.id), seq: Number(row.seq), row: toChangeRow(row) });
-      }
-    }
-    return out.sort((a, b) => a.seq - b.seq);
+  private async changesSince(
+    userId: string,
+    since: number,
+  ): Promise<{ cursor: number; changes: Change[] }> {
+    // The four tables are read inside one transaction so they share a single
+    // snapshot. Read separately (the previous shape of this method), a write
+    // that commits between two of the reads is visible to one and not the
+    // other, and a cursor built off whichever read happened to see it leaves
+    // the other table's matching row below the client's `since` forever —
+    // one user with two devices is enough to hit it. REPEATABLE READ is what
+    // makes "one snapshot" a guarantee instead of an accident of timing:
+    // Prisma's default (READ COMMITTED) lets each statement in a transaction
+    // see newly committed rows from other transactions.
+    return this.prisma.$transaction(
+      async (tx) => {
+        // Read before the four table scans, in the same transaction, so the
+        // reported cursor cannot claim to have seen more than those scans
+        // actually did. `is_called` guards the sequence's own unstarted
+        // state — `last_value` reads as the START value even before the
+        // first `nextval()`. This does not close every race a concurrent
+        // writer can open; the one it leaves is documented separately
+        // rather than claimed away in a comment here.
+        const [{ seq }] = await tx.$queryRaw<[{ seq: bigint }]>`
+          SELECT CASE WHEN is_called THEN last_value ELSE 0 END AS seq FROM change_seq
+        `;
+        const cursor = Math.max(since, Number(seq));
+
+        // Tombstoned rows are returned on purpose: they are how a client
+        // learns about a deletion, and filtering them out is silent data
+        // corruption, not a missing feature (see D15).
+        const out: Change[] = [];
+        for (const table of TABLES) {
+          const delegate = delegateFor(tx, table);
+          const rows = await delegate.findMany({
+            where: { userId, seq: { gt: BigInt(since) } },
+            orderBy: { seq: 'asc' },
+          });
+          for (const row of rows) {
+            out.push({ table, id: String(row.id), seq: Number(row.seq), row: toChangeRow(row) });
+          }
+        }
+        out.sort((a, b) => a.seq - b.seq);
+
+        return { cursor, changes: out };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.RepeatableRead },
+    );
   }
 }

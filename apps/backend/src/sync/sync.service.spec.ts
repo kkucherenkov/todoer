@@ -10,8 +10,14 @@ const service = new SyncService(prisma);
 const USER = '11111111-1111-1111-1111-111111111111';
 
 beforeEach(async () => {
+  // taskTag/task/project/tag before user: userId is ON DELETE RESTRICT on
+  // every one of them, so a leftover row from an earlier test would block
+  // deleting the user that owned it.
   await prisma.appliedOp.deleteMany({});
+  await prisma.taskTag.deleteMany({});
   await prisma.task.deleteMany({});
+  await prisma.project.deleteMany({});
+  await prisma.tag.deleteMany({});
   await prisma.user.deleteMany({});
   await prisma.user.create({
     data: { id: USER, email: 'a@b.c', passwordHash: 'x' },
@@ -190,5 +196,24 @@ describe('SyncService', () => {
     expect(results[0]).toMatchObject({ status: 'superseded' });
     expect(results[1]).toMatchObject({ status: 'conflict', currentVersion: 1 });
     expect(results[2]).toMatchObject({ status: 'rejected' });
+  });
+
+  // C3: the four tables now share one snapshot (and the cursor is read
+  // before them, not derived from what came back) — this is the regression
+  // test for a pull spanning more than one table staying correctly ordered.
+  it('orders changes by seq across two different tables in one pull', async () => {
+    const task = createTask('first');
+    const project = {
+      opId: uuidv7(), kind: 'create' as const, table: 'project' as const,
+      id: uuidv7(), fields: { name: 'second', rank: 'a0' },
+      ts: new Date().toISOString(),
+    };
+
+    await service.sync(USER, { since: 0, ops: [task, project] });
+    const pull = await service.sync(USER, { since: 0, ops: [] });
+
+    const relevant = pull.changes.filter((c) => c.id === task.id || c.id === project.id);
+    expect(relevant.map((c) => c.table)).toEqual(['task', 'project']);
+    expect(relevant[0]!.seq).toBeLessThan(relevant[1]!.seq);
   });
 });
