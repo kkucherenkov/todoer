@@ -160,11 +160,21 @@ function unpermittedField(table: TableName, op: Op): string | null {
  * - a `parentId` must point at a task with no parent of its own.
  *
  * The second is the whole depth rule for a hierarchy the design caps at two
- * levels (project → task → subtask), and it is also what makes every cycle
- * impossible: a cycle needs every row in it to have a parent, so the edge
- * that would close one always points at a row that already has one. No cycle
- * detection, no recursive query, no depth counter — one row, already loaded
- * for the ownership check.
+ * levels (project → task → subtask): a cycle needs every row in it to have a
+ * parent, so the edge that would close one always points at a row that
+ * already has one. One row, already loaded for the ownership check — no
+ * recursive query, no depth counter.
+ *
+ * That argument holds for operations that arrive **one at a time**, and only
+ * then. Two concurrent `set parentId` requests pointing at each other each
+ * read the other's row before the other has been parented, so both pass this
+ * check and a two-node cycle is written: reproduced 25 times out of 25, with
+ * other runs failing instead on `deadlock detected` (a 500). The cause is
+ * that an UPDATE writing a foreign key takes an implicit FOR KEY SHARE on the
+ * parent row, so the transaction ends up holding two locks, while this
+ * function reads the parent without one. Unreachable from every client that
+ * ships today — nothing sends `set parentId` — and filed as its own task with
+ * the two candidate approaches. It is a known gap, not an impossibility.
  *
  * A value that is not a uuid counts as unowned: it references no row of
  * theirs either, and letting it through would send client input into the raw

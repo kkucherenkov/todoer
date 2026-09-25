@@ -112,9 +112,13 @@ function protocolFieldRejection(field: string): Outcome | null {
  * stays as defence in depth, for write paths that do not exist yet.
  *
  * The depth rule's other half — that the *parent* must have no parent of its
- * own, which is also what makes every cycle impossible — needs a second row
- * and therefore the database; it lives in SyncService, beside the ownership
- * check that already loads the referenced row.
+ * own — needs a second row and therefore the database; it lives in
+ * SyncService, beside the ownership check that already loads the referenced
+ * row. That half forbids every cycle **when operations arrive one at a
+ * time**; two concurrent `set parentId` operations pointing at each other can
+ * still write one, because each reads the other's row before the other has
+ * parented it. See SyncService's note on referenceRejection for the
+ * reproduction and the two candidate fixes.
  */
 function selfParentRejection(field: string, value: unknown, id: string): Outcome | null {
   if (field !== 'parentId' || value !== id) return null;

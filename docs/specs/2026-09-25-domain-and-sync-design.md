@@ -195,10 +195,20 @@ For each operation, in the order given:
    module, which needs only the operation, and a CHECK constraint holds it
    again in the database for write paths that do not exist yet. "The parent
    has no parent of its own" needs a second row, so it rides along with the
-   ownership lookup above. The second check is also what makes cycles
-   impossible: every row in a cycle has a parent, so the edge that would
-   close one always points at a row that already has one — no cycle
-   detection, no recursive query.
+   ownership lookup above. The second check is what forbids cycles **when
+   operations arrive one at a time**: every row in a cycle has a parent, so
+   the edge that would close one always points at a row that already has one
+   — no cycle detection, no recursive query.
+
+   Under concurrency it does not hold. Two `set parent_id` operations
+   pointing at each other, in flight at once, each read the other's row
+   before the other has been parented; both pass, and a two-node cycle is
+   written (reproduced 25 runs out of 25, with other runs failing instead on
+   `deadlock detected`). An `UPDATE` writing a foreign key takes an implicit
+   `FOR KEY SHARE` on the parent row, so the transaction holds two locks
+   while the check reads the parent without one. No client ships an operation
+   that can reach it; it is a known gap with its own task, alongside the
+   re-parenting one below.
 
    One direction of the depth rule is **not** enforced yet: giving a parent
    to a task that already has children reaches three levels without ever
