@@ -183,9 +183,9 @@ For each operation, in the order given:
 2. **Permitted?** The table is writable, the row belongs to this user, a
    `parent_id` points at a row whose own `parent_id` is null (D9), a subtask
    carries no `rrule`. Otherwise `rejected` with a reason.
-3. **`set`:** clamp `ts` into `[now − 24h, now + 5min]`, then apply only if it
-   is newer than `field_ts[field]`. Otherwise `superseded` — which is an
-   outcome, not an error.
+3. **`set`:** clamp `ts` to at most `now + 5min` (only the future is bounded —
+   see ADR 0004), then apply only if it is newer than `field_ts[field]`.
+   Otherwise `superseded` — which is an outcome, not an error.
 4. **`delete`:** compare `base_version` against the row's `version`. Mismatch →
    `conflict`, carrying `current_version` so the client can show what it is
    colliding with.
