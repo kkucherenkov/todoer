@@ -5,6 +5,12 @@
  * is the one module whose correctness is not obvious by reading it, and the
  * cases that matter (an edit arriving late, a clock that is wrong, a create
  * that collides) are awkward to stage against a real server.
+ *
+ * Invariant: `applyOp` never throws. Any operation the caller could not have
+ * validated up front — an unparseable `ts`, a non-integer `baseVersion` — is
+ * reported as `{ status: 'rejected' }`. Task 6 applies a batch of operations
+ * inside one transaction, so a throw here would fail every other operation in
+ * the same request alongside it, and the client's outbox would never drain.
  */
 
 export type Row = {
@@ -55,10 +61,18 @@ function clamp(ts: string, now: Date): string {
   return new Date(Math.min(Math.max(t, lo), hi)).toISOString();
 }
 
+/** True for a value that `new Date(...)` can turn into a real instant. */
+function isParseableTimestamp(ts: unknown): ts is string {
+  return typeof ts === 'string' && !Number.isNaN(new Date(ts).getTime());
+}
+
 export function applyOp(op: Op, current: Row | null, now: Date): Outcome {
   if (op.kind === 'create') {
     if (current !== null) {
       return { status: 'rejected', reason: 'a row with this id already exists' };
+    }
+    if (!isParseableTimestamp(op.ts)) {
+      return { status: 'rejected', reason: 'ts is missing or not a valid timestamp' };
     }
     const ts = clamp(op.ts, now);
     const fieldTs: Record<string, string> = {};
@@ -75,6 +89,9 @@ export function applyOp(op: Op, current: Row | null, now: Date): Outcome {
         status: 'rejected',
         reason: `${op.field} is protocol-owned and cannot be set directly`,
       };
+    }
+    if (!isParseableTimestamp(op.ts)) {
+      return { status: 'rejected', reason: 'ts is missing or not a valid timestamp' };
     }
     if (current === null) {
       return { status: 'rejected', reason: 'no such row' };
@@ -95,6 +112,9 @@ export function applyOp(op: Op, current: Row | null, now: Date): Outcome {
     };
   }
 
+  if (!Number.isInteger(op.baseVersion)) {
+    return { status: 'rejected', reason: 'baseVersion is missing or not an integer' };
+  }
   if (current === null) {
     return { status: 'rejected', reason: 'no such row' };
   }
