@@ -167,6 +167,10 @@ export type PostSyncData = {
 
 export type PostSyncErrors = {
   /**
+   * missing or invalid bearer token
+   */
+  401: Problem;
+  /**
    * cursor older than tombstone retention
    */
   410: Problem;
