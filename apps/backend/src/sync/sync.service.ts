@@ -244,9 +244,13 @@ export class SyncService {
         // reported cursor cannot claim to have seen more than those scans
         // actually did. `is_called` guards the sequence's own unstarted
         // state — `last_value` reads as the START value even before the
-        // first `nextval()`. This does not close every race a concurrent
-        // writer can open; the one it leaves is documented separately
-        // rather than claimed away in a comment here.
+        // first `nextval()`. This narrows the race the previous shape of
+        // this method had wide open, but seq is still allocated in
+        // transaction order, not commit order — a write that took its seq
+        // before this snapshot but had not yet committed can still land
+        // below a cursor already handed to a client. See ADR 0016 for that
+        // ceiling and its remedy; it is a property of the sequence, not a
+        // bug this method can fix.
         const [{ seq }] = await tx.$queryRaw<[{ seq: bigint }]>`
           SELECT CASE WHEN is_called THEN last_value ELSE 0 END AS seq FROM change_seq
         `;
