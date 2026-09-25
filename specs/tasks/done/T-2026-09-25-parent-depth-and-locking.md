@@ -20,11 +20,14 @@
 - Tests: DB-backed specs in `sync.service.spec.ts`; each concurrency test
   checked by removing the locking and watching it go red.
 - Sub-steps:
-  - [ ] Lock the written row and the `parentId` target, in id order, before
+  - [x] Lock the written row and the `parentId` target, in id order, before
         the reference checks read either
-  - [ ] Reject `set parentId` on a task with live children
-  - [ ] Specs: the rule, the mutual-parent race, the parent-vs-new-child race
-  - [ ] Design doc §3: replace the two "known gap" paragraphs with the rule
+  - [x] Reject `set parentId` on a task with live children
+  - [x] Specs: the rule, the mutual-parent race, the parent-vs-new-child race
+  - [x] Design doc §3: replace the two "known gap" paragraphs with the rule
         and the lock order
-- Status: in-progress
+- Status: done
 - Blockers: —
+- Completed: 2026-09-25
+- Result: https://github.com/kkucherenkov/todoer/pull/5 — locks the written row and parentId target in id order
+  before the checks; a task with live subtasks cannot be given a parent.
