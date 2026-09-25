@@ -63,7 +63,14 @@ export class AuthService {
     const actual = ((await scrypt(password, salt, KEY_LEN)) as Buffer).toString('hex');
     const a = Buffer.from(actual, 'hex');
     const b = Buffer.from(expected, 'hex');
-    if (user === null || a.length !== b.length || !timingSafeEqual(a, b)) throw failure;
+    // hashesMatch is computed as its own statement, unconditionally, before
+    // the null check below — not folded into one `||` chain — so an unknown
+    // address still runs timingSafeEqual instead of short-circuiting past
+    // it. The gap this closes is nanoseconds against scrypt's ~80ms, but
+    // it's the same asymmetry C1 was about: user === null must not be a
+    // branch that skips work a known-but-wrong-password login always does.
+    const hashesMatch = a.length === b.length && timingSafeEqual(a, b);
+    if (user === null || !hashesMatch) throw failure;
 
     return { accessToken: this.sign(user.id) };
   }
