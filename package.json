@@ -3,16 +3,24 @@
   "private": true,
   "version": "0.1.0",
   "packageManager": "pnpm@9.12.0",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "turbo run build",
     "test": "turbo run test",
     "typecheck": "turbo run typecheck",
     "spec:validate": "pnpm --filter @todoer/specs validate",
-    "spec:codegen": "pnpm --filter @todoer/specs codegen"
+    "spec:codegen": "pnpm --filter @todoer/specs codegen",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.11.0",
+    "prettier": "^3.9.9",
     "turbo": "^2.3.0",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "typescript-eslint": "^8.70.1"
   }
 }
