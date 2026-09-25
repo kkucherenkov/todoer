@@ -79,6 +79,13 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # `migrate deploy` applies migrations and nothing else — unlike
+      # `migrate dev`, it does NOT generate the Prisma client. The client comes
+      # from @todoer/backend's `postinstall`, which the install step above runs.
+      # Without it every `Prisma.*` type resolves against a stub: `tsc` loses
+      # PrismaClientKnownRequestError and TransactionIsolationLevel, `tx` turns
+      # implicit `any`, and the DB-backed spec files throw on import and report
+      # `(0 test)` rather than failing.
       - name: Apply database migrations
         working-directory: apps/backend
         run: pnpm prisma migrate deploy
