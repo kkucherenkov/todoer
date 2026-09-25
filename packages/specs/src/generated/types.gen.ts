@@ -21,18 +21,45 @@ export type LoginResponse = {
   accessToken: string;
 };
 
-export type Op = {
+export type Op =
+  | ({
+      kind?: "create";
+    } & OpCreate)
+  | ({
+      kind?: "set";
+    } & OpSet)
+  | ({
+      kind?: "delete";
+    } & OpDelete);
+
+export type OpCreate = {
   opId: string;
-  kind: "create" | "set" | "delete";
+  kind: "create";
   table: "task" | "project" | "tag" | "task_tag";
   id: string;
-  fields?: {
+  fields: {
     [key: string]: unknown;
   };
-  field?: string;
-  value?: unknown;
-  ts?: string;
+  ts: string;
+};
+
+export type OpSet = {
+  opId: string;
+  kind: "set";
+  table: "task" | "project" | "tag" | "task_tag";
+  id: string;
+  field: string;
+  value: unknown;
+  ts: string;
   baseVersion?: number;
+};
+
+export type OpDelete = {
+  opId: string;
+  kind: "delete";
+  table: "task" | "project" | "tag" | "task_tag";
+  id: string;
+  baseVersion: number;
 };
 
 export type OpResult = {
