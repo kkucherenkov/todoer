@@ -130,6 +130,13 @@ describe('SyncService', () => {
   // that does not exist) must reject only the operation that caused it. The
   // transaction it happened in rolls back in full — neither the row nor the
   // appliedOp record survive — and the rest of the batch still applies.
+  //
+  // M2: appliedOp is now written *before* the row write, in the same
+  // transaction, specifically so this failure (which fires during the row
+  // write) happens after a real appliedOp insert. If that write were moved
+  // out of the transaction — its own statement, run unconditionally before
+  // or after — it would already have committed independently by the time
+  // the row write fails here, and `appliedOp.count` below would see it.
   it('rejects an operation Prisma refuses, and still applies the rest of the batch', async () => {
     const bad = {
       opId: uuidv7(), kind: 'create' as const, table: 'task' as const,

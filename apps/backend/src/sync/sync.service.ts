@@ -164,6 +164,23 @@ export class SyncService {
         const current = await delegate.findFirst({ where: { id: op.id, userId } });
         const outcome = applyOp(op, current, now);
 
+        // Recorded before the row write, not after: both still land in the
+        // same transaction either way, but writing appliedOp first is what
+        // lets a row-write failure roll back a record that was genuinely
+        // already inserted, rather than one that was never reached — a
+        // constraint violation on the row can only prove atomicity if there
+        // is something written earlier in the same transaction for it to
+        // undo.
+        await tx.appliedOp.create({
+          data: {
+            opId: op.opId,
+            userId,
+            status: outcome.status,
+            reason: outcome.status === 'rejected' ? outcome.reason : null,
+            currentVersion: outcome.status === 'conflict' ? outcome.currentVersion : null,
+          },
+        });
+
         if (outcome.status === 'applied') {
           // seq is a protocol/storage column applyOp never touches — it comes
           // from the one sequence shared by all four tables, and it has to be
@@ -186,19 +203,8 @@ export class SyncService {
             // should never depend on a line elsewhere staying correct.
             await delegate.update({ where: { id, userId }, data });
           }
+          return { opId: op.opId, status: 'applied' as const };
         }
-
-        await tx.appliedOp.create({
-          data: {
-            opId: op.opId,
-            userId,
-            status: outcome.status,
-            reason: outcome.status === 'rejected' ? outcome.reason : null,
-            currentVersion: outcome.status === 'conflict' ? outcome.currentVersion : null,
-          },
-        });
-
-        if (outcome.status === 'applied') return { opId: op.opId, status: 'applied' as const };
         if (outcome.status === 'superseded') return { opId: op.opId, status: 'superseded' as const };
         if (outcome.status === 'conflict') {
           return {
@@ -209,19 +215,28 @@ export class SyncService {
         return { opId: op.opId, status: 'rejected' as const, reason: outcome.reason };
       });
     } catch (error) {
-      // A Prisma error here — a foreign key pointing at a row deleted from
-      // under it, a value that violates a column constraint, a connection
-      // blip — must reject only this operation, not the batch: the client's
-      // outbox has no other way to make progress on the operations behind
-      // it, and applyOp's own never-throws guarantee would otherwise be
-      // undone from the persistence side. The transaction above has already
-      // rolled back in full by the time this runs, so neither the row write
-      // nor the appliedOp record exist. The database's own words for why
-      // are logged, not returned — a 5xx never explains itself to the
-      // caller in this codebase, and this is the same rule applied to a
-      // per-operation rejection instead of a response status.
+      // The transaction above has already rolled back in full by the time
+      // this runs, so neither the row write nor the appliedOp record exist
+      // either way. What differs is what the client is told.
+      //
+      // A PrismaClientKnownRequestError — a constraint, a foreign key, a
+      // validation failure — means retrying will not help: the data itself
+      // is the problem, so this is an honest `rejected`, the same as any
+      // other applyOp rejection. Per the client rules, `rejected` is shown
+      // to the person and dropped from the outbox.
+      //
+      // Anything else — a P2028 interactive-transaction timeout, a
+      // deadlock, a connection blip — is not the data's fault, and
+      // reporting it as `rejected` would tell the client "this did not
+      // happen, stop retrying" about a perfectly good edit that a retry
+      // would likely succeed at. Rethrown, it becomes a 5xx, which the
+      // client's transport already knows to retry.
+      if (error instanceof Prisma.PrismaClientKnownRequestError) {
+        this.logger.warn(error);
+        return { opId: op.opId, status: 'rejected', reason: 'could not be applied' };
+      }
       this.logger.error(error);
-      return { opId: op.opId, status: 'rejected', reason: 'could not be applied' };
+      throw error;
     }
   }
 
