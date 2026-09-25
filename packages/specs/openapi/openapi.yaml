@@ -134,7 +134,17 @@ components:
       required: [since, ops]
       additionalProperties: false
       properties:
-        since: { type: integer, minimum: 0 }
+        # Bounded above at 2^53-1, not at a bigint's range: `seq` is a
+        # Postgres bigint, but it travels in both directions as a JSON
+        # number, and past 2^53-1 a JSON number is no longer the value that
+        # was written — a client sending 9007199254740993 would be answered
+        # with a cursor of 9007199254740992, lower than the one it sent.
+        # Without the bound the server also had to answer a contract-legal
+        # `1e300` with a 500, since it reaches Postgres as an out-of-range
+        # bigint. `format: int64` is deliberately absent: it would widen the
+        # bound this line exists to narrow, and it changes what the
+        # generators emit for a field every client already reads as a number.
+        since: { type: integer, minimum: 0, maximum: 9007199254740991 }
         ops:
           type: array
           items: { $ref: "#/components/schemas/Op" }

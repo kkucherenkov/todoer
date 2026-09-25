@@ -178,11 +178,17 @@ server-rendered application.
 
 For each operation, in the order given:
 
-1. **Seen before?** `op_id` in `applied_op` → `duplicate`, skip. This is what
-   makes a retry after a lost response safe.
-2. **Permitted?** The table is writable, the row belongs to this user, a
-   `parent_id` points at a row whose own `parent_id` is null (D9), a subtask
-   carries no `rrule`. Otherwise `rejected` with a reason.
+1. **Seen before?** `(user_id, op_id)` in `applied_op` → `duplicate`, skip.
+   This is what makes a retry after a lost response safe. The pair, not
+   `op_id` alone: ids are minted by clients, so the same one legitimately
+   arrives from two accounts, and a global namespace would answer the second
+   account with a duplicate of the first's outcome — a write that never
+   happened, reported as success.
+2. **Permitted?** The table is writable, the row belongs to this user, every
+   foreign key it writes (`project_id`, `parent_id`, `task_id`, `tag_id`)
+   points at a row that also belongs to this user, a `parent_id` points at a
+   row whose own `parent_id` is null (D9), a subtask carries no `rrule`.
+   Otherwise `rejected` with a reason.
 3. **`set`:** clamp `ts` to at most `now + 5min` (only the future is bounded —
    see ADR 0004), then apply only if it is newer than `field_ts[field]`.
    Otherwise `superseded` — which is an outcome, not an error.
@@ -191,6 +197,16 @@ For each operation, in the order given:
    colliding with.
 5. **Apply**, increment `version`, write `field_ts`, take the next `seq`,
    record the `op_id`.
+
+Steps 2 to 5 run under the row's write lock (`SELECT … FOR UPDATE`, taken
+before the read), one transaction per operation. Without it, two operations
+touching *different* fields of one row read the same snapshot and each writes
+every column back, so the second silently discards the first — its `field_ts`
+included, which leaves the row carrying the new timestamp against the old
+value, a state no later per-field comparison can repair. Per-field conflict
+resolution ([ADR 0004](../adr/0004-field-level-last-write-wins.md)) is a
+promise about concurrent edits, so the lock is part of the protocol rather
+than an optimisation.
 
 Then return every row with `seq > since`, including tombstones.
 

@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { BadRequestException } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -139,18 +140,28 @@ describe('SyncService', () => {
   // or after — it would already have committed independently by the time
   // the row write fails here, and `appliedOp.count` below would see it.
   it('rejects an operation Prisma refuses, and still applies the rest of the batch', async () => {
-    const bad = {
-      opId: uuidv7(), kind: 'create' as const, table: 'task' as const,
-      id: uuidv7(), fields: { title: 'orphaned', rank: 'a0', projectId: uuidv7() },
-      ts: new Date().toISOString(),
-    };
+    // The trigger is a create whose id already belongs to *another* account:
+    // this user's scoped read finds nothing, applyOp says applied, and
+    // Postgres refuses the insert on the primary key. It has to be a
+    // collision across accounts — within one account applyOp rejects it
+    // before Prisma is ever reached. This test's earlier trigger (a
+    // projectId pointing at a project that does not exist) no longer
+    // reaches Prisma at all: I9's ownership check refuses it first, which is
+    // a *recorded* rejection rather than a rolled-back transaction, so it
+    // can no longer prove what the appliedOp assertion below is here for.
+    const OTHER = '22222222-2222-2222-2222-222222222222';
+    await prisma.user.create({ data: { id: OTHER, email: 'x@y.z', passwordHash: 'x' } });
+    const theirs = createTask('theirs');
+    await service.sync(OTHER, { since: 0, ops: [theirs] });
+
+    const bad = { ...createTask('collides'), id: theirs.id };
     const good = createTask('unrelated');
 
     const { results } = await service.sync(USER, { since: 0, ops: [bad, good] });
 
     expect(results[0]).toMatchObject({ status: 'rejected' });
     expect(results[1]).toMatchObject({ status: 'applied' });
-    expect(await prisma.task.count({ where: { id: bad.id } })).toBe(0);
+    expect((await prisma.task.findUniqueOrThrow({ where: { id: bad.id } })).title).toBe('theirs');
     expect(await prisma.appliedOp.count({ where: { opId: bad.opId } })).toBe(0);
     expect(await prisma.task.count({ where: { id: good.id } })).toBe(1);
   });
@@ -442,4 +453,185 @@ describe('SyncService', () => {
   // turns the cross-user `set` from `rejected` into a silent `applied`
   // that overwrites the other user's row, and that test's reason
   // assertion fails.
+
+  // C1: two `set` operations on different fields of one row, genuinely
+  // overlapping. Sequential arrival — in order or out of it — cannot show
+  // this: what the loser loses is not a timestamp comparison but a whole row
+  // written back from a snapshot taken before the winner committed, `fieldTs`
+  // included, so the row ends up carrying the new timestamp against the old
+  // value and no later last-write-wins comparison can repair it.
+  //
+  // Staged rather than raced, so it does not depend on scheduling: `clientA`
+  // pauses inside its transaction right after reading the row, and `clientB`
+  // releases it from the first statement of its own transaction — the dedup
+  // lookup, which is the one query both the locked and the unlocked code run
+  // before touching the row. Without the row lock that leaves B reading while
+  // A still has four round trips to go, so B writes back a snapshot with none
+  // of A's edit in it; with the lock, B's read waits for A to commit.
+  it('keeps both fields when two concurrent sets touch different fields of one row', async () => {
+    const create = {
+      opId: uuidv7(), kind: 'create' as const, table: 'task' as const,
+      id: uuidv7(), fields: { title: 'T0', notes: 'N0', rank: 'a0' },
+      ts: new Date().toISOString(),
+    };
+    await service.sync(USER, { since: 0, ops: [create] });
+
+    let releaseA!: () => void;
+    const aMayWrite = new Promise<void>((resolve) => {
+      releaseA = resolve;
+    });
+    let aHasRead!: () => void;
+    const aHasReadPromise = new Promise<void>((resolve) => {
+      aHasRead = resolve;
+    });
+
+    const clientA = prisma.$extends({
+      query: {
+        task: {
+          async findFirst({ args, query }) {
+            const row = await query(args);
+            aHasRead();
+            await aMayWrite;
+            return row;
+          },
+        },
+      },
+    });
+    const clientB = prisma.$extends({
+      query: {
+        appliedOp: {
+          async findUnique({ args, query }) {
+            releaseA();
+            return query(args);
+          },
+        },
+      },
+    });
+    const a = new SyncService(clientA as unknown as PrismaService);
+    const b = new SyncService(clientB as unknown as PrismaService);
+
+    const setTitle = {
+      opId: uuidv7(), kind: 'set' as const, table: 'task' as const,
+      id: create.id, field: 'title', value: 'T1', ts: new Date().toISOString(),
+    };
+    const setNotes = {
+      opId: uuidv7(), kind: 'set' as const, table: 'task' as const,
+      id: create.id, field: 'notes', value: 'N1',
+      ts: new Date(Date.now() + 10).toISOString(),
+    };
+
+    try {
+      const aDone = a.sync(USER, { since: 0, ops: [setTitle] });
+      await aHasReadPromise;
+      const bDone = b.sync(USER, { since: 0, ops: [setNotes] });
+      const [aResult, bResult] = await Promise.all([aDone, bDone]);
+
+      expect(aResult.results[0]).toMatchObject({ status: 'applied' });
+      expect(bResult.results[0]).toMatchObject({ status: 'applied' });
+    } finally {
+      // Releases even if an assertion above throws, so a failure here does
+      // not leave the paused interactive transaction open until Prisma's own
+      // timeout.
+      releaseA();
+    }
+
+    const row = await prisma.task.findUniqueOrThrow({ where: { id: create.id } });
+    const fieldTs = row.fieldTs as Record<string, string>;
+    expect(row.title).toBe('T1');
+    expect(row.notes).toBe('N1');
+    // Both edits counted: `version` is what delete's and set's optimistic
+    // lock compare against, so a version that skipped one of these two
+    // leaves that check blind to a change it never saw.
+    expect(row.version).toBe(3);
+    expect(fieldTs.title).toBe(setTitle.ts);
+    expect(fieldTs.notes).toBe(setNotes.ts);
+  });
+
+  // C2: op ids are minted by the client, so two accounts can hold the same
+  // one — a restored state file, a shared fixture, or any implementation of
+  // ADR 0015 §4's "generated once, persisted, and reused" that derives the id
+  // from the intent rather than from randomness. Deduplicated on opId alone,
+  // the second account's write silently does not happen and the response
+  // calls it a success.
+  it('scopes operation dedup to the account that sent the operation', async () => {
+    const OTHER = '22222222-2222-2222-2222-222222222222';
+    await prisma.user.create({ data: { id: OTHER, email: 'x@y.z', passwordHash: 'x' } });
+
+    const mine = createTask('mine');
+    await service.sync(USER, { since: 0, ops: [mine] });
+
+    const theirs = { ...createTask('theirs'), opId: mine.opId };
+    const result = await service.sync(OTHER, { since: 0, ops: [theirs] });
+
+    expect(result.results[0]).toMatchObject({ status: 'applied' });
+    expect(await prisma.task.count({ where: { id: theirs.id } })).toBe(1);
+  });
+
+  // I3: `since` reaches BigInt() and then a bigint comparison in Postgres.
+  // Number.isInteger(1e300) is true and BigInt(1e300) succeeds, so the
+  // original guard passed it through to a query that fails out of range —
+  // inside changesSince, which has no catch of its own, so a contract-legal
+  // input surfaced as a 500. Above 2^53 the value is not even the one the
+  // client sent: 9007199254740993 arrives as ...992, and the cursor comes
+  // back lower than the one that went out.
+  it('rejects a cursor beyond the safe integer range instead of failing inside the database', async () => {
+    await expect(service.sync(USER, { since: 1e300, ops: [] })).rejects.toThrow(
+      BadRequestException,
+    );
+    await expect(service.sync(USER, { since: 9007199254740993, ops: [] })).rejects.toThrow(
+      BadRequestException,
+    );
+  });
+
+  // I9: reads are scoped by userId, but projectId/parentId/taskId/tagId are
+  // writable and the migration's foreign keys are global. Nothing leaks
+  // today, because changesSince filters by userId — but the row is
+  // permanently attached to another account's tree, TaskTag's ON DELETE
+  // RESTRICT turns that into a hold on a row somebody else owns, and the
+  // first feature that walks parentId or projectId crosses the boundary.
+  it('rejects a foreign key that points at another account’s row', async () => {
+    const mine = createTask('mine');
+    const myProject = {
+      opId: uuidv7(), kind: 'create' as const, table: 'project' as const,
+      id: uuidv7(), fields: { name: 'mine', rank: 'a0' }, ts: new Date().toISOString(),
+    };
+    await service.sync(USER, { since: 0, ops: [mine, myProject] });
+
+    const OTHER = '22222222-2222-2222-2222-222222222222';
+    await prisma.user.create({ data: { id: OTHER, email: 'x@y.z', passwordHash: 'x' } });
+
+    const child = {
+      opId: uuidv7(), kind: 'create' as const, table: 'task' as const,
+      id: uuidv7(), fields: { title: 'child', rank: 'a0', parentId: mine.id },
+      ts: new Date().toISOString(),
+    };
+    const theirTask = createTask('theirs');
+    const steal = {
+      opId: uuidv7(), kind: 'set' as const, table: 'task' as const,
+      id: theirTask.id, field: 'projectId', value: myProject.id,
+      ts: new Date().toISOString(),
+    };
+
+    const { results } = await service.sync(OTHER, { since: 0, ops: [child, theirTask, steal] });
+
+    expect(results[0]).toMatchObject({ status: 'rejected' });
+    expect(results[1]).toMatchObject({ status: 'applied' });
+    expect(results[2]).toMatchObject({ status: 'rejected' });
+    expect(await prisma.task.count({ where: { id: child.id } })).toBe(0);
+    expect(
+      (await prisma.task.findUniqueOrThrow({ where: { id: theirTask.id } })).projectId,
+    ).toBeNull();
+
+    // A positive control: the same reference inside one account still
+    // applies, so what the check refuses is the boundary crossing and not
+    // foreign keys in general.
+    const ownProject = {
+      opId: uuidv7(), kind: 'set' as const, table: 'task' as const,
+      id: mine.id, field: 'projectId', value: myProject.id,
+      ts: new Date().toISOString(),
+    };
+    const own = await service.sync(USER, { since: 0, ops: [ownProject] });
+
+    expect(own.results[0]).toMatchObject({ status: 'applied' });
+  });
 });

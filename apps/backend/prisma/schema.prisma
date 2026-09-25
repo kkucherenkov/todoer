@@ -137,7 +137,13 @@ model TaskTag {
 /// (conflict, rejected, superseded) instead of a bare "duplicate" that would
 /// make the client silently drop an intent that never actually happened.
 model AppliedOp {
-  opId           String   @id @db.Uuid
+  /// Not a primary key on its own: op ids are minted by clients, so the same
+  /// one can legitimately arrive from two accounts — a restored state file, a
+  /// shared fixture, or an id derived from the intent rather than from
+  /// randomness (ADR 0015 §4). Keyed on opId alone, the second account's
+  /// operation reads as a duplicate of the first's and silently never
+  /// happens. The tenant leads the key because every lookup here supplies it.
+  opId           String   @db.Uuid
   userId         String   @db.Uuid
   /// The Outcome['status'] applyOp originally returned: applied, superseded,
   /// conflict or rejected. Never "duplicate" — that label only exists at
@@ -147,5 +153,6 @@ model AppliedOp {
   currentVersion Int?
   appliedAt      DateTime @default(now())
 
+  @@id([userId, opId])
   @@index([userId, appliedAt])
 }

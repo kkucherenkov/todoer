@@ -20,6 +20,48 @@ const DELEGATE = {
 } as const;
 
 /**
+ * The same four tables again, spelled as Postgres relations rather than as
+ * Prisma delegates — the row lock below is raw SQL, and Prisma has no
+ * `FOR UPDATE` on `findFirst`. Written out instead of derived from
+ * `DELEGATE` by capitalisation so that a future `@@map` on a model shows up
+ * here as an edit rather than as a runtime error.
+ */
+const RELATION = {
+  task: 'Task', project: 'Project', tag: 'Tag', task_tag: 'TaskTag',
+} as const;
+
+/**
+ * Foreign keys a client may write, and the table each one points at. Reads
+ * are scoped by `userId`; these columns are not, and the migration's foreign
+ * keys are global — so without this map one account can attach its row to
+ * another's project or parent task. Nothing leaks today (`changesSince`
+ * filters by `userId`), but the row is permanently in someone else's tree,
+ * TaskTag's ON DELETE RESTRICT turns it into a hold on a row that account
+ * owns, and the first feature to walk `parentId`/`projectId` — a cascade
+ * delete, "complete subtasks", a tree view — crosses the boundary.
+ */
+const REFERENCES: Partial<Record<TableName, Readonly<Record<string, TableName>>>> = {
+  task: { projectId: 'project', parentId: 'task' },
+  task_tag: { taskId: 'task', tagId: 'tag' },
+};
+
+/** The shape every id in this protocol has: a uuid, per the contract. */
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * The largest `since` a cursor can carry. `seq` is a Postgres bigint, but
+ * both the request and the response carry it as a JSON number, and above
+ * 2^53-1 a JSON number is no longer the value that was written: a client
+ * sending 9007199254740993 gets 9007199254740992 back, a cursor *lower* than
+ * the one it sent. Anything above this bound is rejected rather than
+ * silently rounded — and, further up, `Number.isInteger(1e300)` is true and
+ * `BigInt(1e300)` succeeds, so without the bound a contract-legal input
+ * reaches Postgres as an out-of-range bigint inside `changesSince`, which
+ * has no catch of its own and answers 500.
+ */
+const MAX_SINCE = Number.MAX_SAFE_INTEGER;
+
+/**
  * Columns a client may set through `create`/`set`, per table. `applyOp`
  * already guards the protocol-owned columns (id, version, fieldTs, seq,
  * deletedAt, ...); this guards the opposite direction — a field that is not
@@ -49,6 +91,12 @@ type SyncDelegate = {
   findMany(args: unknown): Promise<Array<Record<string, unknown>>>;
   create(args: unknown): Promise<unknown>;
   update(args: unknown): Promise<unknown>;
+};
+
+/** The one method `lockRow` needs, so that it takes a transaction client
+ *  without naming Prisma's full generated type. */
+type RawClient = {
+  $queryRaw<T = unknown>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>;
 };
 
 type DelegateKey = (typeof DELEGATE)[TableName];
@@ -103,6 +151,81 @@ function unpermittedField(table: TableName, op: Op): string | null {
   return null;
 }
 
+/**
+ * The foreign key this op writes that points at a row the user does not own,
+ * or `null` if there is nothing to object to. A value that is not a uuid
+ * counts as unowned: it references no row of theirs either, and letting it
+ * through would send client input into the raw lock query below.
+ */
+async function unownedReference(
+  client: unknown,
+  table: TableName,
+  op: Op,
+  userId: string,
+): Promise<string | null> {
+  const refs = REFERENCES[table];
+  if (refs === undefined) return null;
+
+  let written: Array<[string, unknown]>;
+  if (op.kind === 'create') {
+    // A malformed `fields` is applyOp's to reject, not this function's.
+    if (typeof op.fields !== 'object' || op.fields === null || Array.isArray(op.fields)) return null;
+    written = Object.entries(op.fields);
+  } else if (op.kind === 'set') {
+    written = typeof op.field === 'string' ? [[op.field, op.value]] : [];
+  } else {
+    written = [];
+  }
+
+  for (const [field, value] of written) {
+    const target = refs[field];
+    // `null` clears the reference, which needs no owner.
+    if (target === undefined || value === null || value === undefined) continue;
+    if (typeof value !== 'string' || !UUID.test(value)) return field;
+    const found = await delegateFor(client, target).findFirst({
+      where: { id: value, userId },
+      select: { id: true },
+    });
+    if (found === null) return field;
+  }
+  return null;
+}
+
+/**
+ * Takes the row's write lock for the rest of the transaction, so that the
+ * read-modify-write cycle below runs one at a time per row.
+ *
+ * Without it, two concurrent `set` operations on *different* fields of one
+ * row both read the same snapshot under READ COMMITTED and both write every
+ * column back: the second write loses the first field's value *and* its
+ * `fieldTs`, so the row ends up carrying the new timestamp against the old
+ * value — a state no later per-field last-write-wins comparison can repair,
+ * and one the client was told was `applied`. `version` ends up one short
+ * too, which blinds `delete`'s and `set`'s base-version check to a change it
+ * never saw. Per-field conflict resolution is what ADR 0004 exists to
+ * provide, so this is not an optimisation.
+ *
+ * `FOR UPDATE` rather than REPEATABLE READ: Postgres would answer the race
+ * with a serialisation failure (40001 → Prisma P2034), which this service
+ * treats as retryable and rethrows — a 5xx, for an event the protocol
+ * considers ordinary, leaving the client to retry a batch that was never
+ * wrong. Under READ COMMITTED the lock instead makes the second cycle wait
+ * and then re-read the row the first one committed, with nothing
+ * client-visible about it at all.
+ *
+ * Raw because Prisma has no `FOR UPDATE` on `findFirst`. The table name is
+ * a constant from `RELATION`, never client input; `id` and `userId` are
+ * parameters, and `id` has been checked against `UUID` before this is
+ * reached, so the `::uuid` casts cannot fail on it.
+ */
+function lockRow(client: RawClient, table: TableName, id: string, userId: string): Promise<unknown> {
+  return client.$queryRaw`
+    SELECT 1 FROM ${Prisma.raw(`"${RELATION[table]}"`)}
+     WHERE "id" = ${id}::uuid AND "userId" = ${userId}::uuid
+       FOR UPDATE
+  `;
+}
+
 type StoredOutcome = { status: string; reason: string | null; currentVersion: number | null };
 
 /**
@@ -140,10 +263,12 @@ const RETRYABLE_PRISMA_CODES = new Set([
   'P2024', // timed out fetching a connection from the pool
   'P1017', // the database server closed the connection
   'P2037', // too many database connections already open
-  'P2010', // a raw query failed — the only one in this service is a
-           // constant `SELECT nextval('change_seq')`, always valid SQL
-           // with no client input in it, so a failure executing it is
-           // the database's problem, not the query's, by construction
+  'P2010', // a raw query failed — both raw queries in this service are
+           // constant SQL (`SELECT nextval('change_seq')` and the row
+           // lock), and the lock's only parameters are a uuid checked
+           // against UUID before it is reached and a userId from the
+           // session, so a failure executing either is the database's
+           // problem, not the query's, by construction
 ]);
 
 /**
@@ -180,8 +305,8 @@ export class SyncService {
     userId: string,
     body: SyncRequest,
   ): Promise<{ cursor: number; results: OpResult[]; changes: Change[] }> {
-    if (!Number.isInteger(body.since) || body.since < 0) {
-      throw new BadRequestException('since must be a non-negative integer');
+    if (!Number.isInteger(body.since) || body.since < 0 || body.since > MAX_SINCE) {
+      throw new BadRequestException(`since must be an integer between 0 and ${MAX_SINCE}`);
     }
 
     const results: OpResult[] = [];
@@ -205,7 +330,14 @@ export class SyncService {
         // Step 1 of the design doc's section 3: "seen before?" — a retry
         // after a lost response is a no-op, whatever today's schema thinks
         // of the op's table or field.
-        const seen = await tx.appliedOp.findUnique({ where: { opId: op.opId } });
+        // Scoped by user, not by op id alone: ids are minted by clients, so
+        // the same one legitimately arrives from two accounts (see the
+        // schema's note on AppliedOp). Unscoped, the second account's
+        // operation reads as a duplicate of the first's — its write never
+        // happens and the response calls that success.
+        const seen = await tx.appliedOp.findUnique({
+          where: { userId_opId: { userId, opId: op.opId } },
+        });
         if (seen !== null) return replay(op.opId, seen);
 
         // Step 2: "Permitted?" — the table must be one this protocol
@@ -224,10 +356,28 @@ export class SyncService {
           outcome = { status: 'rejected', reason: 'unknown table' };
         } else if (badField !== null) {
           outcome = { status: 'rejected', reason: `unknown field: ${badField}` };
+        } else if (!UUID.test(op.id)) {
+          // The contract already says `format: uuid`, and the validator
+          // enforces it on the wire. This is the same check at the point
+          // where it stops being cosmetic: `id` is interpolated into the
+          // row lock's `::uuid` cast below, and a value Postgres cannot
+          // parse there is a raw-query failure (P2010), which this service
+          // treats as retryable and turns into a 5xx rather than the honest
+          // per-operation rejection it is.
+          outcome = { status: 'rejected', reason: 'id is not a uuid' };
         } else {
-          delegate = delegateFor(tx, table);
-          current = await delegate.findFirst({ where: { id: op.id, userId } });
-          outcome = applyOp(op, current, now);
+          const unowned = await unownedReference(tx, table, op, userId);
+          if (unowned !== null) {
+            outcome = { status: 'rejected', reason: `${unowned} does not reference a row you own` };
+          } else {
+            delegate = delegateFor(tx, table);
+            // Before the read, not after: the lock is what makes this read
+            // and the write below one cycle rather than two halves another
+            // transaction can interleave with.
+            await lockRow(tx, table, op.id, userId);
+            current = await delegate.findFirst({ where: { id: op.id, userId } });
+            outcome = applyOp(op, current, now);
+          }
         }
 
         // Recorded before the row write, not after: both still land in the
