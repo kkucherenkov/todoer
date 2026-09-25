@@ -58,15 +58,27 @@ function delegateFor(client: unknown, table: TableName): SyncDelegate {
 }
 
 /**
- * The row as returned to a client. `userId`/`createdAt`/`updatedAt` are
- * server bookkeeping a client's replica has no use for, and `seq` is dropped
- * because it is already the `Change`'s own top-level field — and because it
- * is a `bigint`, which has no `JSON.stringify` representation of its own and
- * would otherwise 500 every pull that returns a change.
+ * The protocol columns a client's replica needs from every table — `seq`
+ * is excluded on purpose, since it is already the `Change`'s own top-level
+ * field, and it is a `bigint`, which has no `JSON.stringify` representation
+ * of its own.
  */
-function toChangeRow(row: Record<string, unknown>): Record<string, unknown> {
-  const { userId: _userId, createdAt: _createdAt, updatedAt: _updatedAt, seq: _seq, ...rest } = row;
-  return rest;
+const READABLE_PROTOCOL_FIELDS = ['id', 'version', 'fieldTs', 'deletedAt'] as const;
+
+/**
+ * The row as returned to a client: an explicit allow-list, not a deny-list
+ * on an unrestricted `findMany`. A deny-list reaches every column a future
+ * migration adds by default — including, one day, another `BigInt` — and
+ * the failure that produces would land in production rather than in a
+ * test. Naming exactly what a client receives means a new column stays out
+ * until someone decides it belongs in `WRITABLE_FIELDS` or here.
+ */
+function toChangeRow(table: TableName, row: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const key of [...READABLE_PROTOCOL_FIELDS, ...WRITABLE_FIELDS[table]]) {
+    if (key in row) out[key] = row[key];
+  }
+  return out;
 }
 
 /**
@@ -279,7 +291,7 @@ export class SyncService {
             orderBy: { seq: 'asc' },
           });
           for (const row of rows) {
-            out.push({ table, id: String(row.id), seq: Number(row.seq), row: toChangeRow(row) });
+            out.push({ table, id: String(row.id), seq: Number(row.seq), row: toChangeRow(table, row) });
           }
         }
         out.sort((a, b) => a.seq - b.seq);
