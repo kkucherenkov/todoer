@@ -236,4 +236,20 @@ describe('SyncService', () => {
     expect(first.results[0]).toMatchObject({ status: 'conflict', currentVersion: 1 });
     expect(again.results[0]).toMatchObject({ status: 'conflict', currentVersion: 1 });
   });
+
+  // M8: pins the cursor formula itself. change_seq is not transactional, so
+  // reading it directly (the round-2 formula) always reflects at least the
+  // live global position — including another user's unrelated write — even
+  // on a pull that returns nothing for this user at all. The cursor must
+  // come from what the scans actually delivered.
+  it('does not advance the cursor past since when a pull returns nothing', async () => {
+    const OTHER = '33333333-3333-3333-3333-333333333333';
+    await prisma.user.create({ data: { id: OTHER, email: 'q@r.s', passwordHash: 'x' } });
+    await service.sync(OTHER, { since: 0, ops: [createTask('theirs, not mine')] });
+
+    const pull = await service.sync(USER, { since: 0, ops: [] });
+
+    expect(pull.changes).toHaveLength(0);
+    expect(pull.cursor).toBe(0);
+  });
 });

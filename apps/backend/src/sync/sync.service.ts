@@ -230,32 +230,29 @@ export class SyncService {
     since: number,
   ): Promise<{ cursor: number; changes: Change[] }> {
     // The four tables are read inside one transaction so they share a single
-    // snapshot. Read separately (the previous shape of this method), a write
-    // that commits between two of the reads is visible to one and not the
-    // other, and a cursor built off whichever read happened to see it leaves
-    // the other table's matching row below the client's `since` forever —
-    // one user with two devices is enough to hit it. REPEATABLE READ is what
-    // makes "one snapshot" a guarantee instead of an accident of timing:
-    // Prisma's default (READ COMMITTED) lets each statement in a transaction
-    // see newly committed rows from other transactions.
+    // snapshot. Read separately (the original shape of this method), a
+    // write that commits between two of the reads is visible to one and not
+    // the other, and a cursor built off whichever read happened to see it
+    // leaves the other table's matching row below the client's `since`
+    // forever — one user with two devices is enough to hit it. REPEATABLE
+    // READ is what makes "one snapshot" a guarantee instead of an accident
+    // of timing: Prisma's default (READ COMMITTED) lets each statement in a
+    // transaction see newly committed rows from other transactions.
+    //
+    // The cursor itself is the max of what the scans actually returned, not
+    // change_seq's own position. Sequences are not transactional in
+    // Postgres, so reading change_seq inside this same REPEATABLE READ
+    // transaction still returns its live, real-time value — not a
+    // snapshotted one — which is always at least the max of what the scans
+    // saw, and usually more: a concurrent writer that has called nextval()
+    // but not yet committed already moved it. A cursor built from that
+    // value can claim ground these scans never covered, on a pull that
+    // returns nothing at all. Building it from delivered rows instead means
+    // the residual race (an in-flight low seq *and* no higher seq visible
+    // to shrink the gap) needs both conditions at once, rather than either
+    // alone — see ADR 0016 for what still gets through.
     return this.prisma.$transaction(
       async (tx) => {
-        // Read before the four table scans, in the same transaction, so the
-        // reported cursor cannot claim to have seen more than those scans
-        // actually did. `is_called` guards the sequence's own unstarted
-        // state — `last_value` reads as the START value even before the
-        // first `nextval()`. This narrows the race the previous shape of
-        // this method had wide open, but seq is still allocated in
-        // transaction order, not commit order — a write that took its seq
-        // before this snapshot but had not yet committed can still land
-        // below a cursor already handed to a client. See ADR 0016 for that
-        // ceiling and its remedy; it is a property of the sequence, not a
-        // bug this method can fix.
-        const [{ seq }] = await tx.$queryRaw<[{ seq: bigint }]>`
-          SELECT CASE WHEN is_called THEN last_value ELSE 0 END AS seq FROM change_seq
-        `;
-        const cursor = Math.max(since, Number(seq));
-
         // Tombstoned rows are returned on purpose: they are how a client
         // learns about a deletion, and filtering them out is silent data
         // corruption, not a missing feature (see D15).
@@ -271,6 +268,8 @@ export class SyncService {
           }
         }
         out.sort((a, b) => a.seq - b.seq);
+
+        const cursor = out.reduce((m, c) => Math.max(m, c.seq), since);
 
         return { cursor, changes: out };
       },
