@@ -43,8 +43,15 @@ components:
       required: [email, password]
       additionalProperties: false
       properties:
-        email: { type: string, format: email }
-        password: { type: string, minLength: 8 }
+        # Bounds generous for a human, absurd for an attacker: 254 is
+        # RFC 5321's own limit on an address, and a passphrase running past
+        # a few hundred characters is a payload, not something to be typed.
+        # Both endpoints are unauthenticated and the request body limit is
+        # shared with /sync's 2mb batches, so the validator — which runs
+        # ahead of scrypt — is what stands between an oversized password and
+        # an ~80ms hash of it.
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, minLength: 8, maxLength: 256 }
 
     LoginResponse:
       type: object
