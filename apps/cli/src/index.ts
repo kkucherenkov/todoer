@@ -2,11 +2,11 @@
 import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
 import { uuidv7 } from 'uuidv7';
-import { parseQuickAdd } from './parse-quick-add.js';
+import { planAdd } from './parse-quick-add.js';
 import { BASE, TOKEN, STATE } from './config.js';
 import {
-  applyChanges, assertNotRejected, liveTasks, readSyncResponse,
-  NetworkError, RefusalError, type State,
+  applyChanges, assertNotRefused, liveTasks, readSyncResponse,
+  ConflictError, NetworkError, RefusalError, UsageError, type State,
 } from './protocol.js';
 
 async function load(): Promise<State> {
@@ -44,32 +44,75 @@ async function sync(ops: unknown[]) {
   return { state, results: body.results };
 }
 
+/**
+ * Everything a caller has to know that is not in the wire contract: what the
+ * quick-add markers do and do not do, where the token comes from and how long
+ * it lasts, what each exit code means, and the one sharp edge — `add` is not
+ * idempotent. That last paragraph was, until now, written down only in the
+ * plan, where the agent retrying a failed `add` was never going to read it.
+ */
+const HELP = `todoer — a client for a todoer instance
+
+usage:
+  todoer add "<text>" [--json]    create a task
+  todoer list [--json]            list the tasks that are not deleted
+  todoer --help
+
+quick-add markers:
+  p0..p4      priority
+  #project    parsed, not stored yet — projects arrive with the outbox
+  @tag        parsed, not stored yet — tags arrive with the outbox
+
+environment:
+  TODOER_URL     instance base URL, default http://localhost:3000/api/v1
+  TODOER_TOKEN   bearer token. It expires 15 minutes after it is issued and
+                 this CLI has no login command yet — mint one with
+                 POST $TODOER_URL/auth/login and export it.
+
+exit codes (ADR 0015 §2):
+  0  done
+  1  the server refused: a rejected operation, or any 4xx. A 401 means the
+     token is missing, invalid or expired — get a new one, do not retry
+  2  usage error — nothing was sent
+  3  the server could not be reached, or answered 5xx. The only code a
+     caller may retry unchanged
+  4  conflict — the server holds a newer version of the row
+
+add is NOT safe to retry. Each invocation mints a fresh operation id, so a
+retry after a lost response creates the task twice; the server's idempotency
+is keyed on that id (ADR 0005, ADR 0015 §4). Treat a failed add as
+indeterminate and run list before deciding. The persistent outbox that makes
+a retry reuse the original id is plan B.
+`;
+
 async function main(): Promise<void> {
   const argv = process.argv.slice(2);
+  if (argv.includes('--help') || argv.includes('-h')) {
+    console.log(HELP);
+    return;
+  }
   const json = argv.includes('--json');
   const [command, ...rest] = argv.filter((arg) => arg !== '--json');
 
   if (command === 'add') {
-    const text = rest.join(' ');
-    if (text.length === 0) {
-      console.error('usage: todoer add "<text>" [--json]');
-      process.exit(2);
-    }
-    const parsed = parseQuickAdd(text);
+    // Refuses an empty title and reports what it is not storing — see planAdd.
+    const { title, priority, notice } = planAdd(rest.join(' '));
+    // stderr, so --json's stdout stays a single parseable value.
+    if (notice !== null) console.error(notice);
     const opId = uuidv7();
     const id = uuidv7();
     const { state, results } = await sync([
       {
         opId, kind: 'create', table: 'task', id,
-        fields: { title: parsed.title, priority: parsed.priority, rank: 'a0' },
+        fields: { title, priority, rank: 'a0' },
         ts: new Date().toISOString(),
       },
     ]);
-    assertNotRejected(results, opId);
+    assertNotRefused(results, opId);
     if (json) {
       console.log(JSON.stringify(state.rows.task?.[id] ?? null));
     } else {
-      console.log(parsed.title);
+      console.log(title);
     }
   } else if (command === 'list') {
     const { state } = await sync([]);
@@ -82,20 +125,32 @@ async function main(): Promise<void> {
       }
     }
   } else {
-    console.error('usage: todoer add "<text>" [--json] | todoer list [--json]');
-    process.exit(2);
+    throw new UsageError(
+      command === undefined ? 'no command given' : `unknown command: ${command}`,
+    );
   }
 }
 
 main().catch((error: unknown) => {
+  // The one place an error class becomes an exit code; the classes themselves
+  // and what each one means to a caller are in protocol.ts.
+  if (error instanceof UsageError) {
+    // The message, not the whole of HELP: a caller that mistyped a command
+    // does not need thirty lines of stderr, and the one that does is one
+    // flag away from them.
+    console.error(`${error.message}\nrun \`todoer --help\` for usage and exit codes`);
+    process.exit(2);
+  }
   if (error instanceof RefusalError) {
     console.error(error.message);
     process.exit(1);
   }
-  if (error instanceof NetworkError) {
+  if (error instanceof ConflictError) {
     console.error(error.message);
-    process.exit(3);
+    process.exit(4);
   }
+  // NetworkError, and anything unrecognised: a caller that retries on 3 is
+  // retrying something that might genuinely succeed next time.
   console.error(error instanceof Error ? error.message : String(error));
   process.exit(3);
 });

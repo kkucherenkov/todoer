@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
-  applyChanges, assertNotRejected, liveTasks, readSyncResponse,
-  NetworkError, RefusalError, type State,
+  applyChanges, assertNotRefused, liveTasks, readSyncResponse,
+  ConflictError, NetworkError, RefusalError, type State,
 } from './protocol.js';
 
 describe('applyChanges + liveTasks', () => {
@@ -38,24 +38,53 @@ describe('readSyncResponse', () => {
     await expect(readSyncResponse(res)).resolves.toEqual({ cursor: 1, results: [], changes: [] });
   });
 
-  it('treats HTTP 409 as a refusal', async () => {
-    const res = new Response('conflict', { status: 409 });
+  // The token lives 15 minutes and there is no `login` command, so this is
+  // the failure a long-running agent meets first. Read as a network error it
+  // is retried forever; read as a refusal it is a signal to get a new token.
+  it('treats an expired or missing token as a refusal, not a network failure', async () => {
+    const res = new Response('unauthorized', { status: 401 });
     await expect(readSyncResponse(res)).rejects.toBeInstanceOf(RefusalError);
   });
 
-  it('treats any other non-2xx as a network error', async () => {
+  it('treats a refused batch as a refusal', async () => {
+    const res = new Response('payload too large', { status: 413 });
+    await expect(readSyncResponse(res)).rejects.toBeInstanceOf(RefusalError);
+  });
+
+  it('treats a server fault as a network error, which is the retryable one', async () => {
     const res = new Response('boom', { status: 500 });
     await expect(readSyncResponse(res)).rejects.toBeInstanceOf(NetworkError);
   });
 });
 
-describe('assertNotRejected', () => {
+describe('assertNotRefused', () => {
   it('throws a RefusalError when the op it cares about was rejected', () => {
-    expect(() => assertNotRejected([{ opId: 'a', status: 'rejected', reason: 'nope' }], 'a'))
+    expect(() => assertNotRefused([{ opId: 'a', status: 'rejected', reason: 'nope' }], 'a'))
       .toThrow(RefusalError);
   });
 
+  // The real conflict signal: /sync answers 200 and reports it per operation.
+  // The server never returns 409 on that path, which is why reading conflict
+  // off the HTTP status found nothing.
+  it('throws a ConflictError when the server has a newer version of the row', () => {
+    expect(() => assertNotRefused([{ opId: 'a', status: 'conflict', currentVersion: 7 }], 'a'))
+      .toThrow(ConflictError);
+  });
+
+  it('names the version the caller has to rebase onto', () => {
+    expect(() => assertNotRefused([{ opId: 'a', status: 'conflict', currentVersion: 7 }], 'a'))
+      .toThrow(/7/);
+  });
+
   it('does nothing when the op was applied', () => {
-    expect(() => assertNotRejected([{ opId: 'a', status: 'applied' }], 'a')).not.toThrow();
+    expect(() => assertNotRefused([{ opId: 'a', status: 'applied' }], 'a')).not.toThrow();
+  });
+
+  // A redelivered op that had already been applied, and an edit an older
+  // timestamp lost to: both mean the intent is in the server's state, which
+  // is what the caller asked for.
+  it('does nothing for a duplicate or a superseded op', () => {
+    expect(() => assertNotRefused([{ opId: 'a', status: 'duplicate' }], 'a')).not.toThrow();
+    expect(() => assertNotRefused([{ opId: 'a', status: 'superseded' }], 'a')).not.toThrow();
   });
 });
