@@ -344,31 +344,80 @@ describe('SyncService', () => {
     expect(await prisma.appliedOp.count({ where: { opId: op.opId } })).toBe(0);
   });
 
-  // M9 and M10 are not pinned here, and this note says why rather than
-  // shipping a test that would pass with or without the fix.
-  //
-  // M9 — removing RepeatableRead from changesSince's transaction. The
-  // difference it makes is one snapshot shared across the four scans
-  // instead of a fresh one per statement, which is only observable if a
-  // second write lands *between* two of those scans while the first is
-  // still running. That needs a real second connection racing against a
-  // controllable pause inside changesSince, and changesSince has no seam
-  // to pause at from outside — adding one would mean instrumenting
-  // production code purely for a test to hook into. Reviewing that the
-  // isolation level is set, rather than asserting its runtime effect, is
-  // the honest way to cover this one.
-  //
-  // M10 — removing userId from update's own where. Task.id (and every
-  // other table's id) is a global primary key, not scoped by user, so
+  // M9: pins RepeatableRead by constructing the actual race — a write
+  // landing between two of changesSince's four per-table scans — rather
+  // than reviewing that the option is set. `prisma.$extends` pauses the
+  // first scan (task) after it starts, a second, genuinely concurrent
+  // connection (the module-level `service`, which checks out its own
+  // connection from the same pool since the first is held by the paused
+  // transaction) commits a project row, and the pause is released. Under
+  // RepeatableRead the transaction's snapshot was already fixed by that
+  // first query, so the project scan — running after the concurrent
+  // commit landed, but inside the same old snapshot — must not see it.
+  it('keeps a pull snapshot-consistent against a write landing mid-scan', async () => {
+    let releaseProjectScan!: () => void;
+    let projectScanReached!: () => void;
+    const projectScanReachedPromise = new Promise<void>((resolve) => {
+      projectScanReached = resolve;
+    });
+    const releaseProjectScanPromise = new Promise<void>((resolve) => {
+      releaseProjectScan = resolve;
+    });
+
+    // Pausing task.findMany itself (TABLES' first table, and this
+    // transaction's first query) would pause it *before* Postgres ever
+    // sees the query — REPEATABLE READ fixes its snapshot at the first
+    // query it actually runs, not at the first one Prisma queues, so
+    // pausing there let the concurrent write land before the snapshot was
+    // fixed at all (confirmed: that shape of this test failed). Pausing
+    // the *second* table's scan instead lets task's query complete
+    // normally — fixing the snapshot — and only then holds the line
+    // before project's query is issued.
+    const pausedPrisma = prisma.$extends({
+      query: {
+        project: {
+          async findMany({ args, query }) {
+            projectScanReached();
+            await releaseProjectScanPromise;
+            return query(args);
+          },
+        },
+      },
+    });
+    const paused = new SyncService(pausedPrisma as unknown as PrismaService);
+
+    const pullPromise = paused.sync(USER, { since: 0, ops: [] });
+    await projectScanReachedPromise;
+
+    // A genuinely concurrent write, on a different pooled connection,
+    // committing after the paused transaction's snapshot was already
+    // fixed (by its completed task scan) but before its project scan runs.
+    const project = {
+      opId: uuidv7(), kind: 'create' as const, table: 'project' as const,
+      id: uuidv7(), fields: { name: 'landed mid-scan', rank: 'a0' },
+      ts: new Date().toISOString(),
+    };
+    await service.sync(USER, { since: 0, ops: [project] });
+
+    releaseProjectScan();
+    const pull = await pullPromise;
+
+    expect(pull.changes.map((c) => c.id)).not.toContain(project.id);
+  });
+
+  // M10: not pinned even with the concurrency technique above available,
+  // and for a different reason than M9 was — this isn't a tooling gap.
+  // Task.id (and every other table's id) is a global primary key, so
   // `update({ where: { id } })` and `update({ where: { id, userId } })`
   // resolve to the exact same row whenever `current` was already found
-  // through a correctly userId-scoped findFirst — which is every case a
-  // single-threaded, single-connection test can construct. The clause is
-  // real defense in depth (it stops relying on findFirst's scope alone),
-  // but by itself it only diverges from its absence either through a
-  // concurrent write racing between the find and the update (same
-  // constraint as M9), or in combination with M3 — which the M3 test above
-  // does catch: reverting both together turns the cross-user `set` from
-  // `rejected` into a silent `applied` that overwrites the other user's
-  // row, and that test's reason assertion fails.
+  // through a correctly userId-scoped findFirst. Nothing in this protocol
+  // ever changes which user owns an existing row — there is no operation
+  // that reassigns one — so there is no concurrent write to race against
+  // that would make the two where-clauses diverge. The clause is real
+  // defense in depth (it stops relying on findFirst's scope alone), but by
+  // itself, in this system, it is inert. It only diverges in combination
+  // with M3 — which the M3 test above does catch: reverting both together
+  // turns the cross-user `set` from `rejected` into a silent `applied`
+  // that overwrites the other user's row, and that test's reason
+  // assertion fails.
 });
