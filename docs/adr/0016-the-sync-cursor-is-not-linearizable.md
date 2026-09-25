@@ -69,6 +69,19 @@ its own, since the cursor a client holds is not, in fact, older than
 retention. A client can carry a gap indefinitely without ever being told to
 resynchronise.
 
+Worse, in this plan the way out does not exist either. `410 Gone` is declared
+in the OpenAPI document and the server never emits it — nothing prunes
+tombstones yet, so no cursor can outlive retention — and `GET /sync/snapshot`
+has not been written at all. So a client that loses a row this way has, today,
+no recovery of any kind: not an automatic one, and not a manual one short of
+deleting its local state file and starting from `since: 0`. Naming `410` and
+the snapshot endpoint above describes the design, not the running system.
+
+Both arrive with the tombstone pruning job, where a retention window makes
+them testable against something rather than asserted against nothing. Until
+then the gap is unrecoverable by design, which is a thing to know before this
+is run against data that matters.
+
 The standard remedy is a snapshot-based cursor. Instead of the highest
 `seq` a pull happened to see, track the oldest still-open write transaction
 (Postgres exposes this as `pg_snapshot_xmin` / the `xmin` horizon) and cap
