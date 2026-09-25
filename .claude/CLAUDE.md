@@ -1,13 +1,13 @@
-# <PROJECT> — quick reference
+# todoer — quick reference
 
 ## Working agreement
 
 Five rules that govern _how_ work happens here, independent of what is being
 built. They apply to every task, including one-line fixes.
 
-### 1. Answer in <LANG>
+### 1. Answer in Russian
 
-All prose addressed to the maintainer is in **<LANG>**. Code, identifiers, file
+All prose addressed to the maintainer is in **Russian**. Code, identifiers, file
 paths, commit messages, code comments, and everything committed to this
 repository stay in **English** — the codebase has one language and it is not
 the conversation's.
@@ -41,7 +41,7 @@ Two tools, two roles, no overlap:
 | `tuxedo` | **what still has to be done** — tasks, deadlines | a verb in the future |
 | `dnote`  | **what was learned** — gotchas, rationale        | a fact in the past   |
 
-Project key for both: `+<PROJECT>` / book `<PROJECT>`.
+Project key for both: `+todoer` / book `todoer`.
 
 Write a note only when it will outlive the session **and** cannot be derived
 from the repository. Never a retelling of the diff, the file layout, or git

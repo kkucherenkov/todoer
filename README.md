@@ -1,61 +1,6 @@
-> [!NOTE]
-> **This is `project-skeleton`'s own README.** If you created this repository
-> from the template, delete everything above the horizontal rule below, then:
->
-> 1. `grep -rn '<[A-Z_]\+>' . --exclude-dir=.git` — every placeholder to fill.
-> 2. Replace `LICENSE` with your own. The one here covers the template.
+# todoer
 
-# project-skeleton
-
-A GitHub template that gives a new project its **process** on the first commit,
-and deliberately nothing else: no framework, no package manager, no lockfile,
-no linter. Those arrive when you pick a stack. This arrives before you do.
-
-It was extracted from a real repository after that repository had spent a year
-paying for the alternatives, so most of what is here is a rule with a reason
-attached rather than a preference.
-
-## What you get
-
-| Path | Holds |
-| --- | --- |
-| `specs/tasks/` | a task stack — one file per task, `active/` then `done/`, no index to regenerate and nothing two branches can collide on |
-| `.claude/CLAUDE.md` | a five-rule working agreement, plus named headings that tooling reads for project facts |
-| `scripts/check-pr-title.sh` | a Conventional Commits gate in POSIX shell — no Node, runs anywhere, with its own table test |
-| `scripts/check-pr-title.test.sh` | that gate's tests, run in CI |
-| `.github/workflows/` | the gate on the `edited` trigger most setups forget, and the gate's own tests |
-| `docs/adr/` | architecture decision records, starting with the ADR that says to write them |
-| `scripts/smoke-test.sh` | maintainer-only: verifies the published template. It refuses to run outside this repository |
-
-Each carries the reasoning for its shape. `specs/tasks/README.md` explains why
-the task id is a branch slug and not a counter, and why two files would have
-been the wrong layout — both answers cost real time to learn.
-
-## Using it
-
-```sh
-gh repo create my-thing --template kkucherenkov/project-skeleton --private --clone
-cd my-thing
-grep -rn '<[A-Z_]\+>' . --exclude-dir=.git
-```
-
-Then set branch protection to require `PR title (conventional commit)` and
-`Shell tests`.
-
-## Why there is no tooling in it
-
-A skeleton that ships `package.json` has chosen Node for you. This one is
-installed into projects whose stack is not decided yet — sometimes into
-projects that will never have a package manager at all — so the one piece of
-logic it contains is written in the language every machine already has.
-
-MIT licensed. Issues and pull requests welcome.
-
----
-
-# <PROJECT>
-
-<SUMMARY>
+Self-hosted personal task and information manager: offline-first, with web, CLI and Flutter clients.
 
 ## What is already here
 
