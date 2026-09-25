@@ -237,3 +237,9 @@ changes is `components/schemas`, never `paths`.
   bearing for D2 and reversing it reopens the sync design.
 - **The views** (list, kanban, calendar) and **the client shells** — sub-projects
   2 and 3.
+- **A terminal client.** Wanted for v2, in the spirit of `tuxedo`. Worth
+  recording now because its cost is not the interface: the offline requirement
+  makes every client thick, so a TUI needs its own local replica, outbox,
+  replay and recurrence expansion. It takes the shared test vectors from four
+  implementations to five, and it belongs to sub-project 3 rather than beside
+  it.
