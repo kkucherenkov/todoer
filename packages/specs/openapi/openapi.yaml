@@ -1,0 +1,273 @@
+openapi: 3.1.0
+info:
+  title: todoer
+  version: 0.1.0
+  license:
+    name: MIT
+    identifier: MIT
+servers:
+  - url: /api/v1
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      # No bearerFormat: the token is a base64url payload with an HMAC
+      # appended, not a JWT — there is no header or algorithm field. Claiming
+      # bearerFormat: JWT here would send a client author to a JWT library
+      # that cannot parse it.
+
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+
+    Health:
+      type: object
+      required: [status, version]
+      properties:
+        status: { type: string, enum: [ok] }
+        version: { type: string }
+
+    # Request schemas are closed (additionalProperties: false): the validator is the
+    # runtime gate against drift. Response schemas stay open on purpose, so a server
+    # that adds a field later does not break a client built against today's document.
+    LoginRequest:
+      type: object
+      required: [email, password]
+      additionalProperties: false
+      properties:
+        # Bounds generous for a human, absurd for an attacker: 254 is
+        # RFC 5321's own limit on an address, and a passphrase running past
+        # a few hundred characters is a payload, not something to be typed.
+        # Both endpoints are unauthenticated and the request body limit is
+        # shared with /sync's 2mb batches, so the validator — which runs
+        # ahead of scrypt — is what stands between an oversized password and
+        # an ~80ms hash of it.
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, minLength: 8, maxLength: 256 }
+
+    LoginResponse:
+      type: object
+      required: [accessToken]
+      properties:
+        accessToken: { type: string }
+
+    Op:
+      oneOf:
+        - $ref: "#/components/schemas/OpCreate"
+        - $ref: "#/components/schemas/OpSet"
+        - $ref: "#/components/schemas/OpDelete"
+      discriminator:
+        propertyName: kind
+        mapping:
+          create: "#/components/schemas/OpCreate"
+          set: "#/components/schemas/OpSet"
+          delete: "#/components/schemas/OpDelete"
+
+    OpCreate:
+      type: object
+      required: [opId, kind, table, id, fields, ts]
+      additionalProperties: false
+      properties:
+        opId: { type: string, format: uuid }
+        kind: { type: string, enum: [create] }
+        table: { type: string, enum: [task, project, tag, task_tag] }
+        id: { type: string, format: uuid }
+        fields: { type: object, additionalProperties: true }
+        ts: { type: string, format: date-time }
+
+    OpSet:
+      type: object
+      required: [opId, kind, table, id, field, value, ts]
+      additionalProperties: false
+      properties:
+        opId: { type: string, format: uuid }
+        kind: { type: string, enum: [set] }
+        table: { type: string, enum: [task, project, tag, task_tag] }
+        id: { type: string, format: uuid }
+        field: { type: string }
+        value: {}
+        ts: { type: string, format: date-time }
+        # Optional: only destructive set targets (rrule) require it — see ADR 0004.
+        baseVersion: { type: integer, minimum: 0 }
+
+    OpDelete:
+      type: object
+      required: [opId, kind, table, id, baseVersion]
+      additionalProperties: false
+      properties:
+        opId: { type: string, format: uuid }
+        kind: { type: string, enum: [delete] }
+        table: { type: string, enum: [task, project, tag, task_tag] }
+        id: { type: string, format: uuid }
+        baseVersion: { type: integer, minimum: 0 }
+
+    OpResult:
+      type: object
+      required: [opId, status]
+      properties:
+        opId: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [applied, duplicate, superseded, conflict, rejected]
+        reason: { type: string }
+        currentVersion: { type: integer }
+
+    Change:
+      type: object
+      required: [table, id, seq, row]
+      properties:
+        table: { type: string }
+        id: { type: string, format: uuid }
+        seq: { type: integer }
+        row: { type: object, additionalProperties: true }
+
+    SyncRequest:
+      type: object
+      required: [since, ops]
+      additionalProperties: false
+      properties:
+        # Bounded above at 2^53-1, not at a bigint's range: `seq` is a
+        # Postgres bigint, but it travels in both directions as a JSON
+        # number, and past 2^53-1 a JSON number is no longer the value that
+        # was written — a client sending 9007199254740993 would be answered
+        # with a cursor of 9007199254740992, lower than the one it sent.
+        # Without the bound the server also had to answer a contract-legal
+        # `1e300` with a 500, since it reaches Postgres as an out-of-range
+        # bigint. `format: int64` is deliberately absent: it would widen the
+        # bound this line exists to narrow, and it changes what the
+        # generators emit for a field every client already reads as a number.
+        since: { type: integer, minimum: 0, maximum: 9007199254740991 }
+        ops:
+          type: array
+          items: { $ref: "#/components/schemas/Op" }
+          maxItems: 1000
+
+    SyncResponse:
+      type: object
+      required: [cursor, results, changes]
+      properties:
+        cursor: { type: integer }
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/OpResult" }
+        changes:
+          type: array
+          items: { $ref: "#/components/schemas/Change" }
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      summary: Liveness and version
+      security: []
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+        default:
+          description: unexpected error
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /auth/login:
+    post:
+      operationId: postAuthLogin
+      summary: Sign in
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoginResponse" }
+        "401":
+          description: bad credentials
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        default:
+          description: unexpected error
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /auth/register:
+    post:
+      operationId: postAuthRegister
+      summary: Create an account and sign in
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "201":
+          description: registered and signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoginResponse" }
+        "409":
+          description: that address is already registered
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        default:
+          description: unexpected error
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /sync:
+    post:
+      operationId: postSync
+      summary: Push operations and pull changes
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SyncRequest" }
+      responses:
+        "200":
+          description: synchronised
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SyncResponse" }
+        "401":
+          description: missing or invalid bearer token
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "410":
+          description: cursor older than tombstone retention
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "413":
+          description: batch larger than the server accepts
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        default:
+          description: unexpected error
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }

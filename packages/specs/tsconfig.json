@@ -1,0 +1,15 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    // Override, this package only: @hey-api/openapi-ts 0.64 emits extension-less
+    // relative imports ("./types.gen", not "./types.gen.js") between the
+    // generated files, which the base's NodeNext resolution rejects. That idiom
+    // is the generator's, not ours, to change. tsup resolves these at build
+    // time via esbuild's bundler resolution, and the bundled dist/ output is
+    // all any consumer ever imports, so this only has to typecheck here.
+    "module": "ESNext",
+    "moduleResolution": "Bundler"
+  },
+  "include": ["src/**/*.ts", "openapi-ts.config.ts"]
+}

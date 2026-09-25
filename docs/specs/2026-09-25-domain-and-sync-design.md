@@ -178,19 +178,61 @@ server-rendered application.
 
 For each operation, in the order given:
 
-1. **Seen before?** `op_id` in `applied_op` → `duplicate`, skip. This is what
-   makes a retry after a lost response safe.
-2. **Permitted?** The table is writable, the row belongs to this user, a
-   `parent_id` points at a row whose own `parent_id` is null (D9), a subtask
-   carries no `rrule`. Otherwise `rejected` with a reason.
-3. **`set`:** clamp `ts` into `[now − 24h, now + 5min]`, then apply only if it
-   is newer than `field_ts[field]`. Otherwise `superseded` — which is an
-   outcome, not an error.
+1. **Seen before?** `(user_id, op_id)` in `applied_op` → `duplicate`, skip.
+   This is what makes a retry after a lost response safe. The pair, not
+   `op_id` alone: ids are minted by clients, so the same one legitimately
+   arrives from two accounts, and a global namespace would answer the second
+   account with a duplicate of the first's outcome — a write that never
+   happened, reported as success.
+2. **Permitted?** The table is writable, the row belongs to this user, every
+   foreign key it writes (`project_id`, `parent_id`, `task_id`, `tag_id`)
+   points at a row that also belongs to this user, a `parent_id` points at a
+   row whose own `parent_id` is null (D9), a subtask carries no `rrule`.
+   Otherwise `rejected` with a reason.
+
+   The depth rule is two checks in two places, because they need different
+   things. "A task is not its own parent" is decided in the pure conflict
+   module, which needs only the operation, and a CHECK constraint holds it
+   again in the database for write paths that do not exist yet. "The parent
+   has no parent of its own" needs a second row, so it rides along with the
+   ownership lookup above. The second check is what forbids cycles **when
+   operations arrive one at a time**: every row in a cycle has a parent, so
+   the edge that would close one always points at a row that already has one
+   — no cycle detection, no recursive query.
+
+   Under concurrency it does not hold. Two `set parent_id` operations
+   pointing at each other, in flight at once, each read the other's row
+   before the other has been parented; both pass, and a two-node cycle is
+   written (reproduced 25 runs out of 25, with other runs failing instead on
+   `deadlock detected`). An `UPDATE` writing a foreign key takes an implicit
+   `FOR KEY SHARE` on the parent row, so the transaction holds two locks
+   while the check reads the parent without one. No client ships an operation
+   that can reach it; it is a known gap with its own task, alongside the
+   re-parenting one below.
+
+   One direction of the depth rule is **not** enforced yet: giving a parent
+   to a task that already has children reaches three levels without ever
+   pointing at a parented row. Closing it is a second lookup ("does this row
+   have children?") on `set parent_id`, and it waits on a decision about
+   whether re-parenting a subtree is allowed at all.
+3. **`set`:** clamp `ts` to at most `now + 5min` (only the future is bounded —
+   see ADR 0004), then apply only if it is newer than `field_ts[field]`.
+   Otherwise `superseded` — which is an outcome, not an error.
 4. **`delete`:** compare `base_version` against the row's `version`. Mismatch →
    `conflict`, carrying `current_version` so the client can show what it is
    colliding with.
 5. **Apply**, increment `version`, write `field_ts`, take the next `seq`,
    record the `op_id`.
+
+Steps 2 to 5 run under the row's write lock (`SELECT … FOR UPDATE`, taken
+before the read), one transaction per operation. Without it, two operations
+touching *different* fields of one row read the same snapshot and each writes
+every column back, so the second silently discards the first — its `field_ts`
+included, which leaves the row carrying the new timestamp against the old
+value, a state no later per-field comparison can repair. Per-field conflict
+resolution ([ADR 0004](../adr/0004-field-level-last-write-wins.md)) is a
+promise about concurrent edits, so the lock is part of the protocol rather
+than an optimisation.
 
 Then return every row with `seq > since`, including tombstones.
 

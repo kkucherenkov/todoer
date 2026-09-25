@@ -1,0 +1,32 @@
+{
+  "name": "@todoer/backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "postinstall": "prisma generate",
+    "start": "node dist/main.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@nestjs/common": "^11.2.6",
+    "@nestjs/core": "^11.2.6",
+    "@nestjs/platform-express": "^11.2.6",
+    "@prisma/client": "6.19.3",
+    "@todoer/specs": "workspace:^",
+    "express": "^5.2.1",
+    "express-openapi-validator": "^5.6.2",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.2",
+    "uuidv7": "^1.2.1"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^22.10.0",
+    "prisma": "6.19.3",
+    "typescript": "^5.6.3",
+    "vitest": "^5.0.2"
+  }
+}

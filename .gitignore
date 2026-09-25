@@ -5,3 +5,9 @@
 # Claude Code local state
 .claude/settings.local.json
 .claude/worktrees/
+
+node_modules/
+dist/
+.turbo/
+*.tsbuildinfo
+.env

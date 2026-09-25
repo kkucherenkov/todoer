@@ -1,0 +1,158 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @db.Uuid
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  tasks    Task[]
+  projects Project[]
+  tags     Tag[]
+}
+
+model Task {
+  id          String    @id @db.Uuid
+  userId      String    @db.Uuid
+  title       String
+  notes       String?
+  projectId   String?   @db.Uuid
+  parentId    String?   @db.Uuid
+  priority    Int       @default(0)
+  scheduledOn DateTime? @db.Date
+  dueOn       DateTime? @db.Date
+  rrule       String?
+  dtstart     DateTime? @db.Date
+  rank        String
+
+  version   Int      @default(1)
+  fieldTs   Json     @default("{}")
+  /// Defaults to nextval('change_seq') — set by hand in the initial
+  /// migration, invisible to this schema. One sequence is shared by every
+  /// synchronised table on purpose, so a single cursor orders changes across
+  /// all of them. Before landing any future migration that touches this
+  /// model, read its generated SQL and re-add the default if Prisma dropped
+  /// it.
+  seq       BigInt
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id])
+  project  Project?  @relation(fields: [projectId], references: [id])
+  parent   Task?     @relation("Subtask", fields: [parentId], references: [id])
+  children Task[]    @relation("Subtask")
+  tags     TaskTag[]
+
+  @@index([userId, seq])
+}
+
+model Project {
+  id     String @id @db.Uuid
+  userId String @db.Uuid
+  name   String
+  rank   String
+
+  archivedAt DateTime?
+  version    Int      @default(1)
+  fieldTs    Json     @default("{}")
+  /// Defaults to nextval('change_seq') — set by hand in the initial
+  /// migration, invisible to this schema. One sequence is shared by every
+  /// synchronised table on purpose, so a single cursor orders changes across
+  /// all of them. Before landing any future migration that touches this
+  /// model, read its generated SQL and re-add the default if Prisma dropped
+  /// it.
+  seq        BigInt
+  deletedAt  DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id])
+  tasks Task[]
+
+  @@index([userId, seq])
+}
+
+model Tag {
+  id     String  @id @db.Uuid
+  userId String  @db.Uuid
+  name   String
+  color  String?
+
+  version   Int      @default(1)
+  fieldTs   Json     @default("{}")
+  /// Defaults to nextval('change_seq') — set by hand in the initial
+  /// migration, invisible to this schema. One sequence is shared by every
+  /// synchronised table on purpose, so a single cursor orders changes across
+  /// all of them. Before landing any future migration that touches this
+  /// model, read its generated SQL and re-add the default if Prisma dropped
+  /// it.
+  seq       BigInt
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User      @relation(fields: [userId], references: [id])
+  tasks TaskTag[]
+
+  @@index([userId, seq])
+}
+
+model TaskTag {
+  id     String @id @db.Uuid
+  userId String @db.Uuid
+  taskId String @db.Uuid
+  tagId  String @db.Uuid
+
+  version   Int      @default(1)
+  fieldTs   Json     @default("{}")
+  /// Defaults to nextval('change_seq') — set by hand in the initial
+  /// migration, invisible to this schema. One sequence is shared by every
+  /// synchronised table on purpose, so a single cursor orders changes across
+  /// all of them. Before landing any future migration that touches this
+  /// model, read its generated SQL and re-add the default if Prisma dropped
+  /// it.
+  seq       BigInt
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id])
+  tag  Tag  @relation(fields: [tagId], references: [id])
+
+  @@unique([taskId, tagId])
+  @@index([userId, seq])
+}
+
+/// One row per operation the server has ever seen, recorded in the same
+/// transaction as its effect. This is what makes a client's retry after a
+/// lost response a no-op rather than a duplicate — and `status`/`reason`/
+/// `currentVersion` are what let that no-op replay the *original* outcome
+/// (conflict, rejected, superseded) instead of a bare "duplicate" that would
+/// make the client silently drop an intent that never actually happened.
+model AppliedOp {
+  /// Not a primary key on its own: op ids are minted by clients, so the same
+  /// one can legitimately arrive from two accounts — a restored state file, a
+  /// shared fixture, or an id derived from the intent rather than from
+  /// randomness (ADR 0015 §4). Keyed on opId alone, the second account's
+  /// operation reads as a duplicate of the first's and silently never
+  /// happens. The tenant leads the key because every lookup here supplies it.
+  opId           String   @db.Uuid
+  userId         String   @db.Uuid
+  /// The Outcome['status'] applyOp originally returned: applied, superseded,
+  /// conflict or rejected. Never "duplicate" — that label only exists at
+  /// replay time, for an op whose stored status here is "applied".
+  status         String
+  reason         String?
+  currentVersion Int?
+  appliedAt      DateTime @default(now())
+
+  @@id([userId, opId])
+  @@index([userId, appliedAt])
+}
