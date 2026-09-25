@@ -1,4 +1,4 @@
-import { ArgumentsHost, Catch, ExceptionFilter, HttpException } from '@nestjs/common';
+import { ArgumentsHost, Catch, ExceptionFilter, HttpException, Logger } from '@nestjs/common';
 import type { Response } from 'express';
 import { STATUS_CODES } from 'node:http';
 
@@ -20,16 +20,28 @@ interface Problem {
  */
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(HttpExceptionFilter.name);
+
   catch(exception: unknown, host: ArgumentsHost): void {
+    // Log the original object, not a reshaped copy, so whoever is on call
+    // sees exactly what was thrown, stack included — this is the only place
+    // that happens, since the response below never carries it for a 5xx.
+    this.logger.error(exception, exception instanceof Error ? exception.stack : undefined);
+
     const response = host.switchToHttp().getResponse<Response>();
     const status = this.statusOf(exception);
     const message = this.messageOf(exception);
 
     const problem: Problem = {
       type: 'about:blank',
-      title: STATUS_CODES[status] ?? 'Internal Server Error',
+      // Node's table always has an entry for every status this app produces.
+      title: STATUS_CODES[status]!,
       status,
-      ...(message !== undefined ? { detail: message } : {}),
+      // A 4xx describes what the caller did wrong, which the caller already
+      // knows. A 5xx describes what went wrong inside — a Prisma constraint
+      // naming a column, a connection error naming a host — which is never
+      // the caller's business, so it never reaches the body.
+      ...(status < 500 && message !== undefined ? { detail: message } : {}),
     };
 
     response.status(status).type('application/problem+json').json(problem);
