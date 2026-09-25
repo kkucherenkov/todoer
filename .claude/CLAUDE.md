@@ -87,6 +87,7 @@ names.
 - `PR title (conventional commit)`
 - `Shell tests`
 - `Workspace tests`
+- `Lint`
 
 `main` is **not** currently protected — `gh api repos/kkucherenkov/todoer/
 branches/main/protection` returns 404 — so nothing enforces these or the
@@ -134,6 +135,7 @@ Generated artefacts land in their own commit.
 pnpm install                     # also runs `prisma generate` (see below)
 docker compose -f docker/compose.yml up -d
 pnpm -w exec turbo run build typecheck test
+pnpm lint                        # ESLint in every package, then Prettier
 ```
 
 Postgres is published on **5433**, remapped from the container's 5432 so it does
