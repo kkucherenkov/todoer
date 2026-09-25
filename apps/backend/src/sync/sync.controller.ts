@@ -1,4 +1,5 @@
 import { Body, Controller, HttpCode, Post, UseGuards } from '@nestjs/common';
+import type { SyncRequest } from '@todoer/specs';
 import { AuthGuard, CurrentUser } from '../auth/auth.guard.js';
 import { SyncService } from './sync.service.js';
 
@@ -12,7 +13,7 @@ export class SyncController {
   // 500s on a status it has no schema for.
   @Post()
   @HttpCode(200)
-  sync(@CurrentUser() userId: string, @Body() body: { since: number; ops: [] }) {
-    return this.service.sync(userId, body as never);
+  sync(@CurrentUser() userId: string, @Body() body: SyncRequest) {
+    return this.service.sync(userId, body);
   }
 }
