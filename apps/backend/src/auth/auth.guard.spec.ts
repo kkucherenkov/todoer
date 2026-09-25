@@ -69,10 +69,27 @@ describe('AuthGuard', () => {
   });
 
   it('gives every rejection the same message and status — none is distinguishable to a client', () => {
+    // All six rejection paths exercised elsewhere in this file, gathered
+    // here so a future change that gives any one of them a distinguishing
+    // message or status turns this test red. Round 1 of this test covered
+    // only three (no header, wrong prefix, malformed-no-dot) and its own
+    // description overclaimed "every" — corrected here, not just worded
+    // around.
+    const other = new AuthService(prisma, { jwtSecret: 'a-different-secret-32-chars-long!!' } as AppConfig);
+    const foreign = other.sign('01920000-0000-7000-8000-000000000099');
+
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const expiring = auth.sign('01920000-0000-7000-8000-000000000098');
+    vi.setSystemTime(60 * 60_000); // an hour later; the token's TTL is 15 minutes
+
     const cases: Array<Record<string, string>> = [
       {},
       { authorization: 'Basic xxxx' },
       { authorization: 'Bearer not-a-token' },
+      { authorization: `Bearer ${validToken}.junk` },
+      { authorization: `Bearer ${foreign}` },
+      { authorization: `Bearer ${expiring}` },
     ];
     const errors = cases.map((headers) => {
       try {
