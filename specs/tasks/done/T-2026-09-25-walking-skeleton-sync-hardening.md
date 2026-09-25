@@ -29,5 +29,7 @@
   - [x] M17 — refuse a self-parent by the rules, not by the constraint
   - [x] M17 — refuse a third level and every cycle, on the lookup I9 already does
   - [x] M17 — classify SQLSTATE 23514 as not retryable, so it is not a 5xx
-- Status: in-progress
+- Status: done
+- Completed: 2026-09-25
+- Result: https://github.com/kkucherenkov/todoer/pull/2
 - Blockers: —

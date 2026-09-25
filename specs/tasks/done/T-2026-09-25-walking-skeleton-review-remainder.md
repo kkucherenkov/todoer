@@ -36,7 +36,9 @@
   - [x] M15 — drop the vacuous `lint` task
   - [x] I10 — README describes this repository
   - [x] M11 — ADR 0016 says there is currently no recovery
-- Status: in-progress
+- Status: done
+- Completed: 2026-09-25
+- Result: https://github.com/kkucherenkov/todoer/pull/2
 - Blockers: M17 lands the invariant (a CHECK constraint) but the refusal
   surfaces as a 5xx rather than as `{ status: 'rejected' }` for the one
   operation — Postgres raises SQLSTATE 23514, Prisma wraps it as
