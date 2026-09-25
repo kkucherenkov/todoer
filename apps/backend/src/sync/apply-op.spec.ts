@@ -15,6 +15,13 @@ function row(over: Partial<Row> = {}): Row {
   };
 }
 
+/** Narrows `fieldTs[field]` without a non-null assertion. */
+function fieldTs(current: Row, field: string): string {
+  const ts = current.fieldTs[field];
+  if (ts === undefined) throw new Error(`no fieldTs recorded for ${field}`);
+  return ts;
+}
+
 describe('applyOp — create', () => {
   it('applies to an absent row', () => {
     const op: Op = {
@@ -28,6 +35,9 @@ describe('applyOp — create', () => {
     if (out.status !== 'applied') throw new Error('unreachable');
     expect(out.row.title).toBe('new');
     expect(out.row.version).toBe(1);
+    expect(out.row.id).toBe(op.id);
+    expect(out.row.deletedAt).toBeNull();
+    expect(fieldTs(out.row, 'title')).toBe('2026-09-25T11:00:00.000Z');
   });
 
   // Review Focus 4: clients generate ids, so a retry or a bug can collide.
@@ -42,6 +52,34 @@ describe('applyOp — create', () => {
     expect(out.status).toBe('rejected');
     if (out.status !== 'rejected') throw new Error('unreachable');
     expect(out.reason).toMatch(/exists/i);
+  });
+
+  // I1: two plausible mutations of the create branch pass every other case —
+  // writing the raw ts into fieldTs, or leaving fieldTs empty. This pins both.
+  it('stamps every field with the clamped timestamp, not the raw one', () => {
+    const op: Op = {
+      opId: 'o11', kind: 'create', table: 'task', id: '0192-c',
+      fields: { title: 'new', priority: 2 }, ts: '2030-01-01T00:00:00.000Z',
+    };
+
+    const out = applyOp(op, null, NOW);
+
+    expect(out.status).toBe('applied');
+    if (out.status !== 'applied') throw new Error('unreachable');
+    const clamped = new Date(NOW.getTime() + 5 * 60_000).toISOString();
+    expect(fieldTs(out.row, 'title')).toBe(clamped);
+    expect(fieldTs(out.row, 'priority')).toBe(clamped);
+    expect(fieldTs(out.row, 'title')).not.toBe(op.ts);
+  });
+
+  // C2: ts is not required by the type at runtime — a payload that bypassed
+  // the request validator can still omit it.
+  it('rejects a create with an unparseable ts', () => {
+    const op = {
+      opId: 'o12', kind: 'create', table: 'task', id: '0192-d', fields: { title: 'x' },
+    } as unknown as Op;
+
+    expect(applyOp(op, null, NOW).status).toBe('rejected');
   });
 });
 
@@ -65,6 +103,18 @@ describe('applyOp — set', () => {
     const op: Op = {
       opId: 'o3', kind: 'set', table: 'task', id: '0192-a',
       field: 'title', value: 'stale', ts: '2026-09-25T09:00:00.000Z',
+    };
+
+    expect(applyOp(op, row(), NOW).status).toBe('superseded');
+  });
+
+  // M1: `ts <= seen` and `ts < seen` both pass every other case. Equality is
+  // two skewed clocks landing on the same clamped instant; `<=` gives a
+  // deterministic first-wins instead of an accidental last-wins.
+  it('reports an edit exactly at the field timestamp as superseded', () => {
+    const op: Op = {
+      opId: 'o13', kind: 'set', table: 'task', id: '0192-a',
+      field: 'title', value: 'tie', ts: '2026-09-25T10:00:00.000Z',
     };
 
     expect(applyOp(op, row(), NOW).status).toBe('superseded');
@@ -99,11 +149,14 @@ describe('applyOp — set', () => {
 
     expect(out.status).toBe('applied');
     if (out.status !== 'applied') throw new Error('unreachable');
-    expect(new Date(out.row.fieldTs.title!).getTime())
+    expect(new Date(fieldTs(out.row, 'title')).getTime())
       .toBeLessThanOrEqual(NOW.getTime() + 5 * 60_000);
   });
 
-  it('clamps a timestamp from the far past', () => {
+  // I2: only the future is clamped. A device offline for a week is the case
+  // this design exists to serve — lifting its stale edit toward "now" would
+  // make it beat a genuinely fresher edit instead of losing to it.
+  it('stores a far-past timestamp unchanged', () => {
     const current = row({ fieldTs: {} });
     const op: Op = {
       opId: 'o10', kind: 'set', table: 'task', id: '0192-a',
@@ -114,8 +167,7 @@ describe('applyOp — set', () => {
 
     expect(out.status).toBe('applied');
     if (out.status !== 'applied') throw new Error('unreachable');
-    expect(new Date(out.row.fieldTs.title!).getTime())
-      .toBeGreaterThanOrEqual(NOW.getTime() - 24 * 60 * 60_000);
+    expect(fieldTs(out.row, 'title')).toBe('2020-01-01T00:00:00.000Z');
   });
 
   it('rejects a set against an absent row', () => {
@@ -125,6 +177,93 @@ describe('applyOp — set', () => {
     };
 
     expect(applyOp(op, null, NOW).status).toBe('rejected');
+  });
+
+  // C2: same defect as create — a set can arrive with no ts at all.
+  it('rejects a set with an unparseable ts', () => {
+    const op = {
+      opId: 'o14', kind: 'set', table: 'task', id: '0192-a', field: 'title', value: 'x',
+    } as unknown as Op;
+
+    expect(applyOp(op, row(), NOW).status).toBe('rejected');
+  });
+
+  // C1: set put the computed key before the row's literals, so id and
+  // deletedAt were writable through it with no baseVersion check at all.
+  it.each(['id', 'userId', 'version', 'fieldTs', 'seq', 'deletedAt', 'createdAt', 'updatedAt'])(
+    'rejects a set targeting the protocol-owned field %s',
+    (field) => {
+      const op: Op = {
+        opId: 'o15', kind: 'set', table: 'task', id: '0192-a',
+        field, value: 'x', ts: '2026-09-25T11:00:00.000Z',
+      };
+
+      const out = applyOp(op, row(), NOW);
+
+      expect(out.status).toBe('rejected');
+      if (out.status !== 'rejected') throw new Error('unreachable');
+      expect(out.reason).toMatch(/protocol-owned/i);
+    },
+  );
+
+  // I4: an edit addressed to a row deleted on another device used to apply,
+  // bump version, and report success — the client then dropped it from its
+  // outbox as done although nothing visible happened.
+  it('rejects a set on a tombstoned row', () => {
+    const current = row({ deletedAt: '2026-09-24T00:00:00.000Z' });
+    const op: Op = {
+      opId: 'o16', kind: 'set', table: 'task', id: '0192-a',
+      field: 'title', value: 'edit after delete', ts: '2026-09-25T11:00:00.000Z',
+    };
+
+    const out = applyOp(op, current, NOW);
+
+    expect(out.status).toBe('rejected');
+    if (out.status !== 'rejected') throw new Error('unreachable');
+    expect(out.reason).toMatch(/tombstone|delet/i);
+  });
+
+  // I3: rrule shifts every occurrence, and the completion/exception logs are
+  // keyed by occurrence date — a stale rule change strands them, so this
+  // field opts into the same optimistic lock delete already has.
+  it('applies a set with a matching baseVersion', () => {
+    const op: Op = {
+      opId: 'o17', kind: 'set', table: 'task', id: '0192-a',
+      field: 'rrule', value: 'FREQ=DAILY', ts: '2026-09-25T11:00:00.000Z', baseVersion: 3,
+    };
+
+    const out = applyOp(op, row(), NOW);
+
+    expect(out.status).toBe('applied');
+    if (out.status !== 'applied') throw new Error('unreachable');
+    expect(out.row.rrule).toBe('FREQ=DAILY');
+    expect(out.row.version).toBe(4);
+  });
+
+  it('reports a conflict when a set baseVersion is stale', () => {
+    const op: Op = {
+      opId: 'o18', kind: 'set', table: 'task', id: '0192-a',
+      field: 'rrule', value: 'FREQ=DAILY', ts: '2026-09-25T11:00:00.000Z', baseVersion: 2,
+    };
+
+    const out = applyOp(op, row(), NOW);
+
+    expect(out.status).toBe('conflict');
+    if (out.status !== 'conflict') throw new Error('unreachable');
+    expect(out.currentVersion).toBe(3);
+  });
+
+  it('rejects a set on rrule without a baseVersion', () => {
+    const op: Op = {
+      opId: 'o19', kind: 'set', table: 'task', id: '0192-a',
+      field: 'rrule', value: 'FREQ=DAILY', ts: '2026-09-25T11:00:00.000Z',
+    };
+
+    const out = applyOp(op, row(), NOW);
+
+    expect(out.status).toBe('rejected');
+    if (out.status !== 'rejected') throw new Error('unreachable');
+    expect(out.reason).toMatch(/baseVersion/i);
   });
 });
 
@@ -164,5 +303,16 @@ describe('applyOp — delete', () => {
     expect(out.status).toBe('rejected');
     if (out.status !== 'rejected') throw new Error('unreachable');
     expect(out.reason).toMatch(/no such row/i);
+  });
+
+  // C2: baseVersion is required by the contract, but the module must not
+  // trust that every caller validated it — defense in depth against a
+  // payload that bypassed the validator, or a bug in an earlier stage.
+  it('rejects a delete with a non-integer baseVersion', () => {
+    const op = {
+      opId: 'o20', kind: 'delete', table: 'task', id: '0192-a',
+    } as unknown as Op;
+
+    expect(applyOp(op, row(), NOW).status).toBe('rejected');
   });
 });
