@@ -1,0 +1,117 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @db.Uuid
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  tasks    Task[]
+  projects Project[]
+  tags     Tag[]
+}
+
+model Task {
+  id          String    @id @db.Uuid
+  userId      String    @db.Uuid
+  title       String
+  notes       String?
+  projectId   String?   @db.Uuid
+  parentId    String?   @db.Uuid
+  priority    Int       @default(0)
+  scheduledOn DateTime? @db.Date
+  dueOn       DateTime? @db.Date
+  rrule       String?
+  dtstart     DateTime? @db.Date
+  rank        String
+
+  version   Int      @default(1)
+  fieldTs   Json     @default("{}")
+  seq       BigInt
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user     User      @relation(fields: [userId], references: [id])
+  project  Project?  @relation(fields: [projectId], references: [id])
+  parent   Task?     @relation("Subtask", fields: [parentId], references: [id])
+  children Task[]    @relation("Subtask")
+  tags     TaskTag[]
+
+  @@index([userId, seq])
+}
+
+model Project {
+  id     String @id @db.Uuid
+  userId String @db.Uuid
+  name   String
+  rank   String
+
+  archivedAt DateTime?
+  version    Int      @default(1)
+  fieldTs    Json     @default("{}")
+  seq        BigInt
+  deletedAt  DateTime?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id])
+  tasks Task[]
+
+  @@index([userId, seq])
+}
+
+model Tag {
+  id     String  @id @db.Uuid
+  userId String  @db.Uuid
+  name   String
+  color  String?
+
+  version   Int      @default(1)
+  fieldTs   Json     @default("{}")
+  seq       BigInt
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user  User      @relation(fields: [userId], references: [id])
+  tasks TaskTag[]
+
+  @@index([userId, seq])
+}
+
+model TaskTag {
+  id     String @id @db.Uuid
+  userId String @db.Uuid
+  taskId String @db.Uuid
+  tagId  String @db.Uuid
+
+  version   Int      @default(1)
+  fieldTs   Json     @default("{}")
+  seq       BigInt
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+
+  task Task @relation(fields: [taskId], references: [id])
+  tag  Tag  @relation(fields: [tagId], references: [id])
+
+  @@unique([taskId, tagId])
+  @@index([userId, seq])
+}
+
+/// One row per operation the server has applied. This is what makes a client's
+/// retry after a lost response a no-op rather than a duplicate.
+model AppliedOp {
+  opId      String   @id @db.Uuid
+  userId    String   @db.Uuid
+  appliedAt DateTime @default(now())
+
+  @@index([userId, appliedAt])
+}
