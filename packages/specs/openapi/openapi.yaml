@@ -1,0 +1,175 @@
+openapi: 3.1.0
+info:
+  title: todoer
+  version: 0.1.0
+servers:
+  - url: /api/v1
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Problem:
+      type: object
+      required: [type, title, status]
+      properties:
+        type: { type: string }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+
+    Health:
+      type: object
+      required: [status, version]
+      properties:
+        status: { type: string, enum: [ok] }
+        version: { type: string }
+
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+
+    LoginResponse:
+      type: object
+      required: [accessToken]
+      properties:
+        accessToken: { type: string }
+
+    Op:
+      type: object
+      required: [opId, kind, table, id]
+      properties:
+        opId: { type: string, format: uuid }
+        kind: { type: string, enum: [create, set, delete] }
+        table: { type: string, enum: [task, project, tag, task_tag] }
+        id: { type: string, format: uuid }
+        fields: { type: object, additionalProperties: true }
+        field: { type: string }
+        value: {}
+        ts: { type: string, format: date-time }
+        baseVersion: { type: integer, minimum: 0 }
+
+    OpResult:
+      type: object
+      required: [opId, status]
+      properties:
+        opId: { type: string, format: uuid }
+        status:
+          type: string
+          enum: [applied, duplicate, superseded, conflict, rejected]
+        reason: { type: string }
+        currentVersion: { type: integer }
+
+    Change:
+      type: object
+      required: [table, id, seq, row]
+      properties:
+        table: { type: string }
+        id: { type: string, format: uuid }
+        seq: { type: integer }
+        row: { type: object, additionalProperties: true }
+
+    SyncRequest:
+      type: object
+      required: [since, ops]
+      properties:
+        since: { type: integer, minimum: 0 }
+        ops:
+          type: array
+          items: { $ref: "#/components/schemas/Op" }
+          maxItems: 1000
+
+    SyncResponse:
+      type: object
+      required: [cursor, results, changes]
+      properties:
+        cursor: { type: integer }
+        results:
+          type: array
+          items: { $ref: "#/components/schemas/OpResult" }
+        changes:
+          type: array
+          items: { $ref: "#/components/schemas/Change" }
+
+paths:
+  /health:
+    get:
+      operationId: getHealth
+      security: []
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Health" }
+
+  /auth/login:
+    post:
+      operationId: postAuthLogin
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoginResponse" }
+        "401":
+          description: bad credentials
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /auth/register:
+    post:
+      operationId: postAuthRegister
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "201":
+          description: registered and signed in
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/LoginResponse" }
+        "409":
+          description: that address is already registered
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /sync:
+    post:
+      operationId: postSync
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SyncRequest" }
+      responses:
+        "200":
+          description: synchronised
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SyncResponse" }
+        "410":
+          description: cursor older than tombstone retention
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
