@@ -1,4 +1,10 @@
-import { ArgumentsHost, Catch, ExceptionFilter, HttpException, Logger } from '@nestjs/common';
+import {
+  ArgumentsHost,
+  Catch,
+  ExceptionFilter,
+  HttpException,
+  Logger,
+} from '@nestjs/common';
 import type { Response } from 'express';
 import { STATUS_CODES } from 'node:http';
 
@@ -26,7 +32,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
     // Log the original object, not a reshaped copy, so whoever is on call
     // sees exactly what was thrown, stack included — this is the only place
     // that happens, since the response below never carries it for a 5xx.
-    this.logger.error(exception, exception instanceof Error ? exception.stack : undefined);
+    this.logger.error(
+      exception,
+      exception instanceof Error ? exception.stack : undefined,
+    );
 
     const response = host.switchToHttp().getResponse<Response>();
     const status = this.statusOf(exception);
@@ -55,7 +64,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       typeof exception === 'object' &&
       exception !== null &&
       'status' in exception &&
-      typeof (exception as { status: unknown }).status === 'number'
+      typeof exception.status === 'number'
     ) {
       return (exception as { status: number }).status;
     }
@@ -67,7 +76,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       typeof exception === 'object' &&
       exception !== null &&
       'message' in exception &&
-      typeof (exception as { message: unknown }).message === 'string'
+      typeof exception.message === 'string'
     ) {
       return (exception as { message: string }).message;
     }

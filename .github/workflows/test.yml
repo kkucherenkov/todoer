@@ -35,6 +35,33 @@ jobs:
       - name: Run them again with a byte-counting locale
         run: LC_ALL=C sh scripts/check-pr-title.test.sh
 
+  # A job of its own rather than a step in `Workspace tests`: it needs no
+  # database, so it reports without waiting on the Postgres service.
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # Also runs `prisma generate` through @todoer/backend's postinstall;
+      # without the client, type-aware rules see `Prisma.*` as a stub.
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: ESLint and Prettier
+        run: pnpm lint
+
   workspace-tests:
     name: Workspace tests
     runs-on: ubuntu-latest

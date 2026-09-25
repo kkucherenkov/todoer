@@ -5,6 +5,10 @@
 # Claude Code local state
 .claude/settings.local.json
 .claude/worktrees/
+# Agent session state. Ignored here, not only in a global gitignore, because
+# Prettier reads this file and nothing else.
+.remember/
+.superpowers/
 
 node_modules/
 dist/

@@ -19,8 +19,8 @@ endpoint:
 
 Not built yet, and each absence is deliberate rather than forgotten: the
 client outbox (so `add` is **not** safe to retry — see below), recurrence,
-`410 Gone` and `GET /sync/snapshot`, the web and Flutter clients, and a linter
-or formatter. The full list, with reasons, is in
+`410 Gone` and `GET /sync/snapshot`, and the web and Flutter clients. The full
+list, with reasons, is in
 [the plan](docs/plans/2026-09-25-walking-skeleton.md#what-this-plan-does-not-do).
 
 ## Layout
@@ -138,3 +138,10 @@ A route that is not in `packages/specs/openapi/openapi.yaml` does not exist.
 - Pull requests only; the PR title is a Conventional Commit and CI checks it.
 - Every decision that would otherwise be re-argued gets an ADR in `docs/adr/`.
 - One file per task under `specs/tasks/active/`, moved to `done/` when it ships.
+- `pnpm lint` runs type-aware ESLint in every package, then Prettier; CI runs
+  it as `Lint`. `pnpm format` fixes the formatting. Markdown is left to its
+  author: Prettier rewrites emphasis and fenced code, which is churn in ADRs
+  and plans that are records.
+- `.git-blame-ignore-revs` lists formatting-only commits. GitHub skips them in
+  blame on its own; locally, run
+  `git config blame.ignoreRevsFile .git-blame-ignore-revs` once.

@@ -10,13 +10,21 @@ type OpResult = {
   reason?: string;
   currentVersion?: number;
 };
-type Change = { table: string; id: string; seq: number; row: Record<string, unknown> };
+type Change = {
+  table: string;
+  id: string;
+  seq: number;
+  row: Record<string, unknown>;
+};
 
 const TABLES = ['task', 'project', 'tag', 'task_tag'] as const;
 type TableName = (typeof TABLES)[number];
 
 const DELEGATE = {
-  task: 'task', project: 'project', tag: 'tag', task_tag: 'taskTag',
+  task: 'task',
+  project: 'project',
+  tag: 'tag',
+  task_tag: 'taskTag',
 } as const;
 
 /**
@@ -27,7 +35,10 @@ const DELEGATE = {
  * here as an edit rather than as a runtime error.
  */
 const RELATION = {
-  task: 'Task', project: 'Project', tag: 'Tag', task_tag: 'TaskTag',
+  task: 'Task',
+  project: 'Project',
+  tag: 'Tag',
+  task_tag: 'TaskTag',
 } as const;
 
 /**
@@ -40,7 +51,9 @@ const RELATION = {
  * owns, and the first feature to walk `parentId`/`projectId` — a cascade
  * delete, "complete subtasks", a tree view — crosses the boundary.
  */
-const REFERENCES: Partial<Record<TableName, Readonly<Record<string, TableName>>>> = {
+const REFERENCES: Partial<
+  Record<TableName, Readonly<Record<string, TableName>>>
+> = {
   task: { projectId: 'project', parentId: 'task' },
   task_tag: { taskId: 'task', tagId: 'tag' },
 };
@@ -71,8 +84,16 @@ const MAX_SINCE = Number.MAX_SAFE_INTEGER;
  */
 const WRITABLE_FIELDS: Record<TableName, ReadonlySet<string>> = {
   task: new Set([
-    'title', 'notes', 'projectId', 'parentId', 'priority',
-    'scheduledOn', 'dueOn', 'rrule', 'dtstart', 'rank',
+    'title',
+    'notes',
+    'projectId',
+    'parentId',
+    'priority',
+    'scheduledOn',
+    'dueOn',
+    'rrule',
+    'dtstart',
+    'rank',
   ]),
   project: new Set(['name', 'rank', 'archivedAt']),
   tag: new Set(['name', 'color']),
@@ -96,13 +117,16 @@ type SyncDelegate = {
 /** The one method `lockRow` needs, so that it takes a transaction client
  *  without naming Prisma's full generated type. */
 type RawClient = {
-  $queryRaw<T = unknown>(query: TemplateStringsArray, ...values: unknown[]): Promise<T>;
+  $queryRaw<T = unknown>(
+    query: TemplateStringsArray,
+    ...values: unknown[]
+  ): Promise<T>;
 };
 
 type DelegateKey = (typeof DELEGATE)[TableName];
 
 function delegateFor(client: unknown, table: TableName): SyncDelegate {
-  return (client as unknown as Record<DelegateKey, SyncDelegate>)[DELEGATE[table]];
+  return (client as Record<DelegateKey, SyncDelegate>)[DELEGATE[table]];
 }
 
 /**
@@ -111,7 +135,12 @@ function delegateFor(client: unknown, table: TableName): SyncDelegate {
  * field, and it is a `bigint`, which has no `JSON.stringify` representation
  * of its own.
  */
-const READABLE_PROTOCOL_FIELDS = ['id', 'version', 'fieldTs', 'deletedAt'] as const;
+const READABLE_PROTOCOL_FIELDS = [
+  'id',
+  'version',
+  'fieldTs',
+  'deletedAt',
+] as const;
 
 /**
  * The row as returned to a client: an explicit allow-list, not a deny-list
@@ -121,7 +150,10 @@ const READABLE_PROTOCOL_FIELDS = ['id', 'version', 'fieldTs', 'deletedAt'] as co
  * test. Naming exactly what a client receives means a new column stays out
  * until someone decides it belongs in `WRITABLE_FIELDS` or here.
  */
-function toChangeRow(table: TableName, row: Record<string, unknown>): Record<string, unknown> {
+function toChangeRow(
+  table: TableName,
+  row: Record<string, unknown>,
+): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const key of [...READABLE_PROTOCOL_FIELDS, ...WRITABLE_FIELDS[table]]) {
     if (key in row) out[key] = row[key];
@@ -138,7 +170,12 @@ function toChangeRow(table: TableName, row: Record<string, unknown>): Record<str
  */
 function unpermittedField(table: TableName, op: Op): string | null {
   if (op.kind === 'create') {
-    if (typeof op.fields !== 'object' || op.fields === null || Array.isArray(op.fields)) return null;
+    if (
+      typeof op.fields !== 'object' ||
+      op.fields === null ||
+      Array.isArray(op.fields)
+    )
+      return null;
     for (const key of Object.keys(op.fields)) {
       if (!WRITABLE_FIELDS[table].has(key)) return key;
     }
@@ -192,7 +229,12 @@ async function referenceRejection(
   let written: Array<[string, unknown]>;
   if (op.kind === 'create') {
     // A malformed `fields` is applyOp's to reject, not this function's.
-    if (typeof op.fields !== 'object' || op.fields === null || Array.isArray(op.fields)) return null;
+    if (
+      typeof op.fields !== 'object' ||
+      op.fields === null ||
+      Array.isArray(op.fields)
+    )
+      return null;
     written = Object.entries(op.fields);
   } else if (op.kind === 'set') {
     written = typeof op.field === 'string' ? [[op.field, op.value]] : [];
@@ -247,7 +289,12 @@ async function referenceRejection(
  * parameters, and `id` has been checked against `UUID` before this is
  * reached, so the `::uuid` casts cannot fail on it.
  */
-function lockRow(client: RawClient, table: TableName, id: string, userId: string): Promise<unknown> {
+function lockRow(
+  client: RawClient,
+  table: TableName,
+  id: string,
+  userId: string,
+): Promise<unknown> {
   return client.$queryRaw`
     SELECT 1 FROM ${Prisma.raw(`"${RELATION[table]}"`)}
      WHERE "id" = ${id}::uuid AND "userId" = ${userId}::uuid
@@ -255,7 +302,11 @@ function lockRow(client: RawClient, table: TableName, id: string, userId: string
   `;
 }
 
-type StoredOutcome = { status: string; reason: string | null; currentVersion: number | null };
+type StoredOutcome = {
+  status: string;
+  reason: string | null;
+  currentVersion: number | null;
+};
 
 /**
  * Turns a previously recorded outcome back into the `OpResult` a fresh
@@ -273,7 +324,9 @@ function replay(opId: string, stored: StoredOutcome): OpResult {
     opId,
     status,
     ...(stored.reason !== null ? { reason: stored.reason } : {}),
-    ...(stored.currentVersion !== null ? { currentVersion: stored.currentVersion } : {}),
+    ...(stored.currentVersion !== null
+      ? { currentVersion: stored.currentVersion }
+      : {}),
   };
 }
 
@@ -293,11 +346,11 @@ const RETRYABLE_PRISMA_CODES = new Set([
   'P1017', // the database server closed the connection
   'P2037', // too many database connections already open
   'P2010', // a raw query failed — both raw queries in this service are
-           // constant SQL (`SELECT nextval('change_seq')` and the row
-           // lock), and the lock's only parameters are a uuid checked
-           // against UUID before it is reached and a userId from the
-           // session, so a failure executing either is the database's
-           // problem, not the query's, by construction
+  // constant SQL (`SELECT nextval('change_seq')` and the row
+  // lock), and the lock's only parameters are a uuid checked
+  // against UUID before it is reached and a userId from the
+  // session, so a failure executing either is the database's
+  // problem, not the query's, by construction
 ]);
 
 /**
@@ -356,8 +409,14 @@ export class SyncService {
     userId: string,
     body: SyncRequest,
   ): Promise<{ cursor: number; results: OpResult[]; changes: Change[] }> {
-    if (!Number.isInteger(body.since) || body.since < 0 || body.since > MAX_SINCE) {
-      throw new BadRequestException(`since must be an integer between 0 and ${MAX_SINCE}`);
+    if (
+      !Number.isInteger(body.since) ||
+      body.since < 0 ||
+      body.since > MAX_SINCE
+    ) {
+      throw new BadRequestException(
+        `since must be an integer between 0 and ${MAX_SINCE}`,
+      );
     }
 
     const results: OpResult[] = [];
@@ -397,7 +456,9 @@ export class SyncService {
         // previously applied op whose table or field the schema has since
         // narrowed must still replay as itself on redelivery, not fail a
         // fresh check against today's allow-list.
-        const table = TABLES.includes(op.table as TableName) ? (op.table as TableName) : null;
+        const table = TABLES.includes(op.table as TableName)
+          ? (op.table as TableName)
+          : null;
         const badField = table !== null ? unpermittedField(table, op) : null;
 
         let delegate: SyncDelegate | null = null;
@@ -406,7 +467,10 @@ export class SyncService {
         if (table === null) {
           outcome = { status: 'rejected', reason: 'unknown table' };
         } else if (badField !== null) {
-          outcome = { status: 'rejected', reason: `unknown field: ${badField}` };
+          outcome = {
+            status: 'rejected',
+            reason: `unknown field: ${badField}`,
+          };
         } else if (!UUID.test(op.id)) {
           // The contract already says `format: uuid`, and the validator
           // enforces it on the wire. This is the same check at the point
@@ -426,7 +490,9 @@ export class SyncService {
             // and the write below one cycle rather than two halves another
             // transaction can interleave with.
             await lockRow(tx, table, op.id, userId);
-            current = await delegate.findFirst({ where: { id: op.id, userId } });
+            current = await delegate.findFirst({
+              where: { id: op.id, userId },
+            });
             outcome = applyOp(op, current, now);
           }
         }
@@ -444,7 +510,8 @@ export class SyncService {
             userId,
             status: outcome.status,
             reason: outcome.status === 'rejected' ? outcome.reason : null,
-            currentVersion: outcome.status === 'conflict' ? outcome.currentVersion : null,
+            currentVersion:
+              outcome.status === 'conflict' ? outcome.currentVersion : null,
           },
         });
 
@@ -455,7 +522,9 @@ export class SyncService {
           // if/else, so this makes it an explicit, checked invariant
           // instead of a silent assumption.
           if (delegate === null) {
-            throw new Error('unreachable: applied outcome without a resolved delegate');
+            throw new Error(
+              'unreachable: applied outcome without a resolved delegate',
+            );
           }
           // seq is a protocol/storage column applyOp never touches — it comes
           // from the one sequence shared by all four tables, and it has to be
@@ -467,9 +536,24 @@ export class SyncService {
           const [{ nextval }] = await tx.$queryRaw<[{ nextval: bigint }]>`
             SELECT nextval('change_seq') AS nextval
           `;
-          const { id, version, fieldTs, deletedAt, seq: _seq, createdAt: _createdAt, updatedAt: _updatedAt, ...rest } =
-            outcome.row;
-          const data = { ...rest, version, fieldTs, deletedAt, userId, seq: nextval };
+          const {
+            id,
+            version,
+            fieldTs,
+            deletedAt,
+            seq: _seq,
+            createdAt: _createdAt,
+            updatedAt: _updatedAt,
+            ...rest
+          } = outcome.row;
+          const data = {
+            ...rest,
+            version,
+            fieldTs,
+            deletedAt,
+            userId,
+            seq: nextval,
+          };
           if (current === null) {
             await delegate.create({ data: { ...data, id } });
           } else {
@@ -480,14 +564,20 @@ export class SyncService {
           }
           return { opId: op.opId, status: 'applied' as const };
         }
-        if (outcome.status === 'superseded') return { opId: op.opId, status: 'superseded' as const };
+        if (outcome.status === 'superseded')
+          return { opId: op.opId, status: 'superseded' as const };
         if (outcome.status === 'conflict') {
           return {
-            opId: op.opId, status: 'conflict' as const,
+            opId: op.opId,
+            status: 'conflict' as const,
             currentVersion: outcome.currentVersion,
           };
         }
-        return { opId: op.opId, status: 'rejected' as const, reason: outcome.reason };
+        return {
+          opId: op.opId,
+          status: 'rejected' as const,
+          reason: outcome.reason,
+        };
       });
     } catch (error) {
       // The transaction above has already rolled back in full by the time
@@ -507,7 +597,11 @@ export class SyncService {
         throw error;
       }
       this.logger.warn(error);
-      return { opId: op.opId, status: 'rejected', reason: 'could not be applied' };
+      return {
+        opId: op.opId,
+        status: 'rejected',
+        reason: 'could not be applied',
+      };
     }
   }
 
@@ -550,7 +644,12 @@ export class SyncService {
             orderBy: { seq: 'asc' },
           });
           for (const row of rows) {
-            out.push({ table, id: String(row.id), seq: Number(row.seq), row: toChangeRow(table, row) });
+            out.push({
+              table,
+              id: String(row.id),
+              seq: Number(row.seq),
+              row: toChangeRow(table, row),
+            });
           }
         }
         out.sort((a, b) => a.seq - b.seq);

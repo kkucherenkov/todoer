@@ -3,6 +3,10 @@
   "tasks": {
     "build": { "dependsOn": ["^build"], "outputs": ["dist/**"] },
     "typecheck": { "dependsOn": ["^build"] },
-    "test": { "dependsOn": ["^build"], "env": ["DATABASE_URL", "JWT_SECRET"] }
+    "test": { "dependsOn": ["^build"], "env": ["DATABASE_URL", "JWT_SECRET"] },
+    "lint": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", "$TURBO_ROOT$/eslint.config.mjs"]
+    }
   }
 }

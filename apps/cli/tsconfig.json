@@ -1,9 +1,9 @@
 {
   "extends": "../../tsconfig.base.json",
+  // Everything, specs included: this is what `typecheck` and ESLint's
+  // type-aware rules read. `build` uses tsconfig.build.json.
   "compilerOptions": {
-    "outDir": "dist",
-    "rootDir": "src"
+    "noEmit": true
   },
-  "include": ["src"],
-  "exclude": ["src/**/*.spec.ts"]
+  "include": ["src"]
 }

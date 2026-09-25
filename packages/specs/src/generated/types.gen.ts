@@ -8,7 +8,7 @@ export type Problem = {
 };
 
 export type Health = {
-  status: "ok";
+  status: 'ok';
   version: string;
 };
 
@@ -23,19 +23,19 @@ export type LoginResponse = {
 
 export type Op =
   | ({
-      kind?: "create";
+      kind?: 'create';
     } & OpCreate)
   | ({
-      kind?: "set";
+      kind?: 'set';
     } & OpSet)
   | ({
-      kind?: "delete";
+      kind?: 'delete';
     } & OpDelete);
 
 export type OpCreate = {
   opId: string;
-  kind: "create";
-  table: "task" | "project" | "tag" | "task_tag";
+  kind: 'create';
+  table: 'task' | 'project' | 'tag' | 'task_tag';
   id: string;
   fields: {
     [key: string]: unknown;
@@ -45,8 +45,8 @@ export type OpCreate = {
 
 export type OpSet = {
   opId: string;
-  kind: "set";
-  table: "task" | "project" | "tag" | "task_tag";
+  kind: 'set';
+  table: 'task' | 'project' | 'tag' | 'task_tag';
   id: string;
   field: string;
   value: unknown;
@@ -56,15 +56,15 @@ export type OpSet = {
 
 export type OpDelete = {
   opId: string;
-  kind: "delete";
-  table: "task" | "project" | "tag" | "task_tag";
+  kind: 'delete';
+  table: 'task' | 'project' | 'tag' | 'task_tag';
   id: string;
   baseVersion: number;
 };
 
 export type OpResult = {
   opId: string;
-  status: "applied" | "duplicate" | "superseded" | "conflict" | "rejected";
+  status: 'applied' | 'duplicate' | 'superseded' | 'conflict' | 'rejected';
   reason?: string;
   currentVersion?: number;
 };
@@ -93,7 +93,7 @@ export type GetHealthData = {
   body?: never;
   path?: never;
   query?: never;
-  url: "/health";
+  url: '/health';
 };
 
 export type GetHealthErrors = {
@@ -118,7 +118,7 @@ export type PostAuthLoginData = {
   body: LoginRequest;
   path?: never;
   query?: never;
-  url: "/auth/login";
+  url: '/auth/login';
 };
 
 export type PostAuthLoginErrors = {
@@ -148,7 +148,7 @@ export type PostAuthRegisterData = {
   body: LoginRequest;
   path?: never;
   query?: never;
-  url: "/auth/register";
+  url: '/auth/register';
 };
 
 export type PostAuthRegisterErrors = {
@@ -179,7 +179,7 @@ export type PostSyncData = {
   body: SyncRequest;
   path?: never;
   query?: never;
-  url: "/sync";
+  url: '/sync';
 };
 
 export type PostSyncErrors = {

@@ -6,7 +6,9 @@ import { AuthService } from './auth.service.js';
 import type { AppConfig } from '../config/app-config.js';
 
 const prisma = new PrismaService();
-const config = { jwtSecret: 'test-secret-at-least-32-characters-long' } as AppConfig;
+const config = {
+  jwtSecret: 'test-secret-at-least-32-characters-long',
+} as AppConfig;
 const service = new AuthService(prisma, config);
 
 beforeEach(async () => {
@@ -29,7 +31,10 @@ describe('AuthService', () => {
     const id = uuidv7();
     await service.register(id, 'a@b.c', 'correct horse battery');
 
-    const { accessToken } = await service.login('a@b.c', 'correct horse battery');
+    const { accessToken } = await service.login(
+      'a@b.c',
+      'correct horse battery',
+    );
 
     expect(service.verify(accessToken)).toBe(id);
   });
@@ -41,11 +46,15 @@ describe('AuthService', () => {
   });
 
   it('refuses an unknown address without revealing that it is unknown', async () => {
-    await expect(service.login('nobody@b.c', 'anything')).rejects.toThrow(/credentials/i);
+    await expect(service.login('nobody@b.c', 'anything')).rejects.toThrow(
+      /credentials/i,
+    );
   });
 
   it('rejects a token signed with another secret', () => {
-    const other = new AuthService(prisma, { jwtSecret: 'a-different-secret-32-chars-long!!' } as AppConfig);
+    const other = new AuthService(prisma, {
+      jwtSecret: 'a-different-secret-32-chars-long!!',
+    } as AppConfig);
     const foreign = other.sign('0192-someone');
 
     expect(() => service.verify(foreign)).toThrow();
@@ -54,8 +63,12 @@ describe('AuthService', () => {
   it('throws the exact same error for a wrong password and an unknown address', async () => {
     await service.register(uuidv7(), 'a@b.c', 'correct horse battery');
 
-    const wrongPassword = await service.login('a@b.c', 'wrong').catch((e: unknown) => e);
-    const unknownAddress = await service.login('nobody@b.c', 'anything').catch((e: unknown) => e);
+    const wrongPassword = await service
+      .login('a@b.c', 'wrong')
+      .catch((e: unknown) => e);
+    const unknownAddress = await service
+      .login('nobody@b.c', 'anything')
+      .catch((e: unknown) => e);
 
     const a = wrongPassword as { message: string; getStatus(): number };
     const b = unknownAddress as { message: string; getStatus(): number };
@@ -67,17 +80,28 @@ describe('AuthService', () => {
     // White-box: hand-builds a token the same way sign() does, but omits
     // exp. claims.exp < Date.now() reads as false when exp is undefined, so
     // a naive check would let this token verify forever.
-    const payload = Buffer.from(JSON.stringify({ sub: 'someone' })).toString('base64url');
-    const mac = createHmac('sha256', config.jwtSecret).update(payload).digest('base64url');
+    const payload = Buffer.from(JSON.stringify({ sub: 'someone' })).toString(
+      'base64url',
+    );
+    const mac = createHmac('sha256', config.jwtSecret)
+      .update(payload)
+      .digest('base64url');
 
     expect(() => service.verify(`${payload}.${mac}`)).toThrow();
   });
 
   it('normalizes email case, so a registration with a capital letter can still log in lower-case', async () => {
     const id = uuidv7();
-    await service.register(id, 'Mixed.Case@Example.com', 'correct horse battery');
+    await service.register(
+      id,
+      'Mixed.Case@Example.com',
+      'correct horse battery',
+    );
 
-    const { accessToken } = await service.login('mixed.case@example.com', 'correct horse battery');
+    const { accessToken } = await service.login(
+      'mixed.case@example.com',
+      'correct horse battery',
+    );
 
     expect(service.verify(accessToken)).toBe(id);
   });

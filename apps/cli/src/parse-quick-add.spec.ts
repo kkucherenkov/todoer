@@ -5,20 +5,28 @@ import { UsageError } from './protocol.js';
 describe('parseQuickAdd', () => {
   it('takes plain text as the title', () => {
     expect(parseQuickAdd('buy milk')).toEqual({
-      title: 'buy milk', tags: [], project: undefined, priority: 0,
+      title: 'buy milk',
+      tags: [],
+      project: undefined,
+      priority: 0,
     });
   });
 
   it('extracts tags, a project and a priority', () => {
     expect(parseQuickAdd('call the bank @phone #finance p2')).toEqual({
-      title: 'call the bank', tags: ['@phone'], project: 'finance', priority: 2,
+      title: 'call the bank',
+      tags: ['@phone'],
+      project: 'finance',
+      priority: 2,
     });
   });
 
   it('keeps an email address out of the tag list', () => {
     expect(parseQuickAdd('mail a@b.c about the invoice')).toEqual({
       title: 'mail a@b.c about the invoice',
-      tags: [], project: undefined, priority: 0,
+      tags: [],
+      project: undefined,
+      priority: 0,
     });
   });
 
@@ -30,7 +38,9 @@ describe('parseQuickAdd', () => {
 describe('planAdd', () => {
   it('carries the fields the op is actually built from', () => {
     expect(planAdd('call the bank p2')).toEqual({
-      title: 'call the bank', priority: 2, notice: null,
+      title: 'call the bank',
+      priority: 2,
+      notice: null,
     });
   });
 

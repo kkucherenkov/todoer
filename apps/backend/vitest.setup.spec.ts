@@ -4,7 +4,9 @@ import { assertTestDatabase } from './vitest.setup.js';
 describe('assertTestDatabase', () => {
   it('accepts a database whose name marks it as disposable', () => {
     expect(() =>
-      assertTestDatabase('postgresql://todoer:todoer@localhost:5433/todoer_test'),
+      assertTestDatabase(
+        'postgresql://todoer:todoer@localhost:5433/todoer_test',
+      ),
     ).not.toThrow();
   });
 
@@ -18,7 +20,9 @@ describe('assertTestDatabase', () => {
   // somewhere else — a host, a user, a query parameter — must not pass it.
   it('is not fooled by _test anywhere but the database name', () => {
     expect(() =>
-      assertTestDatabase('postgresql://todoer_test:todoer@localhost:5433/todoer?x=_test'),
+      assertTestDatabase(
+        'postgresql://todoer_test:todoer@localhost:5433/todoer?x=_test',
+      ),
     ).toThrow(/not a test database/);
   });
 

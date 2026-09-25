@@ -11,11 +11,15 @@ describe('wantsHelp', () => {
   // title containing `-h` printed the help and exited 0, creating nothing.
   // A test that only passes `-h` first would pass either way.
   it('is not a request for help when -h is one of the words of a title', () => {
-    expect(wantsHelp(['add', 'review', 'the', '-h', 'flag', 'docs'])).toBe(false);
+    expect(wantsHelp(['add', 'review', 'the', '-h', 'flag', 'docs'])).toBe(
+      false,
+    );
   });
 
   it('is not a request for help when --help is one of those words', () => {
-    expect(wantsHelp(['add', 'document', 'the', '--help', 'output'])).toBe(false);
+    expect(wantsHelp(['add', 'document', 'the', '--help', 'output'])).toBe(
+      false,
+    );
   });
 
   it('is not a request for help when nothing was given', () => {

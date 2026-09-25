@@ -1,4 +1,10 @@
-import { Body, ConflictException, Controller, HttpCode, Post } from '@nestjs/common';
+import {
+  Body,
+  ConflictException,
+  Controller,
+  HttpCode,
+  Post,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { uuidv7 } from 'uuidv7';
 import { AuthService } from './auth.service.js';
@@ -24,7 +30,10 @@ export class AuthController {
     try {
       await this.auth.register(id, body.email, body.password);
     } catch (error) {
-      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === 'P2002'
+      ) {
         throw new ConflictException('that address is already registered');
       }
       throw error;
