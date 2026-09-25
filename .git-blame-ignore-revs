@@ -1,0 +1,5 @@
+# Formatting-only commits: `git config blame.ignoreRevsFile .git-blame-ignore-revs`
+# (GitHub reads this file on its own).
+
+# style: format the workspace with Prettier
+f0a1ed68751172551c5708e104bcd81842059b37

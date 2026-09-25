@@ -18,7 +18,8 @@
     "validate": "redocly lint openapi/openapi.yaml",
     "codegen": "openapi-ts",
     "build": "pnpm codegen && tsup src/generated/index.ts --format esm --dts --clean",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@hey-api/client-fetch": "^0.13.1"

@@ -126,9 +126,7 @@ type RawClient = {
 type DelegateKey = (typeof DELEGATE)[TableName];
 
 function delegateFor(client: unknown, table: TableName): SyncDelegate {
-  return (client as unknown as Record<DelegateKey, SyncDelegate>)[
-    DELEGATE[table]
-  ];
+  return (client as Record<DelegateKey, SyncDelegate>)[DELEGATE[table]];
 }
 
 /**

@@ -600,13 +600,15 @@ describe('SyncService', () => {
     const flakyPrisma = prisma.$extends({
       query: {
         task: {
-          async create() {
-            throw new Prisma.PrismaClientKnownRequestError(
-              'simulated transaction timeout',
-              {
-                code: 'P2028',
-                clientVersion: Prisma.prismaVersion.client,
-              },
+          create() {
+            return Promise.reject(
+              new Prisma.PrismaClientKnownRequestError(
+                'simulated transaction timeout',
+                {
+                  code: 'P2028',
+                  clientVersion: Prisma.prismaVersion.client,
+                },
+              ),
             );
           },
         },
@@ -865,6 +867,7 @@ describe('SyncService', () => {
       BadRequestException,
     );
     await expect(
+      // eslint-disable-next-line no-loss-of-precision -- the lost precision is the case under test
       service.sync(USER, { since: 9007199254740993, ops: [] }),
     ).rejects.toThrow(BadRequestException);
   });

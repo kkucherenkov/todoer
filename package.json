@@ -13,7 +13,7 @@
     "spec:validate": "pnpm --filter @todoer/specs validate",
     "spec:codegen": "pnpm --filter @todoer/specs codegen",
     "format": "prettier --write .",
-    "format:check": "prettier --check ."
+    "lint": "turbo run lint && prettier --check ."
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

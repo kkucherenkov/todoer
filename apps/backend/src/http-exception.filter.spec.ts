@@ -1,4 +1,12 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type MockInstance,
+} from 'vitest';
 import { Logger, NotFoundException, type ArgumentsHost } from '@nestjs/common';
 import { HttpExceptionFilter } from './http-exception.filter.js';
 
@@ -15,7 +23,7 @@ function createHost() {
 }
 
 describe('HttpExceptionFilter', () => {
-  let errorSpy: ReturnType<typeof vi.spyOn>;
+  let errorSpy: MockInstance<Logger['error']>;
 
   beforeEach(() => {
     // Every case here goes through catch(), which now always logs. Stub the

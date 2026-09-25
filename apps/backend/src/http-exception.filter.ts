@@ -64,7 +64,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       typeof exception === 'object' &&
       exception !== null &&
       'status' in exception &&
-      typeof (exception as { status: unknown }).status === 'number'
+      typeof exception.status === 'number'
     ) {
       return (exception as { status: number }).status;
     }
@@ -76,7 +76,7 @@ export class HttpExceptionFilter implements ExceptionFilter {
       typeof exception === 'object' &&
       exception !== null &&
       'message' in exception &&
-      typeof (exception as { message: unknown }).message === 'string'
+      typeof exception.message === 'string'
     ) {
       return (exception as { message: string }).message;
     }
