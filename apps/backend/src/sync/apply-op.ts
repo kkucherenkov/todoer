@@ -90,10 +90,18 @@ function isParseableTimestamp(ts: unknown): ts is string {
   return typeof ts === 'string' && !Number.isNaN(new Date(ts).getTime());
 }
 
+/** True for a plain object `Object.keys` can walk without throwing. */
+function isFieldsRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 export function applyOp(op: Op, current: Row | null, now: Date): Outcome {
   if (op.kind === 'create') {
     if (current !== null) {
       return { status: 'rejected', reason: 'a row with this id already exists' };
+    }
+    if (!isFieldsRecord(op.fields)) {
+      return { status: 'rejected', reason: 'fields is missing or not an object' };
     }
     if (!isParseableTimestamp(op.ts)) {
       return { status: 'rejected', reason: 'ts is missing or not a valid timestamp' };
