@@ -187,34 +187,36 @@ For each operation, in the order given:
 2. **Permitted?** The table is writable, the row belongs to this user, every
    foreign key it writes (`project_id`, `parent_id`, `task_id`, `tag_id`)
    points at a row that also belongs to this user, a `parent_id` points at a
-   row whose own `parent_id` is null (D9), a subtask carries no `rrule`.
-   Otherwise `rejected` with a reason.
+   row whose own `parent_id` is null (D9), a task with live subtasks is not
+   given a `parent_id`, a subtask carries no `rrule`. Otherwise `rejected`
+   with a reason.
 
-   The depth rule is two checks in two places, because they need different
+   The depth rule is three checks in two places, because they need different
    things. "A task is not its own parent" is decided in the pure conflict
    module, which needs only the operation, and a CHECK constraint holds it
    again in the database for write paths that do not exist yet. "The parent
-   has no parent of its own" needs a second row, so it rides along with the
-   ownership lookup above. The second check is what forbids cycles **when
-   operations arrive one at a time**: every row in a cycle has a parent, so
-   the edge that would close one always points at a row that already has one
-   — no cycle detection, no recursive query.
+   has no parent of its own" and "the child has no children of its own" need
+   other rows, so they ride along with the ownership lookup above. The first
+   of those also forbids cycles: every row in a cycle has a parent, so the
+   edge that would close one always points at a row that already has one — no
+   cycle detection, no recursive query.
 
-   Under concurrency it does not hold. Two `set parent_id` operations
-   pointing at each other, in flight at once, each read the other's row
-   before the other has been parented; both pass, and a two-node cycle is
-   written (reproduced 25 runs out of 25, with other runs failing instead on
-   `deadlock detected`). An `UPDATE` writing a foreign key takes an implicit
-   `FOR KEY SHARE` on the parent row, so the transaction holds two locks
-   while the check reads the parent without one. No client ships an operation
-   that can reach it; it is a known gap with its own task, alongside the
-   re-parenting one below.
+   Re-parenting a subtree is **refused**, not flattened: a task with live
+   subtasks cannot be given a parent, and the client moves the subtasks out
+   first. Moving them implicitly would write rows the operation never named,
+   which the op log has no way to express. Deleted subtasks do not count; a
+   tombstone cannot be resurrected, so it never becomes a live third level.
 
-   One direction of the depth rule is **not** enforced yet: giving a parent
-   to a task that already has children reaches three levels without ever
-   pointing at a parented row. Closing it is a second lookup ("does this row
-   have children?") on `set parent_id`, and it waits on a decision about
-   whether re-parenting a subtree is allowed at all.
+   Both checks read rows another request may be writing, so they run only
+   after the written row and the `parent_id` target are locked `FOR UPDATE`,
+   **in id order**. Unlocked, two requests setting A under B and B under A
+   each read the other while it is still parentless and a cycle is stored;
+   T gaining a parent while a subtask of T is created stores a third level
+   the same way. The order is what keeps the locks from deadlocking: the
+   `UPDATE`'s foreign-key check takes `FOR KEY SHARE` on the target, so two
+   transactions that each locked their own row first wait on each other
+   (`40P01`, a 500). Locked up front in a fixed order, the second request
+   waits for the first to commit and its checks then read what it wrote.
 3. **`set`:** clamp `ts` to at most `now + 5min` (only the future is bounded —
    see ADR 0004), then apply only if it is newer than `field_ts[field]`.
    Otherwise `superseded` — which is an outcome, not an error.

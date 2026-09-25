@@ -37,6 +37,18 @@ function createTask(title: string) {
   };
 }
 
+function setParent(id: string, parentId: string) {
+  return {
+    opId: uuidv7(),
+    kind: 'set' as const,
+    table: 'task' as const,
+    id,
+    field: 'parentId',
+    value: parentId,
+    ts: new Date().toISOString(),
+  };
+}
+
 describe('SyncService', () => {
   it('applies a create and returns it in the next pull', async () => {
     const op = createTask('call the bank');
@@ -202,6 +214,99 @@ describe('SyncService', () => {
     expect(
       (await prisma.task.findUniqueOrThrow({ where: { id: b.id } })).parentId,
     ).toBeNull();
+  });
+
+  // The other direction of the depth rule: a task with subtasks is already a
+  // parent, so giving it one makes its subtasks the third level without any
+  // edge pointing at a parented row. Re-parenting a subtree is refused; the
+  // client splits it first.
+  it('refuses to give a parent to a task that has subtasks', async () => {
+    const top = createTask('top');
+    const parent = createTask('parent');
+    const withDeletedChild = createTask('had a subtask once');
+    const child = createTask('child');
+    const deletedChild = createTask('deleted child');
+    await service.sync(USER, {
+      since: 0,
+      ops: [top, parent, withDeletedChild, child, deletedChild],
+    });
+    await service.sync(USER, {
+      since: 0,
+      ops: [
+        setParent(child.id, parent.id),
+        setParent(deletedChild.id, withDeletedChild.id),
+        {
+          opId: uuidv7(),
+          kind: 'delete' as const,
+          table: 'task' as const,
+          id: deletedChild.id,
+          baseVersion: 2,
+        },
+      ],
+    });
+
+    const { results } = await service.sync(USER, {
+      since: 0,
+      ops: [
+        setParent(parent.id, top.id),
+        // A tombstone cannot be resurrected, so it never becomes a live
+        // third level and does not pin its parent in place.
+        setParent(withDeletedChild.id, top.id),
+      ],
+    });
+
+    expect(results[0]).toMatchObject({ status: 'rejected' });
+    expect(results[0]?.reason).toMatch(/has subtasks/i);
+    expect(results[1]).toMatchObject({ status: 'applied' });
+  });
+
+  // Tuxedo 356: the single-op argument above holds only one op at a time.
+  // Unlocked, both of these read the other's row while it is still
+  // parentless, both pass, and a cycle is stored — or Postgres detects the
+  // deadlock between the row lock and the foreign key's implicit FOR KEY
+  // SHARE and the batch fails with a 500. Ten rounds, because the unlocked
+  // code lost every one of 25.
+  it('refuses a two-task cycle written by two concurrent requests', async () => {
+    for (let round = 0; round < 10; round++) {
+      const a = createTask('a');
+      const b = createTask('b');
+      await service.sync(USER, { since: 0, ops: [a, b] });
+
+      const [aUnderB, bUnderA] = await Promise.all([
+        service.sync(USER, { since: 0, ops: [setParent(a.id, b.id)] }),
+        service.sync(USER, { since: 0, ops: [setParent(b.id, a.id)] }),
+      ]);
+
+      const statuses = [aUnderB.results[0]?.status, bUnderA.results[0]?.status];
+      expect(statuses.sort()).toEqual(['applied', 'rejected']);
+      const parented = await prisma.task.count({
+        where: { id: { in: [a.id, b.id] }, parentId: { not: null } },
+      });
+      expect(parented).toBe(1);
+    }
+  });
+
+  // The same race from the other side: T gains a parent while a subtask of T
+  // is created. Each check reads a row the other is about to change, so
+  // unlocked both land and the new subtask is the third level.
+  it('refuses a third level written by two concurrent requests', async () => {
+    for (let round = 0; round < 10; round++) {
+      const top = createTask('top');
+      const middle = createTask('middle');
+      await service.sync(USER, { since: 0, ops: [top, middle] });
+
+      const newChild = {
+        ...createTask('new child'),
+        fields: { title: 'new child', rank: 'a0', parentId: middle.id },
+      };
+      const [reparent, create] = await Promise.all([
+        service.sync(USER, { since: 0, ops: [setParent(middle.id, top.id)] }),
+        service.sync(USER, { since: 0, ops: [newChild] }),
+      ]);
+
+      const statuses = [reparent.results[0]?.status, create.results[0]?.status];
+      expect(statuses.sort()).toEqual(['applied', 'rejected']);
+    }
   });
 
   // M17: the CHECK constraint stays as defence in depth, so what it does to
