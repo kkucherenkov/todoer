@@ -32,9 +32,13 @@ components:
         status: { type: string, enum: [ok] }
         version: { type: string }
 
+    # Request schemas are closed (additionalProperties: false): the validator is the
+    # runtime gate against drift. Response schemas stay open on purpose, so a server
+    # that adds a field later does not break a client built against today's document.
     LoginRequest:
       type: object
       required: [email, password]
+      additionalProperties: false
       properties:
         email: { type: string, format: email }
         password: { type: string, minLength: 8 }
@@ -48,6 +52,7 @@ components:
     Op:
       type: object
       required: [opId, kind, table, id]
+      additionalProperties: false
       properties:
         opId: { type: string, format: uuid }
         kind: { type: string, enum: [create, set, delete] }
@@ -82,6 +87,7 @@ components:
     SyncRequest:
       type: object
       required: [since, ops]
+      additionalProperties: false
       properties:
         since: { type: integer, minimum: 0 }
         ops:
