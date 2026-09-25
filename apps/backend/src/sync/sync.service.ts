@@ -137,6 +137,13 @@ function replay(opId: string, stored: StoredOutcome): OpResult {
 const RETRYABLE_PRISMA_CODES = new Set([
   'P2028', // interactive transaction timeout — five seconds by default
   'P2034', // deadlock, or a write conflict the database itself detected
+  'P2024', // timed out fetching a connection from the pool
+  'P1017', // the database server closed the connection
+  'P2037', // too many database connections already open
+  'P2010', // a raw query failed — the only one in this service is a
+           // constant `SELECT nextval('change_seq')`, always valid SQL
+           // with no client input in it, so a failure executing it is
+           // the database's problem, not the query's, by construction
 ]);
 
 /**
@@ -155,10 +162,11 @@ function isRetryable(error: unknown): boolean {
     return RETRYABLE_PRISMA_CODES.has(error.code);
   }
   if (error instanceof Prisma.PrismaClientValidationError) return false;
-  // PrismaClientInitializationError, PrismaClientRustPanicError, a plain
-  // throw from applyOp on a malformed op, anything unrecognised: none of
-  // these say the *data* was the problem, so none of them is an honest
-  // `rejected`.
+  // PrismaClientInitializationError, PrismaClientRustPanicError, and
+  // anything unrecognised default to retryable: none of these say the
+  // *data* was the problem, so none of them is an honest `rejected`.
+  // (applyOp itself never throws, by design and by three rounds of
+  // review — this default is not covering for it.)
   return true;
 }
 
