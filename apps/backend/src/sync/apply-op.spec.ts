@@ -81,6 +81,38 @@ describe('applyOp — create', () => {
 
     expect(applyOp(op, null, NOW).status).toBe('rejected');
   });
+
+  // Finding 1 (Critical, round 3): create wrote op.fields straight into the
+  // row with no allow-list check at all — id/version/fieldTs/deletedAt were
+  // only protected by standing after the spread, and userId/seq/createdAt/
+  // updatedAt had no protection whatsoever. Tested the way set is: one case
+  // per protocol field.
+  it.each(['id', 'userId', 'version', 'fieldTs', 'seq', 'deletedAt', 'createdAt', 'updatedAt'])(
+    'rejects a create whose fields include the protocol-owned field %s',
+    (field) => {
+      const op: Op = {
+        opId: 'o21', kind: 'create', table: 'task', id: '0192-e',
+        fields: { title: 'x', [field]: 'clobber' }, ts: '2026-09-25T11:00:00.000Z',
+      };
+
+      const out = applyOp(op, null, NOW);
+
+      expect(out.status).toBe('rejected');
+      if (out.status !== 'rejected') throw new Error('unreachable');
+      expect(out.reason).toMatch(/protocol-owned/i);
+    },
+  );
+
+  // Finding 2 (Important, round 3): Object.keys(op.fields) threw when fields
+  // was missing — the same class of defect as an unparseable ts, just not
+  // yet recognised for this property.
+  it('rejects a create whose fields is missing', () => {
+    const op = {
+      opId: 'o22', kind: 'create', table: 'task', id: '0192-f', ts: '2026-09-25T11:00:00.000Z',
+    } as unknown as Op;
+
+    expect(applyOp(op, null, NOW).status).toBe('rejected');
+  });
 });
 
 describe('applyOp — set', () => {
@@ -264,6 +296,30 @@ describe('applyOp — set', () => {
     expect(out.status).toBe('rejected');
     if (out.status !== 'rejected') throw new Error('unreachable');
     expect(out.reason).toMatch(/baseVersion/i);
+  });
+
+  // Finding 4 (Minor, round 3): "checked exactly as delete checks it" meant
+  // the type too. baseVersion: '3' (a string) used to compare unequal to
+  // current.version by strict inequality and report conflict instead of
+  // rejected.
+  it('rejects a set whose baseVersion is not an integer', () => {
+    const op = {
+      opId: 'o23', kind: 'set', table: 'task', id: '0192-a', field: 'rrule',
+      value: 'FREQ=DAILY', ts: '2026-09-25T11:00:00.000Z', baseVersion: '3',
+    } as unknown as Op;
+
+    expect(applyOp(op, row(), NOW).status).toBe('rejected');
+  });
+
+  // Finding 5 (Minor, round 3): a missing/non-string field used to write a
+  // column literally named "undefined" and report applied.
+  it('rejects a set whose field is missing', () => {
+    const op = {
+      opId: 'o24', kind: 'set', table: 'task', id: '0192-a', value: 'x',
+      ts: '2026-09-25T11:00:00.000Z',
+    } as unknown as Op;
+
+    expect(applyOp(op, row(), NOW).status).toBe('rejected');
   });
 });
 
