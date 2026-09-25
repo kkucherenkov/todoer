@@ -108,6 +108,16 @@ function isFieldsRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
+/** True for a non-empty string — what a column name must be to mean anything. */
+function isNonEmptyString(value: unknown): value is string {
+  return typeof value === 'string' && value.length > 0;
+}
+
+/** True for the shape `delete`'s and `set`'s optimistic lock both require. */
+function isValidBaseVersion(value: unknown): value is number {
+  return typeof value === 'number' && Number.isInteger(value);
+}
+
 export function applyOp(op: Op, current: Row | null, now: Date): Outcome {
   if (op.kind === 'create') {
     if (current !== null) {
@@ -133,10 +143,16 @@ export function applyOp(op: Op, current: Row | null, now: Date): Outcome {
   }
 
   if (op.kind === 'set') {
+    if (!isNonEmptyString(op.field)) {
+      return { status: 'rejected', reason: 'field is missing or not a string' };
+    }
     const blockedField = protocolFieldRejection(op.field);
     if (blockedField) return blockedField;
     if (!isParseableTimestamp(op.ts)) {
       return { status: 'rejected', reason: 'ts is missing or not a valid timestamp' };
+    }
+    if (op.baseVersion !== undefined && !isValidBaseVersion(op.baseVersion)) {
+      return { status: 'rejected', reason: 'baseVersion is not an integer' };
     }
     if (FIELDS_REQUIRING_BASE_VERSION.has(op.field) && op.baseVersion === undefined) {
       return { status: 'rejected', reason: `${op.field} requires baseVersion` };
@@ -166,7 +182,7 @@ export function applyOp(op: Op, current: Row | null, now: Date): Outcome {
     };
   }
 
-  if (!Number.isInteger(op.baseVersion)) {
+  if (!isValidBaseVersion(op.baseVersion)) {
     return { status: 'rejected', reason: 'baseVersion is missing or not an integer' };
   }
   if (current === null) {
