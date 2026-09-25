@@ -10,9 +10,9 @@ week. Something has to decide which edit survives.
 
 ## Decision
 
-Last-write-wins **per field**, by a client timestamp the server clamps into
-`[now − 24h, now + 5min]`. Timestamps live in a `field_ts` JSON column, one
-entry per field. Destructive operations — deleting a row, changing a recurrence
+Last-write-wins **per field**, by a client timestamp the server clamps to
+`now + 5min`. Timestamps live in a `field_ts` JSON column, one entry per
+field. Destructive operations — deleting a row, changing a recurrence
 rule — additionally carry `base_version` and are refused if the row has moved
 on.
 
@@ -30,6 +30,14 @@ The clamp is not defensive decoration. A device with a wrong system clock would
 otherwise write a timestamp years in the future and pin that field permanently:
 no later edit from any device could ever win, and nothing in the interface
 would explain why.
+
+Only the future is clamped; a client whose clock lags is not lifted toward
+"now". A device offline for a week — the case this design exists to serve —
+would otherwise have its week-old edit lifted past a laptop's genuinely fresher
+edit from two days ago, overwriting it with no conflict reported. A clock that
+lags instead writes a timestamp that loses to everything, visibly and
+annoyingly, which is the safe direction to fail in: the cost lands on the
+device whose clock is wrong, not on the edit that was actually more recent.
 
 Losing a title is annoying; losing the decision to delete something is not
 recoverable, which is why only destructive operations pay for optimistic

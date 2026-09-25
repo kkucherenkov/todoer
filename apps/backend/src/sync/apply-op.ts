@@ -46,9 +46,14 @@ export type Outcome =
   | { status: 'conflict'; currentVersion: number }
   | { status: 'rejected'; reason: string };
 
-/** How far a client clock may lead or lag the server before it is clamped. */
+/**
+ * How far a client clock may lead the server before its timestamp is
+ * clamped. Only the future is bounded — see ADR 0004 for why a clock that
+ * lags is left alone: a device offline for a week is the case this design
+ * exists to serve, and lifting its timestamp toward "now" would make its
+ * stale edit beat a fresh one instead of losing to it.
+ */
 const MAX_SKEW_AHEAD_MS = 5 * 60_000;
-const MAX_SKEW_BEHIND_MS = 24 * 60 * 60_000;
 
 /** Fields whose change is destructive enough to require an explicit
  *  baseVersion opt-in — see ADR 0004. A stale rrule change strands the
@@ -76,9 +81,8 @@ const PROTOCOL_FIELDS = new Set([
 
 function clamp(ts: string, now: Date): string {
   const t = new Date(ts).getTime();
-  const lo = now.getTime() - MAX_SKEW_BEHIND_MS;
   const hi = now.getTime() + MAX_SKEW_AHEAD_MS;
-  return new Date(Math.min(Math.max(t, lo), hi)).toISOString();
+  return new Date(Math.min(t, hi)).toISOString();
 }
 
 /** True for a value that `new Date(...)` can turn into a real instant. */
