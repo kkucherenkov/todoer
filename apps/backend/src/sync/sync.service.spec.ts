@@ -64,6 +64,40 @@ describe('SyncService', () => {
     expect(second.cursor).toBeGreaterThanOrEqual(first.cursor);
   });
 
+  // Two levels is the whole hierarchy the design allows (project → task →
+  // subtask), and a task that is its own parent is not a level at all: it is
+  // a cycle that every future tree walk — a cascade delete, "complete
+  // subtasks", a tree view — has to survive. `create` was already safe by
+  // accident (the parent row does not exist yet, so the ownership check
+  // rejects it); `set parentId` was not.
+  it('refuses to make a task its own parent', async () => {
+    const op = createTask('ouroboros');
+    const created = await service.sync(USER, { since: 0, ops: [op] });
+
+    const selfParent = {
+      opId: uuidv7(), kind: 'set' as const, table: 'task' as const,
+      id: op.id, field: 'parentId', value: op.id, ts: new Date().toISOString(),
+    };
+    // The invariant, and the whole of what this pass can enforce: no row can
+    // carry itself as its parent, on any write path there will ever be. The
+    // rule is a CHECK constraint (see the 20260925200000 migration).
+    //
+    // KNOWN GAP, deliberately pinned rather than hidden: the refusal surfaces
+    // as a thrown error — a 500 — instead of `{ status: 'rejected' }` for
+    // this one operation. Postgres reports a check violation as SQLSTATE
+    // 23514, which Prisma raises as PrismaClientUnknownRequestError, and
+    // `isRetryable` in sync.service.ts defaults an unrecognised class to
+    // retryable. Turning it into a per-operation rejection is one line in
+    // that file (or three in apply-op.ts), and both belong to the pass that
+    // owns them.
+    await expect(
+      service.sync(USER, { since: created.cursor, ops: [selfParent] }),
+    ).rejects.toThrow();
+
+    const row = await prisma.task.findUnique({ where: { id: op.id } });
+    expect(row?.parentId).toBeNull();
+  });
+
   it('returns a tombstone rather than dropping a deleted row', async () => {
     const op = createTask('doomed');
     const created = await service.sync(USER, { since: 0, ops: [op] });
