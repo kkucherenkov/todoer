@@ -2,6 +2,9 @@ openapi: 3.1.0
 info:
   title: todoer
   version: 0.1.0
+  license:
+    name: MIT
+    identifier: MIT
 servers:
   - url: /api/v1
 
@@ -102,6 +105,7 @@ paths:
   /health:
     get:
       operationId: getHealth
+      summary: Liveness and version
       security: []
       responses:
         "200":
@@ -113,6 +117,7 @@ paths:
   /auth/login:
     post:
       operationId: postAuthLogin
+      summary: Sign in
       security: []
       requestBody:
         required: true
@@ -134,6 +139,7 @@ paths:
   /auth/register:
     post:
       operationId: postAuthRegister
+      summary: Create an account and sign in
       security: []
       requestBody:
         required: true
@@ -155,6 +161,7 @@ paths:
   /sync:
     post:
       operationId: postSync
+      summary: Push operations and pull changes
       security:
         - bearerAuth: []
       requestBody:
