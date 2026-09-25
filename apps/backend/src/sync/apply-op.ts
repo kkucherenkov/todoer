@@ -6,15 +6,19 @@
  * cases that matter (an edit arriving late, a clock that is wrong, a create
  * that collides) are awkward to stage against a real server.
  *
- * Invariant: `applyOp` never throws, for any `op` shape a JSON payload can
- * carry — an unparseable `ts`, a non-integer `baseVersion`, a `fields` that
- * is not an object, a `field` that is missing or not a string. Each is
- * validated before use and reported as `{ status: 'rejected' }` instead.
- * Task 6 applies a batch of operations inside one transaction, so a throw
- * here would fail every other operation in the same request alongside it,
- * and the client's outbox would never drain. `current` and `now` are not
- * part of this guarantee: they are server-constructed (a database row, the
- * server's own clock), not client input, so the module trusts their shape.
+ * Invariant: `applyOp` never throws, for any `op` that is an *object* — an
+ * unparseable `ts`, a non-integer `baseVersion`, a `fields` that is not an
+ * object, a `field` that is missing or not a string. Each is validated
+ * before use and reported as `{ status: 'rejected' }` instead. A `null` or
+ * `undefined` `op` is not covered: `op.kind` is read on the first line, so a
+ * non-object `op` still throws. That is the caller's responsibility, not
+ * this module's — the contract's `oneOf` discriminator on `kind` rejects a
+ * non-object body before it ever reaches here. Task 6 applies a batch of
+ * operations inside one transaction, so a throw here would fail every other
+ * operation in the same request alongside it, and the client's outbox would
+ * never drain. `current` and `now` are not part of this guarantee: they are
+ * server-constructed (a database row, the server's own clock), not client
+ * input, so the module trusts their shape.
  */
 
 export type Row = {
