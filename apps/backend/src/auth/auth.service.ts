@@ -1,5 +1,10 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
-import { createHmac, randomBytes, scrypt as scryptCb, timingSafeEqual } from 'node:crypto';
+import {
+  createHmac,
+  randomBytes,
+  scrypt as scryptCb,
+  timingSafeEqual,
+} from 'node:crypto';
 import { promisify } from 'node:util';
 import { AppConfig } from '../config/app-config.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -41,13 +46,22 @@ export class AuthService {
 
   async register(id: string, email: string, password: string): Promise<void> {
     const salt = randomBytes(16).toString('hex');
-    const hash = ((await scrypt(password, salt, KEY_LEN)) as Buffer).toString('hex');
+    const hash = ((await scrypt(password, salt, KEY_LEN)) as Buffer).toString(
+      'hex',
+    );
     await this.prisma.user.create({
-      data: { id, email: normalizeEmail(email), passwordHash: `${salt}:${hash}` },
+      data: {
+        id,
+        email: normalizeEmail(email),
+        passwordHash: `${salt}:${hash}`,
+      },
     });
   }
 
-  async login(email: string, password: string): Promise<{ accessToken: string }> {
+  async login(
+    email: string,
+    password: string,
+  ): Promise<{ accessToken: string }> {
     const user = await this.prisma.user.findUnique({
       where: { email: normalizeEmail(email) },
     });
@@ -60,7 +74,9 @@ export class AuthService {
       user !== null ? user.passwordHash.split(':') : [DUMMY_SALT, DUMMY_HASH];
     if (salt === undefined || expected === undefined) throw failure;
 
-    const actual = ((await scrypt(password, salt, KEY_LEN)) as Buffer).toString('hex');
+    const actual = ((await scrypt(password, salt, KEY_LEN)) as Buffer).toString(
+      'hex',
+    );
     const a = Buffer.from(actual, 'hex');
     const b = Buffer.from(expected, 'hex');
     // hashesMatch is computed as its own statement, unconditionally, before

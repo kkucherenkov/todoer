@@ -20,10 +20,19 @@ export function parseQuickAdd(input: string): QuickAdd {
   let priority = 0;
 
   for (const token of input.split(/\s+/).filter((t) => t.length > 0)) {
-    if (TAG.test(token)) { tags.push(token); continue; }
-    if (PROJECT.test(token)) { project = token.slice(1); continue; }
+    if (TAG.test(token)) {
+      tags.push(token);
+      continue;
+    }
+    if (PROJECT.test(token)) {
+      project = token.slice(1);
+      continue;
+    }
     const p = PRIORITY.exec(token);
-    if (p !== null && p[1] !== undefined) { priority = Number(p[1]); continue; }
+    if (p !== null && p[1] !== undefined) {
+      priority = Number(p[1]);
+      continue;
+    }
     title.push(token);
   }
 

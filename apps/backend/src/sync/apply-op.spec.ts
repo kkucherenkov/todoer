@@ -25,8 +25,12 @@ function fieldTs(current: Row, field: string): string {
 describe('applyOp — create', () => {
   it('applies to an absent row', () => {
     const op: Op = {
-      opId: 'o1', kind: 'create', table: 'task', id: '0192-a',
-      fields: { title: 'new' }, ts: '2026-09-25T11:00:00.000Z',
+      opId: 'o1',
+      kind: 'create',
+      table: 'task',
+      id: '0192-a',
+      fields: { title: 'new' },
+      ts: '2026-09-25T11:00:00.000Z',
     };
 
     const out = applyOp(op, null, NOW);
@@ -43,8 +47,12 @@ describe('applyOp — create', () => {
   // Review Focus 4: clients generate ids, so a retry or a bug can collide.
   it('does not overwrite an existing row', () => {
     const op: Op = {
-      opId: 'o1', kind: 'create', table: 'task', id: '0192-a',
-      fields: { title: 'clobber' }, ts: '2026-09-25T11:00:00.000Z',
+      opId: 'o1',
+      kind: 'create',
+      table: 'task',
+      id: '0192-a',
+      fields: { title: 'clobber' },
+      ts: '2026-09-25T11:00:00.000Z',
     };
 
     const out = applyOp(op, row(), NOW);
@@ -58,8 +66,12 @@ describe('applyOp — create', () => {
   // writing the raw ts into fieldTs, or leaving fieldTs empty. This pins both.
   it('stamps every field with the clamped timestamp, not the raw one', () => {
     const op: Op = {
-      opId: 'o11', kind: 'create', table: 'task', id: '0192-c',
-      fields: { title: 'new', priority: 2 }, ts: '2030-01-01T00:00:00.000Z',
+      opId: 'o11',
+      kind: 'create',
+      table: 'task',
+      id: '0192-c',
+      fields: { title: 'new', priority: 2 },
+      ts: '2030-01-01T00:00:00.000Z',
     };
 
     const out = applyOp(op, null, NOW);
@@ -76,7 +88,11 @@ describe('applyOp — create', () => {
   // the request validator can still omit it.
   it('rejects a create with an unparseable ts', () => {
     const op = {
-      opId: 'o12', kind: 'create', table: 'task', id: '0192-d', fields: { title: 'x' },
+      opId: 'o12',
+      kind: 'create',
+      table: 'task',
+      id: '0192-d',
+      fields: { title: 'x' },
     } as unknown as Op;
 
     expect(applyOp(op, null, NOW).status).toBe('rejected');
@@ -87,12 +103,25 @@ describe('applyOp — create', () => {
   // only protected by standing after the spread, and userId/seq/createdAt/
   // updatedAt had no protection whatsoever. Tested the way set is: one case
   // per protocol field.
-  it.each(['id', 'userId', 'version', 'fieldTs', 'seq', 'deletedAt', 'createdAt', 'updatedAt'])(
+  it.each([
+    'id',
+    'userId',
+    'version',
+    'fieldTs',
+    'seq',
+    'deletedAt',
+    'createdAt',
+    'updatedAt',
+  ])(
     'rejects a create whose fields include the protocol-owned field %s',
     (field) => {
       const op: Op = {
-        opId: 'o21', kind: 'create', table: 'task', id: '0192-e',
-        fields: { title: 'x', [field]: 'clobber' }, ts: '2026-09-25T11:00:00.000Z',
+        opId: 'o21',
+        kind: 'create',
+        table: 'task',
+        id: '0192-e',
+        fields: { title: 'x', [field]: 'clobber' },
+        ts: '2026-09-25T11:00:00.000Z',
       };
 
       const out = applyOp(op, null, NOW);
@@ -108,7 +137,11 @@ describe('applyOp — create', () => {
   // yet recognised for this property.
   it('rejects a create whose fields is missing', () => {
     const op = {
-      opId: 'o22', kind: 'create', table: 'task', id: '0192-f', ts: '2026-09-25T11:00:00.000Z',
+      opId: 'o22',
+      kind: 'create',
+      table: 'task',
+      id: '0192-f',
+      ts: '2026-09-25T11:00:00.000Z',
     } as unknown as Op;
 
     expect(applyOp(op, null, NOW).status).toBe('rejected');
@@ -121,7 +154,10 @@ describe('applyOp — create', () => {
   // operation's own `rejected`.
   it('rejects a create that makes the row its own parent', () => {
     const op: Op = {
-      opId: 'o25', kind: 'create', table: 'task', id: '0192-g',
+      opId: 'o25',
+      kind: 'create',
+      table: 'task',
+      id: '0192-g',
       fields: { title: 'ouroboros', parentId: '0192-g' },
       ts: '2026-09-25T11:00:00.000Z',
     };
@@ -137,8 +173,13 @@ describe('applyOp — create', () => {
 describe('applyOp — set', () => {
   it('applies an edit newer than the field timestamp', () => {
     const op: Op = {
-      opId: 'o2', kind: 'set', table: 'task', id: '0192-a',
-      field: 'title', value: 'newer', ts: '2026-09-25T11:00:00.000Z',
+      opId: 'o2',
+      kind: 'set',
+      table: 'task',
+      id: '0192-a',
+      field: 'title',
+      value: 'newer',
+      ts: '2026-09-25T11:00:00.000Z',
     };
 
     const out = applyOp(op, row(), NOW);
@@ -152,8 +193,13 @@ describe('applyOp — set', () => {
 
   it('reports an edit older than the field timestamp as superseded', () => {
     const op: Op = {
-      opId: 'o3', kind: 'set', table: 'task', id: '0192-a',
-      field: 'title', value: 'stale', ts: '2026-09-25T09:00:00.000Z',
+      opId: 'o3',
+      kind: 'set',
+      table: 'task',
+      id: '0192-a',
+      field: 'title',
+      value: 'stale',
+      ts: '2026-09-25T09:00:00.000Z',
     };
 
     expect(applyOp(op, row(), NOW).status).toBe('superseded');
@@ -164,8 +210,13 @@ describe('applyOp — set', () => {
   // deterministic first-wins instead of an accidental last-wins.
   it('reports an edit exactly at the field timestamp as superseded', () => {
     const op: Op = {
-      opId: 'o13', kind: 'set', table: 'task', id: '0192-a',
-      field: 'title', value: 'tie', ts: '2026-09-25T10:00:00.000Z',
+      opId: 'o13',
+      kind: 'set',
+      table: 'task',
+      id: '0192-a',
+      field: 'title',
+      value: 'tie',
+      ts: '2026-09-25T10:00:00.000Z',
     };
 
     expect(applyOp(op, row(), NOW).status).toBe('superseded');
@@ -176,8 +227,13 @@ describe('applyOp — set', () => {
   it('applies an edit to an untouched field even when the row is newer', () => {
     const current = row({ fieldTs: { title: '2026-09-25T11:59:00.000Z' } });
     const op: Op = {
-      opId: 'o4', kind: 'set', table: 'task', id: '0192-a',
-      field: 'priority', value: 4, ts: '2026-09-25T10:30:00.000Z',
+      opId: 'o4',
+      kind: 'set',
+      table: 'task',
+      id: '0192-a',
+      field: 'priority',
+      value: 4,
+      ts: '2026-09-25T10:30:00.000Z',
     };
 
     const out = applyOp(op, current, NOW);
@@ -192,16 +248,22 @@ describe('applyOp — set', () => {
   // permanently — no later edit from any device could ever win.
   it('clamps a timestamp from the far future', () => {
     const op: Op = {
-      opId: 'o5', kind: 'set', table: 'task', id: '0192-a',
-      field: 'title', value: 'from the future', ts: '2030-01-01T00:00:00.000Z',
+      opId: 'o5',
+      kind: 'set',
+      table: 'task',
+      id: '0192-a',
+      field: 'title',
+      value: 'from the future',
+      ts: '2030-01-01T00:00:00.000Z',
     };
 
     const out = applyOp(op, row(), NOW);
 
     expect(out.status).toBe('applied');
     if (out.status !== 'applied') throw new Error('unreachable');
-    expect(new Date(fieldTs(out.row, 'title')).getTime())
-      .toBeLessThanOrEqual(NOW.getTime() + 5 * 60_000);
+    expect(new Date(fieldTs(out.row, 'title')).getTime()).toBeLessThanOrEqual(
+      NOW.getTime() + 5 * 60_000,
+    );
   });
 
   // I2: only the future is clamped. A device offline for a week is the case
@@ -210,8 +272,13 @@ describe('applyOp — set', () => {
   it('stores a far-past timestamp unchanged', () => {
     const current = row({ fieldTs: {} });
     const op: Op = {
-      opId: 'o10', kind: 'set', table: 'task', id: '0192-a',
-      field: 'title', value: 'from the past', ts: '2020-01-01T00:00:00.000Z',
+      opId: 'o10',
+      kind: 'set',
+      table: 'task',
+      id: '0192-a',
+      field: 'title',
+      value: 'from the past',
+      ts: '2020-01-01T00:00:00.000Z',
     };
 
     const out = applyOp(op, current, NOW);
@@ -223,8 +290,13 @@ describe('applyOp — set', () => {
 
   it('rejects a set against an absent row', () => {
     const op: Op = {
-      opId: 'o6', kind: 'set', table: 'task', id: '0192-a',
-      field: 'title', value: 'x', ts: '2026-09-25T11:00:00.000Z',
+      opId: 'o6',
+      kind: 'set',
+      table: 'task',
+      id: '0192-a',
+      field: 'title',
+      value: 'x',
+      ts: '2026-09-25T11:00:00.000Z',
     };
 
     expect(applyOp(op, null, NOW).status).toBe('rejected');
@@ -233,7 +305,12 @@ describe('applyOp — set', () => {
   // C2: same defect as create — a set can arrive with no ts at all.
   it('rejects a set with an unparseable ts', () => {
     const op = {
-      opId: 'o14', kind: 'set', table: 'task', id: '0192-a', field: 'title', value: 'x',
+      opId: 'o14',
+      kind: 'set',
+      table: 'task',
+      id: '0192-a',
+      field: 'title',
+      value: 'x',
     } as unknown as Op;
 
     expect(applyOp(op, row(), NOW).status).toBe('rejected');
@@ -241,21 +318,32 @@ describe('applyOp — set', () => {
 
   // C1: set put the computed key before the row's literals, so id and
   // deletedAt were writable through it with no baseVersion check at all.
-  it.each(['id', 'userId', 'version', 'fieldTs', 'seq', 'deletedAt', 'createdAt', 'updatedAt'])(
-    'rejects a set targeting the protocol-owned field %s',
-    (field) => {
-      const op: Op = {
-        opId: 'o15', kind: 'set', table: 'task', id: '0192-a',
-        field, value: 'x', ts: '2026-09-25T11:00:00.000Z',
-      };
+  it.each([
+    'id',
+    'userId',
+    'version',
+    'fieldTs',
+    'seq',
+    'deletedAt',
+    'createdAt',
+    'updatedAt',
+  ])('rejects a set targeting the protocol-owned field %s', (field) => {
+    const op: Op = {
+      opId: 'o15',
+      kind: 'set',
+      table: 'task',
+      id: '0192-a',
+      field,
+      value: 'x',
+      ts: '2026-09-25T11:00:00.000Z',
+    };
 
-      const out = applyOp(op, row(), NOW);
+    const out = applyOp(op, row(), NOW);
 
-      expect(out.status).toBe('rejected');
-      if (out.status !== 'rejected') throw new Error('unreachable');
-      expect(out.reason).toMatch(/protocol-owned/i);
-    },
-  );
+    expect(out.status).toBe('rejected');
+    if (out.status !== 'rejected') throw new Error('unreachable');
+    expect(out.reason).toMatch(/protocol-owned/i);
+  });
 
   // I4: an edit addressed to a row deleted on another device used to apply,
   // bump version, and report success — the client then dropped it from its
@@ -263,8 +351,13 @@ describe('applyOp — set', () => {
   it('rejects a set on a tombstoned row', () => {
     const current = row({ deletedAt: '2026-09-24T00:00:00.000Z' });
     const op: Op = {
-      opId: 'o16', kind: 'set', table: 'task', id: '0192-a',
-      field: 'title', value: 'edit after delete', ts: '2026-09-25T11:00:00.000Z',
+      opId: 'o16',
+      kind: 'set',
+      table: 'task',
+      id: '0192-a',
+      field: 'title',
+      value: 'edit after delete',
+      ts: '2026-09-25T11:00:00.000Z',
     };
 
     const out = applyOp(op, current, NOW);
@@ -279,8 +372,14 @@ describe('applyOp — set', () => {
   // field opts into the same optimistic lock delete already has.
   it('applies a set with a matching baseVersion', () => {
     const op: Op = {
-      opId: 'o17', kind: 'set', table: 'task', id: '0192-a',
-      field: 'rrule', value: 'FREQ=DAILY', ts: '2026-09-25T11:00:00.000Z', baseVersion: 3,
+      opId: 'o17',
+      kind: 'set',
+      table: 'task',
+      id: '0192-a',
+      field: 'rrule',
+      value: 'FREQ=DAILY',
+      ts: '2026-09-25T11:00:00.000Z',
+      baseVersion: 3,
     };
 
     const out = applyOp(op, row(), NOW);
@@ -293,8 +392,14 @@ describe('applyOp — set', () => {
 
   it('reports a conflict when a set baseVersion is stale', () => {
     const op: Op = {
-      opId: 'o18', kind: 'set', table: 'task', id: '0192-a',
-      field: 'rrule', value: 'FREQ=DAILY', ts: '2026-09-25T11:00:00.000Z', baseVersion: 2,
+      opId: 'o18',
+      kind: 'set',
+      table: 'task',
+      id: '0192-a',
+      field: 'rrule',
+      value: 'FREQ=DAILY',
+      ts: '2026-09-25T11:00:00.000Z',
+      baseVersion: 2,
     };
 
     const out = applyOp(op, row(), NOW);
@@ -306,8 +411,13 @@ describe('applyOp — set', () => {
 
   it('rejects a set on rrule without a baseVersion', () => {
     const op: Op = {
-      opId: 'o19', kind: 'set', table: 'task', id: '0192-a',
-      field: 'rrule', value: 'FREQ=DAILY', ts: '2026-09-25T11:00:00.000Z',
+      opId: 'o19',
+      kind: 'set',
+      table: 'task',
+      id: '0192-a',
+      field: 'rrule',
+      value: 'FREQ=DAILY',
+      ts: '2026-09-25T11:00:00.000Z',
     };
 
     const out = applyOp(op, row(), NOW);
@@ -323,8 +433,14 @@ describe('applyOp — set', () => {
   // rejected.
   it('rejects a set whose baseVersion is not an integer', () => {
     const op = {
-      opId: 'o23', kind: 'set', table: 'task', id: '0192-a', field: 'rrule',
-      value: 'FREQ=DAILY', ts: '2026-09-25T11:00:00.000Z', baseVersion: '3',
+      opId: 'o23',
+      kind: 'set',
+      table: 'task',
+      id: '0192-a',
+      field: 'rrule',
+      value: 'FREQ=DAILY',
+      ts: '2026-09-25T11:00:00.000Z',
+      baseVersion: '3',
     } as unknown as Op;
 
     expect(applyOp(op, row(), NOW).status).toBe('rejected');
@@ -334,7 +450,11 @@ describe('applyOp — set', () => {
   // column literally named "undefined" and report applied.
   it('rejects a set whose field is missing', () => {
     const op = {
-      opId: 'o24', kind: 'set', table: 'task', id: '0192-a', value: 'x',
+      opId: 'o24',
+      kind: 'set',
+      table: 'task',
+      id: '0192-a',
+      value: 'x',
       ts: '2026-09-25T11:00:00.000Z',
     } as unknown as Op;
 
@@ -346,8 +466,13 @@ describe('applyOp — set', () => {
   // opinion about it.
   it('rejects a set that makes a task its own parent', () => {
     const op: Op = {
-      opId: 'o26', kind: 'set', table: 'task', id: '0192-a', field: 'parentId',
-      value: '0192-a', ts: '2026-09-25T11:00:00.000Z',
+      opId: 'o26',
+      kind: 'set',
+      table: 'task',
+      id: '0192-a',
+      field: 'parentId',
+      value: '0192-a',
+      ts: '2026-09-25T11:00:00.000Z',
     };
 
     const out = applyOp(op, row(), NOW);
@@ -361,8 +486,13 @@ describe('applyOp — set', () => {
   // is unwritable": a parent that is a different task is an ordinary edit.
   it('applies a set that parents a task under a different one', () => {
     const op: Op = {
-      opId: 'o27', kind: 'set', table: 'task', id: '0192-a', field: 'parentId',
-      value: '0192-b', ts: '2026-09-25T11:00:00.000Z',
+      opId: 'o27',
+      kind: 'set',
+      table: 'task',
+      id: '0192-a',
+      field: 'parentId',
+      value: '0192-b',
+      ts: '2026-09-25T11:00:00.000Z',
     };
 
     expect(applyOp(op, row(), NOW).status).toBe('applied');
@@ -372,7 +502,11 @@ describe('applyOp — set', () => {
 describe('applyOp — delete', () => {
   it('tombstones when the base version matches', () => {
     const op: Op = {
-      opId: 'o7', kind: 'delete', table: 'task', id: '0192-a', baseVersion: 3,
+      opId: 'o7',
+      kind: 'delete',
+      table: 'task',
+      id: '0192-a',
+      baseVersion: 3,
     };
 
     const out = applyOp(op, row(), NOW);
@@ -385,7 +519,11 @@ describe('applyOp — delete', () => {
 
   it('reports a conflict when the row moved on', () => {
     const op: Op = {
-      opId: 'o8', kind: 'delete', table: 'task', id: '0192-a', baseVersion: 2,
+      opId: 'o8',
+      kind: 'delete',
+      table: 'task',
+      id: '0192-a',
+      baseVersion: 2,
     };
 
     const out = applyOp(op, row(), NOW);
@@ -397,7 +535,11 @@ describe('applyOp — delete', () => {
 
   it('rejects a delete against an absent row', () => {
     const op: Op = {
-      opId: 'o9', kind: 'delete', table: 'task', id: '0192-a', baseVersion: 1,
+      opId: 'o9',
+      kind: 'delete',
+      table: 'task',
+      id: '0192-a',
+      baseVersion: 1,
     };
 
     const out = applyOp(op, null, NOW);
@@ -412,7 +554,10 @@ describe('applyOp — delete', () => {
   // payload that bypassed the validator, or a bug in an earlier stage.
   it('rejects a delete with a non-integer baseVersion', () => {
     const op = {
-      opId: 'o20', kind: 'delete', table: 'task', id: '0192-a',
+      opId: 'o20',
+      kind: 'delete',
+      table: 'task',
+      id: '0192-a',
     } as unknown as Op;
 
     expect(applyOp(op, row(), NOW).status).toBe('rejected');

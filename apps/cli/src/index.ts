@@ -6,8 +6,15 @@ import { planAdd } from './parse-quick-add.js';
 import { BASE, TOKEN, STATE } from './config.js';
 import { HELP, unknownCommand, wantsHelp } from './usage.js';
 import {
-  applyChanges, assertNotRefused, liveTasks, readSyncResponse,
-  ConflictError, NetworkError, RefusalError, UsageError, type State,
+  applyChanges,
+  assertNotRefused,
+  liveTasks,
+  readSyncResponse,
+  ConflictError,
+  NetworkError,
+  RefusalError,
+  UsageError,
+  type State,
 } from './protocol.js';
 
 async function load(): Promise<State> {
@@ -36,7 +43,9 @@ async function sync(ops: unknown[]) {
       body: JSON.stringify({ since: state.cursor, ops }),
     });
   } catch (error) {
-    throw new NetworkError(error instanceof Error ? error.message : String(error));
+    throw new NetworkError(
+      error instanceof Error ? error.message : String(error),
+    );
   }
   const body = await readSyncResponse(response);
   applyChanges(state, body.changes);
@@ -63,7 +72,10 @@ async function main(): Promise<void> {
     const id = uuidv7();
     const { state, results } = await sync([
       {
-        opId, kind: 'create', table: 'task', id,
+        opId,
+        kind: 'create',
+        table: 'task',
+        id,
         fields: { title, priority, rank: 'a0' },
         ts: new Date().toISOString(),
       },
@@ -96,7 +108,9 @@ main().catch((error: unknown) => {
     // The message, not the whole of HELP: a caller that mistyped a command
     // does not need thirty lines of stderr, and the one that does is one
     // flag away from them.
-    console.error(`${error.message}\nrun \`todoer --help\` for usage and exit codes`);
+    console.error(
+      `${error.message}\nrun \`todoer --help\` for usage and exit codes`,
+    );
     process.exit(2);
   }
   if (error instanceof RefusalError) {

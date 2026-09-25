@@ -1,6 +1,9 @@
 import {
-  CanActivate, createParamDecorator, ExecutionContext,
-  Injectable, UnauthorizedException,
+  CanActivate,
+  createParamDecorator,
+  ExecutionContext,
+  Injectable,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { AuthService } from './auth.service.js';
 
@@ -21,7 +24,10 @@ export class AuthGuard implements CanActivate {
       userId?: string;
     }>();
     const header = request.headers.authorization;
-    if (header === undefined || !header.toLowerCase().startsWith(BEARER_PREFIX)) {
+    if (
+      header === undefined ||
+      !header.toLowerCase().startsWith(BEARER_PREFIX)
+    ) {
       throw new UnauthorizedException(INVALID_TOKEN);
     }
     request.userId = this.auth.verify(header.slice(BEARER_PREFIX.length));
@@ -32,7 +38,10 @@ export class AuthGuard implements CanActivate {
 // Exported separately from the decorator so it can be unit-tested directly,
 // against a bare { userId } object, without going through Nest's parameter
 // pipeline.
-export function currentUserFactory(_data: unknown, context: ExecutionContext): string {
+export function currentUserFactory(
+  _data: unknown,
+  context: ExecutionContext,
+): string {
   const request = context.switchToHttp().getRequest<{ userId?: string }>();
   if (request.userId === undefined) {
     throw new UnauthorizedException('no authenticated user');

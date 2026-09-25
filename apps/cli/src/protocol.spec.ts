@@ -1,15 +1,31 @@
 import { describe, expect, it } from 'vitest';
 import {
-  applyChanges, assertNotRefused, liveTasks, readSyncResponse,
-  ConflictError, NetworkError, RefusalError, type State,
+  applyChanges,
+  assertNotRefused,
+  liveTasks,
+  readSyncResponse,
+  ConflictError,
+  NetworkError,
+  RefusalError,
+  type State,
 } from './protocol.js';
 
 describe('applyChanges + liveTasks', () => {
   it('keeps rows of different tables from colliding on id', () => {
     const state: State = { cursor: 0, rows: {} };
     applyChanges(state, [
-      { table: 'task', id: 'x', seq: 1, row: { title: 'buy milk', deletedAt: null } },
-      { table: 'project', id: 'x', seq: 2, row: { name: 'same id, different table' } },
+      {
+        table: 'task',
+        id: 'x',
+        seq: 1,
+        row: { title: 'buy milk', deletedAt: null },
+      },
+      {
+        table: 'project',
+        id: 'x',
+        seq: 2,
+        row: { name: 'same id, different table' },
+      },
     ]);
     expect(liveTasks(state)).toEqual([{ title: 'buy milk', deletedAt: null }]);
   });
@@ -26,7 +42,12 @@ describe('applyChanges + liveTasks', () => {
   it('excludes a tombstoned task', () => {
     const state: State = { cursor: 0, rows: {} };
     applyChanges(state, [
-      { table: 'task', id: 'x', seq: 1, row: { title: 'gone', deletedAt: '2026-01-01T00:00:00.000Z' } },
+      {
+        table: 'task',
+        id: 'x',
+        seq: 1,
+        row: { title: 'gone', deletedAt: '2026-01-01T00:00:00.000Z' },
+      },
     ]);
     expect(liveTasks(state)).toEqual([]);
   });
@@ -34,8 +55,15 @@ describe('applyChanges + liveTasks', () => {
 
 describe('readSyncResponse', () => {
   it('parses a successful response', async () => {
-    const res = new Response(JSON.stringify({ cursor: 1, results: [], changes: [] }), { status: 200 });
-    await expect(readSyncResponse(res)).resolves.toEqual({ cursor: 1, results: [], changes: [] });
+    const res = new Response(
+      JSON.stringify({ cursor: 1, results: [], changes: [] }),
+      { status: 200 },
+    );
+    await expect(readSyncResponse(res)).resolves.toEqual({
+      cursor: 1,
+      results: [],
+      changes: [],
+    });
   });
 
   // The token lives 15 minutes and there is no `login` command, so this is
@@ -59,21 +87,33 @@ describe('readSyncResponse', () => {
 
 describe('assertNotRefused', () => {
   it('throws a RefusalError when the op it cares about was rejected', () => {
-    expect(() => assertNotRefused([{ opId: 'a', status: 'rejected', reason: 'nope' }], 'a'))
-      .toThrow(RefusalError);
+    expect(() =>
+      assertNotRefused(
+        [{ opId: 'a', status: 'rejected', reason: 'nope' }],
+        'a',
+      ),
+    ).toThrow(RefusalError);
   });
 
   // The real conflict signal: /sync answers 200 and reports it per operation.
   // The server never returns 409 on that path, which is why reading conflict
   // off the HTTP status found nothing.
   it('throws a ConflictError when the server has a newer version of the row', () => {
-    expect(() => assertNotRefused([{ opId: 'a', status: 'conflict', currentVersion: 7 }], 'a'))
-      .toThrow(ConflictError);
+    expect(() =>
+      assertNotRefused(
+        [{ opId: 'a', status: 'conflict', currentVersion: 7 }],
+        'a',
+      ),
+    ).toThrow(ConflictError);
   });
 
   it('names the version the caller has to rebase onto', () => {
-    expect(() => assertNotRefused([{ opId: 'a', status: 'conflict', currentVersion: 7 }], 'a'))
-      .toThrow(/7/);
+    expect(() =>
+      assertNotRefused(
+        [{ opId: 'a', status: 'conflict', currentVersion: 7 }],
+        'a',
+      ),
+    ).toThrow(/7/);
   });
 
   // A response that does not mention the operation it was sent is not
@@ -82,18 +122,26 @@ describe('assertNotRefused', () => {
   // the wrong thing.
   it('refuses a response that says nothing about the op at all', () => {
     expect(() => assertNotRefused([], 'a')).toThrow(RefusalError);
-    expect(() => assertNotRefused([{ opId: 'b', status: 'applied' }], 'a')).toThrow(RefusalError);
+    expect(() =>
+      assertNotRefused([{ opId: 'b', status: 'applied' }], 'a'),
+    ).toThrow(RefusalError);
   });
 
   it('does nothing when the op was applied', () => {
-    expect(() => assertNotRefused([{ opId: 'a', status: 'applied' }], 'a')).not.toThrow();
+    expect(() =>
+      assertNotRefused([{ opId: 'a', status: 'applied' }], 'a'),
+    ).not.toThrow();
   });
 
   // A redelivered op that had already been applied, and an edit an older
   // timestamp lost to: both mean the intent is in the server's state, which
   // is what the caller asked for.
   it('does nothing for a duplicate or a superseded op', () => {
-    expect(() => assertNotRefused([{ opId: 'a', status: 'duplicate' }], 'a')).not.toThrow();
-    expect(() => assertNotRefused([{ opId: 'a', status: 'superseded' }], 'a')).not.toThrow();
+    expect(() =>
+      assertNotRefused([{ opId: 'a', status: 'duplicate' }], 'a'),
+    ).not.toThrow();
+    expect(() =>
+      assertNotRefused([{ opId: 'a', status: 'superseded' }], 'a'),
+    ).not.toThrow();
   });
 });

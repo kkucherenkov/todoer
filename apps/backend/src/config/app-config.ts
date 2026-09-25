@@ -24,7 +24,9 @@ export class AppConfig {
     if (raw === undefined || raw === '') return fallback;
     const value = Number(raw);
     if (!Number.isInteger(value) || value < 0 || value > 65535) {
-      throw new Error(`${name} must be a whole number between 0 and 65535, not ${raw}`);
+      throw new Error(
+        `${name} must be a whole number between 0 and 65535, not ${raw}`,
+      );
     }
     return value;
   }

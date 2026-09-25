@@ -33,7 +33,14 @@ export type Row = {
 };
 
 export type Op =
-  | { opId: string; kind: 'create'; table: string; id: string; fields: Record<string, unknown>; ts: string }
+  | {
+      opId: string;
+      kind: 'create';
+      table: string;
+      id: string;
+      fields: Record<string, unknown>;
+      ts: string;
+    }
   | {
       opId: string;
       kind: 'set';
@@ -49,7 +56,13 @@ export type Op =
        */
       baseVersion?: number;
     }
-  | { opId: string; kind: 'delete'; table: string; id: string; baseVersion: number };
+  | {
+      opId: string;
+      kind: 'delete';
+      table: string;
+      id: string;
+      baseVersion: number;
+    };
 
 export type Outcome =
   | { status: 'applied'; row: Row }
@@ -120,7 +133,11 @@ function protocolFieldRejection(field: string): Outcome | null {
  * parented it. See SyncService's note on referenceRejection for the
  * reproduction and the two candidate fixes.
  */
-function selfParentRejection(field: string, value: unknown, id: string): Outcome | null {
+function selfParentRejection(
+  field: string,
+  value: unknown,
+  id: string,
+): Outcome | null {
   if (field !== 'parentId' || value !== id) return null;
   return { status: 'rejected', reason: 'a task cannot be its own parent' };
 }
@@ -154,19 +171,32 @@ function isValidBaseVersion(value: unknown): value is number {
 export function applyOp(op: Op, current: Row | null, now: Date): Outcome {
   if (op.kind === 'create') {
     if (current !== null) {
-      return { status: 'rejected', reason: 'a row with this id already exists' };
+      return {
+        status: 'rejected',
+        reason: 'a row with this id already exists',
+      };
     }
     if (!isFieldsRecord(op.fields)) {
-      return { status: 'rejected', reason: 'fields is missing or not an object' };
+      return {
+        status: 'rejected',
+        reason: 'fields is missing or not an object',
+      };
     }
     for (const key of Object.keys(op.fields)) {
       const blocked = protocolFieldRejection(key);
       if (blocked) return blocked;
     }
-    const selfParent = selfParentRejection('parentId', op.fields.parentId, op.id);
+    const selfParent = selfParentRejection(
+      'parentId',
+      op.fields.parentId,
+      op.id,
+    );
     if (selfParent) return selfParent;
     if (!isParseableTimestamp(op.ts)) {
-      return { status: 'rejected', reason: 'ts is missing or not a valid timestamp' };
+      return {
+        status: 'rejected',
+        reason: 'ts is missing or not a valid timestamp',
+      };
     }
     const ts = clamp(op.ts, now);
     const fieldTs: Record<string, string> = {};
@@ -186,12 +216,18 @@ export function applyOp(op: Op, current: Row | null, now: Date): Outcome {
     const selfParent = selfParentRejection(op.field, op.value, op.id);
     if (selfParent) return selfParent;
     if (!isParseableTimestamp(op.ts)) {
-      return { status: 'rejected', reason: 'ts is missing or not a valid timestamp' };
+      return {
+        status: 'rejected',
+        reason: 'ts is missing or not a valid timestamp',
+      };
     }
     if (op.baseVersion !== undefined && !isValidBaseVersion(op.baseVersion)) {
       return { status: 'rejected', reason: 'baseVersion is not an integer' };
     }
-    if (FIELDS_REQUIRING_BASE_VERSION.has(op.field) && op.baseVersion === undefined) {
+    if (
+      FIELDS_REQUIRING_BASE_VERSION.has(op.field) &&
+      op.baseVersion === undefined
+    ) {
       return { status: 'rejected', reason: `${op.field} requires baseVersion` };
     }
     if (current === null) {
@@ -220,7 +256,10 @@ export function applyOp(op: Op, current: Row | null, now: Date): Outcome {
   }
 
   if (!isValidBaseVersion(op.baseVersion)) {
-    return { status: 'rejected', reason: 'baseVersion is missing or not an integer' };
+    return {
+      status: 'rejected',
+      reason: 'baseVersion is missing or not an integer',
+    };
   }
   if (current === null) {
     return { status: 'rejected', reason: 'no such row' };
@@ -230,6 +269,10 @@ export function applyOp(op: Op, current: Row | null, now: Date): Outcome {
   }
   return {
     status: 'applied',
-    row: { ...current, deletedAt: now.toISOString(), version: current.version + 1 },
+    row: {
+      ...current,
+      deletedAt: now.toISOString(),
+      version: current.version + 1,
+    },
   };
 }

@@ -4,7 +4,7 @@ import type {
   Options as ClientOptions,
   TDataShape,
   Client,
-} from "@hey-api/client-fetch";
+} from '@hey-api/client-fetch';
 import type {
   GetHealthData,
   GetHealthResponse,
@@ -18,8 +18,8 @@ import type {
   PostSyncData,
   PostSyncResponse,
   PostSyncError,
-} from "./types.gen";
-import { client as _heyApiClient } from "./client.gen";
+} from './types.gen';
+import { client as _heyApiClient } from './client.gen';
 
 export type Options<
   TData extends TDataShape = TDataShape,
@@ -49,7 +49,7 @@ export const getHealth = <ThrowOnError extends boolean = false>(
     GetHealthError,
     ThrowOnError
   >({
-    url: "/health",
+    url: '/health',
     ...options,
   });
 };
@@ -65,10 +65,10 @@ export const postAuthLogin = <ThrowOnError extends boolean = false>(
     PostAuthLoginError,
     ThrowOnError
   >({
-    url: "/auth/login",
+    url: '/auth/login',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -85,10 +85,10 @@ export const postAuthRegister = <ThrowOnError extends boolean = false>(
     PostAuthRegisterError,
     ThrowOnError
   >({
-    url: "/auth/register",
+    url: '/auth/register',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });
@@ -107,14 +107,14 @@ export const postSync = <ThrowOnError extends boolean = false>(
   >({
     security: [
       {
-        scheme: "bearer",
-        type: "http",
+        scheme: 'bearer',
+        type: 'http',
       },
     ],
-    url: "/sync",
+    url: '/sync',
     ...options,
     headers: {
-      "Content-Type": "application/json",
+      'Content-Type': 'application/json',
       ...options?.headers,
     },
   });

@@ -10,7 +10,9 @@ import { AuthService } from './auth.service.js';
 import type { AppConfig } from '../config/app-config.js';
 
 const prisma = new PrismaService();
-const config = { jwtSecret: 'test-secret-at-least-32-characters-long' } as AppConfig;
+const config = {
+  jwtSecret: 'test-secret-at-least-32-characters-long',
+} as AppConfig;
 const auth = new AuthService(prisma, config);
 const guard = new AuthGuard(auth);
 
@@ -37,15 +39,22 @@ describe('AuthGuard', () => {
     ['no Authorization header', {}],
     ['a header without the Bearer prefix', { authorization: 'Basic xxxx' }],
     ['a malformed token (no dot)', { authorization: 'Bearer not-a-token' }],
-    ['a token with an extra segment', { authorization: `Bearer ${validToken}.junk` }],
+    [
+      'a token with an extra segment',
+      { authorization: `Bearer ${validToken}.junk` },
+    ],
   ])('rejects %s', (_name, headers) => {
-    const request: { headers: Record<string, string>; userId?: string } = { headers };
+    const request: { headers: Record<string, string>; userId?: string } = {
+      headers,
+    };
     expect(() => guard.canActivate(contextFor(request))).toThrow();
     expect(request.userId).toBeUndefined();
   });
 
   it('rejects a token signed with another secret', () => {
-    const other = new AuthService(prisma, { jwtSecret: 'a-different-secret-32-chars-long!!' } as AppConfig);
+    const other = new AuthService(prisma, {
+      jwtSecret: 'a-different-secret-32-chars-long!!',
+    } as AppConfig);
     const foreign = other.sign('01920000-0000-7000-8000-000000000002');
     const request = { headers: { authorization: `Bearer ${foreign}` } };
 
@@ -78,7 +87,9 @@ describe('AuthGuard', () => {
     // only three (no header, wrong prefix, malformed-no-dot) and its own
     // description overclaimed "every" — corrected here, not just worded
     // around.
-    const other = new AuthService(prisma, { jwtSecret: 'a-different-secret-32-chars-long!!' } as AppConfig);
+    const other = new AuthService(prisma, {
+      jwtSecret: 'a-different-secret-32-chars-long!!',
+    } as AppConfig);
     const foreign = other.sign('01920000-0000-7000-8000-000000000099');
 
     vi.useFakeTimers();
@@ -111,7 +122,8 @@ describe('AuthGuard', () => {
   });
 
   it('is applied to SyncController — a refactor that drops @UseGuards would leave /sync open', () => {
-    const guards = Reflect.getMetadata(GUARDS_METADATA, SyncController) as unknown[] | undefined;
+    const guards = Reflect.getMetadata(GUARDS_METADATA, SyncController) as
+      unknown[] | undefined;
     // Not expect(guards).toContain(AuthGuard): chai's toContain, given a
     // non-string needle against an undefined haystack, does not fail —
     // verified by hand, the exact silent-pass this test exists to prevent.
@@ -119,9 +131,13 @@ describe('AuthGuard', () => {
     expect(Array.isArray(guards) && guards.includes(AuthGuard)).toBe(true);
   });
 
-  it("sets request.userId independently per call — one guard instance serves every request", () => {
-    const requestA: GuardedRequest = { headers: { authorization: `Bearer ${auth.sign('AAAA')}` } };
-    const requestB: GuardedRequest = { headers: { authorization: `Bearer ${auth.sign('BBBB')}` } };
+  it('sets request.userId independently per call — one guard instance serves every request', () => {
+    const requestA: GuardedRequest = {
+      headers: { authorization: `Bearer ${auth.sign('AAAA')}` },
+    };
+    const requestB: GuardedRequest = {
+      headers: { authorization: `Bearer ${auth.sign('BBBB')}` },
+    };
 
     guard.canActivate(contextFor(requestA));
     guard.canActivate(contextFor(requestB));
@@ -144,7 +160,9 @@ describe('currentUserFactory', () => {
 
 describe('tenant isolation: guard + controller together', () => {
   it("a token for user A cannot cause SyncService.sync to be called with user B's id", async () => {
-    const sync = vi.fn().mockResolvedValue({ cursor: 0, results: [], changes: [] });
+    const sync = vi
+      .fn()
+      .mockResolvedValue({ cursor: 0, results: [], changes: [] });
     const controller = new SyncController({ sync } as unknown as SyncService);
     const tokenA = auth.sign('user-A');
     const tokenB = auth.sign('user-B');
@@ -155,8 +173,14 @@ describe('tenant isolation: guard + controller together', () => {
     guard.canActivate(contextFor(requestB));
 
     const body = { since: 0, ops: [] as never[] };
-    await controller.sync(currentUserFactory(undefined, contextFor(requestA)), body);
-    await controller.sync(currentUserFactory(undefined, contextFor(requestB)), body);
+    await controller.sync(
+      currentUserFactory(undefined, contextFor(requestA)),
+      body,
+    );
+    await controller.sync(
+      currentUserFactory(undefined, contextFor(requestB)),
+      body,
+    );
 
     expect(sync).toHaveBeenNthCalledWith(1, 'user-A', body);
     expect(sync).toHaveBeenNthCalledWith(2, 'user-B', body);

@@ -20,7 +20,10 @@
 import type { Change, OpResult, SyncResponse } from '@todoer/specs';
 
 export type Row = Record<string, unknown>;
-export type State = { cursor: number; rows: Record<string, Record<string, Row>> };
+export type State = {
+  cursor: number;
+  rows: Record<string, Record<string, Row>>;
+};
 
 /** Exit 1: the server refused — a 4xx, or a rejected operation. Retrying the
  *  same request cannot change the answer; something about it has to change
@@ -49,7 +52,9 @@ export function applyChanges(state: State, changes: Change[]): void {
  *  other table (project, tag, task_tag) is invisible here by construction,
  *  not by a filter that happens to skip it today. */
 export function liveTasks(state: State): Row[] {
-  return Object.values(state.rows.task ?? {}).filter((row) => row.deletedAt === null);
+  return Object.values(state.rows.task ?? {}).filter(
+    (row) => row.deletedAt === null,
+  );
 }
 
 /**
@@ -61,7 +66,9 @@ export function liveTasks(state: State): Row[] {
  * host, so an agent retried a 15-minute token expiry forever, and it tested
  * a 409 that this endpoint does not declare and the server never sends.
  */
-export async function readSyncResponse(response: Response): Promise<SyncResponse> {
+export async function readSyncResponse(
+  response: Response,
+): Promise<SyncResponse> {
   if (!response.ok) {
     const text = await response.text();
     if (response.status < 500) {
@@ -96,7 +103,9 @@ export function assertNotRefused(results: OpResult[], opId: string): void {
     );
   }
   if (result.status === 'rejected') {
-    throw new RefusalError(result.reason ?? 'the server refused this operation');
+    throw new RefusalError(
+      result.reason ?? 'the server refused this operation',
+    );
   }
   if (result.status === 'conflict') {
     throw new ConflictError(

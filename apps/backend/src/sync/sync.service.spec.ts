@@ -28,8 +28,11 @@ beforeEach(async () => {
 
 function createTask(title: string) {
   return {
-    opId: uuidv7(), kind: 'create' as const, table: 'task' as const,
-    id: uuidv7(), fields: { title, rank: 'a0' },
+    opId: uuidv7(),
+    kind: 'create' as const,
+    table: 'task' as const,
+    id: uuidv7(),
+    fields: { title, rank: 'a0' },
     ts: new Date().toISOString(),
   };
 }
@@ -57,7 +60,10 @@ describe('SyncService', () => {
   });
 
   it('advances the cursor so a second pull returns nothing new', async () => {
-    const first = await service.sync(USER, { since: 0, ops: [createTask('a')] });
+    const first = await service.sync(USER, {
+      since: 0,
+      ops: [createTask('a')],
+    });
     const second = await service.sync(USER, { since: first.cursor, ops: [] });
 
     expect(second.changes).toHaveLength(0);
@@ -75,8 +81,13 @@ describe('SyncService', () => {
     const created = await service.sync(USER, { since: 0, ops: [op] });
 
     const selfParent = {
-      opId: uuidv7(), kind: 'set' as const, table: 'task' as const,
-      id: op.id, field: 'parentId', value: op.id, ts: new Date().toISOString(),
+      opId: uuidv7(),
+      kind: 'set' as const,
+      table: 'task' as const,
+      id: op.id,
+      field: 'parentId',
+      value: op.id,
+      ts: new Date().toISOString(),
     };
     // The invariant: no row can carry itself as its parent, on any write path
     // there will ever be. Two things hold it, and they are not redundant —
@@ -85,7 +96,10 @@ describe('SyncService', () => {
     // is what lets the refusal reach the client as this operation's own
     // `rejected` with a reason rather than as an opaque constraint error that
     // fails the whole batch.
-    const { results } = await service.sync(USER, { since: created.cursor, ops: [selfParent] });
+    const { results } = await service.sync(USER, {
+      since: created.cursor,
+      ops: [selfParent],
+    });
 
     expect(results[0]).toMatchObject({ status: 'rejected' });
     expect(results[0]?.reason).toMatch(/own parent/i);
@@ -105,13 +119,21 @@ describe('SyncService', () => {
     await service.sync(USER, { since: 0, ops: [grandparent, parent, child] });
 
     const secondLevel = {
-      opId: uuidv7(), kind: 'set' as const, table: 'task' as const,
-      id: parent.id, field: 'parentId', value: grandparent.id,
+      opId: uuidv7(),
+      kind: 'set' as const,
+      table: 'task' as const,
+      id: parent.id,
+      field: 'parentId',
+      value: grandparent.id,
       ts: new Date().toISOString(),
     };
     const thirdLevel = {
-      opId: uuidv7(), kind: 'set' as const, table: 'task' as const,
-      id: child.id, field: 'parentId', value: parent.id,
+      opId: uuidv7(),
+      kind: 'set' as const,
+      table: 'task' as const,
+      id: child.id,
+      field: 'parentId',
+      value: parent.id,
       ts: new Date().toISOString(),
     };
 
@@ -119,8 +141,11 @@ describe('SyncService', () => {
     // refusing every parent: a `create` that lands directly under a
     // top-level task is the second level, which is legal.
     const secondLevelCreate = {
-      opId: uuidv7(), kind: 'create' as const, table: 'task' as const,
-      id: uuidv7(), fields: { title: 'subtask', rank: 'a1', parentId: grandparent.id },
+      opId: uuidv7(),
+      kind: 'create' as const,
+      table: 'task' as const,
+      id: uuidv7(),
+      fields: { title: 'subtask', rank: 'a1', parentId: grandparent.id },
       ts: new Date().toISOString(),
     };
 
@@ -133,7 +158,10 @@ describe('SyncService', () => {
     expect(results[1]).toMatchObject({ status: 'rejected' });
     expect(results[1]?.reason).toMatch(/no parent of its own/i);
     expect(results[2]).toMatchObject({ status: 'applied' });
-    expect((await prisma.task.findUniqueOrThrow({ where: { id: child.id } })).parentId).toBeNull();
+    expect(
+      (await prisma.task.findUniqueOrThrow({ where: { id: child.id } }))
+        .parentId,
+    ).toBeNull();
   });
 
   // M17: the same one check closes every cycle, which is why it is worth
@@ -146,19 +174,34 @@ describe('SyncService', () => {
     await service.sync(USER, { since: 0, ops: [a, b] });
 
     const aUnderB = {
-      opId: uuidv7(), kind: 'set' as const, table: 'task' as const,
-      id: a.id, field: 'parentId', value: b.id, ts: new Date().toISOString(),
+      opId: uuidv7(),
+      kind: 'set' as const,
+      table: 'task' as const,
+      id: a.id,
+      field: 'parentId',
+      value: b.id,
+      ts: new Date().toISOString(),
     };
     const bUnderA = {
-      opId: uuidv7(), kind: 'set' as const, table: 'task' as const,
-      id: b.id, field: 'parentId', value: a.id, ts: new Date().toISOString(),
+      opId: uuidv7(),
+      kind: 'set' as const,
+      table: 'task' as const,
+      id: b.id,
+      field: 'parentId',
+      value: a.id,
+      ts: new Date().toISOString(),
     };
 
-    const { results } = await service.sync(USER, { since: 0, ops: [aUnderB, bUnderA] });
+    const { results } = await service.sync(USER, {
+      since: 0,
+      ops: [aUnderB, bUnderA],
+    });
 
     expect(results[0]).toMatchObject({ status: 'applied' });
     expect(results[1]).toMatchObject({ status: 'rejected' });
-    expect((await prisma.task.findUniqueOrThrow({ where: { id: b.id } })).parentId).toBeNull();
+    expect(
+      (await prisma.task.findUniqueOrThrow({ where: { id: b.id } })).parentId,
+    ).toBeNull();
   });
 
   // M17: the CHECK constraint stays as defence in depth, so what it does to
@@ -184,7 +227,10 @@ describe('SyncService', () => {
         task: {
           async update({ args, query }) {
             const where = args.where as { id?: string };
-            return query({ ...args, data: { ...args.data, parentId: where.id } as typeof args.data });
+            return query({
+              ...args,
+              data: { ...args.data, parentId: where.id } as typeof args.data,
+            });
           },
         },
       },
@@ -192,17 +238,27 @@ describe('SyncService', () => {
     const service2 = new SyncService(sabotaged as unknown as PrismaService);
 
     const legal = {
-      opId: uuidv7(), kind: 'set' as const, table: 'task' as const,
-      id: orphan.id, field: 'parentId', value: parent.id, ts: new Date().toISOString(),
+      opId: uuidv7(),
+      kind: 'set' as const,
+      table: 'task' as const,
+      id: orphan.id,
+      field: 'parentId',
+      value: parent.id,
+      ts: new Date().toISOString(),
     };
 
     const { results } = await service2.sync(USER, { since: 0, ops: [legal] });
 
     expect(results[0]).toMatchObject({ status: 'rejected' });
-    expect((await prisma.task.findUniqueOrThrow({ where: { id: orphan.id } })).parentId).toBeNull();
+    expect(
+      (await prisma.task.findUniqueOrThrow({ where: { id: orphan.id } }))
+        .parentId,
+    ).toBeNull();
     // Rolled back with the row write, so a client that fixes the operation
     // and retries is not answered with a duplicate of a rejection.
-    expect(await prisma.appliedOp.count({ where: { opId: legal.opId } })).toBe(0);
+    expect(await prisma.appliedOp.count({ where: { opId: legal.opId } })).toBe(
+      0,
+    );
   });
 
   it('returns a tombstone rather than dropping a deleted row', async () => {
@@ -210,8 +266,11 @@ describe('SyncService', () => {
     const created = await service.sync(USER, { since: 0, ops: [op] });
 
     const del = {
-      opId: uuidv7(), kind: 'delete' as const, table: 'task' as const,
-      id: op.id, baseVersion: 1,
+      opId: uuidv7(),
+      kind: 'delete' as const,
+      table: 'task' as const,
+      id: op.id,
+      baseVersion: 1,
     };
     await service.sync(USER, { since: created.cursor, ops: [del] });
 
@@ -258,8 +317,11 @@ describe('SyncService', () => {
   // a check the service owes, not the conflict engine.
   it('rejects a field that is not a column, without touching the database', async () => {
     const bogus = {
-      opId: uuidv7(), kind: 'create' as const, table: 'task' as const,
-      id: uuidv7(), fields: { title: 'x', sneaky: 'nope' },
+      opId: uuidv7(),
+      kind: 'create' as const,
+      table: 'task' as const,
+      id: uuidv7(),
+      fields: { title: 'x', sneaky: 'nope' },
       ts: new Date().toISOString(),
     };
 
@@ -291,18 +353,25 @@ describe('SyncService', () => {
     // a *recorded* rejection rather than a rolled-back transaction, so it
     // can no longer prove what the appliedOp assertion below is here for.
     const OTHER = '22222222-2222-2222-2222-222222222222';
-    await prisma.user.create({ data: { id: OTHER, email: 'x@y.z', passwordHash: 'x' } });
+    await prisma.user.create({
+      data: { id: OTHER, email: 'x@y.z', passwordHash: 'x' },
+    });
     const theirs = createTask('theirs');
     await service.sync(OTHER, { since: 0, ops: [theirs] });
 
     const bad = { ...createTask('collides'), id: theirs.id };
     const good = createTask('unrelated');
 
-    const { results } = await service.sync(USER, { since: 0, ops: [bad, good] });
+    const { results } = await service.sync(USER, {
+      since: 0,
+      ops: [bad, good],
+    });
 
     expect(results[0]).toMatchObject({ status: 'rejected' });
     expect(results[1]).toMatchObject({ status: 'applied' });
-    expect((await prisma.task.findUniqueOrThrow({ where: { id: bad.id } })).title).toBe('theirs');
+    expect(
+      (await prisma.task.findUniqueOrThrow({ where: { id: bad.id } })).title,
+    ).toBe('theirs');
     expect(await prisma.appliedOp.count({ where: { opId: bad.opId } })).toBe(0);
     expect(await prisma.task.count({ where: { id: good.id } })).toBe(1);
   });
@@ -334,14 +403,24 @@ describe('SyncService', () => {
       data: { id: OTHER, email: 'x@y.z', passwordHash: 'x' },
     });
     const hijack = {
-      opId: uuidv7(), kind: 'set' as const, table: 'task' as const,
-      id: op.id, field: 'title', value: 'hijacked', ts: new Date().toISOString(),
+      opId: uuidv7(),
+      kind: 'set' as const,
+      table: 'task' as const,
+      id: op.id,
+      field: 'title',
+      value: 'hijacked',
+      ts: new Date().toISOString(),
     };
 
     const result = await service.sync(OTHER, { since: 0, ops: [hijack] });
 
-    expect(result.results[0]).toMatchObject({ status: 'rejected', reason: 'no such row' });
-    expect((await prisma.task.findUniqueOrThrow({ where: { id: op.id } })).title).toBe('mine');
+    expect(result.results[0]).toMatchObject({
+      status: 'rejected',
+      reason: 'no such row',
+    });
+    expect(
+      (await prisma.task.findUniqueOrThrow({ where: { id: op.id } })).title,
+    ).toBe('mine');
   });
 
   it('surfaces conflict, superseded and rejected through the service', async () => {
@@ -349,17 +428,27 @@ describe('SyncService', () => {
     await service.sync(USER, { since: 0, ops: [op] });
 
     const stale = {
-      opId: uuidv7(), kind: 'set' as const, table: 'task' as const,
-      id: op.id, field: 'title', value: 'stale',
+      opId: uuidv7(),
+      kind: 'set' as const,
+      table: 'task' as const,
+      id: op.id,
+      field: 'title',
+      value: 'stale',
       ts: new Date(Date.now() - 60_000).toISOString(),
     };
     const conflictOp = {
-      opId: uuidv7(), kind: 'delete' as const, table: 'task' as const,
-      id: op.id, baseVersion: 99,
+      opId: uuidv7(),
+      kind: 'delete' as const,
+      table: 'task' as const,
+      id: op.id,
+      baseVersion: 99,
     };
     const dupCreate = { ...op, opId: uuidv7() };
 
-    const { results } = await service.sync(USER, { since: 0, ops: [stale, conflictOp, dupCreate] });
+    const { results } = await service.sync(USER, {
+      since: 0,
+      ops: [stale, conflictOp, dupCreate],
+    });
 
     expect(results[0]).toMatchObject({ status: 'superseded' });
     expect(results[1]).toMatchObject({ status: 'conflict', currentVersion: 1 });
@@ -373,8 +462,11 @@ describe('SyncService', () => {
   // sort go unnoticed, since insertion order would already be ascending.
   it('orders changes by seq across two different tables in one pull', async () => {
     const project = {
-      opId: uuidv7(), kind: 'create' as const, table: 'project' as const,
-      id: uuidv7(), fields: { name: 'first', rank: 'a0' },
+      opId: uuidv7(),
+      kind: 'create' as const,
+      table: 'project' as const,
+      id: uuidv7(),
+      fields: { name: 'first', rank: 'a0' },
       ts: new Date().toISOString(),
     };
     const task = createTask('second');
@@ -382,7 +474,9 @@ describe('SyncService', () => {
     await service.sync(USER, { since: 0, ops: [project, task] });
     const pull = await service.sync(USER, { since: 0, ops: [] });
 
-    const relevant = pull.changes.filter((c) => c.id === task.id || c.id === project.id);
+    const relevant = pull.changes.filter(
+      (c) => c.id === task.id || c.id === project.id,
+    );
     expect(relevant.map((c) => c.table)).toEqual(['project', 'task']);
     expect(relevant[0]!.seq).toBeLessThan(relevant[1]!.seq);
   });
@@ -397,14 +491,23 @@ describe('SyncService', () => {
     await service.sync(USER, { since: 0, ops: [op] });
 
     const del = {
-      opId: uuidv7(), kind: 'delete' as const, table: 'task' as const,
-      id: op.id, baseVersion: 99,
+      opId: uuidv7(),
+      kind: 'delete' as const,
+      table: 'task' as const,
+      id: op.id,
+      baseVersion: 99,
     };
     const first = await service.sync(USER, { since: 0, ops: [del] });
     const again = await service.sync(USER, { since: 0, ops: [del] });
 
-    expect(first.results[0]).toMatchObject({ status: 'conflict', currentVersion: 1 });
-    expect(again.results[0]).toMatchObject({ status: 'conflict', currentVersion: 1 });
+    expect(first.results[0]).toMatchObject({
+      status: 'conflict',
+      currentVersion: 1,
+    });
+    expect(again.results[0]).toMatchObject({
+      status: 'conflict',
+      currentVersion: 1,
+    });
   });
 
   // M8: pins the cursor formula itself. change_seq is not transactional, so
@@ -414,8 +517,13 @@ describe('SyncService', () => {
   // come from what the scans actually delivered.
   it('does not advance the cursor past since when a pull returns nothing', async () => {
     const OTHER = '33333333-3333-3333-3333-333333333333';
-    await prisma.user.create({ data: { id: OTHER, email: 'q@r.s', passwordHash: 'x' } });
-    await service.sync(OTHER, { since: 0, ops: [createTask('theirs, not mine')] });
+    await prisma.user.create({
+      data: { id: OTHER, email: 'q@r.s', passwordHash: 'x' },
+    });
+    await service.sync(OTHER, {
+      since: 0,
+      ops: [createTask('theirs, not mine')],
+    });
 
     const pull = await service.sync(USER, { since: 0, ops: [] });
 
@@ -429,15 +537,22 @@ describe('SyncService', () => {
   // impossible.
   it('lets a project be archived', async () => {
     const create = {
-      opId: uuidv7(), kind: 'create' as const, table: 'project' as const,
-      id: uuidv7(), fields: { name: 'old work', rank: 'a0' },
+      opId: uuidv7(),
+      kind: 'create' as const,
+      table: 'project' as const,
+      id: uuidv7(),
+      fields: { name: 'old work', rank: 'a0' },
       ts: new Date().toISOString(),
     };
     await service.sync(USER, { since: 0, ops: [create] });
 
     const archive = {
-      opId: uuidv7(), kind: 'set' as const, table: 'project' as const,
-      id: create.id, field: 'archivedAt', value: new Date().toISOString(),
+      opId: uuidv7(),
+      kind: 'set' as const,
+      table: 'project' as const,
+      id: create.id,
+      field: 'archivedAt',
+      value: new Date().toISOString(),
       ts: new Date().toISOString(),
     };
     const result = await service.sync(USER, { since: 0, ops: [archive] });
@@ -455,12 +570,20 @@ describe('SyncService', () => {
     await service.sync(USER, { since: 0, ops: [op] });
 
     const badValue = {
-      opId: uuidv7(), kind: 'set' as const, table: 'task' as const,
-      id: op.id, field: 'priority', value: 'high', ts: new Date().toISOString(),
+      opId: uuidv7(),
+      kind: 'set' as const,
+      table: 'task' as const,
+      id: op.id,
+      field: 'priority',
+      value: 'high',
+      ts: new Date().toISOString(),
     };
     const good = createTask('unrelated');
 
-    const { results } = await service.sync(USER, { since: 0, ops: [badValue, good] });
+    const { results } = await service.sync(USER, {
+      since: 0,
+      ops: [badValue, good],
+    });
 
     expect(results[0]).toMatchObject({ status: 'rejected' });
     expect(results[1]).toMatchObject({ status: 'applied' });
@@ -478,10 +601,13 @@ describe('SyncService', () => {
       query: {
         task: {
           async create() {
-            throw new Prisma.PrismaClientKnownRequestError('simulated transaction timeout', {
-              code: 'P2028',
-              clientVersion: Prisma.prismaVersion.client,
-            });
+            throw new Prisma.PrismaClientKnownRequestError(
+              'simulated transaction timeout',
+              {
+                code: 'P2028',
+                clientVersion: Prisma.prismaVersion.client,
+              },
+            );
           },
         },
       },
@@ -554,8 +680,11 @@ describe('SyncService', () => {
       // an unrelated reason, and the negative assertion below would stay
       // green while testing nothing.
       const project = {
-        opId: uuidv7(), kind: 'create' as const, table: 'project' as const,
-        id: uuidv7(), fields: { name: 'landed mid-scan', rank: 'a0' },
+        opId: uuidv7(),
+        kind: 'create' as const,
+        table: 'project' as const,
+        id: uuidv7(),
+        fields: { name: 'landed mid-scan', rank: 'a0' },
         ts: new Date().toISOString(),
       };
       const written = await service.sync(USER, { since: 0, ops: [project] });
@@ -611,8 +740,11 @@ describe('SyncService', () => {
   // of A's edit in it; with the lock, B's read waits for A to commit.
   it('keeps both fields when two concurrent sets touch different fields of one row', async () => {
     const create = {
-      opId: uuidv7(), kind: 'create' as const, table: 'task' as const,
-      id: uuidv7(), fields: { title: 'T0', notes: 'N0', rank: 'a0' },
+      opId: uuidv7(),
+      kind: 'create' as const,
+      table: 'task' as const,
+      id: uuidv7(),
+      fields: { title: 'T0', notes: 'N0', rank: 'a0' },
       ts: new Date().toISOString(),
     };
     await service.sync(USER, { since: 0, ops: [create] });
@@ -652,12 +784,21 @@ describe('SyncService', () => {
     const b = new SyncService(clientB as unknown as PrismaService);
 
     const setTitle = {
-      opId: uuidv7(), kind: 'set' as const, table: 'task' as const,
-      id: create.id, field: 'title', value: 'T1', ts: new Date().toISOString(),
+      opId: uuidv7(),
+      kind: 'set' as const,
+      table: 'task' as const,
+      id: create.id,
+      field: 'title',
+      value: 'T1',
+      ts: new Date().toISOString(),
     };
     const setNotes = {
-      opId: uuidv7(), kind: 'set' as const, table: 'task' as const,
-      id: create.id, field: 'notes', value: 'N1',
+      opId: uuidv7(),
+      kind: 'set' as const,
+      table: 'task' as const,
+      id: create.id,
+      field: 'notes',
+      value: 'N1',
       ts: new Date(Date.now() + 10).toISOString(),
     };
 
@@ -676,7 +817,9 @@ describe('SyncService', () => {
       releaseA();
     }
 
-    const row = await prisma.task.findUniqueOrThrow({ where: { id: create.id } });
+    const row = await prisma.task.findUniqueOrThrow({
+      where: { id: create.id },
+    });
     const fieldTs = row.fieldTs as Record<string, string>;
     expect(row.title).toBe('T1');
     expect(row.notes).toBe('N1');
@@ -696,7 +839,9 @@ describe('SyncService', () => {
   // calls it a success.
   it('scopes operation dedup to the account that sent the operation', async () => {
     const OTHER = '22222222-2222-2222-2222-222222222222';
-    await prisma.user.create({ data: { id: OTHER, email: 'x@y.z', passwordHash: 'x' } });
+    await prisma.user.create({
+      data: { id: OTHER, email: 'x@y.z', passwordHash: 'x' },
+    });
 
     const mine = createTask('mine');
     await service.sync(USER, { since: 0, ops: [mine] });
@@ -719,9 +864,9 @@ describe('SyncService', () => {
     await expect(service.sync(USER, { since: 1e300, ops: [] })).rejects.toThrow(
       BadRequestException,
     );
-    await expect(service.sync(USER, { since: 9007199254740993, ops: [] })).rejects.toThrow(
-      BadRequestException,
-    );
+    await expect(
+      service.sync(USER, { since: 9007199254740993, ops: [] }),
+    ).rejects.toThrow(BadRequestException);
   });
 
   // I9: reads are scoped by userId, but projectId/parentId/taskId/tagId are
@@ -733,42 +878,63 @@ describe('SyncService', () => {
   it('rejects a foreign key that points at another account’s row', async () => {
     const mine = createTask('mine');
     const myProject = {
-      opId: uuidv7(), kind: 'create' as const, table: 'project' as const,
-      id: uuidv7(), fields: { name: 'mine', rank: 'a0' }, ts: new Date().toISOString(),
+      opId: uuidv7(),
+      kind: 'create' as const,
+      table: 'project' as const,
+      id: uuidv7(),
+      fields: { name: 'mine', rank: 'a0' },
+      ts: new Date().toISOString(),
     };
     await service.sync(USER, { since: 0, ops: [mine, myProject] });
 
     const OTHER = '22222222-2222-2222-2222-222222222222';
-    await prisma.user.create({ data: { id: OTHER, email: 'x@y.z', passwordHash: 'x' } });
+    await prisma.user.create({
+      data: { id: OTHER, email: 'x@y.z', passwordHash: 'x' },
+    });
 
     const child = {
-      opId: uuidv7(), kind: 'create' as const, table: 'task' as const,
-      id: uuidv7(), fields: { title: 'child', rank: 'a0', parentId: mine.id },
+      opId: uuidv7(),
+      kind: 'create' as const,
+      table: 'task' as const,
+      id: uuidv7(),
+      fields: { title: 'child', rank: 'a0', parentId: mine.id },
       ts: new Date().toISOString(),
     };
     const theirTask = createTask('theirs');
     const steal = {
-      opId: uuidv7(), kind: 'set' as const, table: 'task' as const,
-      id: theirTask.id, field: 'projectId', value: myProject.id,
+      opId: uuidv7(),
+      kind: 'set' as const,
+      table: 'task' as const,
+      id: theirTask.id,
+      field: 'projectId',
+      value: myProject.id,
       ts: new Date().toISOString(),
     };
 
-    const { results } = await service.sync(OTHER, { since: 0, ops: [child, theirTask, steal] });
+    const { results } = await service.sync(OTHER, {
+      since: 0,
+      ops: [child, theirTask, steal],
+    });
 
     expect(results[0]).toMatchObject({ status: 'rejected' });
     expect(results[1]).toMatchObject({ status: 'applied' });
     expect(results[2]).toMatchObject({ status: 'rejected' });
     expect(await prisma.task.count({ where: { id: child.id } })).toBe(0);
     expect(
-      (await prisma.task.findUniqueOrThrow({ where: { id: theirTask.id } })).projectId,
+      (await prisma.task.findUniqueOrThrow({ where: { id: theirTask.id } }))
+        .projectId,
     ).toBeNull();
 
     // A positive control: the same reference inside one account still
     // applies, so what the check refuses is the boundary crossing and not
     // foreign keys in general.
     const ownProject = {
-      opId: uuidv7(), kind: 'set' as const, table: 'task' as const,
-      id: mine.id, field: 'projectId', value: myProject.id,
+      opId: uuidv7(),
+      kind: 'set' as const,
+      table: 'task' as const,
+      id: mine.id,
+      field: 'projectId',
+      value: myProject.id,
       ts: new Date().toISOString(),
     };
     const own = await service.sync(USER, { since: 0, ops: [ownProject] });

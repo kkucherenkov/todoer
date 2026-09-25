@@ -21,7 +21,9 @@ describe('HttpExceptionFilter', () => {
     // Every case here goes through catch(), which now always logs. Stub the
     // sink so tests don't spam stderr, and so the "must log" case below has
     // something to assert against.
-    errorSpy = vi.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+    errorSpy = vi
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
   });
 
   afterEach(() => {
@@ -68,7 +70,11 @@ describe('HttpExceptionFilter', () => {
 
     expect(response.status).toHaveBeenCalledWith(500);
     const [body] = response.json.mock.calls[0] as [Record<string, unknown>];
-    expect(body).toMatchObject({ type: 'about:blank', title: 'Internal Server Error', status: 500 });
+    expect(body).toMatchObject({
+      type: 'about:blank',
+      title: 'Internal Server Error',
+      status: 500,
+    });
     expect(body.detail).toBeUndefined();
     expect(JSON.stringify(body)).not.toContain('db-host');
     expect(JSON.stringify(body)).not.toContain(exception.message);
