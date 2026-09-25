@@ -1,7 +1,7 @@
 import 'reflect-metadata';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ExecutionContext } from '@nestjs/common';
-import { GUARDS_METADATA } from '@nestjs/common/constants';
+import { GUARDS_METADATA } from '@nestjs/common/constants.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { SyncController } from '../sync/sync.controller.js';
 import { SyncService } from '../sync/sync.service.js';
@@ -13,6 +13,9 @@ const prisma = new PrismaService();
 const config = { jwtSecret: 'test-secret-at-least-32-characters-long' } as AppConfig;
 const auth = new AuthService(prisma, config);
 const guard = new AuthGuard(auth);
+
+type ThrownError = { message: string; getStatus(): number };
+type GuardedRequest = { headers: Record<string, string>; userId?: string };
 
 // A minimal double for ExecutionContext: canActivate and currentUserFactory
 // only ever call context.switchToHttp().getRequest(), so that is all this
@@ -100,7 +103,7 @@ describe('AuthGuard', () => {
       }
     });
 
-    const [first, ...rest] = errors as Array<{ message: string; getStatus(): number }>;
+    const [first, ...rest] = errors as [ThrownError, ...ThrownError[]];
     for (const error of rest) {
       expect(error.message).toBe(first.message);
       expect(error.getStatus()).toBe(first.getStatus());
@@ -117,8 +120,8 @@ describe('AuthGuard', () => {
   });
 
   it("sets request.userId independently per call — one guard instance serves every request", () => {
-    const requestA = { headers: { authorization: `Bearer ${auth.sign('AAAA')}` } };
-    const requestB = { headers: { authorization: `Bearer ${auth.sign('BBBB')}` } };
+    const requestA: GuardedRequest = { headers: { authorization: `Bearer ${auth.sign('AAAA')}` } };
+    const requestB: GuardedRequest = { headers: { authorization: `Bearer ${auth.sign('BBBB')}` } };
 
     guard.canActivate(contextFor(requestA));
     guard.canActivate(contextFor(requestB));

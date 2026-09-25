@@ -184,7 +184,7 @@ describe('SyncService', () => {
         task: {
           async update({ args, query }) {
             const where = args.where as { id?: string };
-            return query({ ...args, data: { ...args.data, parentId: where.id } });
+            return query({ ...args, data: { ...args.data, parentId: where.id } as typeof args.data });
           },
         },
       },
