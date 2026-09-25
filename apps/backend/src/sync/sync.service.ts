@@ -32,7 +32,7 @@ const WRITABLE_FIELDS: Record<TableName, ReadonlySet<string>> = {
     'title', 'notes', 'projectId', 'parentId', 'priority',
     'scheduledOn', 'dueOn', 'rrule', 'dtstart', 'rank',
   ]),
-  project: new Set(['name', 'rank']),
+  project: new Set(['name', 'rank', 'archivedAt']),
   tag: new Set(['name', 'color']),
   task_tag: new Set(['taskId', 'tagId']),
 };

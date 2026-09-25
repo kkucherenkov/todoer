@@ -252,4 +252,26 @@ describe('SyncService', () => {
     expect(pull.changes).toHaveLength(0);
     expect(pull.cursor).toBe(0);
   });
+
+  // Project.archivedAt is in the schema and the design doc's ER diagram,
+  // and POST /sync is the only write path — it fell out of the allow-list
+  // when the allow-list was introduced, which made archiving a project
+  // impossible.
+  it('lets a project be archived', async () => {
+    const create = {
+      opId: uuidv7(), kind: 'create' as const, table: 'project' as const,
+      id: uuidv7(), fields: { name: 'old work', rank: 'a0' },
+      ts: new Date().toISOString(),
+    };
+    await service.sync(USER, { since: 0, ops: [create] });
+
+    const archive = {
+      opId: uuidv7(), kind: 'set' as const, table: 'project' as const,
+      id: create.id, field: 'archivedAt', value: new Date().toISOString(),
+      ts: new Date().toISOString(),
+    };
+    const result = await service.sync(USER, { since: 0, ops: [archive] });
+
+    expect(result.results[0]).toMatchObject({ status: 'applied' });
+  });
 });
