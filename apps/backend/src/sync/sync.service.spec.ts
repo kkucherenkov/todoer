@@ -216,4 +216,24 @@ describe('SyncService', () => {
     expect(relevant.map((c) => c.table)).toEqual(['task', 'project']);
     expect(relevant[0]!.seq).toBeLessThan(relevant[1]!.seq);
   });
+
+  // I5: a redelivered op that never actually mutated anything (conflict,
+  // rejected, superseded) must replay its real outcome, not a bare
+  // "duplicate" — the client's outbox rule drops "duplicate" silently, the
+  // same as "applied", so a masked conflict would make the client believe
+  // an edit went through that never did.
+  it('replays a redelivered conflict rather than reporting a bare duplicate', async () => {
+    const op = createTask('for conflict');
+    await service.sync(USER, { since: 0, ops: [op] });
+
+    const del = {
+      opId: uuidv7(), kind: 'delete' as const, table: 'task' as const,
+      id: op.id, baseVersion: 99,
+    };
+    const first = await service.sync(USER, { since: 0, ops: [del] });
+    const again = await service.sync(USER, { since: 0, ops: [del] });
+
+    expect(first.results[0]).toMatchObject({ status: 'conflict', currentVersion: 1 });
+    expect(again.results[0]).toMatchObject({ status: 'conflict', currentVersion: 1 });
+  });
 });

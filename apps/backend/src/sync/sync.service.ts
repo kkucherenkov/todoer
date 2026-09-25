@@ -91,6 +91,28 @@ function unpermittedField(table: TableName, op: Op): string | null {
   return null;
 }
 
+type StoredOutcome = { status: string; reason: string | null; currentVersion: number | null };
+
+/**
+ * Turns a previously recorded outcome back into the `OpResult` a fresh
+ * application of the same op would have produced. This is what makes a
+ * redelivered `conflict` or `rejected` surface to the client again on
+ * replay, instead of arriving as a bare `duplicate` that the client's
+ * outbox rule drops silently — dropping it silently is only correct for an
+ * outcome that already had its effect, which is the one case this maps to
+ * `duplicate` rather than replaying verbatim.
+ */
+function replay(opId: string, stored: StoredOutcome): OpResult {
+  if (stored.status === 'applied') return { opId, status: 'duplicate' };
+  const status = stored.status as 'superseded' | 'conflict' | 'rejected';
+  return {
+    opId,
+    status,
+    ...(stored.reason !== null ? { reason: stored.reason } : {}),
+    ...(stored.currentVersion !== null ? { currentVersion: stored.currentVersion } : {}),
+  };
+}
+
 @Injectable()
 export class SyncService {
   private readonly logger = new Logger(SyncService.name);
@@ -136,7 +158,7 @@ export class SyncService {
       // between them turns a retry into a duplicate.
       return await this.prisma.$transaction(async (tx) => {
         const seen = await tx.appliedOp.findUnique({ where: { opId: op.opId } });
-        if (seen !== null) return { opId: op.opId, status: 'duplicate' as const };
+        if (seen !== null) return replay(op.opId, seen);
 
         const delegate = delegateFor(tx, table);
         const current = await delegate.findFirst({ where: { id: op.id, userId } });
@@ -166,7 +188,15 @@ export class SyncService {
           }
         }
 
-        await tx.appliedOp.create({ data: { opId: op.opId, userId } });
+        await tx.appliedOp.create({
+          data: {
+            opId: op.opId,
+            userId,
+            status: outcome.status,
+            reason: outcome.status === 'rejected' ? outcome.reason : null,
+            currentVersion: outcome.status === 'conflict' ? outcome.currentVersion : null,
+          },
+        });
 
         if (outcome.status === 'applied') return { opId: op.opId, status: 'applied' as const };
         if (outcome.status === 'superseded') return { opId: op.opId, status: 'superseded' as const };

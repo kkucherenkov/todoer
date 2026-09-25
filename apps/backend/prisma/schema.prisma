@@ -130,12 +130,22 @@ model TaskTag {
   @@index([userId, seq])
 }
 
-/// One row per operation the server has applied. This is what makes a client's
-/// retry after a lost response a no-op rather than a duplicate.
+/// One row per operation the server has ever seen, recorded in the same
+/// transaction as its effect. This is what makes a client's retry after a
+/// lost response a no-op rather than a duplicate — and `status`/`reason`/
+/// `currentVersion` are what let that no-op replay the *original* outcome
+/// (conflict, rejected, superseded) instead of a bare "duplicate" that would
+/// make the client silently drop an intent that never actually happened.
 model AppliedOp {
-  opId      String   @id @db.Uuid
-  userId    String   @db.Uuid
-  appliedAt DateTime @default(now())
+  opId           String   @id @db.Uuid
+  userId         String   @db.Uuid
+  /// The Outcome['status'] applyOp originally returned: applied, superseded,
+  /// conflict or rejected. Never "duplicate" — that label only exists at
+  /// replay time, for an op whose stored status here is "applied".
+  status         String
+  reason         String?
+  currentVersion Int?
+  appliedAt      DateTime @default(now())
 
   @@index([userId, appliedAt])
 }
