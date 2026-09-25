@@ -23,7 +23,21 @@ export type Row = {
 
 export type Op =
   | { opId: string; kind: 'create'; table: string; id: string; fields: Record<string, unknown>; ts: string }
-  | { opId: string; kind: 'set'; table: string; id: string; field: string; value: unknown; ts: string }
+  | {
+      opId: string;
+      kind: 'set';
+      table: string;
+      id: string;
+      field: string;
+      value: unknown;
+      ts: string;
+      /**
+       * Opt-in optimistic lock for a destructive field, e.g. `rrule` — see
+       * ADR 0004. Absent for an ordinary field edit, where per-field
+       * last-write-wins is the only conflict rule.
+       */
+      baseVersion?: number;
+    }
   | { opId: string; kind: 'delete'; table: string; id: string; baseVersion: number };
 
 export type Outcome =
@@ -35,6 +49,12 @@ export type Outcome =
 /** How far a client clock may lead or lag the server before it is clamped. */
 const MAX_SKEW_AHEAD_MS = 5 * 60_000;
 const MAX_SKEW_BEHIND_MS = 24 * 60 * 60_000;
+
+/** Fields whose change is destructive enough to require an explicit
+ *  baseVersion opt-in — see ADR 0004. A stale rrule change strands the
+ *  completion/exception logs, which are keyed by occurrence date, on
+ *  dates the new rule no longer generates. */
+const FIELDS_REQUIRING_BASE_VERSION = new Set(['rrule']);
 
 /**
  * Columns the sync protocol owns. `set` may never target them directly:
@@ -93,8 +113,14 @@ export function applyOp(op: Op, current: Row | null, now: Date): Outcome {
     if (!isParseableTimestamp(op.ts)) {
       return { status: 'rejected', reason: 'ts is missing or not a valid timestamp' };
     }
+    if (FIELDS_REQUIRING_BASE_VERSION.has(op.field) && op.baseVersion === undefined) {
+      return { status: 'rejected', reason: `${op.field} requires baseVersion` };
+    }
     if (current === null) {
       return { status: 'rejected', reason: 'no such row' };
+    }
+    if (op.baseVersion !== undefined && current.version !== op.baseVersion) {
+      return { status: 'conflict', currentVersion: current.version };
     }
     const ts = clamp(op.ts, now);
     const seen = current.fieldTs[op.field];
