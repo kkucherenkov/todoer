@@ -338,7 +338,9 @@ describe('SyncService', () => {
 
     const op = createTask('times out');
 
-    await expect(flaky.sync(USER, { since: 0, ops: [op] })).rejects.toThrow();
+    await expect(flaky.sync(USER, { since: 0, ops: [op] })).rejects.toThrow(
+      'simulated transaction timeout',
+    );
     // Rolled back before appliedOp too — a retry gets a clean second try,
     // not a `duplicate`.
     expect(await prisma.appliedOp.count({ where: { opId: op.opId } })).toBe(0);
@@ -347,13 +349,14 @@ describe('SyncService', () => {
   // M9: pins RepeatableRead by constructing the actual race — a write
   // landing between two of changesSince's four per-table scans — rather
   // than reviewing that the option is set. `prisma.$extends` pauses the
-  // first scan (task) after it starts, a second, genuinely concurrent
+  // *second* scan (project), after the first (task) has already run and
+  // fixed the transaction's snapshot; a second, genuinely concurrent
   // connection (the module-level `service`, which checks out its own
   // connection from the same pool since the first is held by the paused
   // transaction) commits a project row, and the pause is released. Under
-  // RepeatableRead the transaction's snapshot was already fixed by that
-  // first query, so the project scan — running after the concurrent
-  // commit landed, but inside the same old snapshot — must not see it.
+  // RepeatableRead the snapshot was already fixed before that commit
+  // landed, so the project scan — running after it, but inside the old
+  // snapshot — must not see it.
   it('keeps a pull snapshot-consistent against a write landing mid-scan', async () => {
     let releaseProjectScan!: () => void;
     let projectScanReached!: () => void;
@@ -389,20 +392,39 @@ describe('SyncService', () => {
     const pullPromise = paused.sync(USER, { since: 0, ops: [] });
     await projectScanReachedPromise;
 
-    // A genuinely concurrent write, on a different pooled connection,
-    // committing after the paused transaction's snapshot was already
-    // fixed (by its completed task scan) but before its project scan runs.
-    const project = {
-      opId: uuidv7(), kind: 'create' as const, table: 'project' as const,
-      id: uuidv7(), fields: { name: 'landed mid-scan', rank: 'a0' },
-      ts: new Date().toISOString(),
-    };
-    await service.sync(USER, { since: 0, ops: [project] });
+    try {
+      // A genuinely concurrent write, on a different pooled connection,
+      // committing after the paused transaction's snapshot was already
+      // fixed (by its completed task scan) but before its project scan
+      // runs. Asserted as `applied` — a positive control: without it, a
+      // future change that made this write silently fail (a narrower
+      // allow-list, a schema change) would leave `pull.changes` empty for
+      // an unrelated reason, and the negative assertion below would stay
+      // green while testing nothing.
+      const project = {
+        opId: uuidv7(), kind: 'create' as const, table: 'project' as const,
+        id: uuidv7(), fields: { name: 'landed mid-scan', rank: 'a0' },
+        ts: new Date().toISOString(),
+      };
+      const written = await service.sync(USER, { since: 0, ops: [project] });
+      expect(written.results[0]).toMatchObject({ status: 'applied' });
 
-    releaseProjectScan();
-    const pull = await pullPromise;
+      // A second control: a fresh, unpaused pull after the write proves
+      // the row really was there to be missed, not merely that this
+      // user's changes happen to be empty.
+      const freshPull = await service.sync(USER, { since: 0, ops: [] });
+      expect(freshPull.changes.map((c) => c.id)).toContain(project.id);
 
-    expect(pull.changes.map((c) => c.id)).not.toContain(project.id);
+      releaseProjectScan();
+      const pull = await pullPromise;
+
+      expect(pull.changes.map((c) => c.id)).not.toContain(project.id);
+    } finally {
+      // Releases even if an assertion above throws — otherwise a failure
+      // here leaves the paused interactive transaction open until Prisma's
+      // own transaction timeout, rather than failing this test promptly.
+      releaseProjectScan();
+    }
   });
 
   // M10: not pinned even with the concurrency technique above available,
