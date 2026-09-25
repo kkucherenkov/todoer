@@ -41,17 +41,24 @@ jobs:
     timeout-minutes: 15
 
     # Matches docker/compose.yml's postgres service: same image, same
-    # user/password/database. The service's internal port is always 5432;
-    # DATABASE_URL below uses that directly rather than the 5433 host remap
+    # user/password. The service's internal port is always 5432; DATABASE_URL
+    # below uses that directly rather than the 5433 host remap
     # docker/compose.yml uses for local dev, which exists only to avoid
     # colliding with a developer's own Postgres on 5432.
+    #
+    # The database is named `todoer_test`, not `todoer`: the specs empty every
+    # table in whatever they connect to, so apps/backend/vitest.setup.ts
+    # refuses to run against a name that does not end in `_test`. This
+    # container is thrown away with the job, but the name is what makes that
+    # true rather than assumed — the same guard is what stops the suite
+    # reaching a developer's own database, which is how it destroyed one.
     services:
       postgres:
         image: postgres:18.1-alpine
         env:
           POSTGRES_USER: todoer
           POSTGRES_PASSWORD: todoer
-          POSTGRES_DB: todoer
+          POSTGRES_DB: todoer_test
         ports:
           - 5432:5432
         options: >-
@@ -67,7 +74,7 @@ jobs:
     # `globalEnv`, which would put the connection string in `build` and
     # `typecheck`'s cache keys, where it has no business being.
     env:
-      DATABASE_URL: postgresql://todoer:todoer@localhost:5432/todoer
+      DATABASE_URL: postgresql://todoer:todoer@localhost:5432/todoer_test
       JWT_SECRET: ci-only-secret-at-least-32-characters-long
 
     steps:
@@ -104,3 +111,43 @@ jobs:
       # another package's turbo.json.
       - name: Build, typecheck, and test the workspace
         run: pnpm -w exec turbo run build typecheck test
+
+      # Everything above calls services and pure functions directly. Nothing
+      # above starts an HTTP server, so sync.controller.ts, the body-parser
+      # ordering in main.ts, HttpExceptionFilter in a real pipeline and
+      # express-openapi-validator have no coverage at all. That gap is not
+      # hypothetical: an ordering change on this branch made every POST answer
+      # 400, and the task that introduced it verified two GET requests and saw
+      # nothing. The plan's own "Done means" names this script; until now
+      # nothing ran it.
+      #
+      # Port 3010 rather than 3000 so the command is the same one a developer
+      # runs locally, where 3000 is often already taken.
+      - name: Start the backend
+        env:
+          PORT: 3010
+        run: |
+          node apps/backend/dist/main.js > backend.log 2>&1 &
+          echo $! > backend.pid
+          for _ in $(seq 1 30); do
+            if curl -sf http://localhost:3010/api/v1/health > /dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+          echo 'the backend never answered /health' >&2
+          cat backend.log >&2
+          exit 1
+
+      - name: Prove the walking skeleton end to end
+        env:
+          TODOER_URL: http://localhost:3010/api/v1
+        run: sh scripts/walking-skeleton.sh
+
+      # Always, so a failed proof still shows what the server logged, and so
+      # the job does not wait on a process it started.
+      - name: Stop the backend
+        if: always()
+        run: |
+          if [ -f backend.log ]; then cat backend.log; fi
+          if [ -f backend.pid ]; then kill "$(cat backend.pid)" || true; fi
