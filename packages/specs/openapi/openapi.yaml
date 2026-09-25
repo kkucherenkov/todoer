@@ -157,6 +157,11 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/Health" }
+        default:
+          description: unexpected error
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
 
   /auth/login:
     post:
@@ -179,6 +184,11 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+        default:
+          description: unexpected error
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
 
   /auth/register:
     post:
@@ -198,6 +208,11 @@ paths:
               schema: { $ref: "#/components/schemas/LoginResponse" }
         "409":
           description: that address is already registered
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        default:
+          description: unexpected error
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
@@ -226,6 +241,16 @@ paths:
               schema: { $ref: "#/components/schemas/Problem" }
         "410":
           description: cursor older than tombstone retention
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "413":
+          description: batch larger than the server accepts
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        default:
+          description: unexpected error
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }

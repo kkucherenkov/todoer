@@ -8,6 +8,7 @@ import type {
 import type {
   GetHealthData,
   GetHealthResponse,
+  GetHealthError,
   PostAuthLoginData,
   PostAuthLoginResponse,
   PostAuthLoginError,
@@ -45,7 +46,7 @@ export const getHealth = <ThrowOnError extends boolean = false>(
 ) => {
   return (options?.client ?? _heyApiClient).get<
     GetHealthResponse,
-    unknown,
+    GetHealthError,
     ThrowOnError
   >({
     url: "/health",

@@ -96,6 +96,15 @@ export type GetHealthData = {
   url: "/health";
 };
 
+export type GetHealthErrors = {
+  /**
+   * unexpected error
+   */
+  default: Problem;
+};
+
+export type GetHealthError = GetHealthErrors[keyof GetHealthErrors];
+
 export type GetHealthResponses = {
   /**
    * ok
@@ -117,6 +126,10 @@ export type PostAuthLoginErrors = {
    * bad credentials
    */
   401: Problem;
+  /**
+   * unexpected error
+   */
+  default: Problem;
 };
 
 export type PostAuthLoginError = PostAuthLoginErrors[keyof PostAuthLoginErrors];
@@ -143,6 +156,10 @@ export type PostAuthRegisterErrors = {
    * that address is already registered
    */
   409: Problem;
+  /**
+   * unexpected error
+   */
+  default: Problem;
 };
 
 export type PostAuthRegisterError =
@@ -174,6 +191,14 @@ export type PostSyncErrors = {
    * cursor older than tombstone retention
    */
   410: Problem;
+  /**
+   * batch larger than the server accepts
+   */
+  413: Problem;
+  /**
+   * unexpected error
+   */
+  default: Problem;
 };
 
 export type PostSyncError = PostSyncErrors[keyof PostSyncErrors];
