@@ -79,13 +79,26 @@ export async function readSyncResponse(response: Response): Promise<SyncResponse
  *
  * `duplicate` and `superseded` are deliberately silent: both mean the
  * caller's intent is already in the server's state.
+ *
+ * A response that does not mention the operation at all is a refusal, not a
+ * success. The server applies each operation and reports it; a missing entry
+ * means something between the intent and the answer went wrong, and the one
+ * thing the caller must not do is take exit 0 for "the task exists". Not a
+ * NetworkError either: a blind retry of an `add` whose fate is unknown is how
+ * the same task gets created twice, since this CLI mints a fresh operation id
+ * per invocation (ADR 0015 §4).
  */
 export function assertNotRefused(results: OpResult[], opId: string): void {
   const result = results.find((r) => r.opId === opId);
-  if (result?.status === 'rejected') {
+  if (result === undefined) {
+    throw new RefusalError(
+      `the server did not report operation ${opId} — run list before retrying`,
+    );
+  }
+  if (result.status === 'rejected') {
     throw new RefusalError(result.reason ?? 'the server refused this operation');
   }
-  if (result?.status === 'conflict') {
+  if (result.status === 'conflict') {
     throw new ConflictError(
       `the server holds a newer version of this row (version ${String(result.currentVersion)})`,
     );

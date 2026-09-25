@@ -76,6 +76,15 @@ describe('assertNotRefused', () => {
       .toThrow(/7/);
   });
 
+  // A response that does not mention the operation it was sent is not
+  // success: the caller has no idea whether the write happened, and a silent
+  // exit 0 is the one outcome that makes an automation caller confidently do
+  // the wrong thing.
+  it('refuses a response that says nothing about the op at all', () => {
+    expect(() => assertNotRefused([], 'a')).toThrow(RefusalError);
+    expect(() => assertNotRefused([{ opId: 'b', status: 'applied' }], 'a')).toThrow(RefusalError);
+  });
+
   it('does nothing when the op was applied', () => {
     expect(() => assertNotRefused([{ opId: 'a', status: 'applied' }], 'a')).not.toThrow();
   });
