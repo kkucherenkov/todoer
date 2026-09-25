@@ -87,4 +87,20 @@ describe('SyncService', () => {
     const mine = await service.sync(USER, { since: 0, ops: [] });
     expect(mine.changes.map((c) => c.id)).not.toContain(theirs.id);
   });
+
+  // C2: seq is a BigInt on every row Prisma returns, and BigInt has no
+  // JSON.stringify representation — the first sync works, every pull after
+  // it 500s the moment a controller actually calls res.json() on it.
+  it('serializes the response as JSON and never exposes server bookkeeping in a row', async () => {
+    const op = createTask('serializable');
+    await service.sync(USER, { since: 0, ops: [op] });
+    const pull = await service.sync(USER, { since: 0, ops: [] });
+
+    expect(() => JSON.stringify(pull)).not.toThrow();
+    const change = pull.changes.find((c) => c.id === op.id);
+    expect(change?.row).not.toHaveProperty('userId');
+    expect(change?.row).not.toHaveProperty('createdAt');
+    expect(change?.row).not.toHaveProperty('updatedAt');
+    expect(change?.row).not.toHaveProperty('seq');
+  });
 });

@@ -38,6 +38,18 @@ function delegateFor(client: unknown, table: TableName): SyncDelegate {
   return (client as unknown as Record<DelegateKey, SyncDelegate>)[DELEGATE[table]];
 }
 
+/**
+ * The row as returned to a client. `userId`/`createdAt`/`updatedAt` are
+ * server bookkeeping a client's replica has no use for, and `seq` is dropped
+ * because it is already the `Change`'s own top-level field — and because it
+ * is a `bigint`, which has no `JSON.stringify` representation of its own and
+ * would otherwise 500 every pull that returns a change.
+ */
+function toChangeRow(row: Record<string, unknown>): Record<string, unknown> {
+  const { userId: _userId, createdAt: _createdAt, updatedAt: _updatedAt, seq: _seq, ...rest } = row;
+  return rest;
+}
+
 @Injectable()
 export class SyncService {
   constructor(private readonly prisma: PrismaService) {}
@@ -126,7 +138,7 @@ export class SyncService {
         orderBy: { seq: 'asc' },
       });
       for (const row of rows) {
-        out.push({ table, id: String(row.id), seq: Number(row.seq), row });
+        out.push({ table, id: String(row.id), seq: Number(row.seq), row: toChangeRow(row) });
       }
     }
     return out.sort((a, b) => a.seq - b.seq);
