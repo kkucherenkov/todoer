@@ -7,7 +7,6 @@
   "scripts": {
     "build": "turbo run build",
     "test": "turbo run test",
-    "lint": "turbo run lint",
     "typecheck": "turbo run typecheck",
     "spec:validate": "pnpm --filter @todoer/specs validate",
     "spec:codegen": "pnpm --filter @todoer/specs codegen"
