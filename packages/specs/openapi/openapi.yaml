@@ -50,18 +50,53 @@ components:
         accessToken: { type: string }
 
     Op:
+      oneOf:
+        - $ref: "#/components/schemas/OpCreate"
+        - $ref: "#/components/schemas/OpSet"
+        - $ref: "#/components/schemas/OpDelete"
+      discriminator:
+        propertyName: kind
+        mapping:
+          create: "#/components/schemas/OpCreate"
+          set: "#/components/schemas/OpSet"
+          delete: "#/components/schemas/OpDelete"
+
+    OpCreate:
       type: object
-      required: [opId, kind, table, id]
+      required: [opId, kind, table, id, fields, ts]
       additionalProperties: false
       properties:
         opId: { type: string, format: uuid }
-        kind: { type: string, enum: [create, set, delete] }
+        kind: { type: string, enum: [create] }
         table: { type: string, enum: [task, project, tag, task_tag] }
         id: { type: string, format: uuid }
         fields: { type: object, additionalProperties: true }
+        ts: { type: string, format: date-time }
+
+    OpSet:
+      type: object
+      required: [opId, kind, table, id, field, value, ts]
+      additionalProperties: false
+      properties:
+        opId: { type: string, format: uuid }
+        kind: { type: string, enum: [set] }
+        table: { type: string, enum: [task, project, tag, task_tag] }
+        id: { type: string, format: uuid }
         field: { type: string }
         value: {}
         ts: { type: string, format: date-time }
+        # Optional: only destructive set targets (rrule) require it — see ADR 0004.
+        baseVersion: { type: integer, minimum: 0 }
+
+    OpDelete:
+      type: object
+      required: [opId, kind, table, id, baseVersion]
+      additionalProperties: false
+      properties:
+        opId: { type: string, format: uuid }
+        kind: { type: string, enum: [delete] }
+        table: { type: string, enum: [task, project, tag, task_tag] }
+        id: { type: string, format: uuid }
         baseVersion: { type: integer, minimum: 0 }
 
     OpResult:
