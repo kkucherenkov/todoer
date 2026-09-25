@@ -86,6 +86,12 @@ names.
 
 - `PR title (conventional commit)`
 - `Shell tests`
+- `Workspace tests`
+
+`main` is **not** currently protected — `gh api repos/kkucherenkov/todoer/
+branches/main/protection` returns 404 — so nothing enforces these or the
+pull-request rule below. They are the convention this repository works to, and
+the list is what a protection rule should name when one is added.
 
 ## Never do
 
@@ -94,4 +100,81 @@ names.
 - Leave a document asserting something that is no longer true.
 
 <!-- STACK:BEGIN -->
+
+## The stack
+
+A pnpm workspace under turbo. Three packages, and `@todoer/specs` is upstream of
+both others — it holds the OpenAPI document and the client generated from it.
+
+| Path | What |
+| --- | --- |
+| `packages/specs` | OpenAPI document, generated TS types and SDK. The contract. |
+| `apps/backend` | NestJS 11, Prisma 6, PostgreSQL 18. `POST /sync` is the entire write surface. |
+| `apps/cli` | The reference client. Its primary caller is a script or an agent — see ADR 0015. |
+| `scripts/walking-skeleton.sh` | The end-to-end proof. CI runs it against a live backend. |
+
+Design and rationale live in `docs/specs/`, `docs/adr/` and `docs/plans/`. The
+ADRs are the binding authority when the code and a document disagree.
+
+### Spec first, always
+
+A route changes in `packages/specs/openapi/openapi.yaml` **before** it changes
+in the backend — `express-openapi-validator` rejects drift at runtime, so a
+mismatch surfaces as a 400 nobody expected.
+
+```sh
+pnpm spec:validate && pnpm spec:bundle && pnpm spec:codegen
+```
+
+Generated artefacts land in their own commit.
+
+### Running it
+
+```sh
+pnpm install                     # also runs `prisma generate` (see below)
+docker compose -f docker/compose.yml up -d
+pnpm -w exec turbo run build typecheck test
+```
+
+Postgres is published on **5433**, remapped from the container's 5432 so it does
+not collide with a developer's own. The backend defaults to 3000.
+
+```sh
+DATABASE_URL=postgresql://todoer:todoer@localhost:5433/todoer
+JWT_SECRET=<at least 32 characters>
+```
+
+### Tests need a database whose name ends in `_test`
+
+`apps/backend/vitest.setup.ts` aborts the run otherwise, and it prints the two
+commands that create one. The guard exists because the DB-backed specs truncate
+six tables in `beforeEach` with no regard for what is in them — they destroyed
+the dev database once before the guard was added.
+
+```sh
+DATABASE_URL=postgresql://todoer:todoer@localhost:5433/todoer_test pnpm -w exec turbo run test
+```
+
+### Five traps, each of which cost real time
+
+1. **`prisma migrate deploy` does not generate the client** — only `migrate dev`
+   does. The client comes from `@todoer/backend`'s `postinstall`. Without it the
+   `Prisma` namespace silently degrades to a stub: `tsc` loses
+   `PrismaClientKnownRequestError`, transaction callbacks take an implicit
+   `any`, and DB-backed specs throw on import and are reported as `(0 test)` —
+   which is neither a pass nor a failure and scrolls past as neither.
+2. **turbo filters each task's environment.** A variable set in the shell or on
+   a CI job reaches a task only if that task declares it in `turbo.json`. Put it
+   on the task, never in `globalEnv`, which drags it into unrelated cache keys.
+3. **The body parser must be registered before `OpenApiValidator.middleware`.**
+   Nest registers its own inside `listen()`, which runs after every `app.use()`,
+   so the validator reads an undefined body and rejects **every** POST with 400.
+   `main.ts` does this deliberately; do not reorder it.
+4. **`scripts/walking-skeleton.sh` has an `sh` shebang.** Nothing non-POSIX
+   belongs in it — `set -o pipefail` is not POSIX and dash rejected it until
+   0.5.12.
+5. **`POST /sync` is the only write path**, so every invariant a client could
+   violate is enforced there or nowhere: the protocol-field allow-list, foreign
+   keys scoped to the owner, and the two-level depth rule.
+
 <!-- STACK:END -->
