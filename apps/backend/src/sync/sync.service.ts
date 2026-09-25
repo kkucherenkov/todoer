@@ -100,7 +100,10 @@ export class SyncService {
           if (current === null) {
             await delegate.create({ data: { ...data, id } });
           } else {
-            await delegate.update({ where: { id }, data });
+            // Scoped by userId too, even though `current` was already
+            // resolved through a userId-scoped findFirst above — that scope
+            // should never depend on a line elsewhere staying correct.
+            await delegate.update({ where: { id, userId }, data });
           }
         }
 
