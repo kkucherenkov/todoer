@@ -66,6 +66,9 @@ importers:
 
   apps/cli:
     dependencies:
+      '@todoer/specs':
+        specifier: workspace:^
+        version: link:../../packages/specs
       uuidv7:
         specifier: ^1.2.1
         version: 1.2.1

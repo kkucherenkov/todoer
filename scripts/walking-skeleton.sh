@@ -3,6 +3,7 @@
 # second, independent CLI invocation through the server — no shared process, no
 # shared memory, only POST /sync.
 set -eu
+set -o pipefail
 
 BASE=${TODOER_URL:-http://localhost:3000/api/v1}
 EMAIL="skeleton-$(date +%s)@example.test"

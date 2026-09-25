@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@todoer/specs": "workspace:^",
     "uuidv7": "^1.2.1"
   },
   "devDependencies": {
