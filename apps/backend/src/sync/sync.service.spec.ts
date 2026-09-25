@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { uuidv7 } from 'uuidv7';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { SyncService } from './sync.service.js';
 
@@ -290,6 +291,57 @@ describe('SyncService', () => {
     const result = await service.sync(USER, { since: 0, ops: [archive] });
 
     expect(result.results[0]).toMatchObject({ status: 'applied' });
+  });
+
+  // A value Prisma's own input validation rejects reaches this path from
+  // the wire: the contract's `value` is untyped and `WRITABLE_FIELDS`
+  // checks column names, not value types. This must be an honest
+  // `rejected` — retrying with the same string will fail the same way —
+  // and, per C1, the rest of the batch must still apply.
+  it('rejects a value Prisma refuses on its own terms, and still applies the rest of the batch', async () => {
+    const op = createTask('base');
+    await service.sync(USER, { since: 0, ops: [op] });
+
+    const badValue = {
+      opId: uuidv7(), kind: 'set' as const, table: 'task' as const,
+      id: op.id, field: 'priority', value: 'high', ts: new Date().toISOString(),
+    };
+    const good = createTask('unrelated');
+
+    const { results } = await service.sync(USER, { since: 0, ops: [badValue, good] });
+
+    expect(results[0]).toMatchObject({ status: 'rejected' });
+    expect(results[1]).toMatchObject({ status: 'applied' });
+  });
+
+  // A retryable Prisma error (a transaction timeout, a deadlock) is not
+  // the data's fault, so it must not become `rejected` — it has to escape
+  // as a 5xx the client's transport retries. Injected through the same
+  // $extends seam M9 below uses: no test-only code in production, a real
+  // error class instance, and it is visible to $transaction's tx because
+  // query extensions propagate into interactive transactions (verified
+  // directly against this Prisma version before relying on it here).
+  it('rethrows a retryable Prisma error instead of reporting it as rejected', async () => {
+    const flakyPrisma = prisma.$extends({
+      query: {
+        task: {
+          async create() {
+            throw new Prisma.PrismaClientKnownRequestError('simulated transaction timeout', {
+              code: 'P2028',
+              clientVersion: Prisma.prismaVersion.client,
+            });
+          },
+        },
+      },
+    });
+    const flaky = new SyncService(flakyPrisma as unknown as PrismaService);
+
+    const op = createTask('times out');
+
+    await expect(flaky.sync(USER, { since: 0, ops: [op] })).rejects.toThrow();
+    // Rolled back before appliedOp too — a retry gets a clean second try,
+    // not a `duplicate`.
+    expect(await prisma.appliedOp.count({ where: { opId: op.opId } })).toBe(0);
   });
 
   // M9 and M10 are not pinned here, and this note says why rather than

@@ -125,6 +125,43 @@ function replay(opId: string, stored: StoredOutcome): OpResult {
   };
 }
 
+/**
+ * `PrismaClientKnownRequestError` codes where the operation itself was
+ * fine and the database simply could not get to it this time — a retry
+ * could plausibly succeed. Every other code (P2002 unique, P2003 foreign
+ * key, P2025 not found, and the rest) means the operation is wrong and
+ * will be wrong again. The criterion for adding to this set is "would a
+ * retry plausibly succeed", not "is it a database error" — most
+ * `PrismaClientKnownRequestError`s are not on it.
+ */
+const RETRYABLE_PRISMA_CODES = new Set([
+  'P2028', // interactive transaction timeout — five seconds by default
+  'P2034', // deadlock, or a write conflict the database itself detected
+]);
+
+/**
+ * Whether a thrown error means "this operation may well succeed on a
+ * retry" (true) or "this operation is wrong and retrying will not help"
+ * (false). The boundary is retryability, not error class: a constraint
+ * violation (`PrismaClientKnownRequestError`) and a value Prisma's own
+ * input validation rejects (`PrismaClientValidationError` — a sibling
+ * class, not a subclass of the one above, since every Prisma error class
+ * extends `Error` directly) both mean the data is the problem. A
+ * transaction timeout and a deadlock are the *same* class as the
+ * constraint violation, different codes, and mean the database is.
+ */
+function isRetryable(error: unknown): boolean {
+  if (error instanceof Prisma.PrismaClientKnownRequestError) {
+    return RETRYABLE_PRISMA_CODES.has(error.code);
+  }
+  if (error instanceof Prisma.PrismaClientValidationError) return false;
+  // PrismaClientInitializationError, PrismaClientRustPanicError, a plain
+  // throw from applyOp on a malformed op, anything unrecognised: none of
+  // these say the *data* was the problem, so none of them is an honest
+  // `rejected`.
+  return true;
+}
+
 @Injectable()
 export class SyncService {
   private readonly logger = new Logger(SyncService.name);
@@ -246,26 +283,22 @@ export class SyncService {
     } catch (error) {
       // The transaction above has already rolled back in full by the time
       // this runs, so neither the row write nor the appliedOp record exist
-      // either way. What differs is what the client is told.
-      //
-      // A PrismaClientKnownRequestError — a constraint, a foreign key, a
-      // validation failure — means retrying will not help: the data itself
-      // is the problem, so this is an honest `rejected`, the same as any
-      // other applyOp rejection. Per the client rules, `rejected` is shown
-      // to the person and dropped from the outbox.
-      //
-      // Anything else — a P2028 interactive-transaction timeout, a
-      // deadlock, a connection blip — is not the data's fault, and
-      // reporting it as `rejected` would tell the client "this did not
-      // happen, stop retrying" about a perfectly good edit that a retry
-      // would likely succeed at. Rethrown, it becomes a 5xx, which the
-      // client's transport already knows to retry.
-      if (error instanceof Prisma.PrismaClientKnownRequestError) {
-        this.logger.warn(error);
-        return { opId: op.opId, status: 'rejected', reason: 'could not be applied' };
+      // either way. What differs is what the client is told, and that is
+      // decided by isRetryable — not by error class. A constraint
+      // violation and a value Prisma's own validation rejects are
+      // different classes (PrismaClientKnownRequestError vs.
+      // PrismaClientValidationError, siblings, neither a subclass of the
+      // other) but the same verdict: the data is wrong, retrying will not
+      // help. A transaction timeout and a deadlock are the *same* class as
+      // the constraint violation, different codes, and the opposite
+      // verdict: the operation was fine, the database just could not get
+      // to it this time.
+      if (isRetryable(error)) {
+        this.logger.error(error);
+        throw error;
       }
-      this.logger.error(error);
-      throw error;
+      this.logger.warn(error);
+      return { opId: op.opId, status: 'rejected', reason: 'could not be applied' };
     }
   }
 
