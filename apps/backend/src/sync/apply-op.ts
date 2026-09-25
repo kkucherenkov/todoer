@@ -119,6 +119,9 @@ export function applyOp(op: Op, current: Row | null, now: Date): Outcome {
     if (current === null) {
       return { status: 'rejected', reason: 'no such row' };
     }
+    if (current.deletedAt !== null) {
+      return { status: 'rejected', reason: 'row is deleted (tombstoned)' };
+    }
     if (op.baseVersion !== undefined && current.version !== op.baseVersion) {
       return { status: 'conflict', currentVersion: current.version };
     }
