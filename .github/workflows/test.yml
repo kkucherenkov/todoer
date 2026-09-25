@@ -60,6 +60,12 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
+    # Setting these here is necessary but not sufficient: turbo runs tasks in a
+    # filtered environment, so a variable present in the step is still absent
+    # inside `vitest` unless the task declares it. Both are listed under the
+    # `test` task's `env` in turbo.json — on the task rather than in
+    # `globalEnv`, which would put the connection string in `build` and
+    # `typecheck`'s cache keys, where it has no business being.
     env:
       DATABASE_URL: postgresql://todoer:todoer@localhost:5432/todoer
       JWT_SECRET: ci-only-secret-at-least-32-characters-long
