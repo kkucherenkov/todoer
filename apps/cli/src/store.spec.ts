@@ -1,4 +1,8 @@
-import { execFileSync, spawn } from 'node:child_process';
+import {
+  execFileSync,
+  spawn,
+  type ChildProcessWithoutNullStreams,
+} from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -402,15 +406,12 @@ describe('retryOnBusy', () => {
 //
 // A plain "spawn 20 processes and hope" mostly measures process-startup
 // jitter, not the lock race: by the time each child reaches `Store.open`,
-// the others are already spread out over tens of milliseconds. Each worker
-// is instead handed a shared instant (`Date.now() + 250` from the parent)
-// and blocks on `Atomics.wait` until that exact wall-clock time before
-// calling `Store.open` — every process's clock agrees on "now", so this
-// lines them up far tighter than spawn timing alone, which is what turns
-// this from an occasional flake into a reliable proof. Each worker reports
-// whether it actually waited: a lead time too short for 20 processes to
-// start would line nothing up, and the test says so instead of passing
-// vacuously.
+// the others are already spread out over tens of milliseconds. So each
+// worker does everything up to `Store.open`, prints `ready`, and blocks
+// reading its stdin; once every worker of a round is ready, the parent
+// writes `go` to all of them back to back. A wall-clock barrier was tried
+// first and failed on a loaded CI runner (8 of 20 workers started in
+// time): a pipe releases them together however slow the machine is.
 describe('parallel first opens (Store.open under real concurrency)', () => {
   const cliDir = fileURLToPath(new URL('..', import.meta.url));
   let outDir: string;
@@ -431,14 +432,20 @@ describe('parallel first opens (Store.open under real concurrency)', () => {
     );
     const storeDist = join(outDir, 'store.js');
 
+    // `readSync` on the stdin pipe blocks until the parent writes; a
+    // non-blocking descriptor answers EAGAIN instead, which is retried.
     const workerScript = `
+        import { readSync, writeSync } from 'node:fs';
         import { Store } from ${JSON.stringify(storeDist)};
-        const startAt = Number(process.argv[1]);
-        const dbPath = process.argv[2];
-        const remaining = startAt - Date.now();
-        console.log(remaining > 0 ? 'waited' : 'late');
-        if (remaining > 0) {
-          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, remaining);
+        const dbPath = process.argv[1];
+        writeSync(1, 'ready\\n');
+        const buffer = Buffer.alloc(1);
+        for (;;) {
+          try {
+            if (readSync(0, buffer) > 0) break;
+          } catch (error) {
+            if (error.code !== 'EAGAIN') throw error;
+          }
         }
         try {
           const store = Store.open(dbPath);
@@ -449,60 +456,79 @@ describe('parallel first opens (Store.open under real concurrency)', () => {
         }
       `;
 
-    function openAt(
-      startAt: number,
-      dbPath: string,
-    ): Promise<{ code: number; stderr: string; waited: boolean }> {
-      return new Promise((resolve) => {
-        const child = spawn(
-          process.execPath,
-          ['--input-type=module', '-e', workerScript, String(startAt), dbPath],
-          { stdio: ['ignore', 'pipe', 'pipe'] },
-        );
+    type Worker = {
+      child: ChildProcessWithoutNullStreams;
+      ready: Promise<void>;
+      done: Promise<{ code: number; stderr: string }>;
+    };
+
+    function startWorker(dbPath: string): Worker {
+      const child = spawn(
+        process.execPath,
+        ['--input-type=module', '-e', workerScript, dbPath],
+        { stdio: ['pipe', 'pipe', 'pipe'] },
+      );
+      let stderr = '';
+      child.stderr.on('data', (chunk: Buffer) => (stderr += chunk.toString()));
+      const done = new Promise<{ code: number; stderr: string }>((resolve) =>
+        child.on('close', (code) => resolve({ code: code ?? 1, stderr })),
+      );
+      const ready = new Promise<void>((resolve, reject) => {
         let stdout = '';
-        let stderr = '';
-        child.stdout.on(
-          'data',
-          (chunk: Buffer) => (stdout += chunk.toString()),
-        );
-        child.stderr.on(
-          'data',
-          (chunk: Buffer) => (stderr += chunk.toString()),
-        );
-        child.on('close', (code) =>
-          resolve({
-            code: code ?? 1,
-            stderr,
-            waited: stdout.trim() === 'waited',
-          }),
+        child.stdout.on('data', (chunk: Buffer) => {
+          stdout += chunk.toString();
+          if (stdout.includes('ready\n')) resolve();
+        });
+        void done.then(({ code, stderr: err }) =>
+          reject(new Error(`worker exited ${code} before ready: ${err}`)),
         );
       });
+      return { child, ready, done };
     }
 
     return (async () => {
       const rounds = 10;
       const perRound = 20;
+      const readyTimeoutMs = 10_000;
       const failures: string[] = [];
-      const waitedPerRound: number[] = [];
       for (let round = 0; round < rounds; round++) {
         const roundDir = mkdtempSync(join(tmpdir(), 'todoer-race-'));
         const dbPath = join(roundDir, 'nested', 'todoer.db');
-        const startAt = Date.now() + 250;
-        const results = await Promise.all(
-          Array.from({ length: perRound }, () => openAt(startAt, dbPath)),
+        const workers = Array.from({ length: perRound }, () =>
+          startWorker(dbPath),
         );
-        for (const { code, stderr } of results) {
+        let timer: NodeJS.Timeout | undefined;
+        try {
+          await Promise.race([
+            Promise.all(workers.map((w) => w.ready)),
+            new Promise((_, reject) => {
+              timer = setTimeout(
+                () =>
+                  reject(
+                    new Error(
+                      `round ${round}: not every worker was ready within ${readyTimeoutMs} ms`,
+                    ),
+                  ),
+                readyTimeoutMs,
+              );
+            }),
+          ]);
+        } catch (error) {
+          for (const { child } of workers) child.kill();
+          throw error;
+        } finally {
+          clearTimeout(timer);
+        }
+        for (const { child } of workers) child.stdin.write('go\n');
+        for (const { child } of workers) child.stdin.end();
+        for (const { code, stderr } of await Promise.all(
+          workers.map((w) => w.done),
+        )) {
           if (code !== 0) failures.push(stderr.trim() || `exit ${code}`);
         }
-        waitedPerRound.push(results.filter((r) => r.waited).length);
         rmSync(roundDir, { recursive: true, force: true });
       }
       expect(failures).toEqual([]);
-      // Most workers of every round must have reached the barrier early;
-      // otherwise the rounds did not race and the pass above means nothing.
-      for (const waited of waitedPerRound) {
-        expect(waited).toBeGreaterThanOrEqual(15);
-      }
     })();
-  }, 20_000);
+  }, 120_000);
 });
