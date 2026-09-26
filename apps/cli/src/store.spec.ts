@@ -248,25 +248,32 @@ describe('retryOnBusy', () => {
     expect(delays).toEqual([]);
   });
 
-  it('rethrows a persistent busy error once the budget is spent', () => {
+  it('rethrows a persistent busy error once the wall-clock budget is spent', () => {
     let attempts = 0;
-    expect(
-      () =>
-        retryOnBusy(
-          () => {
-            attempts += 1;
-            throw busyError();
-          },
-          () => {},
-        ), // a no-op sleep: the budget is tracked in requested delay, not wall time
+    // A fake clock that jumps a full second on every read: no real wait
+    // (`sleep` is a no-op below), and the ~5s budget passes in a handful of
+    // calls instead of 5 real seconds.
+    let simulatedNow = 0;
+    const now = () => {
+      simulatedNow += 1000;
+      return simulatedNow;
+    };
+    expect(() =>
+      retryOnBusy(
+        () => {
+          attempts += 1;
+          throw busyError();
+        },
+        () => {},
+        now,
+      ),
     ).toThrow('database is locked');
 
-    // The growing, capped delay (10, 20, 40, 50, 50, …) needs several dozen
-    // attempts to add up to the ~5s budget; the exact count is an
-    // implementation detail, so this only pins that it gives up rather than
-    // retrying forever.
+    // The exact count depends on the fake clock's step, which is an
+    // implementation detail of this test, not of `retryOnBusy`; this only
+    // pins that it gives up rather than retrying forever.
     expect(attempts).toBeGreaterThan(1);
-    expect(attempts).toBeLessThan(1000);
+    expect(attempts).toBeLessThan(10);
   });
 });
 
@@ -279,6 +286,15 @@ describe('retryOnBusy', () => {
 // bug. `tsc` builds `dist/store.js` once up front (a few hundred ms), then
 // each attempt spawns a fresh `node` process that imports the built `Store`
 // and opens a brand-new file, matching the CLI's own first run.
+//
+// A plain "spawn 20 processes and hope" mostly measures process-startup
+// jitter, not the lock race: by the time each child reaches `Store.open`,
+// the others are already spread out over tens of milliseconds. Each worker
+// is instead handed a shared instant (`Date.now() + 250` from the parent)
+// and blocks on `Atomics.wait` until that exact wall-clock time before
+// calling `Store.open` — every process's clock agrees on "now", so this
+// lines them up far tighter than spawn timing alone, which is what turns
+// this from an occasional flake into a reliable proof.
 describe('parallel first opens (Store.open under real concurrency)', () => {
   const cliDir = fileURLToPath(new URL('..', import.meta.url));
   const storeDist = join(cliDir, 'dist', 'store.js');
@@ -288,8 +304,14 @@ describe('parallel first opens (Store.open under real concurrency)', () => {
 
     const workerScript = `
         import { Store } from ${JSON.stringify(storeDist)};
+        const startAt = Number(process.argv[1]);
+        const dbPath = process.argv[2];
+        const remaining = startAt - Date.now();
+        if (remaining > 0) {
+          Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, remaining);
+        }
         try {
-          const store = Store.open(process.argv[1]);
+          const store = Store.open(dbPath);
           store.close();
         } catch (error) {
           console.error(error instanceof Error ? error.message : String(error));
@@ -297,13 +319,14 @@ describe('parallel first opens (Store.open under real concurrency)', () => {
         }
       `;
 
-    function openOnce(
+    function openAt(
+      startAt: number,
       dbPath: string,
     ): Promise<{ code: number; stderr: string }> {
       return new Promise((resolve) => {
         const child = spawn(
           process.execPath,
-          ['--input-type=module', '-e', workerScript, dbPath],
+          ['--input-type=module', '-e', workerScript, String(startAt), dbPath],
           { stdio: ['ignore', 'ignore', 'pipe'] },
         );
         let stderr = '';
@@ -316,14 +339,15 @@ describe('parallel first opens (Store.open under real concurrency)', () => {
     }
 
     return (async () => {
-      const rounds = 20;
-      const perRound = 10;
+      const rounds = 10;
+      const perRound = 20;
       const failures: string[] = [];
       for (let round = 0; round < rounds; round++) {
         const roundDir = mkdtempSync(join(tmpdir(), 'todoer-race-'));
         const dbPath = join(roundDir, 'nested', 'todoer.db');
+        const startAt = Date.now() + 250;
         const results = await Promise.all(
-          Array.from({ length: perRound }, () => openOnce(dbPath)),
+          Array.from({ length: perRound }, () => openAt(startAt, dbPath)),
         );
         for (const { code, stderr } of results) {
           if (code !== 0) failures.push(stderr.trim() || `exit ${code}`);

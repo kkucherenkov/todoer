@@ -72,8 +72,11 @@ function sleepSync(ms: number): void {
 
 /**
  * Retries `fn` while it throws SQLITE_BUSY, waiting a growing amount
- * between attempts, up to a total budget of ~5s; any other error rethrows
- * at once, as does a SQLITE_BUSY past the budget.
+ * between attempts, until ~5s of wall-clock time have passed since the
+ * first attempt; any other error rethrows at once, as does a SQLITE_BUSY
+ * past the budget. Wall-clock, not the sum of the sleeps, because `fn`
+ * itself can block for a while (each attempt may wait up to
+ * `DatabaseSync`'s own busy timeout) and that time counts too.
  *
  * Exists because ~10 processes opening a database file that does not exist
  * yet all race to switch it to WAL, which needs a momentary exclusive lock —
@@ -82,25 +85,24 @@ function sleepSync(ms: number): void {
  * isn't always consulted for it). Once the file exists this never triggers;
  * the race is only the first moment a fresh HOME creates it.
  *
- * The budget is tracked as the sum of the delays this function has asked
- * `sleep` for, not wall-clock time, so a test can pass a `sleep` that does
- * nothing and still exercise "gives up eventually" in microseconds instead
- * of the real 5s.
+ * `sleep` and `now` are both injectable so a test can fake time passing —
+ * a busy loop that never really waits — instead of either burning 5 real
+ * seconds or racing the actual clock.
  */
 export function retryOnBusy<T>(
   fn: () => T,
   sleep: (ms: number) => void = sleepSync,
+  now: () => number = Date.now,
 ): T {
   const budgetMs = 5000;
-  let waited = 0;
+  const deadline = now() + budgetMs;
   let delay = 10;
   for (;;) {
     try {
       return fn();
     } catch (error) {
-      if (!isSqliteBusy(error) || waited >= budgetMs) throw error;
+      if (!isSqliteBusy(error) || now() >= deadline) throw error;
       sleep(delay);
-      waited += delay;
       delay = Math.min(delay * 2, 50);
     }
   }
