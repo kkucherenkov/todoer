@@ -384,6 +384,29 @@ describe('flush', () => {
     ).rejects.toBeInstanceOf(RefusalError);
     expect(store.pending()).toHaveLength(1);
   });
+
+  // Minor 7: the server computed this delta for the since the request
+  // carried. A parallel invocation resets the replica on a 410 while the
+  // request is in flight, so the delta must not be merged: only the since
+  // that was sent, not the cursor read afterwards, shows the mismatch.
+  it('does not merge a delta into a replica reset while the request was in flight', async () => {
+    store.advanceCursor(40);
+    store.enqueue(create('a'));
+    const { send, requests } = scripted((request) => {
+      store.resetReplica();
+      return applyAll(request, 50, [
+        { table: 'task', id: 'task-a', seq: 45, row: { id: 'task-a' } },
+      ]);
+    });
+
+    const flushed = await flush(store, send);
+
+    expect(requests[0]?.since).toBe(40);
+    expect(flushed.synced).toBe(true);
+    expect(store.pending()).toEqual([]);
+    expect(store.rows('task')).toEqual([]);
+    expect(store.cursor()).toBe(0);
+  });
 });
 
 describe('MAX_OPS', () => {
