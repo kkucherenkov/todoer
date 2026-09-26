@@ -4,9 +4,11 @@ Self-hosted personal task and information manager: offline-first, with web, CLI 
 
 ## What works today
 
-A walking skeleton, and nothing beyond it. A task created through the CLI
-reaches a second, independent CLI invocation through the server, over one
-endpoint:
+The sync contract works end to end: push, pull, last-write-wins conflict
+resolution, tombstone pruning, and recovery from a stale cursor via `410 Gone`
+and a fresh snapshot. The CLI is an offline-capable client for it, backed by a
+local SQLite replica and outbox. A task created through the CLI reaches a
+second, independent CLI invocation through the server, over one endpoint:
 
 - **`POST /api/v1/sync`** — push operations, pull changes, resolved per field
   by last-write-wins with a shared cursor. This is the whole write surface;
@@ -23,9 +25,7 @@ endpoint:
 
 Not built yet, and each absence is deliberate rather than forgotten: storing
 `#project` and `@tag` from quick-add, recurrence, and the web and Flutter
-clients. The server prunes tombstones after 90 days and answers a stale
-cursor with `410 Gone`; the CLI recovers by discarding its replica and
-re-fetching a snapshot. The full list, with reasons, is in
+clients. The full list, with reasons, is in
 [the plan](docs/plans/2026-09-25-walking-skeleton.md#what-this-plan-does-not-do).
 
 ## Layout
