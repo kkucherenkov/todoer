@@ -33,9 +33,10 @@ type Prunable = {
  * two instances pruning at once serialise per user and the second finds
  * nothing to delete.
  *
- * Only the four synchronised tables, named one by one. Completions are never
- * pruned (ADR 0013); a loop over "every table with deletedAt" would one day
- * reach them.
+ * Only the synchronised tables with tombstones, named one by one. Task
+ * occurrences are never pruned on their own (ADR 0013); they go with their
+ * task, by cascade, when its tombstone is pruned. A loop over every table
+ * with `deletedAt` would reach them directly.
  */
 @Injectable()
 export class PruneService
@@ -90,14 +91,15 @@ export class PruneService
    *
    * Referencing rows go before the rows they reference. A tombstone that
    * something still points at (a live task in a deleted project, a live
-   * TaskTag on a deleted tag) is kept and retried on the next run.
+   * subtask under a deleted parent) is kept and retried on the next run.
    *
    * ponytail: each deleted tombstone fires its FK action (`SET NULL` on
-   * Task.projectId/parentId, `RESTRICT` on TaskTag) which scans unindexed
-   * columns, all inside Prisma's default 5s interactive-transaction timeout —
-   * a user with a very large backlog (first run after deploy) could hit
-   * P2028 every day. Upgrade path: indexes on Task.projectId, Task.parentId,
-   * TaskTag.tagId and/or a `{ timeout }` on this transaction.
+   * Task.projectId/parentId, `CASCADE` on TaskTag and TaskOccurrence) which
+   * scans unindexed columns, all inside Prisma's default 5s
+   * interactive-transaction timeout — a user with a very large backlog
+   * (first run after deploy) could hit P2028 every day. Upgrade path:
+   * indexes on Task.projectId, Task.parentId and/or a `{ timeout }` on this
+   * transaction.
    */
   private pruneUser(userId: string, cutoff: Date): Promise<number> {
     return this.prisma.$transaction(async (tx) => {
@@ -105,17 +107,17 @@ export class PruneService
 
       const old = { userId, deletedAt: { lt: cutoff } };
       const steps: Array<[Prunable, object]> = [
+        // Tombstoned TaskTag rows exist only from before TaskTag became a
+        // toggle (plan C2); nothing creates new ones.
         [tx.taskTag as unknown as Prunable, old],
-        // Subtasks first: their parent can go only once they are gone.
-        [
-          tx.task as unknown as Prunable,
-          { ...old, parentId: { not: null }, tags: { none: {} } },
-        ],
-        [
-          tx.task as unknown as Prunable,
-          { ...old, children: { none: {} }, tags: { none: {} } },
-        ],
-        [tx.tag as unknown as Prunable, { ...old, tasks: { none: {} } }],
+        // Subtasks first: their parent can go only once they are gone. A
+        // task's TaskTag rows and task occurrences go with it by ON DELETE
+        // CASCADE — they are never tombstoned, so waiting for them would keep
+        // the task forever.
+        [tx.task as unknown as Prunable, { ...old, parentId: { not: null } }],
+        [tx.task as unknown as Prunable, { ...old, children: { none: {} } }],
+        // A tag's TaskTag rows cascade the same way.
+        [tx.tag as unknown as Prunable, old],
         [tx.project as unknown as Prunable, { ...old, tasks: { none: {} } }],
       ];
 

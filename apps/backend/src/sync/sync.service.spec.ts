@@ -1693,4 +1693,55 @@ describe('SyncService', () => {
       reason: 'state must be one of open, done, skipped',
     });
   });
+
+  // FR-013: a snapshot omits tombstones, so it must omit their children too,
+  // or the client receives rows whose task or tag it is never told about.
+  it('leaves children of a tombstoned task or tag out of a snapshot', async () => {
+    const live = createTask('live');
+    const gone = createTask('gone');
+    const tag = uuidv7();
+    const liveDone = createOccurrence(live.id, '2026-09-28', { state: 'done' });
+    const goneDone = createOccurrence(gone.id, '2026-09-28', { state: 'done' });
+    const tagLink = {
+      opId: uuidv7(),
+      kind: 'create' as const,
+      table: 'task_tag' as const,
+      id: taskTagId(live.id, tag),
+      fields: { taskId: live.id, tagId: tag },
+      ts: new Date().toISOString(),
+    };
+    await service.sync(USER, {
+      since: 0,
+      ops: [
+        live,
+        gone,
+        {
+          opId: uuidv7(),
+          kind: 'create' as const,
+          table: 'tag' as const,
+          id: tag,
+          fields: { name: 'x' },
+          ts: new Date().toISOString(),
+        },
+        liveDone,
+        goneDone,
+        tagLink,
+        deleteTask(gone.id, 1),
+        {
+          opId: uuidv7(),
+          kind: 'delete' as const,
+          table: 'tag' as const,
+          id: tag,
+          baseVersion: 1,
+        },
+      ],
+    });
+
+    const snapshot = await service.sync(USER, { since: 0, ops: [] });
+    const ids = snapshot.changes.map((c) => c.id);
+
+    expect(ids).toContain(liveDone.id);
+    expect(ids).not.toContain(goneDone.id);
+    expect(ids).not.toContain(tagLink.id);
+  });
 });

@@ -523,6 +523,18 @@ function isRetryable(error: unknown): boolean {
   return true;
 }
 
+/**
+ * In a snapshot, rows whose parent is tombstoned are left out with the
+ * tombstone: task occurrences and TaskTag rows are never deleted on their own,
+ * so without this a snapshot delivers children of a task or tag the client is
+ * never told about (plan C2, departure 4). Incremental pulls still deliver
+ * them; a client already holding the parent's tombstone hides them.
+ */
+const SNAPSHOT_LIVE_PARENTS: Partial<Record<TableName, object>> = {
+  task_occurrence: { task: { deletedAt: null } },
+  task_tag: { task: { deletedAt: null }, tag: { deletedAt: null } },
+};
+
 @Injectable()
 export class SyncService {
   private readonly logger = new Logger(SyncService.name);
@@ -811,7 +823,9 @@ export class SyncService {
             where: {
               userId,
               seq: { gt: BigInt(since) },
-              ...(snapshot ? { deletedAt: null } : {}),
+              ...(snapshot
+                ? { deletedAt: null, ...SNAPSHOT_LIVE_PARENTS[table] }
+                : {}),
             },
             orderBy: { seq: 'asc' },
           });
