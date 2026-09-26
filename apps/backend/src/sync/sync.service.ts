@@ -24,7 +24,13 @@ type Change = {
   row: Record<string, unknown>;
 };
 
-const TABLES = ['task', 'project', 'tag', 'task_tag'] as const;
+const TABLES = [
+  'task',
+  'project',
+  'tag',
+  'task_tag',
+  'task_occurrence',
+] as const;
 type TableName = (typeof TABLES)[number];
 
 const DELEGATE = {
@@ -32,10 +38,11 @@ const DELEGATE = {
   project: 'project',
   tag: 'tag',
   task_tag: 'taskTag',
+  task_occurrence: 'taskOccurrence',
 } as const;
 
 /**
- * The same four tables again, spelled as Postgres relations rather than as
+ * Every synced table again, spelled as Postgres relations rather than as
  * Prisma delegates — the row lock below is raw SQL, and Prisma has no
  * `FOR UPDATE` on `findFirst`. Written out instead of derived from
  * `DELEGATE` by capitalisation so that a future `@@map` on a model shows up
@@ -46,6 +53,7 @@ const RELATION = {
   project: 'Project',
   tag: 'Tag',
   task_tag: 'TaskTag',
+  task_occurrence: 'TaskOccurrence',
 } as const;
 
 /**
@@ -63,6 +71,7 @@ const REFERENCES: Partial<
 > = {
   task: { projectId: 'project', parentId: 'task' },
   task_tag: { taskId: 'task', tagId: 'tag' },
+  task_occurrence: { taskId: 'task' },
 };
 
 /** The shape every id in this protocol has: a uuid, per the contract. */
@@ -104,7 +113,14 @@ const WRITABLE_FIELDS: Record<TableName, ReadonlySet<string>> = {
   ]),
   project: new Set(['name', 'rank', 'archivedAt']),
   tag: new Set(['name', 'color']),
-  task_tag: new Set(['taskId', 'tagId']),
+  task_tag: new Set(['taskId', 'tagId', 'attached']),
+  task_occurrence: new Set([
+    'taskId',
+    'occurrence',
+    'state',
+    'completedAt',
+    'value',
+  ]),
 };
 
 /**
@@ -116,6 +132,7 @@ const WRITABLE_FIELDS: Record<TableName, ReadonlySet<string>> = {
  */
 const DATE_FIELDS: Partial<Record<TableName, ReadonlySet<string>>> = {
   task: new Set(['scheduledOn', 'dueOn', 'dtstart']),
+  task_occurrence: new Set(['occurrence']),
 };
 
 /**
@@ -722,8 +739,8 @@ export class SyncService {
     userId: string,
     since: number,
   ): Promise<{ cursor: number; changes: Change[] }> {
-    // The four tables are read inside one transaction so they share a single
-    // snapshot. Read separately (the original shape of this method), a
+    // Every synced table is read inside one transaction so they share a
+    // single snapshot. Read separately (the original shape of this method), a
     // write that commits between two of the reads is visible to one and not
     // the other, and a cursor built off whichever read happened to see it
     // leaves the other table's matching row below the client's `since`

@@ -15,6 +15,7 @@ const DAY = 24 * 60 * 60 * 1000;
 
 beforeEach(async () => {
   await prisma.appliedOp.deleteMany({});
+  await prisma.taskOccurrence.deleteMany({});
   await prisma.taskTag.deleteMany({});
   await prisma.task.deleteMany({});
   await prisma.project.deleteMany({});

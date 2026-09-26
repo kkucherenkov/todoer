@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { BadRequestException, GoneException } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
 import { Prisma } from '@prisma/client';
+import { taskOccurrenceId } from '@todoer/specs';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { SyncService } from './sync.service.js';
 
@@ -16,6 +17,7 @@ beforeEach(async () => {
   // every one of them, so a leftover row from an earlier test would block
   // deleting the user that owned it.
   await prisma.appliedOp.deleteMany({});
+  await prisma.taskOccurrence.deleteMany({});
   await prisma.taskTag.deleteMany({});
   await prisma.task.deleteMany({});
   await prisma.project.deleteMany({});
@@ -56,6 +58,22 @@ function deleteTask(id: string, baseVersion: number) {
     table: 'task' as const,
     id,
     baseVersion,
+  };
+}
+
+function createOccurrence(
+  taskId: string,
+  occurrence: string | null,
+  fields: Record<string, unknown>,
+  ts = new Date().toISOString(),
+) {
+  return {
+    opId: uuidv7(),
+    kind: 'create' as const,
+    table: 'task_occurrence' as const,
+    id: taskOccurrenceId(taskId, occurrence),
+    fields: { taskId, occurrence, ...fields },
+    ts,
   };
 }
 
@@ -1349,5 +1367,45 @@ describe('SyncService', () => {
 
     expect(res.results[0]?.status).toBe('applied');
     expect(res.changes.find((c) => c.id === op.id)?.row.dueOn).toBeNull();
+  });
+
+  it('stores a task occurrence and returns it with its date', async () => {
+    const task = createTask('water the plants');
+    const done = createOccurrence(task.id, '2026-09-28', {
+      state: 'done',
+      completedAt: '2026-09-28T08:00:00.000Z',
+    });
+
+    const res = await service.sync(USER, { since: 0, ops: [task, done] });
+
+    expect(res.results.map((r) => r.status)).toEqual(['applied', 'applied']);
+    expect(res.changes.find((c) => c.id === done.id)).toMatchObject({
+      table: 'task_occurrence',
+      row: {
+        taskId: task.id,
+        occurrence: '2026-09-28',
+        state: 'done',
+        value: null,
+      },
+    });
+  });
+
+  it('refuses a task occurrence on a task the user does not own', async () => {
+    const OTHER = '22222222-2222-2222-2222-222222222222';
+    await prisma.user.create({
+      data: { id: OTHER, email: 'q@r.s', passwordHash: 'x' },
+    });
+    const theirs = createTask('not yours');
+    await service.sync(OTHER, { since: 0, ops: [theirs] });
+
+    const res = await service.sync(USER, {
+      since: 0,
+      ops: [createOccurrence(theirs.id, '2026-09-28', { state: 'done' })],
+    });
+
+    expect(res.results[0]).toMatchObject({
+      status: 'rejected',
+      reason: 'taskId does not reference a row you own',
+    });
   });
 });
