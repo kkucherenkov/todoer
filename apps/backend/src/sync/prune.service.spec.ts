@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { GoneException } from '@nestjs/common';
+import { GoneException, Logger } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { PruneService, RETENTION_DAYS } from './prune.service.js';
@@ -75,6 +75,7 @@ async function watermark(userId: string): Promise<bigint> {
 describe('PruneService', () => {
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('deletes a tombstone older than the window and raises the watermark to its seq', async () => {
@@ -107,6 +108,31 @@ describe('PruneService', () => {
     await age('task', [id], RETENTION_DAYS - 1);
 
     expect(await prune.prune(new Date())).toBe(0);
+
+    expect(await prisma.task.count({ where: { id } })).toBe(1);
+    expect(await watermark(USER)).toBe(0n);
+  });
+
+  // F13: the window is "older than 90 days" — a strict inequality — so a
+  // tombstone exactly at the cutoff has not crossed it yet and stays. `now`
+  // is passed to both the backdating and prune(now) so the two agree on
+  // exactly where the cutoff sits.
+  it('keeps a tombstone exactly at the retention cutoff', async () => {
+    const id = uuidv7();
+    await sync.sync(USER, {
+      since: 0,
+      ops: [
+        create('task', id, { title: 'boundary', rank: 'a0' }),
+        remove('task', id),
+      ],
+    });
+    const now = new Date();
+    await prisma.task.updateMany({
+      where: { id },
+      data: { deletedAt: new Date(now.getTime() - RETENTION_DAYS * DAY) },
+    });
+
+    expect(await prune.prune(now)).toBe(0);
 
     expect(await prisma.task.count({ where: { id } })).toBe(1);
     expect(await watermark(USER)).toBe(0n);
@@ -349,6 +375,61 @@ describe('PruneService', () => {
     expect(await prisma.project.count({ where: { id: project } })).toBe(0);
   });
 
+  // F12: one user's pruning failing must not stop every other user's from
+  // running — today it does, for good, on every run, because nothing in
+  // prune()'s loop catches it. The failing user is chosen by id, not by
+  // iteration position, since findMany's row order is not something this
+  // test controls.
+  it('keeps pruning other users when one of them fails', async () => {
+    const failing = uuidv7();
+    await sync.sync(USER, {
+      since: 0,
+      ops: [
+        create('task', failing, { title: 'boom', rank: 'a0' }),
+        remove('task', failing),
+      ],
+    });
+    await age('task', [failing], RETENTION_DAYS + 1);
+
+    const ok = uuidv7();
+    await sync.sync(OTHER, {
+      since: 0,
+      ops: [
+        create('task', ok, { title: 'fine', rank: 'a0' }),
+        remove('task', ok),
+      ],
+    });
+    await age('task', [ok], RETENTION_DAYS + 1);
+    const { seq } = await prisma.task.findUniqueOrThrow({ where: { id: ok } });
+
+    const sabotaged = prisma.$extends({
+      query: {
+        taskTag: {
+          aggregate({ args, query }) {
+            const where = args.where as { userId?: string } | undefined;
+            if (where?.userId === USER) {
+              return Promise.reject(new Error('simulated pruning failure'));
+            }
+            return query(args);
+          },
+        },
+      },
+    });
+    const flaky = new PruneService(sabotaged as unknown as PrismaService);
+    const errorSpy = vi
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+
+    await expect(flaky.prune(new Date())).resolves.toBe(1);
+
+    expect(await prisma.task.count({ where: { id: ok } })).toBe(0);
+    expect(await watermark(OTHER)).toBe(seq);
+    // The failing user's tombstone is untouched, and the failure was logged
+    // with enough to find it — the user id and the error itself.
+    expect(await prisma.task.count({ where: { id: failing } })).toBe(1);
+    expect(errorSpy).toHaveBeenCalledWith(USER, expect.any(Error));
+  });
+
   it('prunes at startup and once a day after that', () => {
     vi.useFakeTimers();
     const service = new PruneService(prisma);
@@ -363,5 +444,26 @@ describe('PruneService', () => {
     service.onApplicationShutdown();
     vi.advanceTimersByTime(DAY);
     expect(run).toHaveBeenCalledTimes(2);
+  });
+
+  // F16: onApplicationBootstrap fires prune() without awaiting it — a
+  // rejection with no .catch is an unhandled rejection, and Node's default
+  // for one of those is to crash the process. It must be caught, logged,
+  // and never thrown back out of bootstrap itself.
+  it('logs a bootstrap pruning failure instead of throwing or leaving it unhandled', async () => {
+    const service = new PruneService(prisma);
+    vi.spyOn(service, 'prune').mockRejectedValue(
+      new Error('simulated bootstrap failure'),
+    );
+    const errorSpy = vi
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+
+    expect(() => service.onApplicationBootstrap()).not.toThrow();
+    await Promise.resolve();
+
+    expect(errorSpy).toHaveBeenCalledWith(expect.any(Error));
+
+    service.onApplicationShutdown();
   });
 });

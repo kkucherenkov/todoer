@@ -68,7 +68,15 @@ export class PruneService
     // users with an old tombstone if the user count ever grows large.
     const users = await this.prisma.user.findMany({ select: { id: true } });
     let deleted = 0;
-    for (const { id } of users) deleted += await this.pruneUser(id, cutoff);
+    for (const { id } of users) {
+      // One user's failure must not cost every later user their run, every
+      // day, forever — logged and skipped, not rethrown.
+      try {
+        deleted += await this.pruneUser(id, cutoff);
+      } catch (error) {
+        this.logger.error(id, error);
+      }
+    }
     return deleted;
   }
 
