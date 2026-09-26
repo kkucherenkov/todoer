@@ -110,7 +110,7 @@ and a command without a server answers from the local copy.
 
 - [x] T001 [FR-002] Node 24.15 across the workspace — plan Task 1,
       `package.json`, `.nvmrc`, `.github/workflows/test.yml`
-- [ ] T002 [FR-011] Configuration reader — plan Task 2,
+- [x] T002 [FR-011] Configuration reader — plan Task 2,
       `apps/cli/src/config.ts`
 - [ ] T003 [FR-001] [FR-003] [FR-006] [FR-009] SQLite store — plan Task 3,
       `apps/cli/src/store.ts`
