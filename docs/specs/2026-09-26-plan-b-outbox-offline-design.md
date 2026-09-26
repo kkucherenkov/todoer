@@ -35,9 +35,9 @@ response creates the task twice; plan A documents this and tells agents to
 treat a failed `add` as indeterminate. The CLI also fails outright without a
 network, which contradicts the offline-first goal of the whole product.
 
-On the server, nothing prunes tombstones, so `410 Gone` is declared and never
-sent, and `GET /sync/snapshot` does not exist. ADR 0016 records that a
-concurrent write can make a client skip a row permanently, with no recovery
+Before B2, nothing pruned tombstones, so `410 Gone` was declared and never
+sent, and `GET /sync/snapshot` did not exist. ADR 0016 recorded that a
+concurrent write could make a client skip a row permanently, with no recovery
 path of any kind. An outbox makes that race routine rather than rare: agents
 calling the CLI in parallel are exactly two concurrent writers for one user.
 
