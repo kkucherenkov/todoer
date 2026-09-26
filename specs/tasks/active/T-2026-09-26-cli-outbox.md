@@ -114,7 +114,7 @@ and a command without a server answers from the local copy.
       `apps/cli/src/config.ts`
 - [x] T003 [FR-001] [FR-003] [FR-006] [FR-009] SQLite store — plan Task 3,
       `apps/cli/src/store.ts`
-- [ ] T004 [P] [FR-005] Overlay — plan Task 4, `apps/cli/src/overlay.ts`
+- [x] T004 [P] [FR-005] Overlay — plan Task 4, `apps/cli/src/overlay.ts`
 - **Checkpoint:** the store and the overlay pass their own tests; nothing
   calls them yet.
 - [ ] T005 [FR-004] [FR-006] [FR-007] [FR-010] Flush — plan Task 5,
