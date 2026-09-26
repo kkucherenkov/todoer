@@ -51,7 +51,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       # Also runs `prisma generate` through @todoer/backend's postinstall;
@@ -113,7 +113,7 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
           cache: pnpm
 
       - name: Install dependencies
@@ -170,6 +170,14 @@ jobs:
         env:
           TODOER_URL: http://localhost:3010/api/v1
         run: sh scripts/walking-skeleton.sh
+
+      # The outbox against the same live backend: parallel offline adds, their
+      # delivery with the original ids, and 410 recovery. DATABASE_URL comes
+      # from the job's env; the script moves the prune watermark with psql.
+      - name: Prove the outbox end to end
+        env:
+          TODOER_URL: http://localhost:3010/api/v1
+        run: sh scripts/outbox-e2e.sh
 
       # Always, so a failed proof still shows what the server logged, and so
       # the job does not wait on a process it started.

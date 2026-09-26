@@ -255,6 +255,14 @@ drop `superseded` silently, since the server's value is already arriving in
 `changes`; surface `conflict` and `rejected` to the person, because both mean
 an intent did not happen. Then merge `changes` and advance the cursor.
 
+"Apply optimistically" is an overlay, not a write: the replica holds only
+what the server sent, and a read applies the pending operations on top of it
+([plan B design, Q7](2026-09-26-plan-b-outbox-offline-design.md)). A pull
+therefore never has to reconcile a local edit, and discarding the replica
+after a `410` cannot lose an unsent operation. A `conflict` or `rejected`
+result for an operation queued by an earlier session is kept, marked failed,
+until the person has seen it; the reference CLI shows it in `todoer outbox`.
+
 A `410 Gone` means the cursor predates tombstone retention: discard the local
 replica, keep the outbox, and repeat with `since: 0`, which answers with every
 live row and a fresh cursor. Operations sent in the request that got `410`

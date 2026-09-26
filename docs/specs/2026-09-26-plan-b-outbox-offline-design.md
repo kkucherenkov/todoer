@@ -71,8 +71,9 @@ CLI does not handle `410`.
 ### The CLI's replica and outbox live in SQLite via `node:sqlite` (Q2)
 
 **Decision.** One SQLite database per CLI installation, opened with WAL
-journaling and a busy timeout; one transaction per command covers enqueue,
-optimistic bookkeeping and cursor advance. No new dependency: `node:sqlite` is
+journaling and a busy timeout; one transaction per server response covers
+the outbox verdicts, the merged rows and the cursor advance, and enqueue is a
+statement of its own before the first send. No new dependency: `node:sqlite` is
 built in.
 
 **Why.** Agents run the CLI in parallel. Today two processes read `state.json`,
@@ -108,8 +109,8 @@ stderr is the error channel an agent reads.
 **Cost.** Machines on Node 22 cannot run the CLI; the bump touches the whole
 workspace, not only `apps/cli`.
 
-**Unverified.** Whether Node 24.15 still prints `ExperimentalWarning` for a
-release-candidate module. B1's first step checks it.
+**Verified.** Node 24.15.0 loads `node:sqlite` with no `ExperimentalWarning`
+(checked in B1 Task 1).
 
 ### A write without a network exits 5: "queued, not on the server" (Q3)
 
@@ -156,7 +157,8 @@ The connection timeout must be short and configurable (see Open threads).
 **Decision.** When a flush receives `rejected` or `conflict` for an operation,
 the operation stays in the outbox marked `failed`, with the server's reason or
 `current_version`. `todoer outbox [--json]` lists outbox entries. Every command
-reports the `failed` count on stderr and in its `--json` envelope (Q13). The
+that exits 0 or 5 reports the `failed` count on stderr and in its `--json`
+envelope (Q13). The
 exit code of the running command is **not** affected by someone else's failed
 operation.
 
@@ -274,11 +276,13 @@ be reconsidered. A new ADR supersedes ADR 0016.
 
 ### Every `--json` result is wrapped in an envelope (Q13)
 
-**Decision.** All commands print, under `--json`:
+**Decision.** Every command that exits 0 or 5 prints, under `--json`:
 
 ```json
 { "data": "…", "synced": true, "outbox": { "pending": 0, "failed": 0 } }
 ```
+
+On exits 1–4 stdout is empty and the reason is on stderr.
 
 `data` is what the command prints today (a task row or `null` for `add`, an
 array of tasks for `list`). `synced` is `false` exactly when the command exits
@@ -361,23 +365,40 @@ change in the same PR; ADR 0015 gains a section on the envelope.
 - **A pending operation on a pruned row.** A `set` queued offline for more
   than 90 days against a row deleted meanwhile is rejected and lands in
   `failed`; the design surfaces it but does not resolve it automatically.
+- **A corrupt outbox row blocks every command.** Every command reads the
+  outbox first, so one row that no longer parses (only possible if the
+  database file is damaged from outside) makes each command exit 3,
+  `todoer outbox` and `outbox drop` included; the way out is `sqlite3` on the
+  database file.
+- **A refused `add` is still queued.** A request-level refusal (401, 403,
+  another 4xx that is not 400/413) exits 1 but leaves the command's own
+  operation pending, and a caller that retries the `add` queues the task
+  twice. The CLI now says so in the error, with the operation id, and HELP
+  tells the caller to fix the cause and run any command to send it.
 
 ## Deferred
 
-None. Every question asked was answered.
+- **Storing `#project` and `@tag` from quick-add.** Not asked in the
+  interview, and not a detail: ADR 0007 makes `@home` a context tag, and two
+  devices creating `@home` offline would create two tags with one name. It
+  needs its own decision on name uniqueness under client-generated ids
+  before any client creates tags from text. The CLI parses both markers and
+  reports them on stderr as not stored.
 
 ## Open threads
 
-- **Connection timeout.** Q5's cost names a short, configurable timeout
-  (on the order of 2–3 seconds). The variable name (for example
-  `TODOER_TIMEOUT_MS`) and the default are not decided.
-- **Removing `failed` outbox entries.** Q6 assumes a manual
-  `todoer outbox drop <op_id>`; the command's name, whether it accepts several
-  ids, and whether `conflict` entries can be re-queued against the current
-  version are not decided.
-- **Batch size of a flush.** `POST /sync` declares `413`. Whether the CLI
-  splits a large outbox into several requests, or relies on outboxes staying
-  small, is not decided.
+Resolved by the B1 plan
+([docs/plans/2026-09-26-plan-b1-cli-outbox.md](../plans/2026-09-26-plan-b1-cli-outbox.md),
+"Rulings"):
+
+- **Connection timeout:** `TODOER_TIMEOUT_MS`, default 3000, on the whole
+  request.
+- **Removing failed entries:** `todoer outbox drop <op-id>…` removes failed
+  entries only; a pending one may already be on the server.
+- **Batch size:** at most 1000 operations per request, oldest first,
+  stopping at the first request the server does not answer.
+- **A request the server can never accept** (400, 413): its operations are
+  marked failed, not retried forever.
 
 ## Follow-up to the records
 
