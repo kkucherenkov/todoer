@@ -108,7 +108,7 @@ and a command without a server answers from the local copy.
 
 ### Steps
 
-- [ ] T001 [FR-002] Node 24.15 across the workspace — plan Task 1,
+- [x] T001 [FR-002] Node 24.15 across the workspace — plan Task 1,
       `package.json`, `.nvmrc`, `.github/workflows/test.yml`
 - [ ] T002 [FR-011] Configuration reader — plan Task 2,
       `apps/cli/src/config.ts`
