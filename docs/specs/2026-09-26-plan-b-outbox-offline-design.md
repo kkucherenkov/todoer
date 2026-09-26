@@ -71,8 +71,9 @@ CLI does not handle `410`.
 ### The CLI's replica and outbox live in SQLite via `node:sqlite` (Q2)
 
 **Decision.** One SQLite database per CLI installation, opened with WAL
-journaling and a busy timeout; one transaction per command covers enqueue,
-optimistic bookkeeping and cursor advance. No new dependency: `node:sqlite` is
+journaling and a busy timeout; one transaction per server response covers
+the outbox verdicts, the merged rows and the cursor advance, and enqueue is a
+statement of its own before the first send. No new dependency: `node:sqlite` is
 built in.
 
 **Why.** Agents run the CLI in parallel. Today two processes read `state.json`,
@@ -108,8 +109,8 @@ stderr is the error channel an agent reads.
 **Cost.** Machines on Node 22 cannot run the CLI; the bump touches the whole
 workspace, not only `apps/cli`.
 
-**Unverified.** Whether Node 24.15 still prints `ExperimentalWarning` for a
-release-candidate module. B1's first step checks it.
+**Verified.** Node 24.15.0 loads `node:sqlite` with no `ExperimentalWarning`
+(checked in B1 Task 1).
 
 ### A write without a network exits 5: "queued, not on the server" (Q3)
 
@@ -366,6 +367,11 @@ change in the same PR; ADR 0015 gains a section on the envelope.
   database file is damaged from outside) makes each command exit 3,
   `todoer outbox` and `outbox drop` included; the way out is `sqlite3` on the
   database file.
+- **A refused `add` is still queued.** A request-level refusal (401, 403,
+  another 4xx that is not 400/413) exits 1 but leaves the command's own
+  operation pending, and a caller that retries the `add` queues the task
+  twice. The CLI now says so in the error, with the operation id, and HELP
+  tells the caller to fix the cause and run any command to send it.
 
 ## Deferred
 

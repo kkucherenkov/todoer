@@ -34,8 +34,9 @@ environment:
 local state:
   $HOME/.config/todoer/todoer.db — the local copy and the outbox (SQLite)
 
---json prints exactly one object:
+--json: every command that exits 0 or 5 prints exactly one object:
   {"data": ..., "synced": true|false, "outbox": {"pending": n, "failed": n}}
+on 1-4 stdout is empty and the reason is on stderr.
 
 exit codes (ADR 0015 §2):
   0  done, and the server has it

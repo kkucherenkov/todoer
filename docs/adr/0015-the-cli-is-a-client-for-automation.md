@@ -63,8 +63,9 @@ Two additions to the contract of requirements 1 and 2:
   failure and must not be retried; the next command that reaches the server
   delivers the operation. Exit 3 no longer describes a network condition; it
   is an unexpected local failure.
-- **The `--json` envelope**: every command prints
-  `{"data": …, "synced": bool, "outbox": {"pending": n, "failed": n}}`.
+- **The `--json` envelope**: every command that exits 0 or 5 prints
+  `{"data": …, "synced": bool, "outbox": {"pending": n, "failed": n}}`; on
+  1–4 stdout is empty and the reason is on stderr.
   `synced` is false exactly when the command exits 5. `outbox.failed` counts
   operations the server refused after the command that queued them had exited;
   `todoer outbox` lists them and `todoer outbox drop` forgets them.

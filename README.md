@@ -88,6 +88,7 @@ TODOER_URL=http://localhost:3010/api/v1 sh scripts/walking-skeleton.sh
 | `APP_VERSION` | backend | `0.0.0-dev` | reported by `GET /api/v1/health` |
 | `TODOER_URL` | CLI | `http://localhost:3000/api/v1` | instance base URL |
 | `TODOER_TOKEN` | CLI | — | bearer token; see below |
+| `TODOER_TIMEOUT_MS` | CLI | `3000` | how long to wait for the server before exiting 5 |
 
 The examples above use **3010** because 3000 is often already taken; the
 backend's own default is 3000.
@@ -96,8 +97,8 @@ backend's own default is 3000.
 
 **The access token lives 15 minutes**, and the CLI has no `login` command yet.
 A long-running agent has to mint a new one from `POST /auth/login` when it
-expires. An expired token exits **1** (a refusal), not 3 (a network failure),
-precisely so a retry policy does not loop on it. `todoer --help` lists all the
+expires. An expired token exits **1** (a refusal), not 5 (the server was not
+reached), precisely so a retry policy does not loop on it. `todoer --help` lists all the
 exit codes.
 
 **A queued write is not on the server yet.** Every operation is stored in a
