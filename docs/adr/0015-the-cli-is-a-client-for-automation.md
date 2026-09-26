@@ -49,3 +49,22 @@ connection, and with it a second write path that bypasses every rule in
 [0004](0004-field-level-last-write-wins.md) and
 [0013](0013-tombstones-and-the-retention-contract.md). Server-side
 administration is a separate command with a separate name.
+
+## Update, 2026-09-26: the outbox
+
+Requirement 4 is met. The CLI keeps a SQLite replica and outbox at
+`$HOME/.config/todoer/todoer.db`; every operation is stored before it is
+sent and keeps its id on every attempt. Every command sends the outbox first.
+
+Two additions to the contract of requirements 1 and 2:
+
+- **Exit 5** means the server was not reached — no connection, a timeout, a
+  5xx: the answer is local and the command's operation is queued. It is not a
+  failure and must not be retried; the next command that reaches the server
+  delivers the operation. Exit 3 no longer describes a network condition; it
+  is an unexpected local failure.
+- **The `--json` envelope**: every command prints
+  `{"data": …, "synced": bool, "outbox": {"pending": n, "failed": n}}`.
+  `synced` is false exactly when the command exits 5. `outbox.failed` counts
+  operations the server refused after the command that queued them had exited;
+  `todoer outbox` lists them and `todoer outbox drop` forgets them.

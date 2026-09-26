@@ -125,7 +125,7 @@ and a command without a server answers from the local copy.
 - **Checkpoint:** the CLI runs end to end; SC-002 holds.
 - [x] T007 [FR-001] [FR-003] [FR-007] End-to-end script in CI — plan Task 7,
       `scripts/outbox-e2e.sh`, `.github/workflows/test.yml`
-- [ ] T008 [FR-012] ADR 0015, spec §3, README, design doc, quick-add
+- [x] T008 [FR-012] ADR 0015, spec §3, README, design doc, quick-add
       comment — plan Task 8
 - **Checkpoint:** SC-001, SC-003 hold; PR open with all four gates green.
 

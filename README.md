@@ -14,14 +14,18 @@ endpoint:
 - **`POST /api/v1/auth/register`, `POST /api/v1/auth/login`** — open
   registration and a 15-minute bearer token. Invitations, password reset,
   refresh rotation and the device-code flow are not built yet.
-- **`todoer add` / `todoer list`** — a network client with `--json` output and
-  exit codes a script can branch on ([ADR 0015](docs/adr/0015-the-cli-is-a-client-for-automation.md)).
+- **`todoer add` / `todoer list` / `todoer outbox`** — a network client with
+  `--json` output and exit codes a script can branch on
+  ([ADR 0015](docs/adr/0015-the-cli-is-a-client-for-automation.md)). It keeps a
+  local SQLite replica and outbox: every operation is queued before it is sent
+  and keeps its id on every retry, so `add` is safe to run once. Without a
+  reachable server a command answers from the replica and exits 5.
 
-Not built yet, and each absence is deliberate rather than forgotten: the
-client outbox (so `add` is **not** safe to retry — see below), recurrence,
-and the web and Flutter clients. The server prunes tombstones after 90 days
-and answers a stale cursor with `410 Gone`; the CLI does not handle `410` yet.
-The full list, with reasons, is in
+Not built yet, and each absence is deliberate rather than forgotten: storing
+`#project` and `@tag` from quick-add, recurrence, and the web and Flutter
+clients. The server prunes tombstones after 90 days and answers a stale
+cursor with `410 Gone`; the CLI recovers by discarding its replica and
+re-fetching a snapshot. The full list, with reasons, is in
 [the plan](docs/plans/2026-09-25-walking-skeleton.md#what-this-plan-does-not-do).
 
 ## Layout
@@ -39,7 +43,7 @@ The full list, with reasons, is in
 
 ## Running it
 
-Node 22 or newer, pnpm 9.12, Docker.
+Node 24.15 or newer, pnpm 9.12, Docker.
 
 ```sh
 pnpm install
@@ -96,12 +100,14 @@ expires. An expired token exits **1** (a refusal), not 3 (a network failure),
 precisely so a retry policy does not loop on it. `todoer --help` lists all the
 exit codes.
 
-**`add` is not safe to retry.** Each invocation mints a fresh operation id, so
-a retry after a lost response creates the task twice — the server's
-idempotency is keyed on that id ([ADR 0005](docs/adr/0005-client-generated-identifiers.md),
-[ADR 0015 §4](docs/adr/0015-the-cli-is-a-client-for-automation.md)). Treat a
-failed `add` as indeterminate and run `list` before deciding. The persistent
-outbox that makes a retry reuse the original id is the next plan.
+**A queued write is not on the server yet.** Every operation is stored in a
+local outbox before it is sent and keeps the same id on every retry, so a
+retry after a lost response settles as a `duplicate` rather than creating the
+task twice ([ADR 0005](docs/adr/0005-client-generated-identifiers.md),
+[ADR 0015 §4](docs/adr/0015-the-cli-is-a-client-for-automation.md)). Without a
+reachable server the command answers from the local replica and exits **5**
+instead of 0 — a caller that checks only for success has to treat 5 as "not
+yet delivered", not as a failure to retry.
 
 ## Tests
 

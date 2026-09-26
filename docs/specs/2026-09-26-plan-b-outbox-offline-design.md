@@ -361,23 +361,35 @@ change in the same PR; ADR 0015 gains a section on the envelope.
 - **A pending operation on a pruned row.** A `set` queued offline for more
   than 90 days against a row deleted meanwhile is rejected and lands in
   `failed`; the design surfaces it but does not resolve it automatically.
+- **A corrupt outbox row blocks every command.** Every command reads the
+  outbox first, so one row that no longer parses (only possible if the
+  database file is damaged from outside) makes each command exit 3,
+  `todoer outbox` and `outbox drop` included; the way out is `sqlite3` on the
+  database file.
 
 ## Deferred
 
-None. Every question asked was answered.
+- **Storing `#project` and `@tag` from quick-add.** Not asked in the
+  interview, and not a detail: ADR 0007 makes `@home` a context tag, and two
+  devices creating `@home` offline would create two tags with one name. It
+  needs its own decision on name uniqueness under client-generated ids
+  before any client creates tags from text. The CLI parses both markers and
+  reports them on stderr as not stored.
 
 ## Open threads
 
-- **Connection timeout.** Q5's cost names a short, configurable timeout
-  (on the order of 2–3 seconds). The variable name (for example
-  `TODOER_TIMEOUT_MS`) and the default are not decided.
-- **Removing `failed` outbox entries.** Q6 assumes a manual
-  `todoer outbox drop <op_id>`; the command's name, whether it accepts several
-  ids, and whether `conflict` entries can be re-queued against the current
-  version are not decided.
-- **Batch size of a flush.** `POST /sync` declares `413`. Whether the CLI
-  splits a large outbox into several requests, or relies on outboxes staying
-  small, is not decided.
+Resolved by the B1 plan
+([docs/plans/2026-09-26-plan-b1-cli-outbox.md](../plans/2026-09-26-plan-b1-cli-outbox.md),
+"Rulings"):
+
+- **Connection timeout:** `TODOER_TIMEOUT_MS`, default 3000, on the whole
+  request.
+- **Removing failed entries:** `todoer outbox drop <op-id>…` removes failed
+  entries only; a pending one may already be on the server.
+- **Batch size:** at most 1000 operations per request, oldest first,
+  stopping at the first request the server does not answer.
+- **A request the server can never accept** (400, 413): its operations are
+  marked failed, not retried forever.
 
 ## Follow-up to the records
 

@@ -58,6 +58,15 @@ requirements FR-001…FR-012. Background: ADR 0003, ADR 0005, ADR 0013, ADR 0015
    This plan corrects the promise (Task 8) and records the question in tuxedo.
 9. **`outbox drop` also flushes first,** like every other command (Q5), so its
    `synced` means what it means everywhere else.
+10. **A request-level 400 or 413 rejects every operation in that batch.** The
+    request as sent can never be accepted, so its operations are settled as
+    `rejected` with the reason `the server refused the request carrying this
+    operation: <status> <detail>` — failed for an earlier invocation's
+    operations, exit 1 for the command's own — and the flush continues; if
+    the last batch was refused, one extra empty pull still runs. Retrying
+    such a batch forever would leave every later command failing, and
+    `outbox drop` cannot remove pending entries. 401, 403 and other 4xx still
+    keep the operations pending (the token case).
 
 ## Global Constraints
 

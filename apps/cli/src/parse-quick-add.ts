@@ -43,9 +43,10 @@ export function parseQuickAdd(input: string): QuickAdd {
  * What `add` is actually going to send, and what it owes the caller an
  * explanation for.
  *
- * Quick-add parses `#project` and `@tag`, and plan A stores neither: creating
- * the `project`, `tag` and `task_tag` rows they imply is plan B's work. The
- * defect was never that they are unstored, it was that they were consumed
+ * Quick-add parses `#project` and `@tag`, and plan A stores neither. Storing
+ * them is not built: it needs a decision on tag-name uniqueness first (see
+ * the plan-B design doc, "Deferred"). The defect was never that they are
+ * unstored, it was that they were consumed
  * silently — `todoer add "#groceries"` created a task with no title at all
  * and exited 0, which is a caller's data quietly going nowhere.
  */
