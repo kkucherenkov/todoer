@@ -633,6 +633,21 @@ describe('create of an existing row with mergeCreate', () => {
     ).toEqual({ status: 'superseded' });
   });
 
+  it('rejects a merge create against a tombstoned row', () => {
+    const deleted = { ...current, deletedAt: '2026-09-27T00:00:00.000Z' };
+    expect(
+      applyOp(
+        create('2026-09-28T11:00:00.000Z', { state: 'skipped' }),
+        deleted,
+        NOW,
+        { mergeCreate: true },
+      ),
+    ).toEqual({
+      status: 'rejected',
+      reason: 'row is deleted (tombstoned)',
+    });
+  });
+
   it('still validates the create before merging', () => {
     expect(
       applyOp(create('not a time', { state: 'skipped' }), current, NOW, {

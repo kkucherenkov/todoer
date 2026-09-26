@@ -1496,7 +1496,7 @@ describe('SyncService', () => {
 
   it('keeps one row for a non-recurring completion sent twice', async () => {
     const task = createTask('file taxes');
-    await service.sync(USER, {
+    const res = await service.sync(USER, {
       since: 0,
       ops: [
         task,
@@ -1505,9 +1505,37 @@ describe('SyncService', () => {
       ],
     });
 
+    expect(['applied', 'superseded']).toContain(res.results[2]?.status);
     expect(
       await prisma.taskOccurrence.count({ where: { taskId: task.id } }),
     ).toBe(1);
+  });
+
+  // Pins that dateRejection runs before derivedIdRejection: a random id would
+  // otherwise be rejected for the wrong reason, and a future reorder would
+  // pass every other test while answering the wrong message here.
+  it('rejects a bad occurrence date before the id-derivation check', async () => {
+    const task = createTask('x');
+    await service.sync(USER, { since: 0, ops: [task] });
+
+    const res = await service.sync(USER, {
+      since: 0,
+      ops: [
+        {
+          opId: uuidv7(),
+          kind: 'create' as const,
+          table: 'task_occurrence' as const,
+          id: uuidv7(),
+          fields: { taskId: task.id, occurrence: '2026-9-28', state: 'done' },
+          ts: new Date().toISOString(),
+        },
+      ],
+    });
+
+    expect(res.results[0]).toMatchObject({
+      status: 'rejected',
+      reason: 'occurrence must be a date, YYYY-MM-DD',
+    });
   });
 
   it('rejects a task occurrence whose id is not derived from its fields', async () => {
@@ -1553,6 +1581,12 @@ describe('SyncService', () => {
     });
 
     expect(res.results.map((r) => r.status)).toEqual(['rejected', 'rejected']);
+    expect(res.results[0]?.reason).toBe(
+      'rows of task_occurrence are never deleted; set state instead',
+    );
+    expect(res.results[1]?.reason).toBe(
+      'occurrence is part of this row’s identity and cannot change',
+    );
     expect(await prisma.taskOccurrence.count({ where: { id: done.id } })).toBe(
       1,
     );
@@ -1658,6 +1692,27 @@ describe('SyncService', () => {
     ]);
   });
 
+  // Neither op mentions rrule, and rowRejection re-validates the whole row on
+  // every applied write — this pins that a recurring task still accepts an
+  // ordinary edit and a delete, not only the rrule-shaped writes above.
+  it('lets an ordinary edit and a delete apply to a recurring task', async () => {
+    const op = createTask('weekly');
+    op.fields = { ...op.fields, rrule: 'FREQ=WEEKLY', dtstart: '2026-09-28' };
+    await service.sync(USER, { since: 0, ops: [op] });
+
+    const renamed = await service.sync(USER, {
+      since: 0,
+      ops: [setTask(op.id, 'title', 'weekly, renamed')],
+    });
+    expect(renamed.results[0]?.status).toBe('applied');
+
+    const deleted = await service.sync(USER, {
+      since: 0,
+      ops: [deleteTask(op.id, 2)],
+    });
+    expect(deleted.results[0]?.status).toBe('applied');
+  });
+
   it('rejects a rule on a subtask', async () => {
     const parent = createTask('parent');
     const child = createTask('child');
@@ -1700,6 +1755,7 @@ describe('SyncService', () => {
     const live = createTask('live');
     const gone = createTask('gone');
     const tag = uuidv7();
+    const liveTag = uuidv7();
     const liveDone = createOccurrence(live.id, '2026-09-28', { state: 'done' });
     const goneDone = createOccurrence(gone.id, '2026-09-28', { state: 'done' });
     const tagLink = {
@@ -1708,6 +1764,17 @@ describe('SyncService', () => {
       table: 'task_tag' as const,
       id: taskTagId(live.id, tag),
       fields: { taskId: live.id, tagId: tag },
+      ts: new Date().toISOString(),
+    };
+    // The other half of the same rule: a TaskTag survives only if *both*
+    // sides are live. This one hangs off the tombstoned task but a tag that
+    // stays live, so a filter that checked the tag alone would let it through.
+    const goneTaskLiveTagLink = {
+      opId: uuidv7(),
+      kind: 'create' as const,
+      table: 'task_tag' as const,
+      id: taskTagId(gone.id, liveTag),
+      fields: { taskId: gone.id, tagId: liveTag },
       ts: new Date().toISOString(),
     };
     await service.sync(USER, {
@@ -1723,9 +1790,18 @@ describe('SyncService', () => {
           fields: { name: 'x' },
           ts: new Date().toISOString(),
         },
+        {
+          opId: uuidv7(),
+          kind: 'create' as const,
+          table: 'tag' as const,
+          id: liveTag,
+          fields: { name: 'still here' },
+          ts: new Date().toISOString(),
+        },
         liveDone,
         goneDone,
         tagLink,
+        goneTaskLiveTagLink,
         deleteTask(gone.id, 1),
         {
           opId: uuidv7(),
@@ -1743,5 +1819,6 @@ describe('SyncService', () => {
     expect(ids).toContain(liveDone.id);
     expect(ids).not.toContain(goneDone.id);
     expect(ids).not.toContain(tagLink.id);
+    expect(ids).not.toContain(goneTaskLiveTagLink.id);
   });
 });

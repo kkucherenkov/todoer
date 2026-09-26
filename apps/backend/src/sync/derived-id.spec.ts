@@ -89,6 +89,21 @@ describe('derived ids', () => {
     expect(derivedIdRejection('task_occurrence', op)).toBe(
       'occurrence is part of this row’s identity and cannot change',
     );
+    expect(
+      derivedIdRejection('task_occurrence', {
+        ...op,
+        field: 'taskId',
+        value: TASK,
+      }),
+    ).toBe('taskId is part of this row’s identity and cannot change');
+    expect(
+      derivedIdRejection('task_tag', {
+        ...op,
+        table: 'task_tag',
+        field: 'tagId',
+        value: TAG,
+      }),
+    ).toBe('tagId is part of this row’s identity and cannot change');
   });
 
   it('refuses delete and names the toggle to use instead', () => {
