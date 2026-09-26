@@ -280,8 +280,8 @@ a task occurrence with `state: skipped` covers the case from the other side.
 
 Answering "what is due in this window" means expanding the rule across the
 window, then subtracting the occurrences whose task occurrence is `done` or
-`skipped`. That happens in four places: the server, the web client, the
-Flutter client and the CLI.
+`skipped`. That happens in three places: the web client, the Flutter client
+and the CLI.
 
 The one parser of the supported subset is `parseRrule`, exported from
 `@todoer/specs`; the server and every TypeScript client call it rather than
