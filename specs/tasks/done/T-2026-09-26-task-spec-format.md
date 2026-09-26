@@ -2,12 +2,14 @@
 
 - Created: 2026-09-26
 - Owner: claude
-- Status: in-progress
+- Status: done
 - Blockers: —
 - Spec: maintainer request, 2026-09-26 — adopt the task format of GitHub Spec
   Kit (`templates/spec-template.md`, `templates/tasks-template.md`, v1.0.12)
   without its CLI
 - Plan: none; the steps below are the whole change
+- Completed: 2026-09-26
+- Result: https://github.com/kkucherenkov/todoer/pull/6
 
 ### Goal
 
@@ -64,10 +66,10 @@ satisfies which requirement, or when the task counts as done.
   prints the whole stack.
 - [x] every FR checked against the finished template (documentation only, no
       code tests)
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
 - [x] no document still describes the old entry format
-- [ ] dnote changelog line
+- [x] dnote changelog line
 
 ### Steps
 
