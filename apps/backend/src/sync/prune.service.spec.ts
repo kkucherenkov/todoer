@@ -273,6 +273,38 @@ describe('PruneService', () => {
     expect(await prisma.taskTag.count({ where: { id: taskTag } })).toBe(1);
   });
 
+  // Group 1 fix: the task steps' own `tags: { none: {} }` guard was unpinned
+  // — dropping it from both left every existing test green, because
+  // TaskTag.taskId is also ON DELETE RESTRICT, and the resulting P2003 rolls
+  // back this user's whole transaction. Rollback leaves the DB looking
+  // exactly as if the guard had worked, so the signal that actually catches
+  // the regression is the logged failure, not the row counts alone.
+  it('keeps a tombstoned task a live TaskTag still references', async () => {
+    const task = uuidv7();
+    const tag = uuidv7();
+    const taskTag = uuidv7();
+    await sync.sync(USER, {
+      since: 0,
+      ops: [
+        create('task', task, { title: 'task', rank: 'a0' }),
+        create('tag', tag, { name: 'tag' }),
+        create('task_tag', taskTag, { taskId: task, tagId: tag }),
+        remove('task', task),
+      ],
+    });
+    await age('task', [task], RETENTION_DAYS + 1);
+    const errorSpy = vi
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+
+    await expect(prune.prune(new Date())).resolves.toBe(0);
+
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(await prisma.task.count({ where: { id: task } })).toBe(1);
+    expect(await prisma.taskTag.count({ where: { id: taskTag } })).toBe(1);
+    expect(await watermark(USER)).toBe(0n);
+  });
+
   // FR-007: the watermark only ever rises. A tombstone pruned in this run
   // must not pull an already-higher watermark back down to its own seq.
   it('never lowers a watermark already ahead of the tombstone it prunes', async () => {
@@ -315,16 +347,22 @@ describe('PruneService', () => {
     const gate = new Promise<void>((resolve) => {
       release = resolve;
     });
+    let signalLocked!: () => void;
+    const locked = new Promise<void>((resolve) => {
+      signalLocked = resolve;
+    });
     const holder = prisma.$transaction(
       async (tx) => {
         await lockUserWrites(tx, USER);
+        signalLocked();
         await gate;
       },
       { timeout: 10_000 },
     );
-    // Give the holder time to actually acquire the advisory lock before
-    // racing prune against it.
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    // Wait for the holder to actually acquire the advisory lock before
+    // racing prune against it — a fixed sleep would fail spuriously on a
+    // slow runner if prune took the lock first.
+    await locked;
 
     const pruned = prune.prune(new Date());
     try {
