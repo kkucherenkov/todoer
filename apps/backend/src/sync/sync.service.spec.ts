@@ -1160,7 +1160,10 @@ describe('SyncService', () => {
   });
 
   it('answers 410 when the cursor is older than the prune watermark', async () => {
-    const first = await service.sync(USER, { since: 0, ops: [createTask('a')] });
+    const first = await service.sync(USER, {
+      since: 0,
+      ops: [createTask('a')],
+    });
     await setWatermark(USER, first.cursor + 10);
 
     await expect(
@@ -1171,7 +1174,10 @@ describe('SyncService', () => {
   // Review Focus 4: the boundary. A client at the watermark has seen every
   // pruned tombstone.
   it('does not answer 410 for a cursor exactly at the watermark', async () => {
-    const first = await service.sync(USER, { since: 0, ops: [createTask('a')] });
+    const first = await service.sync(USER, {
+      since: 0,
+      ops: [createTask('a')],
+    });
     await setWatermark(USER, first.cursor);
 
     const pull = await service.sync(USER, { since: first.cursor, ops: [] });
@@ -1221,7 +1227,10 @@ describe('SyncService', () => {
   // Review Focus 3: operations sent with a stale cursor are applied before
   // the pull answers 410. Resent with since 0, they must replay, not repeat.
   it('replays operations that arrived with a stale cursor', async () => {
-    const first = await service.sync(USER, { since: 0, ops: [createTask('a')] });
+    const first = await service.sync(USER, {
+      since: 0,
+      ops: [createTask('a')],
+    });
     await setWatermark(USER, first.cursor + 1000);
     const op = createTask('sent with a stale cursor');
 

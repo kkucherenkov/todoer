@@ -61,7 +61,8 @@ async function age(table: Table, ids: string[], days: number) {
   const where = { id: { in: ids } };
   const data = { deletedAt: daysAgo(days) };
   if (table === 'task') await prisma.task.updateMany({ where, data });
-  else if (table === 'project') await prisma.project.updateMany({ where, data });
+  else if (table === 'project')
+    await prisma.project.updateMany({ where, data });
   else if (table === 'tag') await prisma.tag.updateMany({ where, data });
   else await prisma.taskTag.updateMany({ where, data });
 }
@@ -80,7 +81,10 @@ describe('PruneService', () => {
     const id = uuidv7();
     await sync.sync(USER, {
       since: 0,
-      ops: [create('task', id, { title: 'old', rank: 'a0' }), remove('task', id)],
+      ops: [
+        create('task', id, { title: 'old', rank: 'a0' }),
+        remove('task', id),
+      ],
     });
     await age('task', [id], RETENTION_DAYS + 1);
     const { seq } = await prisma.task.findUniqueOrThrow({ where: { id } });
@@ -95,7 +99,10 @@ describe('PruneService', () => {
     const id = uuidv7();
     await sync.sync(USER, {
       since: 0,
-      ops: [create('task', id, { title: 'recent', rank: 'a0' }), remove('task', id)],
+      ops: [
+        create('task', id, { title: 'recent', rank: 'a0' }),
+        remove('task', id),
+      ],
     });
     await age('task', [id], RETENTION_DAYS - 1);
 
@@ -116,7 +123,11 @@ describe('PruneService', () => {
       since: 0,
       ops: [
         create('project', project, { name: 'gone', rank: 'a0' }),
-        create('task', inProject, { title: 'live', rank: 'a0', projectId: project }),
+        create('task', inProject, {
+          title: 'live',
+          rank: 'a0',
+          projectId: project,
+        }),
         create('task', parent, { title: 'parent', rank: 'a0' }),
         create('task', child, { title: 'child', rank: 'a0', parentId: parent }),
         remove('project', project),
@@ -130,7 +141,9 @@ describe('PruneService', () => {
     expect(await prune.prune(new Date())).toBe(2);
 
     expect(await prisma.project.count({ where: { id: project } })).toBe(1);
-    expect(await prisma.task.count({ where: { id: { in: [parent, child] } } })).toBe(0);
+    expect(
+      await prisma.task.count({ where: { id: { in: [parent, child] } } }),
+    ).toBe(0);
   });
 
   // ADR 0013 end to end: a client that missed pruned deletions is told, and
@@ -143,7 +156,10 @@ describe('PruneService', () => {
     const id = uuidv7();
     await sync.sync(USER, {
       since: seed.cursor,
-      ops: [create('task', id, { title: 'old', rank: 'a0' }), remove('task', id)],
+      ops: [
+        create('task', id, { title: 'old', rank: 'a0' }),
+        remove('task', id),
+      ],
     });
     await age('task', [id], RETENTION_DAYS + 1);
     await prune.prune(new Date());
@@ -166,7 +182,10 @@ describe('PruneService', () => {
     const theirs = uuidv7();
     await sync.sync(OTHER, {
       since: 0,
-      ops: [create('task', theirs, { title: 'theirs', rank: 'a0' }), remove('task', theirs)],
+      ops: [
+        create('task', theirs, { title: 'theirs', rank: 'a0' }),
+        remove('task', theirs),
+      ],
     });
     await age('task', [theirs], RETENTION_DAYS + 1);
 
@@ -234,7 +253,10 @@ describe('PruneService', () => {
     const id = uuidv7();
     await sync.sync(USER, {
       since: 0,
-      ops: [create('task', id, { title: 'old', rank: 'a0' }), remove('task', id)],
+      ops: [
+        create('task', id, { title: 'old', rank: 'a0' }),
+        remove('task', id),
+      ],
     });
     await age('task', [id], RETENTION_DAYS + 1);
     const { seq } = await prisma.task.findUniqueOrThrow({ where: { id } });
@@ -256,7 +278,10 @@ describe('PruneService', () => {
     const id = uuidv7();
     await sync.sync(USER, {
       since: 0,
-      ops: [create('task', id, { title: 'old', rank: 'a0' }), remove('task', id)],
+      ops: [
+        create('task', id, { title: 'old', rank: 'a0' }),
+        remove('task', id),
+      ],
     });
     await age('task', [id], RETENTION_DAYS + 1);
 
