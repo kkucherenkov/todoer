@@ -108,7 +108,7 @@ the server half of plan C so the CLI (C1) can build against a merged contract.
 
 ### Steps
 
-- [ ] T001 [FR-001, FR-002, FR-003] runtime code and vectors in the spec
+- [x] T001 [FR-001, FR-002, FR-003] runtime code and vectors in the spec
       package — plan Task 1
 - [ ] T002 [FR-005] `task_occurrence` in the contract, codegen — plan Task 2
 - [ ] T003 [FR-004] dates travel as `YYYY-MM-DD` — plan Task 3

@@ -1,0 +1,181 @@
+{
+  "source": "Expected values computed with python-dateutil 2.9.0 (an independent RFC 5545 implementation); the two WKST cases are the RFC 5545 section 3.8.5.3 examples. Window bounds are inclusive; COUNT counts from dtstart, not from the window.",
+  "cases": [
+    {
+      "name": "last working day of the month",
+      "rrule": "FREQ=MONTHLY;BYDAY=MO,TU,WE,TH,FR;BYSETPOS=-1",
+      "dtstart": "2026-01-01",
+      "window": { "from": "2026-01-01", "to": "2026-06-30" },
+      "expected": [
+        "2026-01-30",
+        "2026-02-27",
+        "2026-03-31",
+        "2026-04-30",
+        "2026-05-29",
+        "2026-06-30"
+      ]
+    },
+    {
+      "name": "29 February, yearly",
+      "rrule": "FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=29",
+      "dtstart": "2024-02-29",
+      "window": { "from": "2024-01-01", "to": "2033-12-31" },
+      "expected": ["2024-02-29", "2028-02-29", "2032-02-29"]
+    },
+    {
+      "name": "fifth Sunday of the month",
+      "rrule": "FREQ=MONTHLY;BYDAY=5SU",
+      "dtstart": "2026-01-01",
+      "window": { "from": "2026-01-01", "to": "2026-12-31" },
+      "expected": ["2026-03-29", "2026-05-31", "2026-08-30", "2026-11-29"]
+    },
+    {
+      "name": "UNTIL falls exactly on an occurrence",
+      "rrule": "FREQ=WEEKLY;BYDAY=MO;UNTIL=20261019",
+      "dtstart": "2026-09-28",
+      "window": { "from": "2026-09-01", "to": "2026-12-31" },
+      "expected": ["2026-09-28", "2026-10-05", "2026-10-12", "2026-10-19"]
+    },
+    {
+      "name": "INTERVAL spanning a year boundary",
+      "rrule": "FREQ=WEEKLY;INTERVAL=2;BYDAY=TH",
+      "dtstart": "2026-12-17",
+      "window": { "from": "2026-12-01", "to": "2027-02-28" },
+      "expected": [
+        "2026-12-17",
+        "2026-12-31",
+        "2027-01-14",
+        "2027-01-28",
+        "2027-02-11",
+        "2027-02-25"
+      ]
+    },
+    {
+      "name": "monthly on the 31st skips short months",
+      "rrule": "FREQ=MONTHLY;BYMONTHDAY=31",
+      "dtstart": "2026-01-31",
+      "window": { "from": "2026-01-01", "to": "2026-12-31" },
+      "expected": [
+        "2026-01-31",
+        "2026-03-31",
+        "2026-05-31",
+        "2026-07-31",
+        "2026-08-31",
+        "2026-10-31",
+        "2026-12-31"
+      ]
+    },
+    {
+      "name": "dtstart on the 31st, no BYMONTHDAY",
+      "rrule": "FREQ=MONTHLY",
+      "dtstart": "2026-01-31",
+      "window": { "from": "2026-01-01", "to": "2026-08-31" },
+      "expected": [
+        "2026-01-31",
+        "2026-03-31",
+        "2026-05-31",
+        "2026-07-31",
+        "2026-08-31"
+      ]
+    },
+    {
+      "name": "last day of the month",
+      "rrule": "FREQ=MONTHLY;BYMONTHDAY=-1",
+      "dtstart": "2026-01-31",
+      "window": { "from": "2026-01-01", "to": "2026-06-30" },
+      "expected": [
+        "2026-01-31",
+        "2026-02-28",
+        "2026-03-31",
+        "2026-04-30",
+        "2026-05-31",
+        "2026-06-30"
+      ]
+    },
+    {
+      "name": "WKST=MO with INTERVAL=2",
+      "rrule": "FREQ=WEEKLY;INTERVAL=2;COUNT=4;BYDAY=TU,SU;WKST=MO",
+      "dtstart": "1997-08-05",
+      "window": { "from": "1997-08-01", "to": "1997-09-30" },
+      "expected": ["1997-08-05", "1997-08-10", "1997-08-19", "1997-08-24"]
+    },
+    {
+      "name": "WKST=SU with INTERVAL=2",
+      "rrule": "FREQ=WEEKLY;INTERVAL=2;COUNT=4;BYDAY=TU,SU;WKST=SU",
+      "dtstart": "1997-08-05",
+      "window": { "from": "1997-08-01", "to": "1997-09-30" },
+      "expected": ["1997-08-05", "1997-08-17", "1997-08-19", "1997-08-31"]
+    },
+    {
+      "name": "COUNT counts from dtstart, not from the window",
+      "rrule": "FREQ=DAILY;COUNT=5",
+      "dtstart": "2026-09-01",
+      "window": { "from": "2026-09-03", "to": "2026-09-30" },
+      "expected": ["2026-09-03", "2026-09-04", "2026-09-05"]
+    },
+    {
+      "name": "every third day",
+      "rrule": "FREQ=DAILY;INTERVAL=3",
+      "dtstart": "2026-09-28",
+      "window": { "from": "2026-09-28", "to": "2026-10-20" },
+      "expected": [
+        "2026-09-28",
+        "2026-10-01",
+        "2026-10-04",
+        "2026-10-07",
+        "2026-10-10",
+        "2026-10-13",
+        "2026-10-16",
+        "2026-10-19"
+      ]
+    },
+    {
+      "name": "yearly defaults to dtstart's month and day",
+      "rrule": "FREQ=YEARLY",
+      "dtstart": "2026-03-15",
+      "window": { "from": "2026-01-01", "to": "2029-12-31" },
+      "expected": ["2026-03-15", "2027-03-15", "2028-03-15", "2029-03-15"]
+    },
+    {
+      "name": "weekly without BYDAY uses dtstart's weekday",
+      "rrule": "FREQ=WEEKLY",
+      "dtstart": "2026-09-30",
+      "window": { "from": "2026-09-28", "to": "2026-10-31" },
+      "expected": [
+        "2026-09-30",
+        "2026-10-07",
+        "2026-10-14",
+        "2026-10-21",
+        "2026-10-28"
+      ]
+    },
+    {
+      "name": "dtstart not matching BYDAY is not an occurrence",
+      "rrule": "FREQ=WEEKLY;BYDAY=MO,FR",
+      "dtstart": "2026-09-30",
+      "window": { "from": "2026-09-28", "to": "2026-10-12" },
+      "expected": ["2026-10-02", "2026-10-05", "2026-10-09", "2026-10-12"]
+    },
+    {
+      "name": "second-to-last Friday, yearly in November",
+      "rrule": "FREQ=YEARLY;BYMONTH=11;BYDAY=-2FR",
+      "dtstart": "2026-01-01",
+      "window": { "from": "2026-01-01", "to": "2028-12-31" },
+      "expected": ["2026-11-20", "2027-11-19", "2028-11-17"]
+    },
+    {
+      "name": "first Monday of each quarter",
+      "rrule": "FREQ=MONTHLY;INTERVAL=3;BYDAY=1MO",
+      "dtstart": "2026-01-01",
+      "window": { "from": "2026-01-01", "to": "2026-12-31" },
+      "expected": ["2026-01-05", "2026-04-06", "2026-07-06", "2026-10-05"]
+    },
+    {
+      "name": "window before dtstart is empty",
+      "rrule": "FREQ=DAILY",
+      "dtstart": "2026-09-28",
+      "window": { "from": "2026-09-01", "to": "2026-09-27" },
+      "expected": []
+    }
+  ]
+}
