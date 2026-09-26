@@ -2,12 +2,13 @@
 
 - Created: 2026-09-26
 - Owner: claude
-- Status: ready
+- Status: done
 - Blockers: —
 - Spec: [docs/specs/2026-09-26-plan-c-recurrence-design.md](../../../docs/specs/2026-09-26-plan-c-recurrence-design.md)
   (the C2 half: Q2, Q4, Q5, Q7, Q8, Q13, Q14); ADR 0002, 0005, 0006, 0009,
   0010, 0013
 - Plan: [docs/plans/2026-09-26-plan-c2-task-occurrence.md](../../../docs/plans/2026-09-26-plan-c2-task-occurrence.md)
+- Completed: 2026-09-26
 
 ### Goal
 
@@ -100,11 +101,11 @@ the server half of plan C so the CLI (C1) can build against a merged contract.
   `POST /sync` calls each.
 - **SC-002** `pnpm --filter @todoer/specs test` passes every vector in
   `vectors/ids.json`, and every rule in `vectors/rrule.json` parses.
-- [ ] every FR has a test that failed before the code made it pass
+- [x] every FR has a test that failed before the code made it pass
 - [ ] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 
