@@ -1,7 +1,7 @@
 import type { OpCreate } from '@todoer/specs';
 import { liveTasks, overlay } from './overlay.js';
 import { planAdd } from './parse-quick-add.js';
-import { ownOutcome, UsageError } from './protocol.js';
+import { ownOutcome, RefusalError, UsageError } from './protocol.js';
 import type { Row, Store } from './store.js';
 import { flush, type Transport } from './sync.js';
 import { unknownCommand } from './usage.js';
@@ -47,12 +47,24 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
     };
     // Stored before it is sent: from here on, every attempt carries this id.
     store.enqueue(op);
-    const flushed = await flush(store, deps.send, new Set([op.opId]));
+    const flushed = await flushOwn(store, deps.send, op.opId);
     // Evaluated unconditionally, never short-circuited on `flushed.synced`:
     // a batch-refused own op is removed from the outbox (I1) even when the
     // follow-up pull that reports it is itself unreached, and that
     // rejection must still throw rather than be reported as "queued".
-    const own = ownOutcome(flushed.results, op.opId);
+    let own = ownOutcome(flushed.results, op.opId);
+    if (own === 'unreported' && flushed.synced) {
+      // A parallel invocation may have sent it between the enqueue and this
+      // flush's read of the outbox; its entry says what became of it.
+      const entry = store.entry(op.opId);
+      if (entry === undefined) own = 'settled';
+      else if (entry.status === 'failed') {
+        store.remove(op.opId);
+        throw new RefusalError(
+          entry.reason ?? 'the server refused this operation',
+        );
+      }
+    }
     synced = flushed.synced && own === 'settled';
     data = tasks(store).find((row) => row.id === op.id) ?? null;
     human = [title];
@@ -97,6 +109,27 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
     stdout: json ? [JSON.stringify({ data, synced, outbox })] : human,
     stderr,
   };
+}
+
+/**
+ * A request-level refusal (401, 403, …) leaves the command's own operation
+ * queued. Said so in the error, because "refused" alone reads as "nothing
+ * happened" and a caller who then repeats the add queues the task twice.
+ */
+async function flushOwn(store: Store, send: Transport, opId: string) {
+  try {
+    return await flush(store, send, new Set([opId]));
+  } catch (error) {
+    if (
+      error instanceof RefusalError &&
+      store.entry(opId)?.status === 'pending'
+    ) {
+      throw new RefusalError(
+        `${error.message} — this command's operation ${opId} is queued and will be sent once the request is accepted — do not run add again for it`,
+      );
+    }
+    throw error;
+  }
 }
 
 function tasks(store: Store): Row[] {

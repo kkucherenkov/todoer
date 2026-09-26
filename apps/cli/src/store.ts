@@ -50,6 +50,16 @@ type OutboxRow = {
   current_version: number | null;
 };
 
+function toEntry(row: OutboxRow): OutboxEntry {
+  return {
+    opId: row.op_id,
+    op: JSON.parse(row.op) as Op,
+    status: row.status,
+    reason: row.reason,
+    currentVersion: row.current_version,
+  };
+}
+
 /** SQLITE_BUSY. Verified against the actual error `node:sqlite` throws:
  *  `{ code: 'ERR_SQLITE_ERROR', errcode: 5, errstr: 'database is locked' }`.
  *  `errcode` is libsqlite3's own error code, not node's wrapper `code`. */
@@ -200,13 +210,20 @@ export class Store {
         'SELECT op_id, op, status, reason, current_version FROM outbox ORDER BY position',
       )
       .all() as unknown as OutboxRow[];
-    return rows.map((row) => ({
-      opId: row.op_id,
-      op: JSON.parse(row.op) as Op,
-      status: row.status,
-      reason: row.reason,
-      currentVersion: row.current_version,
-    }));
+    return rows.map(toEntry);
+  }
+
+  entry(opId: string): OutboxEntry | undefined {
+    const row = this.db
+      .prepare(
+        'SELECT op_id, op, status, reason, current_version FROM outbox WHERE op_id = ?',
+      )
+      .get(opId) as unknown as OutboxRow | undefined;
+    return row === undefined ? undefined : toEntry(row);
+  }
+
+  remove(opId: string): void {
+    this.db.prepare('DELETE FROM outbox WHERE op_id = ?').run(opId);
   }
 
   counts(): { pending: number; failed: number } {

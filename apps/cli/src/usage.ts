@@ -41,7 +41,9 @@ exit codes (ADR 0015 §2):
   0  done, and the server has it
   1  the server refused: this command's operation was rejected, or the
      request was refused (401, 403, …). A 401 means the token is missing,
-     invalid or expired — get a new one; queued operations stay queued
+     invalid or expired — get a new one; queued operations stay queued;
+     if add exits 1 this way, its operation is still queued — fix the cause
+     and run any command (for example list) to send it, not add again
   2  usage error — the command did nothing (the outbox may still have been
      sent)
   3  an unexpected local failure, such as the local database staying busy

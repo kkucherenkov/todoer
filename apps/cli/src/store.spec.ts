@@ -106,6 +106,20 @@ describe('Store', () => {
     expect(store.entries()).toEqual([]);
   });
 
+  it('looks one entry up by op id, and removes one', () => {
+    const store = storeAt();
+    store.enqueue(create('a'));
+    store.enqueue(create('b'));
+    store.settle([{ opId: 'a', status: 'rejected', reason: 'no' }], new Set());
+
+    expect(store.entry('a')).toMatchObject({ status: 'failed', reason: 'no' });
+    expect(store.entry('nope')).toBeUndefined();
+
+    store.remove('a');
+    expect(store.entry('a')).toBeUndefined();
+    expect(store.entries().map((e) => e.opId)).toEqual(['b']);
+  });
+
   it('drops failed entries, and refuses anything else without dropping', () => {
     const store = storeAt();
     store.enqueue(create('a'));

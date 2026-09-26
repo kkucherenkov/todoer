@@ -227,8 +227,47 @@ describe('run', () => {
   // Review Focus 3.
   it('keeps the add queued when the token is refused', async () => {
     const d = deps(() => Promise.resolve(json({ title: 'Unauthorized' }, 401)));
-    await expect(run(['add', 'x'], d)).rejects.toThrow(RefusalError);
+    const refused = run(['add', 'x'], d);
+    await expect(refused).rejects.toThrow(RefusalError);
+    // A caller told only "refused" retries the add and queues it twice.
+    await expect(refused).rejects.toThrow(
+      /operation id-1 is queued .* do not run add again/,
+    );
     expect(d.store.entries().map((e) => e.status)).toEqual(['pending']);
+  });
+
+  // Minor 4: a parallel invocation can settle this command's op between its
+  // enqueue and its flush, so the response never mentions it.
+  it('calls an add synced when a parallel command already delivered its operation', async () => {
+    const d: Deps = deps((request) => {
+      if (request.ops.length > 0) throw new Error('op should be gone');
+      return Promise.resolve(json({ cursor: 0, results: [], changes: [] }));
+    });
+    d.store.enqueue = (op) => {
+      Store.prototype.enqueue.call(d.store, op);
+      d.store.settle([{ opId: op.opId, status: 'applied' }], new Set());
+    };
+    const out = await run(['add', 'x', '--json'], d);
+    expect(out.exit).toBe(0);
+    expect(envelope(out.stdout)).toMatchObject({
+      synced: true,
+      outbox: { pending: 0, failed: 0 },
+    });
+  });
+
+  it('throws when a parallel command already saw its operation refused', async () => {
+    const d: Deps = deps(() =>
+      Promise.resolve(json({ cursor: 0, results: [], changes: [] })),
+    );
+    d.store.enqueue = (op) => {
+      Store.prototype.enqueue.call(d.store, op);
+      d.store.settle(
+        [{ opId: op.opId, status: 'rejected', reason: 'nope' }],
+        new Set(),
+      );
+    };
+    await expect(run(['add', 'x'], d)).rejects.toThrow('nope');
+    expect(d.store.entries()).toEqual([]);
   });
 
   it('lists the outbox', async () => {
