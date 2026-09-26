@@ -219,7 +219,7 @@ holiday and a forgotten tablet; tombstones are small.
 - *30-day window.* Shorter contract with offline clients for no real storage
   saving.
 
-**Cost.** One state row per user and an extra write in the pruning transaction.
+**Cost.** One column on `User` (`prunedThroughSeq`) and an extra write in the pruning transaction.
 Completions are never pruned (ADR 0013).
 
 ### `POST /sync` with `since: 0` is the snapshot (Q11)
@@ -310,9 +310,12 @@ change in the same PR; ADR 0015 gains a section on the envelope.
 - **Existing `state.json` (Q8):** ignored. B1 starts from `since: 0`; the
   replica is a cache, and before B2's pruning nothing has been deleted, so a
   full pull restores everything. No import code.
-- **Pruning trigger (Q10):** a `setInterval` in a Nest provider, once a day,
-  guarded by `pg_try_advisory_lock` so only one backend instance prunes. No
-  `@nestjs/schedule` dependency. It also runs once at startup, so a server that
+- **Pruning trigger (Q10):** a `setInterval` in a Nest provider, once a day.
+  No `@nestjs/schedule` dependency. No instance-wide lock either: a
+  session-level advisory lock through Prisma's pool can be taken and released
+  on different connections, and it is not needed, because each user is pruned
+  under the per-user write lock and the watermark only moves up. It also runs
+  once at startup, so a server that
   restarts more often than daily still prunes; a test covers that. External
   cron was rejected because a self-hosted instance where nobody set it up
   would never prune, and `410` would never fire. Pruning at the end of

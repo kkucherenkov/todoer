@@ -99,7 +99,7 @@ task makes the server keep the contract and closes the race before B1 ships.
 - [x] T004 [FR-005] [FR-006] [FR-007] [FR-008] Pruning service — plan Task 4,
       `apps/backend/src/sync/prune.service.ts`
 - **Checkpoint:** scenarios 2 and 3 hold end to end; SC-002 holds.
-- [ ] T005 [FR-010] ADR 0017, ADR 0013/0012/0016, spec, README, design doc —
+- [x] T005 [FR-010] ADR 0017, ADR 0013/0012/0016, spec, README, design doc —
       plan Task 5
 - **Checkpoint:** SC-003 holds; PR open with all four gates green.
 

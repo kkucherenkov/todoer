@@ -11,8 +11,17 @@ Clients pull changes with `WHERE seq > since`. A physically deleted row has no
 ## Decision
 
 Deletion sets `deleted_at`; the row stays and takes a new `seq`. Tombstones are
-retained for a fixed window. A cursor older than that window is answered
-`410 Gone`, and the client resynchronises from `GET /sync/snapshot`.
+retained for **90 days**, then physically deleted by a job the server runs at
+startup and daily. Each user carries a **prune watermark**, the highest `seq`
+among their pruned tombstones. A pull whose cursor is below it
+(`0 < since < watermark`) is answered `410 Gone`, and the client discards its
+replica and repeats with `since: 0`.
+
+`since: 0` is the snapshot: every live row, no tombstones, and a cursor at or
+above the watermark. It is never answered `410`. There is no separate snapshot
+endpoint ([0012](0012-no-rest-surface.md)).
+
+A tombstone that a live row still references is kept until the reference goes.
 
 ## Consequences
 

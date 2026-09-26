@@ -1,6 +1,6 @@
 # 16. The sync cursor orders by seq allocation, not by commit
 
-- **Status:** accepted
+- **Status:** superseded by [0017](0017-a-per-user-write-lock-orders-the-cursor.md)
 - **Date:** 2026-09-25
 
 ## Context
