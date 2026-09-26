@@ -157,7 +157,8 @@ The connection timeout must be short and configurable (see Open threads).
 **Decision.** When a flush receives `rejected` or `conflict` for an operation,
 the operation stays in the outbox marked `failed`, with the server's reason or
 `current_version`. `todoer outbox [--json]` lists outbox entries. Every command
-reports the `failed` count on stderr and in its `--json` envelope (Q13). The
+that exits 0 or 5 reports the `failed` count on stderr and in its `--json`
+envelope (Q13). The
 exit code of the running command is **not** affected by someone else's failed
 operation.
 
@@ -275,11 +276,13 @@ be reconsidered. A new ADR supersedes ADR 0016.
 
 ### Every `--json` result is wrapped in an envelope (Q13)
 
-**Decision.** All commands print, under `--json`:
+**Decision.** Every command that exits 0 or 5 prints, under `--json`:
 
 ```json
 { "data": "…", "synced": true, "outbox": { "pending": 0, "failed": 0 } }
 ```
+
+On exits 1–4 stdout is empty and the reason is on stderr.
 
 `data` is what the command prints today (a task row or `null` for `add`, an
 array of tasks for `list`). `synced` is `false` exactly when the command exits
