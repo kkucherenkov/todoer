@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, GoneException } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -47,6 +47,23 @@ function setParent(id: string, parentId: string) {
     value: parentId,
     ts: new Date().toISOString(),
   };
+}
+
+function deleteTask(id: string, baseVersion: number) {
+  return {
+    opId: uuidv7(),
+    kind: 'delete' as const,
+    table: 'task' as const,
+    id,
+    baseVersion,
+  };
+}
+
+function setWatermark(userId: string, seq: number) {
+  return prisma.user.update({
+    where: { id: userId },
+    data: { prunedThroughSeq: BigInt(seq) },
+  });
 }
 
 describe('SyncService', () => {
@@ -1140,5 +1157,80 @@ describe('SyncService', () => {
       expect(renamed.results[0]?.status).toBe('applied');
       expect(created.results[0]?.status).toBe('applied');
     }
+  });
+
+  it('answers 410 when the cursor is older than the prune watermark', async () => {
+    const first = await service.sync(USER, { since: 0, ops: [createTask('a')] });
+    await setWatermark(USER, first.cursor + 10);
+
+    await expect(
+      service.sync(USER, { since: first.cursor, ops: [] }),
+    ).rejects.toBeInstanceOf(GoneException);
+  });
+
+  // Review Focus 4: the boundary. A client at the watermark has seen every
+  // pruned tombstone.
+  it('does not answer 410 for a cursor exactly at the watermark', async () => {
+    const first = await service.sync(USER, { since: 0, ops: [createTask('a')] });
+    await setWatermark(USER, first.cursor);
+
+    const pull = await service.sync(USER, { since: first.cursor, ops: [] });
+    expect(pull.cursor).toBe(first.cursor);
+  });
+
+  it('answers since 0 with live rows only, never with 410', async () => {
+    const kept = createTask('kept');
+    const doomed = createTask('doomed');
+    await service.sync(USER, { since: 0, ops: [kept, doomed] });
+    await service.sync(USER, { since: 0, ops: [deleteTask(doomed.id, 1)] });
+    await setWatermark(USER, 1_000_000);
+
+    const snapshot = await service.sync(USER, { since: 0, ops: [] });
+
+    expect(snapshot.changes.map((c) => c.id)).toEqual([kept.id]);
+  });
+
+  // Review Focus 1: a snapshot whose cursor sat below the watermark would
+  // send the client straight back into 410, forever.
+  it('gives a snapshot a cursor the next pull accepts', async () => {
+    const task = createTask('old');
+    const created = await service.sync(USER, { since: 0, ops: [task] });
+    await setWatermark(USER, created.cursor + 1000);
+
+    const snapshot = await service.sync(USER, { since: 0, ops: [] });
+    expect(snapshot.cursor).toBeGreaterThanOrEqual(created.cursor + 1000);
+
+    const next = await service.sync(USER, { since: snapshot.cursor, ops: [] });
+    expect(next.changes).toHaveLength(0);
+  });
+
+  it('moves a snapshot cursor past tombstones it leaves out', async () => {
+    const doomed = createTask('doomed');
+    await service.sync(USER, { since: 0, ops: [doomed] });
+    await service.sync(USER, { since: 0, ops: [deleteTask(doomed.id, 1)] });
+    const { seq } = await prisma.task.findUniqueOrThrow({
+      where: { id: doomed.id },
+    });
+
+    const snapshot = await service.sync(USER, { since: 0, ops: [] });
+
+    expect(snapshot.changes).toHaveLength(0);
+    expect(snapshot.cursor).toBe(Number(seq));
+  });
+
+  // Review Focus 3: operations sent with a stale cursor are applied before
+  // the pull answers 410. Resent with since 0, they must replay, not repeat.
+  it('replays operations that arrived with a stale cursor', async () => {
+    const first = await service.sync(USER, { since: 0, ops: [createTask('a')] });
+    await setWatermark(USER, first.cursor + 1000);
+    const op = createTask('sent with a stale cursor');
+
+    await expect(
+      service.sync(USER, { since: first.cursor, ops: [op] }),
+    ).rejects.toBeInstanceOf(GoneException);
+    const resent = await service.sync(USER, { since: 0, ops: [op] });
+
+    expect(resent.results[0]?.status).toBe('duplicate');
+    expect(await prisma.task.count({ where: { id: op.id } })).toBe(1);
   });
 });

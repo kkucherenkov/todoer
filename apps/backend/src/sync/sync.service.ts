@@ -1,4 +1,9 @@
-import { BadRequestException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadRequestException,
+  GoneException,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { applyOp, type Op, type Outcome, type Row } from './apply-op.js';
@@ -111,6 +116,7 @@ const WRITABLE_FIELDS: Record<TableName, ReadonlySet<string>> = {
 type SyncDelegate = {
   findFirst(args: unknown): Promise<Row | null>;
   findMany(args: unknown): Promise<Array<Record<string, unknown>>>;
+  aggregate(args: unknown): Promise<{ _max: { seq: bigint | null } }>;
   create(args: unknown): Promise<unknown>;
   update(args: unknown): Promise<unknown>;
 };
@@ -687,17 +693,47 @@ export class SyncService {
     // returns nothing at all. Building it from delivered rows instead means
     // the residual race (an in-flight low seq *and* no higher seq visible
     // to shrink the gap) needs both conditions at once, rather than either
-    // alone — see ADR 0016 for what still gets through.
+    // alone. The per-user write lock (lockUserWrites) removes the in-flight
+    // low seq altogether — see ADR 0017.
     return this.prisma.$transaction(
       async (tx) => {
-        // Tombstoned rows are returned on purpose: they are how a client
-        // learns about a deletion, and filtering them out is silent data
-        // corruption, not a missing feature (see D15).
+        // Read inside the same snapshot as the rows: a pruning run that
+        // commits between a separate check and the scans would make the
+        // check describe a database the scans no longer see.
+        const user = await tx.user.findUnique({
+          where: { id: userId },
+          select: { prunedThroughSeq: true },
+        });
+        const watermark = Number(user?.prunedThroughSeq ?? 0n);
+
+        // since 0 is the snapshot (ADR 0013): a client with no replica has
+        // nothing to delete, so tombstones are left out, and it is never
+        // stale. Any other cursor below the watermark has missed deletions
+        // that no longer exist to be sent.
+        const snapshot = since === 0;
+        if (!snapshot && since < watermark) {
+          throw new GoneException(
+            `cursor ${since} is older than the prune watermark ${watermark}; repeat with since 0`,
+          );
+        }
+
+        // A snapshot's cursor starts at the watermark and also covers the
+        // tombstones it leaves out. Built from live rows alone, it can sit
+        // below the watermark, and the next pull answers 410 again, forever.
+        let cursor = snapshot ? watermark : since;
+
+        // Tombstoned rows are returned on purpose outside a snapshot: they
+        // are how a client learns about a deletion, and filtering them out is
+        // silent data corruption, not a missing feature (see D15).
         const out: Change[] = [];
         for (const table of TABLES) {
           const delegate = delegateFor(tx, table);
           const rows = await delegate.findMany({
-            where: { userId, seq: { gt: BigInt(since) } },
+            where: {
+              userId,
+              seq: { gt: BigInt(since) },
+              ...(snapshot ? { deletedAt: null } : {}),
+            },
             orderBy: { seq: 'asc' },
           });
           for (const row of rows) {
@@ -708,10 +744,17 @@ export class SyncService {
               row: toChangeRow(table, row),
             });
           }
+          if (snapshot) {
+            const { _max } = await delegate.aggregate({
+              where: { userId },
+              _max: { seq: true },
+            });
+            cursor = Math.max(cursor, Number(_max.seq ?? 0n));
+          }
         }
         out.sort((a, b) => a.seq - b.seq);
 
-        const cursor = out.reduce((m, c) => Math.max(m, c.seq), since);
+        cursor = out.reduce((m, c) => Math.max(m, c.seq), cursor);
 
         return { cursor, changes: out };
       },

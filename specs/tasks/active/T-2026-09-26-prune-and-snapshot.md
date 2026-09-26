@@ -92,7 +92,7 @@ task makes the server keep the contract and closes the race before B1 ships.
 - **Checkpoint:** scenario 1 holds; the backend suite is green.
 - [x] T002 [FR-009] Contract for `since: 0` and `410`, then codegen — plan
       Task 2, `packages/specs/openapi/openapi.yaml`
-- [ ] T003 [FR-002] [FR-003] [FR-004] Watermark column, `410`, the snapshot —
+- [x] T003 [FR-002] [FR-003] [FR-004] Watermark column, `410`, the snapshot —
       plan Task 3, `apps/backend/prisma/schema.prisma`, `sync.service.ts`
 - **Checkpoint:** a stale cursor gets `410` and `since: 0` recovers, against a
   hand-set watermark.

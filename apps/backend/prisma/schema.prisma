@@ -13,6 +13,12 @@ model User {
   passwordHash String
   createdAt    DateTime @default(now())
 
+  /// The prune watermark: the highest seq among this user's tombstones that
+  /// have been physically deleted. A pull whose cursor is below it has missed
+  /// deletions it can no longer be told about and is answered 410 (ADR 0013).
+  /// Only ever raised, by the pruning job.
+  prunedThroughSeq BigInt @default(0)
+
   tasks    Task[]
   projects Project[]
   tags     Tag[]
