@@ -112,7 +112,7 @@ and a command without a server answers from the local copy.
       `package.json`, `.nvmrc`, `.github/workflows/test.yml`
 - [x] T002 [FR-011] Configuration reader — plan Task 2,
       `apps/cli/src/config.ts`
-- [ ] T003 [FR-001] [FR-003] [FR-006] [FR-009] SQLite store — plan Task 3,
+- [x] T003 [FR-001] [FR-003] [FR-006] [FR-009] SQLite store — plan Task 3,
       `apps/cli/src/store.ts`
 - [ ] T004 [P] [FR-005] Overlay — plan Task 4, `apps/cli/src/overlay.ts`
 - **Checkpoint:** the store and the overlay pass their own tests; nothing
