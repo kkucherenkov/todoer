@@ -291,6 +291,74 @@ describe('flush', () => {
     expect(flushed.synced).toBe(true);
   });
 
+  // G11: the closing pull a refused last batch owes can itself be refused
+  // or unreachable. `synced: true` would then claim the local state is
+  // current when nothing was actually pulled.
+  it('(a) counts the flush as unsynced when the closing pull after a refused batch is itself refused', async () => {
+    store.enqueue(create('earlier'));
+    store.enqueue(create('mine'));
+    const server = scripted(
+      () => json({ title: 'Payload Too Large' }, 413),
+      () => json({ title: 'Payload Too Large' }, 413),
+    );
+
+    const flushed = await flush(store, server.send, new Set(['mine']));
+
+    // The batch's ops settle exactly as they would if the closing pull had
+    // gone through — only `synced` reflects the closing pull's own fate.
+    expect(store.entries().map((e) => [e.opId, e.status])).toEqual([
+      ['earlier', 'failed'],
+    ]);
+    expect(flushed.results.map((r) => [r.opId, r.status])).toEqual([
+      ['earlier', 'rejected'],
+      ['mine', 'rejected'],
+    ]);
+    expect(server.requests[1]).toEqual({ since: 0, ops: [] });
+    expect(flushed.synced).toBe(false);
+  });
+
+  it('(b) still syncs when the closing pull after a refused batch recovers from a 410', async () => {
+    store.mergeChanges([
+      {
+        table: 'task',
+        id: 'gone',
+        seq: 50,
+        row: { id: 'gone', deletedAt: null },
+      },
+    ]);
+    store.advanceCursor(50);
+    store.enqueue(create('a'));
+    const kept = { id: 'kept', deletedAt: null };
+    const server = scripted(
+      () => json({ title: 'Payload Too Large' }, 413),
+      () => json({ title: 'Gone' }, 410),
+      (request) =>
+        applyAll(request, 900, [
+          { table: 'task', id: 'kept', seq: 800, row: kept },
+        ]),
+    );
+
+    const flushed = await flush(store, server.send);
+
+    expect(server.requests.map((r) => r.since)).toEqual([50, 50, 0]);
+    expect(flushed.synced).toBe(true);
+    expect(store.rows('task')).toEqual([kept]);
+    expect(store.cursor()).toBe(900);
+  });
+
+  it('(c) counts the flush as unsynced when the closing pull after a refused batch is unreachable', async () => {
+    store.enqueue(create('a'));
+    const server = scripted(
+      () => json({ title: 'Payload Too Large' }, 413),
+      unreachable,
+    );
+
+    const flushed = await flush(store, server.send);
+
+    expect(server.requests).toHaveLength(2);
+    expect(flushed.synced).toBe(false);
+  });
+
   it('still sends and applies the next batch after a 400 refuses the one before it', async () => {
     for (let i = 0; i <= MAX_OPS; i++) {
       store.enqueue(create(`op-${String(i).padStart(4, '0')}`));
@@ -319,12 +387,28 @@ describe('flush', () => {
 });
 
 describe('MAX_OPS', () => {
+  // G12: an unanchored search for `ops:` / `maxItems:` would happily match
+  // the next schema's `maxItems` if `SyncRequest.ops` ever lost its own, so
+  // this slices the file down to the `SyncRequest` schema block first (from
+  // its own top-level key to the next one, both indented 4 spaces under
+  // `schemas:`) and only then looks for `ops` / `maxItems` inside that slice.
   it("matches the contract's cap on ops per request", () => {
     const openapi = readFileSync(
       new URL('../../../packages/specs/openapi/openapi.yaml', import.meta.url),
       'utf8',
     );
-    const match = /ops:[\s\S]*?maxItems:\s*(\d+)/.exec(openapi);
+    const start = /^ {4}SyncRequest:\s*$/m.exec(openapi);
+    expect(start, 'SyncRequest schema not found in openapi.yaml').not.toBe(
+      null,
+    );
+    const afterStart = openapi.slice(start!.index + start![0].length);
+    const end = /^ {4}[A-Za-z_]\w*:\s*$/m.exec(afterStart);
+    const block = end ? afterStart.slice(0, end.index) : afterStart;
+    const match = /ops:[\s\S]*?maxItems:\s*(\d+)/.exec(block);
+    expect(
+      match,
+      'ops.maxItems not found inside the SyncRequest schema block',
+    ).not.toBe(null);
     expect(Number(match?.[1])).toBe(MAX_OPS);
   });
 });

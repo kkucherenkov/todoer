@@ -137,10 +137,16 @@ export async function flush(
   }
   if (!pulled) {
     // The last batch was refused outright, so it carried no pull: ask once
-    // more, empty-handed, for what changed.
+    // more, empty-handed, for what changed. A 400/413 to this empty request
+    // is the server refusing to talk at all, not this batch's fault to
+    // settle — the local replica and cursor are unconfirmed, so this flush
+    // did not sync (the command exits 5) even though every op already has
+    // its verdict.
     const answer = await attempt(store, send, []);
-    if (answer === 'unreached') return { synced: false, results };
-    if (!isBatchRefused(answer)) store.applyResponse(answer, own);
+    if (answer === 'unreached' || isBatchRefused(answer)) {
+      return { synced: false, results };
+    }
+    store.applyResponse(answer, own);
   }
   return { synced: true, results };
 }
