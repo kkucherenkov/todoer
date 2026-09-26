@@ -848,8 +848,11 @@ describe('SyncService', () => {
   // that overwrites the other user's row, and that test's reason
   // assertion fails.
 
-  // C1: two `set` operations on different fields of one row, genuinely
-  // overlapping. Sequential arrival — in order or out of it — cannot show
+  // C1: two `set` operations on different fields of one row. The second
+  // write now waits on the per-user write lock (and the row lock), so the
+  // two cycles cannot interleave; this test pins the outcome (no lost
+  // field, `version` counts both), and no longer isolates the row lock on
+  // its own. Sequential arrival — in order or out of it — cannot show
   // this: what the loser loses is not a timestamp comparison but a whole row
   // written back from a snapshot taken before the winner committed, `fieldTs`
   // included, so the row ends up carrying the new timestamp against the old
@@ -1125,37 +1128,76 @@ describe('SyncService', () => {
   // advisory lock, while the create holds the advisory lock and waits on the
   // project's FOR KEY SHARE (its foreign key): 40P01, a 500.
   it('does not deadlock a project edit against a task created in it', async () => {
-    for (let round = 0; round < 20; round++) {
-      const project = {
-        opId: uuidv7(),
-        kind: 'create' as const,
-        table: 'project' as const,
-        id: uuidv7(),
-        fields: { name: 'p', rank: 'a0' },
-        ts: new Date().toISOString(),
-      };
-      await service.sync(USER, { since: 0, ops: [project] });
+    const project = {
+      opId: uuidv7(),
+      kind: 'create' as const,
+      table: 'project' as const,
+      id: uuidv7(),
+      fields: { name: 'p', rank: 'a0' },
+      ts: new Date().toISOString(),
+    };
+    await service.sync(USER, { since: 0, ops: [project] });
 
-      const rename = {
-        opId: uuidv7(),
-        kind: 'set' as const,
-        table: 'project' as const,
-        id: project.id,
-        field: 'name',
-        value: `p${round}`,
-        ts: new Date().toISOString(),
-      };
-      const task = {
-        ...createTask('in p'),
-        fields: { title: 'in p', rank: 'a0', projectId: project.id },
-      };
+    let reached!: () => void;
+    let release!: () => void;
+    const reachedPromise = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    const releasePromise = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    // Pauses the rename after lockRows has taken P's FOR UPDATE (and after
+    // lockUserWrites): project.findFirst is the first read the 'set' path
+    // makes once those locks are held (referenceRejection makes none for
+    // project, which has no REFERENCES entry of its own).
+    const pausedPrisma = prisma.$extends({
+      query: {
+        project: {
+          async findFirst({ args, query }) {
+            const row = await query(args);
+            reached();
+            await releasePromise;
+            return row;
+          },
+        },
+      },
+    });
+    const paused = new SyncService(pausedPrisma as unknown as PrismaService);
+
+    const rename = {
+      opId: uuidv7(),
+      kind: 'set' as const,
+      table: 'project' as const,
+      id: project.id,
+      field: 'name',
+      value: 'renamed',
+      ts: new Date().toISOString(),
+    };
+    const task = {
+      ...createTask('in p'),
+      fields: { title: 'in p', rank: 'a0', projectId: project.id },
+    };
+
+    const renamedPromise = paused.sync(USER, { since: 0, ops: [rename] });
+    await reachedPromise;
+    const createdPromise = service.sync(USER, { since: 0, ops: [task] });
+
+    try {
+      // Long enough for the task create to have reached and blocked on
+      // P's FOR KEY SHARE, if nothing stopped it, before the rename lets go.
+      setTimeout(release, 200);
       const [renamed, created] = await Promise.all([
-        service.sync(USER, { since: 0, ops: [rename] }),
-        service.sync(USER, { since: 0, ops: [task] }),
+        renamedPromise,
+        createdPromise,
       ]);
 
       expect(renamed.results[0]?.status).toBe('applied');
       expect(created.results[0]?.status).toBe('applied');
+    } finally {
+      // Releases even if an assertion above throws, so a failure here does
+      // not leave the paused interactive transaction open until Prisma's
+      // own transaction timeout.
+      release();
     }
   });
 
