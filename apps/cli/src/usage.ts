@@ -3,9 +3,9 @@ import { UsageError } from './protocol.js';
 /**
  * Everything a caller has to know that is not in the wire contract: what the
  * quick-add markers do and do not do, where the token comes from and how long
- * it lasts, what each exit code means, and the one sharp edge — `add` is not
- * idempotent. Every command sends the outbox first; `add` is safe to run
- * once because its operation id is stored with it.
+ * it lasts, and what each exit code means. Every command sends the outbox
+ * first; `add` is safe to run once because its operation id is stored with
+ * it and reused on every later send.
  */
 export const HELP = `todoer — a client for a todoer instance
 
@@ -39,16 +39,17 @@ local state:
 
 exit codes (ADR 0015 §2):
   0  done, and the server has it
-  1  the server refused: this command's operation was rejected, or any 4xx.
-     A 401 means the token is missing, invalid or expired — get a new one;
-     queued operations stay queued
-  2  usage error — nothing was sent
+  1  the server refused: this command's operation was rejected, or the
+     request was refused (401, 403, …). A 401 means the token is missing,
+     invalid or expired — get a new one; queued operations stay queued
+  2  usage error — the command did nothing (the outbox may still have been
+     sent)
   3  an unexpected local failure, such as the local database staying busy
   4  reserved for a conflict — the server holds a newer version of the row.
      No command sends an operation that can return one yet: add sends a
      create, and a create never conflicts
-  5  the server was not reached: the answer is local, and this command's
-     operation is queued and will be sent by a later command. Do not run the
+  5  the server was not reached: the answer is local, and any operation
+     this command queued will be sent by a later command. Do not run the
      command again for the same intent — that would queue it twice
 
 add is safe to run once: its operation id is stored with the operation and

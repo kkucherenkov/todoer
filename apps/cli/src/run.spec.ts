@@ -130,6 +130,14 @@ describe('run', () => {
     expect((await run(['list'], d)).stdout).toEqual(['2  call the bank']);
   });
 
+  // M4: planAdd's notice about a dropped marker is not part of the answer.
+  it("puts planAdd's notice about a dropped marker on stderr, never stdout", async () => {
+    const d = deps(fakeServer().send);
+    const out = await run(['add', 'buy milk #groceries'], d);
+    expect(out.stderr.join('\n')).toMatch(/#groceries/);
+    expect(out.stdout.join('\n')).not.toMatch(/#groceries/);
+  });
+
   it("reports the command's own rejected add by throwing, and does not keep it", async () => {
     const d = deps((request) =>
       Promise.resolve(
@@ -146,6 +154,40 @@ describe('run', () => {
     );
     await expect(run(['add', 'x'], d)).rejects.toThrow(RefusalError);
     expect(d.store.entries()).toEqual([]);
+  });
+
+  // I1: the own op's batch is refused outright (413) — settle removes it
+  // from the outbox as `own` — and the follow-up pull cannot reach the
+  // server either. `flushed.synced` is false, but the rejection must still
+  // surface: reporting exit 5 ("queued, a later command will send it")
+  // would be a lie once the op is gone.
+  it("throws when the own op's batch is refused and the follow-up pull cannot reach the server", async () => {
+    let calls = 0;
+    const d = deps(() => {
+      calls += 1;
+      if (calls === 1) {
+        return Promise.resolve(new Response('too many', { status: 413 }));
+      }
+      return Promise.reject(new TypeError('fetch failed'));
+    });
+    await expect(run(['add', 'x'], d)).rejects.toThrow(RefusalError);
+    expect(d.store.entries()).toEqual([]);
+  });
+
+  // I2 and ruling 5: the server was reached and reported nothing at all
+  // about the own op — not rejected, not applied — which is neither a
+  // refusal (nothing to throw) nor a success (nothing confirmed). The
+  // command must still say so is queued and unsynced, not synced.
+  it('does not call an add synced when the server never mentions its operation', async () => {
+    const d = deps(() =>
+      Promise.resolve(json({ cursor: 0, results: [], changes: [] })),
+    );
+    const out = await run(['add', 'x', '--json'], d);
+    expect(out.exit).toBe(5);
+    expect(envelope(out.stdout)).toMatchObject({
+      synced: false,
+      outbox: { pending: 1, failed: 0 },
+    });
   });
 
   // Scenario 4 and FR-006.

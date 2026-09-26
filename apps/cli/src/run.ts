@@ -16,7 +16,7 @@ export type Deps = {
 export type Outcome = { exit: 0 | 5; stdout: string[]; stderr: string[] };
 
 const UNREACHED =
-  'the server was not reached: this answer is local, and queued operations will be sent by a later command';
+  'the server was not reached: this answer is local, and any operation this command queued will be sent by a later command';
 
 /**
  * Every command: flush the outbox and pull first (design doc, Q5), then
@@ -48,8 +48,12 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
     // Stored before it is sent: from here on, every attempt carries this id.
     store.enqueue(op);
     const flushed = await flush(store, deps.send, new Set([op.opId]));
-    synced =
-      flushed.synced && ownOutcome(flushed.results, op.opId) === 'settled';
+    // Evaluated unconditionally, never short-circuited on `flushed.synced`:
+    // a batch-refused own op is removed from the outbox (I1) even when the
+    // follow-up pull that reports it is itself unreached, and that
+    // rejection must still throw rather than be reported as "queued".
+    const own = ownOutcome(flushed.results, op.opId);
+    synced = flushed.synced && own === 'settled';
     data = tasks(store).find((row) => row.id === op.id) ?? null;
     human = [title];
   } else if (command === 'list') {
