@@ -67,10 +67,11 @@ const RELATION = {
  * are scoped by `userId`; these columns are not, and the migration's foreign
  * keys are global — so without this map one account can attach its row to
  * another's project or parent task. Nothing leaks today (`changesSince`
- * filters by `userId`), but the row is permanently in someone else's tree,
- * TaskTag's ON DELETE RESTRICT turns it into a hold on a row that account
- * owns, and the first feature to walk `parentId`/`projectId` — a cascade
- * delete, "complete subtasks", a tree view — crosses the boundary.
+ * filters by `userId`), but the row is permanently in someone else's tree:
+ * TaskTag and TaskOccurrence are `ON DELETE CASCADE` on `taskId`/`tagId`, so
+ * deleting the referenced task or tag deletes a row that account does not
+ * own, and the first feature to walk `parentId`/`projectId` — "complete
+ * subtasks", a tree view — crosses the boundary the other way.
  */
 const REFERENCES: Partial<
   Record<TableName, Readonly<Record<string, TableName>>>
@@ -532,7 +533,10 @@ function isRetryable(error: unknown): boolean {
  * tombstone: task occurrences and TaskTag rows are never deleted on their own,
  * so without this a snapshot delivers children of a task or tag the client is
  * never told about (plan C2, departure 4). Incremental pulls still deliver
- * them; a client already holding the parent's tombstone hides them.
+ * them — a client hides a task occurrence or TaskTag row whose task or tag is
+ * tombstoned *or absent* from its replica; the absent case is what covers a
+ * client bootstrapped from a snapshot, which never receives the tombstone at
+ * all (ADR 0013).
  */
 const SNAPSHOT_LIVE_PARENTS: Partial<Record<TableName, object>> = {
   task_occurrence: { task: { deletedAt: null } },

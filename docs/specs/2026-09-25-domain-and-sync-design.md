@@ -47,9 +47,11 @@ Two smaller choices have no record of their own because nothing downstream is
 constrained by them:
 
 - **The RRULE test vectors are a data file in the shared spec package**, read by
-  four test suites. Four implementations of one rule are unavoidable — an
-  offline client must answer "what is due today" without a server. What is
-  avoidable is that their disagreement goes unnoticed.
+  the specs package's own tests and by each client's expander — four test
+  suites in total. Three implementations of one rule are unavoidable: an
+  offline client must answer "what is due today" without a server, and the
+  server itself never expands a rule (§4). What is avoidable is that their
+  disagreement goes unnoticed.
 - **Priority is an enumeration of five values, 0 meaning none.** A numeric range
   without semantics becomes an argument with oneself about what 7 means.
 
@@ -244,7 +246,9 @@ report a cursor past a lower `seq` that is still to commit.
 Then, unless `since` is below the user's prune watermark — which is
 answered `410 Gone` ([ADR 0013](../adr/0013-tombstones-and-the-retention-contract.md)) —
 return every row with `seq > since`, including tombstones. `since: 0` is
-the snapshot: live rows only, never `410`.
+the snapshot: live rows only, never `410` — and also omitting a task
+occurrence or TaskTag row whose task or tag is itself tombstoned, so a
+snapshot client is never shown a child of a parent it was never told about.
 
 ### What the client does
 

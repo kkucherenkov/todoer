@@ -18,8 +18,9 @@ among their pruned tombstones. A pull whose cursor is below it
 replica and repeats with `since: 0`.
 
 `since: 0` is the snapshot: every live row, no tombstones, and a cursor at or
-above the watermark. It is never answered `410`. There is no separate snapshot
-endpoint ([0012](0012-no-rest-surface.md)).
+above the watermark (refined below: a live task occurrence or TaskTag row
+whose task or tag is itself tombstoned is left out too). It is never answered
+`410`. There is no separate snapshot endpoint ([0012](0012-no-rest-surface.md)).
 
 A tombstone that a live row still references is kept until the reference goes.
 
@@ -55,7 +56,14 @@ about.
 
 A task occurrence or TaskTag row written after its parent's tombstone — the
 server does not refuse a reference to a tombstoned row — is cascaded away on
-prune without raising the watermark. That is safe because every client whose
-cursor already passed the tombstone holds it and must hide that parent's
-children, and every client whose cursor is still below it is answered `410`
-regardless. Clients MUST hide children of a tombstoned task or tag.
+prune without raising the watermark. That is safe because every client is in
+one of two states with respect to that child: it received the parent's
+tombstone before the prune (an incremental pull that stayed below the
+watermark) and already hides that parent's children under the tombstone
+rule, or it never received the parent at all — a client bootstrapped from a
+snapshot (`since: 0`) never receives a tombstone, and the snapshot itself
+omits every task occurrence and TaskTag row whose task or tag is tombstoned
+— so the same child is hidden under the absent-parent rule instead. A client
+whose cursor is below the watermark is answered `410` and rebuilds from the
+snapshot, landing in the second case. Clients MUST hide a task occurrence or
+TaskTag row whose task or tag is tombstoned or absent from their replica.

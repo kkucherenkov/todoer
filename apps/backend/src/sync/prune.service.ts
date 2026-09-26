@@ -94,12 +94,13 @@ export class PruneService
    * subtask under a deleted parent) is kept and retried on the next run.
    *
    * ponytail: each deleted tombstone fires its FK action (`SET NULL` on
-   * Task.projectId/parentId, `CASCADE` on TaskTag and TaskOccurrence) which
-   * scans unindexed columns, all inside Prisma's default 5s
-   * interactive-transaction timeout — a user with a very large backlog
-   * (first run after deploy) could hit P2028 every day. Upgrade path:
-   * indexes on Task.projectId, Task.parentId and/or a `{ timeout }` on this
-   * transaction.
+   * Task.projectId/parentId, `CASCADE` on TaskTag and TaskOccurrence), all
+   * inside Prisma's default 5s interactive-transaction timeout. TaskTag and
+   * TaskOccurrence scan their own indexed `taskId`/`tagId` columns; only
+   * Task.projectId and Task.parentId are still unindexed, so a user with a
+   * very large backlog (first run after deploy) could hit P2028 there.
+   * Upgrade path: indexes on Task.projectId, Task.parentId and/or a
+   * `{ timeout }` on this transaction.
    */
   private pruneUser(userId: string, cutoff: Date): Promise<number> {
     return this.prisma.$transaction(async (tx) => {

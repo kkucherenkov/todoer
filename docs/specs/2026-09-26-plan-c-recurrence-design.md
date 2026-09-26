@@ -328,10 +328,21 @@ month unless the user asks for it with `--on`.
 - **Stranded occurrences.** A rule change leaves task occurrences for dates the
   new rule no longer produces. They are kept and ignored by expansion; this is
   the existing ADR 0004 trade, now visible.
-- **Clients must hide children of a tombstoned parent.** A client that shows a
-  task occurrence or TaskTag of a deleted task shows a ghost until the prune.
+- **Clients must hide children of a tombstoned or absent parent.** A client
+  that shows a task occurrence or TaskTag whose task or tag is tombstoned, or
+  that it never received at all (a snapshot omits both), shows a ghost until
+  the prune.
 - **Current-occurrence rule hides yesterday's miss.** Acceptable for a task
   list; wrong for a habit view, which v2 will build separately.
+
+### Notes for C1
+
+- C1 derives done/skipped from `state` alone; per-field LWW can leave a
+  `completedAt` from a losing `create` sitting next to `state: skipped`, so
+  C1 must not infer completion from `completedAt` on its own.
+- Undo sets `state: open` and `completedAt: null`.
+- C1 hides a task occurrence or TaskTag row whose task or tag is tombstoned
+  or absent from its replica (see I1).
 
 ## Deferred
 

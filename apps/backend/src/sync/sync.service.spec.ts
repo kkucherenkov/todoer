@@ -14,8 +14,9 @@ const USER = '11111111-1111-1111-1111-111111111111';
 
 beforeEach(async () => {
   // taskTag/task/project/tag before user: userId is ON DELETE RESTRICT on
-  // every one of them, so a leftover row from an earlier test would block
-  // deleting the user that owned it.
+  // task, project, tag and taskOccurrence, so a leftover row from an earlier
+  // test would block deleting the user that owned it. TaskTag carries no FK
+  // on userId at all, but it is deleted first anyway, for the same reason.
   await prisma.appliedOp.deleteMany({});
   await prisma.taskOccurrence.deleteMany({});
   await prisma.taskTag.deleteMany({});
@@ -1030,9 +1031,11 @@ describe('SyncService', () => {
   // I9: reads are scoped by userId, but projectId/parentId/taskId/tagId are
   // writable and the migration's foreign keys are global. Nothing leaks
   // today, because changesSince filters by userId — but the row is
-  // permanently attached to another account's tree, TaskTag's ON DELETE
-  // RESTRICT turns that into a hold on a row somebody else owns, and the
-  // first feature that walks parentId or projectId crosses the boundary.
+  // permanently attached to another account's tree: TaskTag and
+  // TaskOccurrence are ON DELETE CASCADE on taskId/tagId, so deleting the
+  // referenced task or tag deletes a row somebody else owns, and the first
+  // feature that walks parentId or projectId crosses the boundary the other
+  // way.
   it('rejects a foreign key that points at another account’s row', async () => {
     const mine = createTask('mine');
     const myProject = {
