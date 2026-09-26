@@ -51,6 +51,24 @@ function setParent(id: string, parentId: string) {
   };
 }
 
+function setTask(
+  id: string,
+  field: string,
+  value: unknown,
+  baseVersion?: number,
+) {
+  return {
+    opId: uuidv7(),
+    kind: 'set' as const,
+    table: 'task' as const,
+    id,
+    field,
+    value,
+    ts: new Date().toISOString(),
+    ...(baseVersion !== undefined ? { baseVersion } : {}),
+  };
+}
+
 function deleteTask(id: string, baseVersion: number) {
   return {
     opId: uuidv7(),
@@ -1590,5 +1608,89 @@ describe('SyncService', () => {
       where: { id: link.id },
     });
     expect(row.attached).toBe(true);
+  });
+
+  it('stores a recurring task with a valid rule', async () => {
+    const op = createTask('stand-up');
+    op.fields = {
+      ...op.fields,
+      rrule: 'FREQ=WEEKLY;BYDAY=MO,WE,FR',
+      dtstart: '2026-09-28',
+    };
+
+    const res = await service.sync(USER, { since: 0, ops: [op] });
+
+    expect(res.results[0]?.status).toBe('applied');
+  });
+
+  it.each([
+    [
+      { rrule: 'FREQ=DAILY;BYHOUR=9', dtstart: '2026-09-28' },
+      'rrule: BYHOUR is not supported',
+    ],
+    [{ rrule: 'FREQ=DAILY' }, 'rrule requires dtstart'],
+  ])('rejects a task created with %j', async (fields, reason) => {
+    const op = createTask('bad rule');
+    op.fields = { ...op.fields, ...fields };
+
+    const res = await service.sync(USER, { since: 0, ops: [op] });
+
+    expect(res.results[0]?.status).toBe('rejected');
+    expect(res.results[0]?.reason).toContain(reason);
+    expect(await prisma.task.count({ where: { id: op.id } })).toBe(0);
+  });
+
+  // Review Focus 5: neither op mentions rrule.
+  it('rejects clearing dtstart or adding a parent on a recurring task', async () => {
+    const parent = createTask('parent');
+    const op = createTask('weekly');
+    op.fields = { ...op.fields, rrule: 'FREQ=WEEKLY', dtstart: '2026-09-28' };
+    await service.sync(USER, { since: 0, ops: [parent, op] });
+
+    const res = await service.sync(USER, {
+      since: 0,
+      ops: [setTask(op.id, 'dtstart', null), setParent(op.id, parent.id)],
+    });
+
+    expect(res.results.map((r) => r.reason)).toEqual([
+      'rrule requires dtstart',
+      'a subtask cannot carry an rrule (ADR 0009)',
+    ]);
+  });
+
+  it('rejects a rule on a subtask', async () => {
+    const parent = createTask('parent');
+    const child = createTask('child');
+    child.fields = { ...child.fields, parentId: parent.id };
+    await service.sync(USER, { since: 0, ops: [parent, child] });
+
+    const res = await service.sync(USER, {
+      since: 0,
+      ops: [
+        setTask(child.id, 'dtstart', '2026-09-28'),
+        setTask(child.id, 'rrule', 'FREQ=DAILY', 2),
+      ],
+    });
+
+    expect(res.results[1]).toMatchObject({
+      status: 'rejected',
+      reason: 'a subtask cannot carry an rrule (ADR 0009)',
+    });
+  });
+
+  it('rejects a task occurrence state outside open, done, skipped', async () => {
+    const task = createTask('x');
+    const res = await service.sync(USER, {
+      since: 0,
+      ops: [
+        task,
+        createOccurrence(task.id, '2026-09-28', { state: 'finished' }),
+      ],
+    });
+
+    expect(res.results[1]).toMatchObject({
+      status: 'rejected',
+      reason: 'state must be one of open, done, skipped',
+    });
   });
 });

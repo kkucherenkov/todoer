@@ -9,6 +9,7 @@ import { isIsoDate } from '@todoer/specs';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { applyOp, type Op, type Outcome, type Row } from './apply-op.js';
 import { derivedIdRejection, isDerivedIdTable } from './derived-id.js';
+import { rowRejection } from './row-rules.js';
 import { lockUserWrites, type RawClient } from './user-lock.js';
 
 type SyncRequest = { since: number; ops: Op[] };
@@ -629,6 +630,12 @@ export class SyncService {
             outcome = applyOp(op, current, now, {
               mergeCreate: isDerivedIdTable(table),
             });
+            if (outcome.status === 'applied') {
+              const badRow = rowRejection(table, outcome.row);
+              if (badRow !== null) {
+                outcome = { status: 'rejected', reason: badRow };
+              }
+            }
           }
         }
 
