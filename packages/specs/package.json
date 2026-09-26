@@ -13,7 +13,8 @@
     "./vectors/*.json": "./vectors/*.json"
   },
   "files": [
-    "dist"
+    "dist",
+    "vectors"
   ],
   "scripts": {
     "validate": "redocly lint openapi/openapi.yaml",
