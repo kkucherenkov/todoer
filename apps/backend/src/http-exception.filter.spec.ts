@@ -7,7 +7,12 @@ import {
   vi,
   type MockInstance,
 } from 'vitest';
-import { Logger, NotFoundException, type ArgumentsHost } from '@nestjs/common';
+import {
+  GoneException,
+  Logger,
+  NotFoundException,
+  type ArgumentsHost,
+} from '@nestjs/common';
 import { HttpExceptionFilter } from './http-exception.filter.js';
 
 function createHost() {
@@ -24,13 +29,18 @@ function createHost() {
 
 describe('HttpExceptionFilter', () => {
   let errorSpy: MockInstance<Logger['error']>;
+  let warnSpy: MockInstance<Logger['warn']>;
 
   beforeEach(() => {
-    // Every case here goes through catch(), which now always logs. Stub the
-    // sink so tests don't spam stderr, and so the "must log" case below has
-    // something to assert against.
+    // Every case here goes through catch(), which now always logs, at
+    // `error` or `warn` depending on status. Stub both sinks so tests don't
+    // spam stderr, and so the "must log" cases below have something to
+    // assert against.
     errorSpy = vi
       .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
+    warnSpy = vi
+      .spyOn(Logger.prototype, 'warn')
       .mockImplementation(() => undefined);
   });
 
@@ -98,5 +108,25 @@ describe('HttpExceptionFilter', () => {
     expect(errorSpy).toHaveBeenCalledTimes(1);
     const [loggedException] = errorSpy.mock.calls[0] as [unknown];
     expect(loggedException).toBe(exception);
+  });
+
+  // F10: a 410 is the protocol working as designed (a stale cursor), not an
+  // operational problem — logging it at `error` with a stack pages whoever
+  // is on call for something the client is expected to see routinely.
+  it('logs a protocol-normal 4xx as a warning, not an error', () => {
+    const filter = new HttpExceptionFilter();
+    const { host } = createHost();
+
+    filter.catch(
+      new GoneException(
+        'cursor 5 is older than the prune watermark 10; repeat with since 0',
+      ),
+      host,
+    );
+
+    expect(warnSpy).toHaveBeenCalledWith(
+      '410 cursor 5 is older than the prune watermark 10; repeat with since 0',
+    );
+    expect(errorSpy).not.toHaveBeenCalled();
   });
 });

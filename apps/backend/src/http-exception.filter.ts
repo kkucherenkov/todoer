@@ -29,17 +29,26 @@ export class HttpExceptionFilter implements ExceptionFilter {
   private readonly logger = new Logger(HttpExceptionFilter.name);
 
   catch(exception: unknown, host: ArgumentsHost): void {
-    // Log the original object, not a reshaped copy, so whoever is on call
-    // sees exactly what was thrown, stack included — this is the only place
-    // that happens, since the response below never carries it for a 5xx.
-    this.logger.error(
-      exception,
-      exception instanceof Error ? exception.stack : undefined,
-    );
-
     const response = host.switchToHttp().getResponse<Response>();
     const status = this.statusOf(exception);
     const message = this.messageOf(exception);
+
+    if (status >= 500) {
+      // Log the original object, not a reshaped copy, so whoever is on call
+      // sees exactly what was thrown, stack included — this is the only
+      // place that happens, since the response below never carries it for a
+      // 5xx.
+      this.logger.error(
+        exception,
+        exception instanceof Error ? exception.stack : undefined,
+      );
+    } else {
+      // A 4xx is the protocol working as designed (a stale cursor, a
+      // rejected batch) — logging it at `error` pages whoever is on call for
+      // something the client is expected to see routinely. No stack: there
+      // is nothing here that needs one.
+      this.logger.warn(`${status} ${message ?? ''}`.trim());
+    }
 
     const problem: Problem = {
       type: 'about:blank',
