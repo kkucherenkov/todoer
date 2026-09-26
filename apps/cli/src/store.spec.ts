@@ -1,10 +1,12 @@
+import { execFileSync, spawn } from 'node:child_process';
 import { mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Op } from '@todoer/specs';
 import { UsageError } from './protocol.js';
-import { Store } from './store.js';
+import { Store, retryOnBusy } from './store.js';
 
 let dir: string;
 let open: Store[];
@@ -199,4 +201,136 @@ describe('Store', () => {
     storeAt();
     expect(statSync(join(dir, 'todoer.db')).mode & 0o777).toBe(0o600);
   });
+});
+
+/** A fake SQLITE_BUSY, shaped exactly like the error `node:sqlite` actually
+ *  throws (verified by provoking a real one): `errcode: 5`, not the `code`
+ *  string, which is the same `ERR_SQLITE_ERROR` for every SQLite error. */
+function busyError(): Error {
+  return Object.assign(new Error('database is locked'), {
+    code: 'ERR_SQLITE_ERROR',
+    errcode: 5,
+  });
+}
+
+describe('retryOnBusy', () => {
+  it('retries a busy operation until it succeeds', () => {
+    let attempts = 0;
+    const delays: number[] = [];
+    const result = retryOnBusy(
+      () => {
+        attempts += 1;
+        if (attempts < 3) throw busyError();
+        return 'ok';
+      },
+      (ms) => delays.push(ms),
+    );
+
+    expect(result).toBe('ok');
+    expect(attempts).toBe(3);
+    expect(delays).toEqual([10, 20]);
+  });
+
+  it('does not retry an error that is not SQLITE_BUSY', () => {
+    let attempts = 0;
+    const delays: number[] = [];
+    expect(() =>
+      retryOnBusy(
+        () => {
+          attempts += 1;
+          throw new Error('disk full');
+        },
+        (ms) => delays.push(ms),
+      ),
+    ).toThrow('disk full');
+
+    expect(attempts).toBe(1);
+    expect(delays).toEqual([]);
+  });
+
+  it('rethrows a persistent busy error once the budget is spent', () => {
+    let attempts = 0;
+    expect(
+      () =>
+        retryOnBusy(
+          () => {
+            attempts += 1;
+            throw busyError();
+          },
+          () => {},
+        ), // a no-op sleep: the budget is tracked in requested delay, not wall time
+    ).toThrow('database is locked');
+
+    // The growing, capped delay (10, 20, 40, 50, 50, …) needs several dozen
+    // attempts to add up to the ~5s budget; the exact count is an
+    // implementation detail, so this only pins that it gives up rather than
+    // retrying forever.
+    expect(attempts).toBeGreaterThan(1);
+    expect(attempts).toBeLessThan(1000);
+  });
+});
+
+// Review Focus (Task 3 reopened): ~10 processes opening a database file that
+// does not exist yet all race to switch it to WAL, which needs a momentary
+// exclusive lock that `DatabaseSync`'s own `timeout` does not reliably cover
+// (an upstream node:sqlite/SQLite quirk). This must exercise the real,
+// compiled `Store.open` under real OS-process concurrency — an in-process
+// fake or a hand-rolled `node:sqlite` script proves nothing about the actual
+// bug. `tsc` builds `dist/store.js` once up front (a few hundred ms), then
+// each attempt spawns a fresh `node` process that imports the built `Store`
+// and opens a brand-new file, matching the CLI's own first run.
+describe('parallel first opens (Store.open under real concurrency)', () => {
+  const cliDir = fileURLToPath(new URL('..', import.meta.url));
+  const storeDist = join(cliDir, 'dist', 'store.js');
+
+  it('never leaves SQLITE_BUSY unhandled when many processes race to create the file', () => {
+    execFileSync('pnpm', ['run', 'build'], { cwd: cliDir, stdio: 'pipe' });
+
+    const workerScript = `
+        import { Store } from ${JSON.stringify(storeDist)};
+        try {
+          const store = Store.open(process.argv[1]);
+          store.close();
+        } catch (error) {
+          console.error(error instanceof Error ? error.message : String(error));
+          process.exitCode = 1;
+        }
+      `;
+
+    function openOnce(
+      dbPath: string,
+    ): Promise<{ code: number; stderr: string }> {
+      return new Promise((resolve) => {
+        const child = spawn(
+          process.execPath,
+          ['--input-type=module', '-e', workerScript, dbPath],
+          { stdio: ['ignore', 'ignore', 'pipe'] },
+        );
+        let stderr = '';
+        child.stderr.on(
+          'data',
+          (chunk: Buffer) => (stderr += chunk.toString()),
+        );
+        child.on('close', (code) => resolve({ code: code ?? 1, stderr }));
+      });
+    }
+
+    return (async () => {
+      const rounds = 20;
+      const perRound = 10;
+      const failures: string[] = [];
+      for (let round = 0; round < rounds; round++) {
+        const roundDir = mkdtempSync(join(tmpdir(), 'todoer-race-'));
+        const dbPath = join(roundDir, 'nested', 'todoer.db');
+        const results = await Promise.all(
+          Array.from({ length: perRound }, () => openOnce(dbPath)),
+        );
+        for (const { code, stderr } of results) {
+          if (code !== 0) failures.push(stderr.trim() || `exit ${code}`);
+        }
+        rmSync(roundDir, { recursive: true, force: true });
+      }
+      expect(failures).toEqual([]);
+    })();
+  }, 20_000);
 });

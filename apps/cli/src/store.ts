@@ -50,6 +50,62 @@ type OutboxRow = {
   current_version: number | null;
 };
 
+/** SQLITE_BUSY. Verified against the actual error `node:sqlite` throws:
+ *  `{ code: 'ERR_SQLITE_ERROR', errcode: 5, errstr: 'database is locked' }`.
+ *  `errcode` is libsqlite3's own error code, not node's wrapper `code`. */
+const SQLITE_BUSY = 5;
+
+function isSqliteBusy(error: unknown): boolean {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    (error as { errcode?: unknown }).errcode === SQLITE_BUSY
+  );
+}
+
+/** Blocks the process for `ms`. `Atomics.wait` is synchronous, which is what
+ *  a CLI wants here: there is nothing else to do while another connection
+ *  holds the lock, and there is no event loop worth yielding to. */
+function sleepSync(ms: number): void {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * Retries `fn` while it throws SQLITE_BUSY, waiting a growing amount
+ * between attempts, up to a total budget of ~5s; any other error rethrows
+ * at once, as does a SQLITE_BUSY past the budget.
+ *
+ * Exists because ~10 processes opening a database file that does not exist
+ * yet all race to switch it to WAL, which needs a momentary exclusive lock —
+ * and `DatabaseSync`'s own `timeout` does not reliably cover that specific
+ * lock upgrade (an upstream `node:sqlite`/SQLite quirk: the busy handler
+ * isn't always consulted for it). Once the file exists this never triggers;
+ * the race is only the first moment a fresh HOME creates it.
+ *
+ * The budget is tracked as the sum of the delays this function has asked
+ * `sleep` for, not wall-clock time, so a test can pass a `sleep` that does
+ * nothing and still exercise "gives up eventually" in microseconds instead
+ * of the real 5s.
+ */
+export function retryOnBusy<T>(
+  fn: () => T,
+  sleep: (ms: number) => void = sleepSync,
+): T {
+  const budgetMs = 5000;
+  let waited = 0;
+  let delay = 10;
+  for (;;) {
+    try {
+      return fn();
+    } catch (error) {
+      if (!isSqliteBusy(error) || waited >= budgetMs) throw error;
+      sleep(delay);
+      waited += delay;
+      delay = Math.min(delay * 2, 50);
+    }
+  }
+}
+
 /**
  * The CLI's local state: the replica of the server's rows, the cursor, and
  * the outbox. One SQLite file, because agents run the CLI in parallel and a
@@ -64,8 +120,12 @@ export class Store {
     const onDisk = path !== ':memory:';
     if (onDisk) mkdirSync(dirname(path), { recursive: true });
     const db = new DatabaseSync(path, { timeout: 5000 });
-    db.exec('PRAGMA journal_mode = WAL');
-    db.exec(SCHEMA);
+    // Retried as one unit: both statements are idempotent, and a busy error
+    // from either one means the file did not finish this initialisation.
+    retryOnBusy(() => {
+      db.exec('PRAGMA journal_mode = WAL');
+      db.exec(SCHEMA);
+    });
     // The replica is the user's whole task list.
     if (onDisk) chmodSync(path, 0o600);
     return new Store(db);
