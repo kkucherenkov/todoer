@@ -7,13 +7,23 @@ const server = [
 ];
 
 function op(partial: Partial<Op> & Pick<Op, 'kind'>): Op {
-  return {
-    opId: 'op',
-    table: 'task',
-    id: 'a',
-    ts: '2026-09-26T00:00:00.000Z',
-    ...partial,
-  } as Op;
+  const base =
+    partial.kind === 'delete'
+      ? {
+          opId: 'op',
+          table: 'task',
+          id: 'a',
+          baseVersion: 1,
+          ...partial,
+        }
+      : {
+          opId: 'op',
+          table: 'task',
+          id: 'a',
+          ts: '2026-09-26T00:00:00.000Z',
+          ...partial,
+        };
+  return base as Op;
 }
 
 describe('overlay', () => {
@@ -80,6 +90,14 @@ describe('overlay', () => {
     const rows = [{ id: 'a', title: 'x', deletedAt: null }];
     overlay('task', rows, [op({ kind: 'set', field: 'title', value: 'y' })]);
     expect(rows[0]?.title).toBe('x');
+  });
+
+  it('ignores a queued set or delete for a row it has never seen', () => {
+    const rows = overlay('task', server, [
+      op({ kind: 'set', id: 'ghost', field: 'title', value: 'x' }),
+      op({ kind: 'delete', id: 'ghost2', baseVersion: 1 }),
+    ]);
+    expect(rows).toEqual(server);
   });
 });
 
