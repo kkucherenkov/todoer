@@ -79,6 +79,9 @@ export type Change = {
 };
 
 export type SyncRequest = {
+  /**
+   * The cursor from the previous response. 0 asks for a snapshot: every live row and no tombstones, with a cursor that is never below the prune watermark. A request with since 0 is never answered 410; it is how a client recovers from one.
+   */
   since: number;
   ops: Array<Op>;
 };
@@ -188,7 +191,7 @@ export type PostSyncErrors = {
    */
   401: Problem;
   /**
-   * cursor older than tombstone retention
+   * The cursor is older than the prune watermark: tombstones it has not seen are gone. Discard the local replica and repeat with since 0. Operations in this request were still applied; resend them, and each replays its original outcome.
    */
   410: Problem;
   /**

@@ -90,7 +90,7 @@ task makes the server keep the contract and closes the race before B1 ships.
 - [x] T001 [FR-001] Per-user write lock and its two tests — plan Task 1,
       `apps/backend/src/sync/user-lock.ts`, `sync.service.ts`
 - **Checkpoint:** scenario 1 holds; the backend suite is green.
-- [ ] T002 [FR-009] Contract for `since: 0` and `410`, then codegen — plan
+- [x] T002 [FR-009] Contract for `since: 0` and `410`, then codegen — plan
       Task 2, `packages/specs/openapi/openapi.yaml`
 - [ ] T003 [FR-002] [FR-003] [FR-004] Watermark column, `410`, the snapshot —
       plan Task 3, `apps/backend/prisma/schema.prisma`, `sync.service.ts`
