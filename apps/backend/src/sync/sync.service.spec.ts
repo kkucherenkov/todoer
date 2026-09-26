@@ -1494,6 +1494,50 @@ describe('SyncService', () => {
     expect(row.state).toBe('skipped');
   });
 
+  // M2: taskId and occurrence always carry the same value on a re-create, so
+  // a stale create used to "win" on them alone — mergeFields saw a fieldTs
+  // older than the stale ts, bumped the row, and reported applied although
+  // nothing visible changed. Identity fields must be ignored when deciding
+  // whether a create won.
+  it('answers superseded for a stale create that only wins on identity fields', async () => {
+    const task = createTask('water the plants');
+    const t0 = Date.now() - 60_000;
+    const at = (s: number) => new Date(t0 + s * 1000).toISOString();
+    const done = createOccurrence(
+      task.id,
+      '2026-09-28',
+      { state: 'done' },
+      at(0),
+    );
+    await service.sync(USER, { since: 0, ops: [task, done] });
+
+    const skip = {
+      opId: uuidv7(),
+      kind: 'set' as const,
+      table: 'task_occurrence' as const,
+      id: done.id,
+      field: 'state',
+      value: 'skipped',
+      ts: at(30),
+    };
+    await service.sync(USER, { since: 0, ops: [skip] });
+
+    const staleCreate = createOccurrence(
+      task.id,
+      '2026-09-28',
+      { state: 'done' },
+      at(10),
+    );
+    const res = await service.sync(USER, { since: 0, ops: [staleCreate] });
+
+    expect(res.results[0]?.status).toBe('superseded');
+    const row = await prisma.taskOccurrence.findUniqueOrThrow({
+      where: { id: done.id },
+    });
+    expect(row.state).toBe('skipped');
+    expect(row.version).toBe(2);
+  });
+
   it('keeps one row for a non-recurring completion sent twice', async () => {
     const task = createTask('file taxes');
     const res = await service.sync(USER, {
@@ -1711,6 +1755,29 @@ describe('SyncService', () => {
       ops: [deleteTask(op.id, 2)],
     });
     expect(deleted.results[0]?.status).toBe('applied');
+  });
+
+  // M1: rowRejection ran on every applied write, including delete — so a
+  // legacy row that already violates a rule the parser gained later (rrule
+  // with no dtstart) could never be deleted, only edited into compliance
+  // first, which a delete op cannot do. Inserted directly with Prisma:
+  // applyOp itself refuses `rrule` without `dtstart` on create/set, so this
+  // row cannot arise through the protocol.
+  it('lets a delete through a row that rowRejection would refuse', async () => {
+    const taskId = uuidv7();
+    await prisma.$executeRaw`
+      INSERT INTO "Task" (id, "userId", title, rank, rrule, dtstart, seq, "updatedAt")
+      VALUES (${taskId}::uuid, ${USER}::uuid, 'legacy weekly', 'a0', 'FREQ=DAILY', NULL, nextval('change_seq'), now())
+    `;
+
+    const res = await service.sync(USER, {
+      since: 0,
+      ops: [deleteTask(taskId, 1)],
+    });
+
+    expect(res.results[0]?.status).toBe('applied');
+    const row = await prisma.task.findUniqueOrThrow({ where: { id: taskId } });
+    expect(row.deletedAt).not.toBeNull();
   });
 
   it('rejects a rule on a subtask', async () => {

@@ -42,6 +42,16 @@ export function isDerivedIdTable(table: string): boolean {
 }
 
 /**
+ * The fields `table`'s id is derived from, or `[]` for a table with no
+ * derivation. Passed to `applyOp` as `identityKeys` so a create-merge never
+ * lets one of these win on its own — they always carry the same value as
+ * the row already holds (M2).
+ */
+export function derivedIdKeys(table: string): readonly string[] {
+  return DERIVED[table]?.keys ?? [];
+}
+
+/**
  * Why this op cannot be applied to a derived-id table, or `null`. A malformed
  * `fields` is left to applyOp. Dates are already checked (dateRejection runs
  * first), so `occurrence` is canonical by the time it is hashed.

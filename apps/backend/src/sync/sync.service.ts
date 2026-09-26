@@ -8,7 +8,11 @@ import { Prisma } from '@prisma/client';
 import { isIsoDate } from '@todoer/specs';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { applyOp, type Op, type Outcome, type Row } from './apply-op.js';
-import { derivedIdRejection, isDerivedIdTable } from './derived-id.js';
+import {
+  derivedIdKeys,
+  derivedIdRejection,
+  isDerivedIdTable,
+} from './derived-id.js';
 import { rowRejection } from './row-rules.js';
 import { lockUserWrites, type RawClient } from './user-lock.js';
 
@@ -641,8 +645,14 @@ export class SyncService {
             });
             outcome = applyOp(op, current, now, {
               mergeCreate: isDerivedIdTable(table),
+              identityKeys: derivedIdKeys(table),
             });
-            if (outcome.status === 'applied') {
+            // Never on delete: rowRejection re-validates the row's shape, and
+            // a delete only tombstones — it cannot change the row into
+            // compliance, so a legacy row that violates a rule the parser
+            // gained later (rrule with no dtstart) could otherwise never be
+            // deleted at all (M1).
+            if (outcome.status === 'applied' && op.kind !== 'delete') {
               const badRow = rowRejection(table, outcome.row);
               if (badRow !== null) {
                 outcome = { status: 'rejected', reason: badRow };

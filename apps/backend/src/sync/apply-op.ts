@@ -155,11 +155,18 @@ function clamp(ts: string, now: Date): string {
  * applied as a `set` would be — only where it is newer than what the row
  * holds — so the later action wins whichever create arrives first (plan C
  * design, Q8). `superseded` when no field won, as for a `set` that lost.
+ *
+ * `identityKeys` (the fields the id is derived from) are skipped entirely:
+ * they always carry the same value as the row already holds, so comparing
+ * their `fieldTs` can only ever produce a spurious win — a stale create
+ * whose `ts` merely outraces an old `fieldTs[identityKey]` would otherwise
+ * bump `version` and report `applied` with nothing visible changed (M2).
  */
 function mergeFields(
   current: Row,
   fields: Record<string, unknown>,
   ts: string,
+  identityKeys: readonly string[] = [],
 ): Outcome {
   if (current.deletedAt !== null) {
     return { status: 'rejected', reason: 'row is deleted (tombstoned)' };
@@ -167,6 +174,7 @@ function mergeFields(
   const row: Row = { ...current, fieldTs: { ...current.fieldTs } };
   let won = false;
   for (const [key, value] of Object.entries(fields)) {
+    if (identityKeys.includes(key)) continue;
     const seen = current.fieldTs[key];
     if (seen !== undefined && ts <= seen) continue;
     row[key] = value;
@@ -201,7 +209,7 @@ export function applyOp(
   op: Op,
   current: Row | null,
   now: Date,
-  options: { mergeCreate?: boolean } = {},
+  options: { mergeCreate?: boolean; identityKeys?: readonly string[] } = {},
 ): Outcome {
   if (op.kind === 'create') {
     if (current !== null && options.mergeCreate !== true) {
@@ -233,7 +241,9 @@ export function applyOp(
       };
     }
     const ts = clamp(op.ts, now);
-    if (current !== null) return mergeFields(current, op.fields, ts);
+    if (current !== null) {
+      return mergeFields(current, op.fields, ts, options.identityKeys);
+    }
     const fieldTs: Record<string, string> = {};
     for (const key of Object.keys(op.fields)) fieldTs[key] = ts;
     return {

@@ -665,4 +665,39 @@ describe('create of an existing row with mergeCreate', () => {
       ),
     ).toMatchObject({ status: 'rejected' });
   });
+
+  // M2: taskId and occurrence always carry the same value, so a stale create
+  // could "win" on identity fields alone — here taskId's stored fieldTs is
+  // older than the create, but the field it actually tries to change
+  // (state) is not. Without identityKeys, taskId wins and the create is
+  // wrongly `applied`.
+  it('ignores identity fields when deciding whether a create won', () => {
+    const withOlderIdentityTs = {
+      ...current,
+      fieldTs: { ...current.fieldTs, taskId: '2026-09-28T08:00:00.000Z' },
+    };
+
+    const out = applyOp(
+      create('2026-09-28T09:00:00.000Z', { taskId: 't', state: 'skipped' }),
+      withOlderIdentityTs,
+      NOW,
+      { mergeCreate: true, identityKeys: ['taskId', 'occurrence'] },
+    );
+
+    expect(out).toEqual({ status: 'superseded' });
+  });
+
+  // M3: a create whose ts ties the field's stored ts must lose, the same way
+  // a tied `set` does — pins mergeFields' own `ts <= seen` rather than
+  // relying on the `set` path's equivalent test to also cover this branch.
+  it('answers superseded when a field ts ties the stored one', () => {
+    expect(
+      applyOp(
+        create('2026-09-28T10:00:00.000Z', { state: 'skipped' }),
+        current,
+        NOW,
+        { mergeCreate: true },
+      ),
+    ).toEqual({ status: 'superseded' });
+  });
 });
