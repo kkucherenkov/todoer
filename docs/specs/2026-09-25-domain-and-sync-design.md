@@ -41,6 +41,7 @@ second copy — restating them here would guarantee the two drift.
 | [0013](../adr/0013-tombstones-and-the-retention-contract.md) | Deletion is a tombstone, and tombstone retention is a contract with offline clients |
 | [0014](../adr/0014-owner-first-registration-and-two-path-reset.md) | The first account is the owner; afterwards registration needs an invitation. Reset uses SMTP when configured and the owner otherwise |
 | [0015](../adr/0015-the-cli-is-a-client-for-automation.md) | The CLI is a network client for scripts and agents, not a server-side utility |
+| [0017](../adr/0017-a-per-user-write-lock-orders-the-cursor.md) | A per-user write lock makes each user's `seq` values commit in order; supersedes 0016 |
 
 Two smaller choices have no record of their own because nothing downstream is
 constrained by them:
@@ -236,7 +237,15 @@ resolution ([ADR 0004](../adr/0004-field-level-last-write-wins.md)) is a
 promise about concurrent edits, so the lock is part of the protocol rather
 than an optimisation.
 
-Then return every row with `seq > since`, including tombstones.
+Before any row lock, each operation's transaction takes a per-user advisory
+lock ([ADR 0017](../adr/0017-a-per-user-write-lock-orders-the-cursor.md)). It
+makes one user's `seq` values commit in allocation order, so a pull can never
+report a cursor past a lower `seq` that is still to commit.
+
+Then, unless `since` is below the user's prune watermark — which is
+answered `410 Gone` ([ADR 0013](../adr/0013-tombstones-and-the-retention-contract.md)) —
+return every row with `seq > since`, including tombstones. `since: 0` is
+the snapshot: live rows only, never `410`.
 
 ### What the client does
 
@@ -247,7 +256,9 @@ drop `superseded` silently, since the server's value is already arriving in
 an intent did not happen. Then merge `changes` and advance the cursor.
 
 A `410 Gone` means the cursor predates tombstone retention: discard the local
-replica, fetch `GET /sync/snapshot`, and start again. This path must be
+replica, keep the outbox, and repeat with `since: 0`, which answers with every
+live row and a fresh cursor. Operations sent in the request that got `410`
+were applied; resent, they replay their outcomes. This path must be
 exercised by a test rather than discovered in production, because the failure
 it prevents is invisible — a client that silently never learns about deletions
 keeps showing tasks that no longer exist.
@@ -288,8 +299,7 @@ DELETE /auth/account           purge this user and everything they own
 POST   /auth/invites               owner only: issue an invitation
 POST   /auth/users/{id}/password   owner only: reset another user's password
 
-POST   /sync                   the entire data plane
-GET    /sync/snapshot          full state: first sign-in, and after 410
+POST   /sync                   the entire data plane; since 0 is the snapshot
 
 GET    /health
 ```

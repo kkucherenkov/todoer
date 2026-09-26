@@ -20,6 +20,9 @@ async function bootstrap(): Promise<void> {
   // 'body'". Parsing JSON ourselves, ahead of the validator, is what makes
   // req.body exist by the time it (and @Body()) read it.
   const app = await NestFactory.create(AppModule, { bodyParser: false });
+  // Without this, onApplicationShutdown (PruneService's timer teardown) only
+  // ever runs in tests, never on a real SIGTERM.
+  app.enableShutdownHooks();
   app.setGlobalPrefix('api');
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
   app.useGlobalFilters(new HttpExceptionFilter());

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, GoneException } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -47,6 +47,23 @@ function setParent(id: string, parentId: string) {
     value: parentId,
     ts: new Date().toISOString(),
   };
+}
+
+function deleteTask(id: string, baseVersion: number) {
+  return {
+    opId: uuidv7(),
+    kind: 'delete' as const,
+    table: 'task' as const,
+    id,
+    baseVersion,
+  };
+}
+
+function setWatermark(userId: string, seq: number) {
+  return prisma.user.update({
+    where: { id: userId },
+    data: { prunedThroughSeq: BigInt(seq) },
+  });
 }
 
 describe('SyncService', () => {
@@ -831,20 +848,25 @@ describe('SyncService', () => {
   // that overwrites the other user's row, and that test's reason
   // assertion fails.
 
-  // C1: two `set` operations on different fields of one row, genuinely
-  // overlapping. Sequential arrival — in order or out of it — cannot show
+  // C1: two `set` operations on different fields of one row. The second
+  // write now waits on the per-user write lock (and the row lock), so the
+  // two cycles cannot interleave; this test pins the outcome (no lost
+  // field, `version` counts both), and no longer isolates the row lock on
+  // its own. Sequential arrival — in order or out of it — cannot show
   // this: what the loser loses is not a timestamp comparison but a whole row
   // written back from a snapshot taken before the winner committed, `fieldTs`
   // included, so the row ends up carrying the new timestamp against the old
   // value and no later last-write-wins comparison can repair it.
   //
   // Staged rather than raced, so it does not depend on scheduling: `clientA`
-  // pauses inside its transaction right after reading the row, and `clientB`
-  // releases it from the first statement of its own transaction — the dedup
-  // lookup, which is the one query both the locked and the unlocked code run
-  // before touching the row. Without the row lock that leaves B reading while
-  // A still has four round trips to go, so B writes back a snapshot with none
-  // of A's edit in it; with the lock, B's read waits for A to commit.
+  // pauses inside its transaction right after reading the row. B is the
+  // plain `service`, released by a fixed timer instead of by a hook on B's
+  // own progress — B now waits on the per-user write lock (lockUserWrites)
+  // as well as on the row lock, so the two cycles cannot interleave, and
+  // nothing B does can be the signal that frees A any more. The timer is
+  // long enough that B, if nothing stopped it, would have read the stale
+  // row and written a snapshot with none of A's edit in it; the assertions
+  // below are what must hold either way.
   it('keeps both fields when two concurrent sets touch different fields of one row', async () => {
     const create = {
       opId: uuidv7(),
@@ -877,18 +899,7 @@ describe('SyncService', () => {
         },
       },
     });
-    const clientB = prisma.$extends({
-      query: {
-        appliedOp: {
-          async findUnique({ args, query }) {
-            releaseA();
-            return query(args);
-          },
-        },
-      },
-    });
     const a = new SyncService(clientA as unknown as PrismaService);
-    const b = new SyncService(clientB as unknown as PrismaService);
 
     const setTitle = {
       opId: uuidv7(),
@@ -912,7 +923,10 @@ describe('SyncService', () => {
     try {
       const aDone = a.sync(USER, { since: 0, ops: [setTitle] });
       await aHasReadPromise;
-      const bDone = b.sync(USER, { since: 0, ops: [setNotes] });
+      const bDone = service.sync(USER, { since: 0, ops: [setNotes] });
+      // Long enough that B, if nothing stopped it, would have read the
+      // stale row and written by now.
+      setTimeout(releaseA, 200);
       const [aResult, bResult] = await Promise.all([aDone, bDone]);
 
       expect(aResult.results[0]).toMatchObject({ status: 'applied' });
@@ -1048,5 +1062,226 @@ describe('SyncService', () => {
     const own = await service.sync(USER, { since: 0, ops: [ownProject] });
 
     expect(own.results[0]).toMatchObject({ status: 'applied' });
+  });
+
+  // ADR 0016: two writes of one user overlap, the later seq commits first,
+  // and a pull in between reports a cursor past the earlier, still
+  // uncommitted seq. Without the per-user lock the pull after that never
+  // selects the earlier row.
+  it('never lets a pull skip a row that commits below its cursor', async () => {
+    const seed = await service.sync(USER, {
+      since: 0,
+      ops: [createTask('seed')],
+    });
+
+    let reached!: () => void;
+    let release!: () => void;
+    const reachedPromise = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    const releasePromise = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    // Pauses the row write, which runs after nextval(): the slow write holds
+    // its seq, uncommitted, for as long as the test wants.
+    const pausedPrisma = prisma.$extends({
+      query: {
+        task: {
+          async create({ args, query }) {
+            reached();
+            await releasePromise;
+            return query(args);
+          },
+        },
+      },
+    });
+    const paused = new SyncService(pausedPrisma as unknown as PrismaService);
+
+    const slow = createTask('slow');
+    const fast = createTask('fast');
+    const slowWrite = paused.sync(USER, { since: seed.cursor, ops: [slow] });
+    await reachedPromise;
+    const fastWrite = service.sync(USER, { since: seed.cursor, ops: [fast] });
+
+    try {
+      // Long enough for the fast write to commit if nothing stops it.
+      await new Promise((resolve) => setTimeout(resolve, 200));
+      const middle = await service.sync(USER, { since: seed.cursor, ops: [] });
+
+      release();
+      await Promise.all([slowWrite, fastWrite]);
+      const after = await service.sync(USER, {
+        since: middle.cursor,
+        ops: [],
+      });
+
+      const seen = [...middle.changes, ...after.changes].map((c) => c.id);
+      expect(seen).toEqual(expect.arrayContaining([slow.id, fast.id]));
+    } finally {
+      release();
+      await Promise.allSettled([slowWrite, fastWrite]);
+    }
+  });
+
+  // Review Focus 5: the advisory lock must come before every row lock. Taken
+  // later, the set below holds the project's FOR UPDATE and waits for the
+  // advisory lock, while the create holds the advisory lock and waits on the
+  // project's FOR KEY SHARE (its foreign key): 40P01, a 500.
+  it('does not deadlock a project edit against a task created in it', async () => {
+    const project = {
+      opId: uuidv7(),
+      kind: 'create' as const,
+      table: 'project' as const,
+      id: uuidv7(),
+      fields: { name: 'p', rank: 'a0' },
+      ts: new Date().toISOString(),
+    };
+    await service.sync(USER, { since: 0, ops: [project] });
+
+    let reached!: () => void;
+    let release!: () => void;
+    const reachedPromise = new Promise<void>((resolve) => {
+      reached = resolve;
+    });
+    const releasePromise = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    // Pauses the rename after lockRows has taken P's FOR UPDATE (and after
+    // lockUserWrites): project.findFirst is the first read the 'set' path
+    // makes once those locks are held (referenceRejection makes none for
+    // project, which has no REFERENCES entry of its own).
+    const pausedPrisma = prisma.$extends({
+      query: {
+        project: {
+          async findFirst({ args, query }) {
+            const row = await query(args);
+            reached();
+            await releasePromise;
+            return row;
+          },
+        },
+      },
+    });
+    const paused = new SyncService(pausedPrisma as unknown as PrismaService);
+
+    const rename = {
+      opId: uuidv7(),
+      kind: 'set' as const,
+      table: 'project' as const,
+      id: project.id,
+      field: 'name',
+      value: 'renamed',
+      ts: new Date().toISOString(),
+    };
+    const task = {
+      ...createTask('in p'),
+      fields: { title: 'in p', rank: 'a0', projectId: project.id },
+    };
+
+    const renamedPromise = paused.sync(USER, { since: 0, ops: [rename] });
+    await reachedPromise;
+    const createdPromise = service.sync(USER, { since: 0, ops: [task] });
+
+    try {
+      // Long enough for the task create to have reached and blocked on
+      // P's FOR KEY SHARE, if nothing stopped it, before the rename lets go.
+      setTimeout(release, 200);
+      const [renamed, created] = await Promise.all([
+        renamedPromise,
+        createdPromise,
+      ]);
+
+      expect(renamed.results[0]?.status).toBe('applied');
+      expect(created.results[0]?.status).toBe('applied');
+    } finally {
+      // Releases even if an assertion above throws, so a failure here does
+      // not leave the paused interactive transaction open until Prisma's
+      // own transaction timeout.
+      release();
+    }
+  });
+
+  it('answers 410 when the cursor is older than the prune watermark', async () => {
+    const first = await service.sync(USER, {
+      since: 0,
+      ops: [createTask('a')],
+    });
+    await setWatermark(USER, first.cursor + 10);
+
+    await expect(
+      service.sync(USER, { since: first.cursor, ops: [] }),
+    ).rejects.toBeInstanceOf(GoneException);
+  });
+
+  // Review Focus 4: the boundary. A client at the watermark has seen every
+  // pruned tombstone.
+  it('does not answer 410 for a cursor exactly at the watermark', async () => {
+    const first = await service.sync(USER, {
+      since: 0,
+      ops: [createTask('a')],
+    });
+    await setWatermark(USER, first.cursor);
+
+    const pull = await service.sync(USER, { since: first.cursor, ops: [] });
+    expect(pull.cursor).toBe(first.cursor);
+  });
+
+  it('answers since 0 with live rows only, never with 410', async () => {
+    const kept = createTask('kept');
+    const doomed = createTask('doomed');
+    await service.sync(USER, { since: 0, ops: [kept, doomed] });
+    await service.sync(USER, { since: 0, ops: [deleteTask(doomed.id, 1)] });
+    await setWatermark(USER, 1_000_000);
+
+    const snapshot = await service.sync(USER, { since: 0, ops: [] });
+
+    expect(snapshot.changes.map((c) => c.id)).toEqual([kept.id]);
+  });
+
+  // Review Focus 1: a snapshot whose cursor sat below the watermark would
+  // send the client straight back into 410, forever.
+  it('gives a snapshot a cursor the next pull accepts', async () => {
+    const task = createTask('old');
+    const created = await service.sync(USER, { since: 0, ops: [task] });
+    await setWatermark(USER, created.cursor + 1000);
+
+    const snapshot = await service.sync(USER, { since: 0, ops: [] });
+    expect(snapshot.cursor).toBeGreaterThanOrEqual(created.cursor + 1000);
+
+    const next = await service.sync(USER, { since: snapshot.cursor, ops: [] });
+    expect(next.changes).toHaveLength(0);
+  });
+
+  it('moves a snapshot cursor past tombstones it leaves out', async () => {
+    const doomed = createTask('doomed');
+    await service.sync(USER, { since: 0, ops: [doomed] });
+    await service.sync(USER, { since: 0, ops: [deleteTask(doomed.id, 1)] });
+    const { seq } = await prisma.task.findUniqueOrThrow({
+      where: { id: doomed.id },
+    });
+
+    const snapshot = await service.sync(USER, { since: 0, ops: [] });
+
+    expect(snapshot.changes).toHaveLength(0);
+    expect(snapshot.cursor).toBe(Number(seq));
+  });
+
+  // Review Focus 3: operations sent with a stale cursor are applied before
+  // the pull answers 410. Resent with since 0, they must replay, not repeat.
+  it('replays operations that arrived with a stale cursor', async () => {
+    const first = await service.sync(USER, {
+      since: 0,
+      ops: [createTask('a')],
+    });
+    await setWatermark(USER, first.cursor + 1000);
+    const op = createTask('sent with a stale cursor');
+
+    await expect(
+      service.sync(USER, { since: first.cursor, ops: [op] }),
+    ).rejects.toBeInstanceOf(GoneException);
+    const resent = await service.sync(USER, { since: 0, ops: [op] });
+
+    expect(resent.results[0]?.status).toBe('duplicate');
+    expect(await prisma.task.count({ where: { id: op.id } })).toBe(1);
   });
 });

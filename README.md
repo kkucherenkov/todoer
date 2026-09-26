@@ -19,8 +19,9 @@ endpoint:
 
 Not built yet, and each absence is deliberate rather than forgotten: the
 client outbox (so `add` is **not** safe to retry — see below), recurrence,
-`410 Gone` and `GET /sync/snapshot`, and the web and Flutter clients. The full
-list, with reasons, is in
+and the web and Flutter clients. The server prunes tombstones after 90 days
+and answers a stale cursor with `410 Gone`; the CLI does not handle `410` yet.
+The full list, with reasons, is in
 [the plan](docs/plans/2026-09-25-walking-skeleton.md#what-this-plan-does-not-do).
 
 ## Layout

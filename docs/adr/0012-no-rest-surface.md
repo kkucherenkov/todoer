@@ -10,10 +10,9 @@ pagination. Every client here holds a full local replica.
 
 ## Decision
 
-`POST /sync` is the entire data plane. `GET /sync/snapshot` exists only for the
-first sign-in and for recovery from
-[0013](0013-tombstones-and-the-retention-contract.md). There are no resource
-endpoints.
+`POST /sync` is the entire data plane, including the first sign-in and
+recovery from [0013](0013-tombstones-and-the-retention-contract.md): both are
+a request with `since: 0`. There are no resource endpoints.
 
 ## Consequences
 
