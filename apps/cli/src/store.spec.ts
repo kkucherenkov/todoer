@@ -315,9 +315,12 @@ describe('retryOnBusy', () => {
 // (an upstream node:sqlite/SQLite quirk). This must exercise the real,
 // compiled `Store.open` under real OS-process concurrency — an in-process
 // fake or a hand-rolled `node:sqlite` script proves nothing about the actual
-// bug. `tsc` builds `dist/store.js` once up front (a few hundred ms), then
-// each attempt spawns a fresh `node` process that imports the built `Store`
-// and opens a brand-new file, matching the CLI's own first run.
+// bug. `tsc` builds `store.js` once up front (a few hundred ms) into a
+// directory of its own — not `dist/`, which turbo's `@todoer/cli#build` may be
+// writing at the same moment — then each attempt spawns a fresh `node`
+// process that imports the built `Store` and opens a brand-new file, matching
+// the CLI's own first run. The emitted `store.js` imports only `node:*` and
+// `./protocol.js`; `@todoer/specs` is type-only and erased.
 //
 // A plain "spawn 20 processes and hope" mostly measures process-startup
 // jitter, not the lock race: by the time each child reaches `Store.open`,
@@ -326,19 +329,36 @@ describe('retryOnBusy', () => {
 // and blocks on `Atomics.wait` until that exact wall-clock time before
 // calling `Store.open` — every process's clock agrees on "now", so this
 // lines them up far tighter than spawn timing alone, which is what turns
-// this from an occasional flake into a reliable proof.
+// this from an occasional flake into a reliable proof. Each worker reports
+// whether it actually waited: a lead time too short for 20 processes to
+// start would line nothing up, and the test says so instead of passing
+// vacuously.
 describe('parallel first opens (Store.open under real concurrency)', () => {
   const cliDir = fileURLToPath(new URL('..', import.meta.url));
-  const storeDist = join(cliDir, 'dist', 'store.js');
+  let outDir: string;
+
+  beforeEach(() => {
+    outDir = mkdtempSync(join(tmpdir(), 'todoer-build-'));
+  });
+
+  afterEach(() => {
+    rmSync(outDir, { recursive: true, force: true });
+  });
 
   it('never leaves SQLITE_BUSY unhandled when many processes race to create the file', () => {
-    execFileSync('pnpm', ['run', 'build'], { cwd: cliDir, stdio: 'pipe' });
+    execFileSync(
+      join(cliDir, 'node_modules', '.bin', 'tsc'),
+      ['-p', 'tsconfig.build.json', '--outDir', outDir],
+      { cwd: cliDir, stdio: 'pipe' },
+    );
+    const storeDist = join(outDir, 'store.js');
 
     const workerScript = `
         import { Store } from ${JSON.stringify(storeDist)};
         const startAt = Number(process.argv[1]);
         const dbPath = process.argv[2];
         const remaining = startAt - Date.now();
+        console.log(remaining > 0 ? 'waited' : 'late');
         if (remaining > 0) {
           Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, remaining);
         }
@@ -354,19 +374,30 @@ describe('parallel first opens (Store.open under real concurrency)', () => {
     function openAt(
       startAt: number,
       dbPath: string,
-    ): Promise<{ code: number; stderr: string }> {
+    ): Promise<{ code: number; stderr: string; waited: boolean }> {
       return new Promise((resolve) => {
         const child = spawn(
           process.execPath,
           ['--input-type=module', '-e', workerScript, String(startAt), dbPath],
-          { stdio: ['ignore', 'ignore', 'pipe'] },
+          { stdio: ['ignore', 'pipe', 'pipe'] },
         );
+        let stdout = '';
         let stderr = '';
+        child.stdout.on(
+          'data',
+          (chunk: Buffer) => (stdout += chunk.toString()),
+        );
         child.stderr.on(
           'data',
           (chunk: Buffer) => (stderr += chunk.toString()),
         );
-        child.on('close', (code) => resolve({ code: code ?? 1, stderr }));
+        child.on('close', (code) =>
+          resolve({
+            code: code ?? 1,
+            stderr,
+            waited: stdout.trim() === 'waited',
+          }),
+        );
       });
     }
 
@@ -374,6 +405,7 @@ describe('parallel first opens (Store.open under real concurrency)', () => {
       const rounds = 10;
       const perRound = 20;
       const failures: string[] = [];
+      const waitedPerRound: number[] = [];
       for (let round = 0; round < rounds; round++) {
         const roundDir = mkdtempSync(join(tmpdir(), 'todoer-race-'));
         const dbPath = join(roundDir, 'nested', 'todoer.db');
@@ -384,9 +416,15 @@ describe('parallel first opens (Store.open under real concurrency)', () => {
         for (const { code, stderr } of results) {
           if (code !== 0) failures.push(stderr.trim() || `exit ${code}`);
         }
+        waitedPerRound.push(results.filter((r) => r.waited).length);
         rmSync(roundDir, { recursive: true, force: true });
       }
       expect(failures).toEqual([]);
+      // Most workers of every round must have reached the barrier early;
+      // otherwise the rounds did not race and the pass above means nothing.
+      for (const waited of waitedPerRound) {
+        expect(waited).toBeGreaterThanOrEqual(15);
+      }
     })();
   }, 20_000);
 });
