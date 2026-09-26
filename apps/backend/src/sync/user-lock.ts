@@ -1,8 +1,8 @@
 /**
- * The one method `lockUserWrites` needs, so that it takes a transaction
- * client without naming Prisma's full generated type.
+ * The one method `lockUserWrites` and `lockRow` need, so that either takes a
+ * transaction client without naming Prisma's full generated type.
  */
-type RawClient = {
+export type RawClient = {
   $queryRaw<T = unknown>(
     query: TemplateStringsArray,
     ...values: unknown[]

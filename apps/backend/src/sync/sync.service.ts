@@ -7,7 +7,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { applyOp, type Op, type Outcome, type Row } from './apply-op.js';
-import { lockUserWrites } from './user-lock.js';
+import { lockUserWrites, type RawClient } from './user-lock.js';
 
 type SyncRequest = { since: number; ops: Op[] };
 type OpResult = {
@@ -119,15 +119,6 @@ type SyncDelegate = {
   aggregate(args: unknown): Promise<{ _max: { seq: bigint | null } }>;
   create(args: unknown): Promise<unknown>;
   update(args: unknown): Promise<unknown>;
-};
-
-/** The one method `lockRow` needs, so that it takes a transaction client
- *  without naming Prisma's full generated type. */
-type RawClient = {
-  $queryRaw<T = unknown>(
-    query: TemplateStringsArray,
-    ...values: unknown[]
-  ): Promise<T>;
 };
 
 type DelegateKey = (typeof DELEGATE)[TableName];
@@ -309,6 +300,12 @@ function parentTarget(table: TableName, op: Op): string | null {
  *
  * A row that does not exist yet (a `create`) locks nothing, which is fine:
  * nothing else can reference it until it commits.
+ *
+ * Every row locked here belongs to `userId`, so `lockUserWrites` already
+ * serialises every interleaving these locks were added for: two writes of
+ * the same user can no longer run this section at once at all. They stay as
+ * defence in depth — what still holds if the user-lock key ever stops
+ * matching row ownership, e.g. a shared project (ADR 0003, ADR 0017).
  */
 async function lockRows(
   client: RawClient,
