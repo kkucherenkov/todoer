@@ -70,10 +70,21 @@ SEEN=$(HOME="$READER" TODOER_URL="$BASE" $CLI list --json |
   field "v.data.filter(t => t.title.startsWith('offline ')).length")
 [ "$SEEN" = 10 ] || fail "the second client sees $SEEN of the 10 queued tasks"
 
-# 3. A stale cursor. The reader writes once more, so the user's newest seq is
-#    above the writer's cursor; moving the watermark there makes the writer's
-#    cursor older than what was pruned — 410 — and the writer must recover
-#    with a snapshot and lose nothing.
+# 3. A stale cursor, with a tombstone the writer must actually discard, not
+#    merely fail to notice. One of the writer's own tasks is hard-deleted on
+#    the server — as pruning would once its tombstone ages out — so the
+#    writer's replica now holds a row the server no longer has. The reader
+#    then writes once more, so the user's newest seq (that add) stays above
+#    the writer's cursor regardless of the deletion; moving the watermark
+#    there makes the writer's cursor older than what was pruned — 410 — and
+#    the writer must recover with a snapshot that keeps everything else and
+#    drops the row that is gone. A resend-since-0 that skips discarding the
+#    replica would instead merge the snapshot over the stale row and leave it
+#    behind.
+psql "$DATABASE_URL" -q -v ON_ERROR_STOP=1 -c "
+  DELETE FROM \"Task\"
+   WHERE \"userId\" = (SELECT id FROM \"User\" WHERE email = '$EMAIL')
+     AND title = 'offline 1'"
 HOME="$READER" TODOER_URL="$BASE" $CLI add 'after the writer' >/dev/null
 psql "$DATABASE_URL" -q -v ON_ERROR_STOP=1 -c "
   UPDATE \"User\" u
@@ -81,8 +92,11 @@ psql "$DATABASE_URL" -q -v ON_ERROR_STOP=1 -c "
    WHERE u.email = '$EMAIL'"
 AFTER=$(HOME="$WRITER" TODOER_URL="$BASE" $CLI list --json) ||
   fail 'the list after the watermark moved did not exit 0'
-[ "$(printf '%s' "$AFTER" | field "v.data.length")" = 11 ] ||
-  fail "the snapshot does not hold all 11 tasks: $AFTER"
+[ "$(printf '%s' "$AFTER" | field "v.data.length")" = 10 ] ||
+  fail "the snapshot does not hold the 10 surviving tasks: $AFTER"
+HELD=$(printf '%s' "$AFTER" | field "v.data.some(t => t.title === 'offline 1')")
+[ "$HELD" = 'false' ] ||
+  fail "the snapshot still holds the deleted task: $AFTER"
 HOME="$WRITER" TODOER_URL="$BASE" $CLI list >/dev/null ||
   fail 'the command after the snapshot did not exit 0'
 
