@@ -2,11 +2,13 @@
 
 - Created: 2026-09-26
 - Owner: claude
-- Status: in-progress
+- Status: done
 - Blockers: —
 - Spec: [docs/specs/2026-09-26-plan-b-outbox-offline-design.md](../../../docs/specs/2026-09-26-plan-b-outbox-offline-design.md)
   (the B2 half: Q9, Q10, Q11, Q12); ADR 0013, ADR 0016
 - Plan: [docs/plans/2026-09-26-plan-b2-pruning-and-snapshot.md](../../../docs/plans/2026-09-26-plan-b2-pruning-and-snapshot.md)
+- Completed: 2026-09-26
+- Result: https://github.com/kkucherenkov/todoer/pull/7
 
 ### Goal
 
@@ -81,12 +83,12 @@ task makes the server keep the contract and closes the race before B1 ships.
   rejected options), in the historical body of superseded ADR 0016, in
   `docs/plans/`, `specs/tasks/done/`, and in this entry's own requirement
   text.
-- [ ] every FR has a test that failed before the code made it pass (FR-009 and
+- [x] every FR has a test that failed before the code made it pass (FR-009 and
       FR-010 are documentation: checked by `pnpm spec:validate` and SC-003)
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 
