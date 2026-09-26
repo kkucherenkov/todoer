@@ -203,10 +203,62 @@ describe('Store', () => {
         ],
       },
       new Set(),
+      0,
     );
     expect(store.pending()).toEqual([]);
     expect(store.rows('task')).toEqual([{ id: 'task-a' }]);
     expect(store.cursor()).toBe(3);
+  });
+
+  // FR-001: a response that fails half-way leaves nothing behind — not the
+  // verdicts, not the rows before the one that failed, not the cursor.
+  it('applies nothing of a response that fails half-way', () => {
+    const store = storeAt();
+    store.enqueue(create('a'));
+    expect(() =>
+      store.applyResponse(
+        {
+          cursor: 3,
+          results: [{ opId: 'a', status: 'applied' }],
+          changes: [
+            { table: 'task', id: 'ok', seq: 2, row: { id: 'ok' } },
+            // JSON.stringify throws on a BigInt.
+            { table: 'task', id: 'bad', seq: 3, row: { x: 1n } },
+          ],
+        },
+        new Set(),
+        0,
+      ),
+    ).toThrow();
+    expect(store.pending().map((op) => op.opId)).toEqual(['a']);
+    expect(store.cursor()).toBe(0);
+    expect(store.rows('task')).toEqual([]);
+  });
+
+  // Minor 7: a delta computed for cursor 40 is only the rows after 40. Merged
+  // into a replica a parallel 410 has just emptied, it would leave a partial
+  // replica behind a cursor that claims everything up to 50.
+  it('settles but does not merge a delta computed for a replica since reset', () => {
+    const store = storeAt();
+    store.advanceCursor(40);
+    store.enqueue(create('a'));
+    store.resetReplica();
+
+    store.applyResponse(
+      {
+        cursor: 50,
+        results: [{ opId: 'a', status: 'applied' }],
+        changes: [
+          { table: 'task', id: 'task-a', seq: 45, row: { id: 'task-a' } },
+        ],
+      },
+      new Set(),
+      40,
+    );
+
+    expect(store.pending()).toEqual([]);
+    expect(store.rows('task')).toEqual([]);
+    expect(store.cursor()).toBe(0);
   });
 
   it('rolls a transaction back when it throws', () => {

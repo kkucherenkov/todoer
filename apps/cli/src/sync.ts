@@ -74,14 +74,16 @@ async function exchange(
 /**
  * One exchange, with the one 410 recovery it gets before giving up: reset
  * the replica and repeat with since 0 (ADR 0013). Shared by every request
- * `flush` makes, including the pull-only one at the end.
+ * `flush` makes, including the pull-only one at the end. Returns the answer
+ * with the `since` the answered request carried.
  */
 async function attempt(
   store: Store,
   send: Transport,
   ops: Op[],
-): Promise<Settled> {
-  let answer = await exchange(send, { since: store.cursor(), ops });
+): Promise<{ answer: Settled; since: number }> {
+  const since = store.cursor();
+  let answer = await exchange(send, { since, ops });
   if (answer === 'gone') {
     // The cursor predates tombstone retention: deletions it missed can no
     // longer be sent. Start the replica over; the outbox is untouched, and
@@ -91,8 +93,9 @@ async function attempt(
     if (answer === 'gone') {
       throw new RefusalError('the server answered 410 to since 0');
     }
+    return { answer, since: 0 };
   }
-  return answer;
+  return { answer, since };
 }
 
 /**
@@ -114,7 +117,7 @@ export async function flush(
   // At least one request, so an empty outbox still pulls.
   for (let start = 0; start === 0 || start < pending.length; start += MAX_OPS) {
     const ops = pending.slice(start, start + MAX_OPS);
-    const answer = await attempt(store, send, ops);
+    const { answer, since } = await attempt(store, send, ops);
     if (answer === 'unreached') return { synced: false, results };
     if (isBatchRefused(answer)) {
       // Every op in the batch fails the same way a per-op `rejected` would
@@ -131,7 +134,7 @@ export async function flush(
       pulled = false;
       continue;
     }
-    store.applyResponse(answer, own);
+    store.applyResponse(answer, own, since);
     results.push(...answer.results);
     pulled = true;
   }
@@ -142,11 +145,11 @@ export async function flush(
     // settle — the local replica and cursor are unconfirmed, so this flush
     // did not sync (the command exits 5) even though every op already has
     // its verdict.
-    const answer = await attempt(store, send, []);
+    const { answer, since } = await attempt(store, send, []);
     if (answer === 'unreached' || isBatchRefused(answer)) {
       return { synced: false, results };
     }
-    store.applyResponse(answer, own);
+    store.applyResponse(answer, own, since);
   }
   return { synced: true, results };
 }

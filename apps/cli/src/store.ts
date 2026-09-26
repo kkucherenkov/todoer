@@ -323,10 +323,22 @@ export class Store {
     });
   }
 
-  /** One response, one transaction: verdicts, rows and cursor land together. */
-  applyResponse(response: SyncResponse, own: ReadonlySet<string>): void {
+  /**
+   * One response, one transaction: verdicts, rows and cursor land together.
+   * `since` is the cursor the request carried, so `changes` holds only what
+   * came after it. The verdicts always apply; the delta only if the replica
+   * still holds everything up to `since` — a parallel invocation's 410 may
+   * have reset it meanwhile, and merging then would leave a partial replica
+   * behind a cursor that claims it is whole.
+   */
+  applyResponse(
+    response: SyncResponse,
+    own: ReadonlySet<string>,
+    since: number,
+  ): void {
     this.transaction(() => {
       this.settle(response.results, own);
+      if (this.cursor() < since) return;
       this.mergeChanges(response.changes);
       this.advanceCursor(response.cursor);
     });
