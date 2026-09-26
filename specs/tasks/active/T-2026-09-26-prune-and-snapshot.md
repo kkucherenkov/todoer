@@ -77,9 +77,10 @@ task makes the server keep the contract and closes the race before B1 ships.
 - **SC-002** `sh scripts/walking-skeleton.sh` prints `walking skeleton passed`
   against a server whose startup pruning run logged no error.
 - **SC-003** `ugrep -rn -i 'sync/snapshot' --include='*.md' .` finds the
-  endpoint only as a rejected option in the plan-B design doc, in the
-  historical body of superseded ADR 0016, in `docs/plans/`,
-  `specs/tasks/done/`, and in this entry's own requirement text.
+  endpoint only in the plan-B design doc (its motivation, decision and
+  rejected options), in the historical body of superseded ADR 0016, in
+  `docs/plans/`, `specs/tasks/done/`, and in this entry's own requirement
+  text.
 - [ ] every FR has a test that failed before the code made it pass (FR-009 and
       FR-010 are documentation: checked by `pnpm spec:validate` and SC-003)
 - [ ] gates: `PR title (conventional commit)`, `Shell tests`,

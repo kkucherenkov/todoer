@@ -242,7 +242,10 @@ lock ([ADR 0017](../adr/0017-a-per-user-write-lock-orders-the-cursor.md)). It
 makes one user's `seq` values commit in allocation order, so a pull can never
 report a cursor past a lower `seq` that is still to commit.
 
-Then return every row with `seq > since`, including tombstones.
+Then, unless `since` is below the user's prune watermark — which is
+answered `410 Gone` ([ADR 0013](../adr/0013-tombstones-and-the-retention-contract.md)) —
+return every row with `seq > since`, including tombstones. `since: 0` is
+the snapshot: live rows only, never `410`.
 
 ### What the client does
 

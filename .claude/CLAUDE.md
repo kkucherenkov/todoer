@@ -161,7 +161,7 @@ the dev database once before the guard was added.
 DATABASE_URL=postgresql://todoer:todoer@localhost:5433/todoer_test pnpm -w exec turbo run test
 ```
 
-### Five traps, each of which cost real time
+### Six traps, each of which cost real time
 
 1. **`prisma migrate deploy` does not generate the client** — only `migrate dev`
    does. The client comes from `@todoer/backend`'s `postinstall`. Without it the
@@ -181,6 +181,16 @@ DATABASE_URL=postgresql://todoer:todoer@localhost:5433/todoer_test pnpm -w exec 
    0.5.12.
 5. **`POST /sync` is the only write path**, so every invariant a client could
    violate is enforced there or nowhere: the protocol-field allow-list, foreign
-   keys scoped to the owner, and the two-level depth rule.
+   keys scoped to the owner, and the two-level depth rule. The pruning job
+   (`PruneService`) also deletes tombstones and raises the prune watermark,
+   under the same per-user write lock; it never writes a live row.
+6. **`prisma migrate dev` wants to drop `change_seq`.** The four synced
+   tables' `seq` default (`nextval('change_seq')`) was added by hand, and
+   Prisma models neither it nor the sequence — declaring it with
+   `dbgenerated` does not help, the diff still drops the sequence. Every
+   generated migration therefore contains `DROP DEFAULT` on the four `seq`
+   columns and `DROP SEQUENCE "change_seq"`, which fails and rolls the
+   migration back. Delete those statements from `migration.sql` before
+   applying it; a migration must never touch them.
 
 <!-- STACK:END -->

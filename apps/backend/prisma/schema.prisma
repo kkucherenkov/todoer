@@ -43,9 +43,10 @@ model Task {
   /// Defaults to nextval('change_seq') — set by hand in the initial
   /// migration, invisible to this schema. One sequence is shared by every
   /// synchronised table on purpose, so a single cursor orders changes across
-  /// all of them. Before landing any future migration that touches this
-  /// model, read its generated SQL and re-add the default if Prisma dropped
-  /// it.
+  /// all of them. `prisma migrate dev` generates `DROP DEFAULT` on this
+  /// column and `DROP SEQUENCE "change_seq"`; delete both statements from the
+  /// generated migration before applying it (see trap 6 in
+  /// `.claude/CLAUDE.md`).
   seq       BigInt
   deletedAt DateTime?
   createdAt DateTime @default(now())
@@ -72,9 +73,10 @@ model Project {
   /// Defaults to nextval('change_seq') — set by hand in the initial
   /// migration, invisible to this schema. One sequence is shared by every
   /// synchronised table on purpose, so a single cursor orders changes across
-  /// all of them. Before landing any future migration that touches this
-  /// model, read its generated SQL and re-add the default if Prisma dropped
-  /// it.
+  /// all of them. `prisma migrate dev` generates `DROP DEFAULT` on this
+  /// column and `DROP SEQUENCE "change_seq"`; delete both statements from the
+  /// generated migration before applying it (see trap 6 in
+  /// `.claude/CLAUDE.md`).
   seq        BigInt
   deletedAt  DateTime?
   createdAt  DateTime @default(now())
@@ -97,9 +99,10 @@ model Tag {
   /// Defaults to nextval('change_seq') — set by hand in the initial
   /// migration, invisible to this schema. One sequence is shared by every
   /// synchronised table on purpose, so a single cursor orders changes across
-  /// all of them. Before landing any future migration that touches this
-  /// model, read its generated SQL and re-add the default if Prisma dropped
-  /// it.
+  /// all of them. `prisma migrate dev` generates `DROP DEFAULT` on this
+  /// column and `DROP SEQUENCE "change_seq"`; delete both statements from the
+  /// generated migration before applying it (see trap 6 in
+  /// `.claude/CLAUDE.md`).
   seq       BigInt
   deletedAt DateTime?
   createdAt DateTime @default(now())
@@ -122,9 +125,10 @@ model TaskTag {
   /// Defaults to nextval('change_seq') — set by hand in the initial
   /// migration, invisible to this schema. One sequence is shared by every
   /// synchronised table on purpose, so a single cursor orders changes across
-  /// all of them. Before landing any future migration that touches this
-  /// model, read its generated SQL and re-add the default if Prisma dropped
-  /// it.
+  /// all of them. `prisma migrate dev` generates `DROP DEFAULT` on this
+  /// column and `DROP SEQUENCE "change_seq"`; delete both statements from the
+  /// generated migration before applying it (see trap 6 in
+  /// `.claude/CLAUDE.md`).
   seq       BigInt
   deletedAt DateTime?
   createdAt DateTime @default(now())
