@@ -201,6 +201,29 @@ describe('Store', () => {
     storeAt();
     expect(statSync(join(dir, 'todoer.db')).mode & 0o777).toBe(0o600);
   });
+
+  // G2: the -wal/-shm side files are created at the umask's permissions
+  // before `chmodSync` narrows the main file, so it is the directory, not
+  // those files, that has to keep another local user out.
+  it('creates a fresh database directory private to its owner', () => {
+    storeAt('nested/todoer.db');
+    expect(statSync(join(dir, 'nested')).mode & 0o777).toBe(0o700);
+  });
+
+  // G6: a ROLLBACK issued after the transaction already ended (SQLite can
+  // end one itself, e.g. on SQLITE_FULL) throws "no transaction is active"
+  // and must not hide the real error `fn` threw.
+  it('surfaces the original error even when the transaction already ended', () => {
+    const store = storeAt();
+    expect(() =>
+      store.transaction(() => {
+        (store as unknown as { db: { exec(sql: string): void } }).db.exec(
+          'ROLLBACK',
+        );
+        throw new Error('original');
+      }),
+    ).toThrow('original');
+  });
 });
 
 /** A fake SQLITE_BUSY, shaped exactly like the error `node:sqlite` actually

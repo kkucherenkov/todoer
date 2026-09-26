@@ -120,7 +120,13 @@ export class Store {
 
   static open(path: string): Store {
     const onDisk = path !== ':memory:';
-    if (onDisk) mkdirSync(dirname(path), { recursive: true });
+    // 0700: SQLite creates -wal/-shm at the umask's permissions (0644, wide
+    // open) before `chmodSync` below narrows the main file, so a private
+    // directory is what keeps another local user out while the connection
+    // is open. `mkdirSync`'s `mode` only applies to a directory this call
+    // creates — an existing one, which the user may deliberately share, is
+    // left as it is rather than chmodded out from under them.
+    if (onDisk) mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
     const db = new DatabaseSync(path, { timeout: 5000 });
     // Retried as one unit: both statements are idempotent, and a busy error
     // from either one means the file did not finish this initialisation.
@@ -146,7 +152,10 @@ export class Store {
       this.db.exec('COMMIT');
       return result;
     } catch (error) {
-      this.db.exec('ROLLBACK');
+      // SQLite can end the transaction itself before `fn` returns (e.g.
+      // SQLITE_FULL); an unconditional ROLLBACK would then find none active,
+      // throw "no transaction is active", and hide `error`.
+      if (this.db.isTransaction) this.db.exec('ROLLBACK');
       throw error;
     }
   }
