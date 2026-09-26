@@ -5,11 +5,19 @@ import { AuthService } from './auth/auth.service.js';
 import { AppConfig } from './config/app-config.js';
 import { HealthController } from './health/health.controller.js';
 import { PrismaService } from './prisma/prisma.service.js';
+import { PruneService } from './sync/prune.service.js';
 import { SyncController } from './sync/sync.controller.js';
 import { SyncService } from './sync/sync.service.js';
 
 @Module({
   controllers: [HealthController, AuthController, SyncController],
-  providers: [AppConfig, PrismaService, SyncService, AuthService, AuthGuard],
+  providers: [
+    AppConfig,
+    PrismaService,
+    SyncService,
+    PruneService,
+    AuthService,
+    AuthGuard,
+  ],
 })
 export class AppModule {}

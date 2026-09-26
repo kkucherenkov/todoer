@@ -96,7 +96,7 @@ task makes the server keep the contract and closes the race before B1 ships.
       plan Task 3, `apps/backend/prisma/schema.prisma`, `sync.service.ts`
 - **Checkpoint:** a stale cursor gets `410` and `since: 0` recovers, against a
   hand-set watermark.
-- [ ] T004 [FR-005] [FR-006] [FR-007] [FR-008] Pruning service — plan Task 4,
+- [x] T004 [FR-005] [FR-006] [FR-007] [FR-008] Pruning service — plan Task 4,
       `apps/backend/src/sync/prune.service.ts`
 - **Checkpoint:** scenarios 2 and 3 hold end to end; SC-002 holds.
 - [ ] T005 [FR-010] ADR 0017, ADR 0013/0012/0016, spec, README, design doc —
