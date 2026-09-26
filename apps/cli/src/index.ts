@@ -4,7 +4,7 @@ import { readConfig } from './config.js';
 import { ConflictError, RefusalError, UsageError } from './protocol.js';
 import { run } from './run.js';
 import { Store } from './store.js';
-import type { Transport } from './sync.js';
+import { httpTransport } from './transport.js';
 import { HELP, wantsHelp } from './usage.js';
 
 async function main(): Promise<number> {
@@ -14,23 +14,11 @@ async function main(): Promise<number> {
     return 0;
   }
   const config = readConfig(process.env);
-  const send: Transport = (request) =>
-    fetch(`${config.base}/sync`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${config.token}`,
-      },
-      body: JSON.stringify(request),
-      // The whole exchange, body included: a server that accepts the
-      // connection and never answers is as unreachable as one that refuses it.
-      signal: AbortSignal.timeout(config.timeoutMs),
-    });
   const store = Store.open(config.dbPath);
   try {
     const outcome = await run(argv, {
       store,
-      send,
+      send: httpTransport(config),
       now: () => new Date(),
       newId: uuidv7,
     });

@@ -1,5 +1,5 @@
 import { execFileSync, spawn } from 'node:child_process';
-import { mkdtempSync, rmSync, statSync } from 'node:fs';
+import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -283,6 +283,18 @@ describe('Store', () => {
   it('creates a fresh database directory private to its owner', () => {
     storeAt('nested/todoer.db');
     expect(statSync(join(dir, 'nested')).mode & 0o777).toBe(0o700);
+  });
+
+  // Minor 5: a directory plan A created 0755 stays so, and the -wal/-shm
+  // files SQLite creates in it must not be readable by another local user.
+  it('creates the side files private to their owner in a shared directory', () => {
+    mkdirSync(join(dir, 'shared'), { mode: 0o755 });
+    chmodSync(join(dir, 'shared'), 0o755);
+    storeAt('shared/todoer.db').enqueue(create('a'));
+    for (const suffix of ['-wal', '-shm']) {
+      const mode = statSync(join(dir, 'shared', `todoer.db${suffix}`)).mode;
+      expect(mode & 0o777).toBe(0o600);
+    }
   });
 
   // G6: a ROLLBACK issued after the transaction already ended (SQLite can

@@ -137,13 +137,23 @@ export class Store {
     // creates — an existing one, which the user may deliberately share, is
     // left as it is rather than chmodded out from under them.
     if (onDisk) mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
-    const db = new DatabaseSync(path, { timeout: 5000 });
-    // Retried as one unit: both statements are idempotent, and a busy error
-    // from either one means the file did not finish this initialisation.
-    retryOnBusy(() => {
-      db.exec('PRAGMA journal_mode = WAL');
-      db.exec(SCHEMA);
-    });
+    // And for a directory that already exists and is not private (plan A
+    // created it 0755): a 077 umask while SQLite creates its files makes
+    // the database, -wal and -shm 0600 from the first byte.
+    const umask = process.umask(0o077);
+    let db: DatabaseSync;
+    try {
+      db = new DatabaseSync(path, { timeout: 5000 });
+      // Retried as one unit: both statements are idempotent, and a busy
+      // error from either one means the file did not finish this
+      // initialisation.
+      retryOnBusy(() => {
+        db.exec('PRAGMA journal_mode = WAL');
+        db.exec(SCHEMA);
+      });
+    } finally {
+      process.umask(umask);
+    }
     // The replica is the user's whole task list.
     if (onDisk) chmodSync(path, 0o600);
     return new Store(db);
