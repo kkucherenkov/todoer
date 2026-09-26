@@ -144,7 +144,15 @@ components:
         # bigint. `format: int64` is deliberately absent: it would widen the
         # bound this line exists to narrow, and it changes what the
         # generators emit for a field every client already reads as a number.
-        since: { type: integer, minimum: 0, maximum: 9007199254740991 }
+        since:
+          type: integer
+          minimum: 0
+          maximum: 9007199254740991
+          description: >-
+            The cursor from the previous response. 0 asks for a snapshot:
+            every live row and no tombstones, with a cursor that is never
+            below the prune watermark. A request with since 0 is never
+            answered 410; it is how a client recovers from one.
         ops:
           type: array
           items: { $ref: "#/components/schemas/Op" }
@@ -257,7 +265,11 @@ paths:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
         "410":
-          description: cursor older than tombstone retention
+          description: >-
+            The cursor is older than the prune watermark: tombstones it has
+            not seen are gone. Discard the local replica and repeat with
+            since 0. Operations in this request were still applied; resend
+            them, and each replays its original outcome.
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
