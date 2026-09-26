@@ -62,7 +62,11 @@ reporting the work as finished.
 ## Task stack
 
 One file per task: `specs/tasks/active/<id>.md` while it runs,
-`specs/tasks/done/<id>.md` once it ships. Format and rationale in
+`specs/tasks/done/<id>.md` once it ships. Each file is a **task spec**:
+scenarios, requirements `FR-NNN`, edge cases, a Definition of Done, and steps
+`TNNN` that cite the requirements. Template in
+[`specs/tasks/templates/feature.md`](../specs/tasks/templates/feature.md);
+format, statuses and how it relates to the design doc and the plan in
 [`specs/tasks/README.md`](../specs/tasks/README.md).
 
 **Session start: read `specs/tasks/active/` first:**
