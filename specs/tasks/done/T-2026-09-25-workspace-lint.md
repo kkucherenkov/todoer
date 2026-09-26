@@ -17,18 +17,21 @@
 - Tests: mutation check — introduce each failure named above, watch the gate go
   red, revert.
 - Sub-steps:
-  - [ ] Split `tsconfig.json` (everything, for typecheck and lint) from
+  - [x] Split `tsconfig.json` (everything, for typecheck and lint) from
         `tsconfig.build.json` (no specs) in `apps/backend` and `apps/cli`
-  - [ ] Fix the six type errors that surfaces in spec files
-  - [ ] Prettier: `singleQuote`, width 80; `.prettierignore` for generated code
+  - [x] Fix the six type errors that surfaced in spec files
+  - [x] Prettier: `singleQuote`, width 80; `.prettierignore` for generated code
         and the lockfile
-  - [ ] Reformat the tree in a commit of its own; record its SHA in
+  - [x] Reformat the tree in a commit of its own; record its SHA in
         `.git-blame-ignore-revs`
-  - [ ] ESLint flat config at the root, `typescript-eslint`
+  - [x] ESLint flat config at the root, `typescript-eslint`
         `recommendedTypeChecked` with `projectService`; fix what it finds
-  - [ ] Per-package `lint` scripts and a `lint` turbo task (`dependsOn:
+  - [x] Per-package `lint` scripts and a `lint` turbo task (`dependsOn:
         ["^build"]` — type-aware rules need `@todoer/specs`'s `dist/` types)
-  - [ ] `Lint` job in CI; add it to Quality gates in `.claude/CLAUDE.md`
-  - [ ] README / CONTRIBUTING: how to run `pnpm lint` and `pnpm format`
-- Status: in-progress
+  - [x] `Lint` job in CI; add it to Quality gates in `.claude/CLAUDE.md`
+  - [x] README: how to run `pnpm lint` and `pnpm format`
+- Status: done
 - Blockers: —
+- Completed: 2026-09-25
+- Result: https://github.com/kkucherenkov/todoer/pull/4 — Markdown left out of
+  Prettier (it rewrote ADRs); spec files now typechecked, six errors fixed.

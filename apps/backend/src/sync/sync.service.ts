@@ -190,28 +190,24 @@ function unpermittedField(table: TableName, op: Op): string | null {
 
 /**
  * Why this op's foreign keys cannot be written, or `null` if there is nothing
- * to object to. Two rules, one lookup of the referenced row:
+ * to object to. Three rules:
  *
- * - it must belong to the same user (reads are scoped by `userId`; these
- *   columns were not, and the migration's foreign keys are global);
- * - a `parentId` must point at a task with no parent of its own.
+ * - the referenced row must belong to the same user (reads are scoped by
+ *   `userId`; these columns were not, and the migration's foreign keys are
+ *   global);
+ * - a `parentId` must point at a task with no parent of its own;
+ * - a task that has live subtasks cannot be given a parent.
  *
- * The second is the whole depth rule for a hierarchy the design caps at two
- * levels (project → task → subtask): a cycle needs every row in it to have a
- * parent, so the edge that would close one always points at a row that
- * already has one. One row, already loaded for the ownership check — no
- * recursive query, no depth counter.
+ * The last two are the whole depth rule for a hierarchy the design caps at
+ * two levels (project → task → subtask), and the second also closes every
+ * cycle: a cycle needs every row in it to have a parent, so the edge that
+ * would close one always points at a row that already has one. No recursive
+ * query, no depth counter. Deleted subtasks do not count: a tombstone cannot
+ * be resurrected, so it never becomes a live third level.
  *
- * That argument holds for operations that arrive **one at a time**, and only
- * then. Two concurrent `set parentId` requests pointing at each other each
- * read the other's row before the other has been parented, so both pass this
- * check and a two-node cycle is written: reproduced 25 times out of 25, with
- * other runs failing instead on `deadlock detected` (a 500). The cause is
- * that an UPDATE writing a foreign key takes an implicit FOR KEY SHARE on the
- * parent row, so the transaction ends up holding two locks, while this
- * function reads the parent without one. Unreachable from every client that
- * ships today — nothing sends `set parentId` — and filed as its own task with
- * the two candidate approaches. It is a known gap, not an impossibility.
+ * Both rules read rows another request may be changing, so they hold only
+ * because `lockRows` has already locked the written row and the target
+ * before this runs — see there.
  *
  * A value that is not a uuid counts as unowned: it references no row of
  * theirs either, and letting it through would send client input into the raw
@@ -258,8 +254,64 @@ async function referenceRejection(
     if (isParent && (found as { parentId?: string | null }).parentId !== null) {
       return 'parentId must point at a task that has no parent of its own';
     }
+    // A `create` makes a row that cannot have children yet.
+    if (isParent && op.kind === 'set') {
+      const child = await delegateFor(client, 'task').findFirst({
+        where: { parentId: op.id, userId, deletedAt: null },
+        select: { id: true },
+      });
+      if (child !== null) {
+        return 'parentId cannot be set on a task that has subtasks';
+      }
+    }
   }
   return null;
+}
+
+/** The task a `parentId` write points at, if this op makes one. */
+function parentTarget(table: TableName, op: Op): string | null {
+  if (table !== 'task') return null;
+  let value: unknown;
+  if (op.kind === 'set' && op.field === 'parentId') {
+    value = op.value;
+  } else if (
+    op.kind === 'create' &&
+    typeof op.fields === 'object' &&
+    op.fields !== null
+  ) {
+    value = op.fields.parentId;
+  }
+  return typeof value === 'string' && UUID.test(value) ? value : null;
+}
+
+/**
+ * Locks the row this op writes and, for a `parentId` write, the task it
+ * points at — both before `referenceRejection` reads either, and always in id
+ * order.
+ *
+ * Both halves are needed. Unlocked, two requests setting A under B and B
+ * under A each read the other while it is still parentless, both pass and a
+ * cycle is stored; the same happens when T gains a parent while a subtask of
+ * T is created. Locking only the written row does not help, and ordering is
+ * what stops it deadlocking: the UPDATE's foreign-key check takes FOR KEY
+ * SHARE on the target, so a transaction that locked A and then touches B
+ * waits on one that locked B and then touches A (40P01, a 500). With both
+ * rows locked up front in a fixed order, the second request waits for the
+ * first to commit and its checks then read what the first wrote — under
+ * READ COMMITTED each statement sees the latest commit.
+ *
+ * A row that does not exist yet (a `create`) locks nothing, which is fine:
+ * nothing else can reference it until it commits.
+ */
+async function lockRows(
+  client: RawClient,
+  table: TableName,
+  op: Op,
+  userId: string,
+): Promise<void> {
+  const target = parentTarget(table, op);
+  const ids = target === null || target === op.id ? [op.id] : [op.id, target];
+  for (const id of ids.sort()) await lockRow(client, table, id, userId);
 }
 
 /**
@@ -481,15 +533,15 @@ export class SyncService {
           // per-operation rejection it is.
           outcome = { status: 'rejected', reason: 'id is not a uuid' };
         } else {
+          // Before every read, not after: the locks are what make these
+          // reads and the write below one cycle rather than two halves
+          // another transaction can interleave with.
+          await lockRows(tx, table, op, userId);
           const badReference = await referenceRejection(tx, table, op, userId);
           if (badReference !== null) {
             outcome = { status: 'rejected', reason: badReference };
           } else {
             delegate = delegateFor(tx, table);
-            // Before the read, not after: the lock is what makes this read
-            // and the write below one cycle rather than two halves another
-            // transaction can interleave with.
-            await lockRow(tx, table, op.id, userId);
             current = await delegate.findFirst({
               where: { id: op.id, userId },
             });
