@@ -1,6 +1,7 @@
+import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Change, Op, OpResult, SyncRequest } from '@todoer/specs';
-import { RefusalError } from './protocol.js';
+import { ownOutcome, RefusalError } from './protocol.js';
 import { Store } from './store.js';
 import { MAX_OPS, flush, type Transport } from './sync.js';
 
@@ -62,6 +63,18 @@ function scripted(
 const unreachable = () => {
   throw new TypeError('fetch failed');
 };
+
+/** A response whose body errors on read, the way a connection dropped
+ *  mid-body would — as opposed to `json()`'s "not json" case, whose bytes
+ *  arrive whole but do not parse. */
+function unreadableBody(status: number): Response {
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.error(new Error('stream broke'));
+    },
+  });
+  return new Response(stream, { status });
+}
 
 describe('flush', () => {
   it('sends the pending operations with the cursor and applies the answer', async () => {
@@ -203,7 +216,7 @@ describe('flush', () => {
       (request) => applyAll(request, 20),
     );
 
-    await flush(store, server.send);
+    const flushed = await flush(store, server.send);
 
     expect(server.requests.map((r) => r.ops.length)).toEqual([MAX_OPS, 1]);
     expect(server.requests[1]?.ops[0]?.opId).toBe(
@@ -211,6 +224,8 @@ describe('flush', () => {
     );
     expect(server.requests.map((r) => r.since)).toEqual([0, 10]);
     expect(store.pending()).toEqual([]);
+    // Both batches' verdicts, not just the last one's.
+    expect(flushed.results).toHaveLength(MAX_OPS + 1);
   });
 
   it('stops at the first batch the server does not answer', async () => {
@@ -221,6 +236,9 @@ describe('flush', () => {
 
     expect(flushed.synced).toBe(false);
     expect(store.pending()).toHaveLength(1);
+    // The batch that did get answered still counts, even though the flush
+    // overall did not sync.
+    expect(flushed.results).toHaveLength(MAX_OPS);
   });
 
   it("removes the caller's own refused operation and keeps another's as failed", async () => {
@@ -243,5 +261,70 @@ describe('flush', () => {
     expect(store.entries().map((e) => [e.opId, e.status])).toEqual([
       ['theirs', 'failed'],
     ]);
+  });
+
+  // Controller ruling: 400/413 mean the request as sent can never be
+  // accepted, by this client or any other — a resend cannot change that,
+  // so every op it carried is a rejection, not a `pending` stuck forever.
+  it('fails every operation in a batch the server refuses outright (413)', async () => {
+    store.enqueue(create('earlier'));
+    store.enqueue(create('mine'));
+    const server = scripted(
+      () => json({ title: 'Payload Too Large' }, 413),
+      (request) => applyAll(request, 5),
+    );
+
+    const flushed = await flush(store, server.send, new Set(['mine']));
+
+    expect(store.entries().map((e) => [e.opId, e.status])).toEqual([
+      ['earlier', 'failed'],
+    ]);
+    expect(flushed.results.map((r) => [r.opId, r.status])).toEqual([
+      ['earlier', 'rejected'],
+      ['mine', 'rejected'],
+    ]);
+    expect(flushed.results[0]?.reason).toMatch(/413/);
+    expect(flushed.results[1]?.reason).toMatch(/413/);
+    expect(() => ownOutcome(flushed.results, 'mine')).toThrow(RefusalError);
+    // Nothing pulled for the refused batch, so the flush still owes one.
+    expect(server.requests[1]).toEqual({ since: 0, ops: [] });
+    expect(flushed.synced).toBe(true);
+  });
+
+  it('still sends and applies the next batch after a 400 refuses the one before it', async () => {
+    for (let i = 0; i <= MAX_OPS; i++) {
+      store.enqueue(create(`op-${String(i).padStart(4, '0')}`));
+    }
+    const server = scripted(
+      () => json({ title: 'Bad Request' }, 400),
+      (request) => applyAll(request, 20),
+    );
+
+    const flushed = await flush(store, server.send);
+
+    expect(server.requests).toHaveLength(2);
+    expect(server.requests[1]?.ops).toHaveLength(1);
+    expect(flushed.synced).toBe(true);
+    expect(store.pending()).toEqual([]);
+    expect(flushed.results).toHaveLength(MAX_OPS + 1);
+  });
+
+  it('does not let a broken response body escape as an unexpected error', async () => {
+    store.enqueue(create('a'));
+    await expect(
+      flush(store, scripted(() => unreadableBody(401)).send),
+    ).rejects.toBeInstanceOf(RefusalError);
+    expect(store.pending()).toHaveLength(1);
+  });
+});
+
+describe('MAX_OPS', () => {
+  it("matches the contract's cap on ops per request", () => {
+    const openapi = readFileSync(
+      new URL('../../../packages/specs/openapi/openapi.yaml', import.meta.url),
+      'utf8',
+    );
+    const match = /ops:[\s\S]*?maxItems:\s*(\d+)/.exec(openapi);
+    expect(Number(match?.[1])).toBe(MAX_OPS);
   });
 });
