@@ -2,11 +2,13 @@
 
 - Created: 2026-09-26
 - Owner: claude
-- Status: in-progress
+- Status: done
 - Blockers: —
 - Spec: [docs/specs/2026-09-26-plan-b-outbox-offline-design.md](../../../docs/specs/2026-09-26-plan-b-outbox-offline-design.md)
   (the B1 half: Q2–Q8, Q13); ADR 0003, ADR 0013, ADR 0015
 - Plan: [docs/plans/2026-09-26-plan-b1-cli-outbox.md](../../../docs/plans/2026-09-26-plan-b1-cli-outbox.md)
+- Completed: 2026-09-26
+- Result: https://github.com/kkucherenkov/todoer/pull/8
 
 ### Goal
 
@@ -98,13 +100,13 @@ and a command without a server answers from the local copy.
   passed`.
 - **SC-003** `todoer --help` documents exit 5, the envelope, `outbox`, and
   `TODOER_TIMEOUT_MS`, and no longer says `add` is unsafe to retry.
-- [ ] every FR has a test that failed before the code made it pass (FR-002 and
+- [x] every FR has a test that failed before the code made it pass (FR-002 and
       FR-012 are configuration and documentation: checked by CI running on
       Node 24 and by the step that edits them)
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 
