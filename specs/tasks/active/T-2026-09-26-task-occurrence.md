@@ -111,7 +111,7 @@ the server half of plan C so the CLI (C1) can build against a merged contract.
 - [x] T001 [FR-001, FR-002, FR-003] runtime code and vectors in the spec
       package — plan Task 1
 - [x] T002 [FR-005] `task_occurrence` in the contract, codegen — plan Task 2
-- [ ] T003 [FR-004] dates travel as `YYYY-MM-DD` — plan Task 3
+- [x] T003 [FR-004] dates travel as `YYYY-MM-DD` — plan Task 3
 - **Checkpoint:** a task with `dueOn` round-trips through `/sync`.
 - [ ] T004 [FR-005, FR-009, FR-012] schema and migration, table wiring —
       plan Task 4

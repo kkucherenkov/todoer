@@ -5,6 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { isIsoDate } from '@todoer/specs';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { applyOp, type Op, type Outcome, type Row } from './apply-op.js';
 import { lockUserWrites, type RawClient } from './user-lock.js';
@@ -107,6 +108,64 @@ const WRITABLE_FIELDS: Record<TableName, ReadonlySet<string>> = {
 };
 
 /**
+ * Columns that hold a calendar date (ADR 0010). On the wire a date is
+ * `YYYY-MM-DD`; Prisma's `@db.Date` takes only a full ISO date-time or a
+ * `Date`, so a bare date reached it as a validation error ("could not be
+ * applied") and a read came back as midnight UTC with a time on it. Both
+ * directions convert here.
+ */
+const DATE_FIELDS: Partial<Record<TableName, ReadonlySet<string>>> = {
+  task: new Set(['scheduledOn', 'dueOn', 'dtstart']),
+};
+
+/**
+ * The `[field, value]` pairs an op writes. A malformed `fields`/`field` yields
+ * nothing: applyOp rejects those, with a better reason than any caller here.
+ */
+function writtenFields(op: Op): Array<[string, unknown]> {
+  if (op.kind === 'create') {
+    return typeof op.fields === 'object' &&
+      op.fields !== null &&
+      !Array.isArray(op.fields)
+      ? Object.entries(op.fields)
+      : [];
+  }
+  if (op.kind === 'set') {
+    return typeof op.field === 'string' ? [[op.field, op.value]] : [];
+  }
+  return [];
+}
+
+/** Why a date field in this op cannot be stored, or `null`. */
+function dateRejection(table: TableName, op: Op): string | null {
+  const dates = DATE_FIELDS[table];
+  if (dates === undefined) return null;
+  for (const [field, value] of writtenFields(op)) {
+    if (dates.has(field) && value !== null && !isIsoDate(value)) {
+      return `${field} must be a date, YYYY-MM-DD`;
+    }
+  }
+  return null;
+}
+
+/** The row as Prisma must receive it: date strings become `Date`s. */
+function toStorage(
+  table: TableName,
+  data: Record<string, unknown>,
+): Record<string, unknown> {
+  const dates = DATE_FIELDS[table];
+  if (dates === undefined) return data;
+  const out = { ...data };
+  for (const field of dates) {
+    const value = out[field];
+    if (typeof value === 'string') {
+      out[field] = new Date(`${value}T00:00:00.000Z`);
+    }
+  }
+  return out;
+}
+
+/**
  * The minimal shape this module needs from a Prisma model delegate, picked
  * dynamically by table name. Prisma's own delegate types don't unify across
  * models (each has its own create/update input type), so reaching them by a
@@ -152,9 +211,15 @@ function toChangeRow(
   table: TableName,
   row: Record<string, unknown>,
 ): Record<string, unknown> {
+  const dates = DATE_FIELDS[table];
   const out: Record<string, unknown> = {};
   for (const key of [...READABLE_PROTOCOL_FIELDS, ...WRITABLE_FIELDS[table]]) {
-    if (key in row) out[key] = row[key];
+    if (!(key in row)) continue;
+    const value = row[key];
+    out[key] =
+      value instanceof Date && dates?.has(key)
+        ? value.toISOString().slice(0, 10)
+        : value;
   }
   return out;
 }
@@ -220,23 +285,7 @@ async function referenceRejection(
   const refs = REFERENCES[table];
   if (refs === undefined) return null;
 
-  let written: Array<[string, unknown]>;
-  if (op.kind === 'create') {
-    // A malformed `fields` is applyOp's to reject, not this function's.
-    if (
-      typeof op.fields !== 'object' ||
-      op.fields === null ||
-      Array.isArray(op.fields)
-    )
-      return null;
-    written = Object.entries(op.fields);
-  } else if (op.kind === 'set') {
-    written = typeof op.field === 'string' ? [[op.field, op.value]] : [];
-  } else {
-    written = [];
-  }
-
-  for (const [field, value] of written) {
+  for (const [field, value] of writtenFields(op)) {
     const target = refs[field];
     // `null` clears the reference, which needs no owner.
     if (target === undefined || value === null || value === undefined) continue;
@@ -520,6 +569,8 @@ export class SyncService {
           ? (op.table as TableName)
           : null;
         const badField = table !== null ? unpermittedField(table, op) : null;
+        const badValue =
+          table !== null && badField === null ? dateRejection(table, op) : null;
 
         let delegate: SyncDelegate | null = null;
         let current: Row | null = null;
@@ -540,6 +591,8 @@ export class SyncService {
           // treats as retryable and turns into a 5xx rather than the honest
           // per-operation rejection it is.
           outcome = { status: 'rejected', reason: 'id is not a uuid' };
+        } else if (badValue !== null) {
+          outcome = { status: 'rejected', reason: badValue };
         } else {
           // Before every read, not after: the locks are what make these
           // reads and the write below one cycle rather than two halves
@@ -577,11 +630,11 @@ export class SyncService {
 
         if (outcome.status === 'applied') {
           // Guaranteed set together above: `outcome.status` can only be
-          // 'applied' when the permitted-checks passed and `delegate` was
-          // resolved. TS cannot see that coupling across the earlier
-          // if/else, so this makes it an explicit, checked invariant
-          // instead of a silent assumption.
-          if (delegate === null) {
+          // 'applied' when the permitted-checks passed and `delegate` (and
+          // `table`) were resolved. TS cannot see that coupling across the
+          // earlier if/else, so this makes it an explicit, checked
+          // invariant instead of a silent assumption.
+          if (delegate === null || table === null) {
             throw new Error(
               'unreachable: applied outcome without a resolved delegate',
             );
@@ -606,14 +659,14 @@ export class SyncService {
             updatedAt: _updatedAt,
             ...rest
           } = outcome.row;
-          const data = {
+          const data = toStorage(table, {
             ...rest,
             version,
             fieldTs,
             deletedAt,
             userId,
             seq: nextval,
-          };
+          });
           if (current === null) {
             await delegate.create({ data: { ...data, id } });
           } else {

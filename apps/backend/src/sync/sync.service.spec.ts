@@ -32,7 +32,7 @@ function createTask(title: string) {
     kind: 'create' as const,
     table: 'task' as const,
     id: uuidv7(),
-    fields: { title, rank: 'a0' },
+    fields: { title, rank: 'a0' } as Record<string, unknown>,
     ts: new Date().toISOString(),
   };
 }
@@ -1283,5 +1283,71 @@ describe('SyncService', () => {
 
     expect(resent.results[0]?.status).toBe('duplicate');
     expect(await prisma.task.count({ where: { id: op.id } })).toBe(1);
+  });
+
+  // ADR 0010 / plan C2 departure 5: Prisma refuses a bare date for @db.Date,
+  // so before this every date field written through /sync was rejected.
+  it('stores a YYYY-MM-DD date and returns it in the same form', async () => {
+    const op = createTask('pay rent');
+    op.fields = { ...op.fields, dueOn: '2026-09-28', dtstart: '2026-09-01' };
+
+    const res = await service.sync(USER, { since: 0, ops: [op] });
+
+    expect(res.results[0]?.status).toBe('applied');
+    const row = res.changes.find((c) => c.id === op.id)?.row;
+    expect(row?.dueOn).toBe('2026-09-28');
+    expect(row?.dtstart).toBe('2026-09-01');
+  });
+
+  it.each(['2026-02-30', '2026-9-28', '2026-09-28T00:00:00Z', 20260928])(
+    'rejects %j in a date field, naming the field',
+    async (value) => {
+      const op = createTask('bad date');
+      await service.sync(USER, { since: 0, ops: [op] });
+
+      const res = await service.sync(USER, {
+        since: 0,
+        ops: [
+          {
+            opId: uuidv7(),
+            kind: 'set' as const,
+            table: 'task' as const,
+            id: op.id,
+            field: 'scheduledOn',
+            value,
+            ts: new Date().toISOString(),
+          },
+        ],
+      });
+
+      expect(res.results[0]).toMatchObject({
+        status: 'rejected',
+        reason: 'scheduledOn must be a date, YYYY-MM-DD',
+      });
+    },
+  );
+
+  it('clears a date with null', async () => {
+    const op = createTask('undated');
+    op.fields = { ...op.fields, dueOn: '2026-09-28' };
+    await service.sync(USER, { since: 0, ops: [op] });
+
+    const res = await service.sync(USER, {
+      since: 0,
+      ops: [
+        {
+          opId: uuidv7(),
+          kind: 'set' as const,
+          table: 'task' as const,
+          id: op.id,
+          field: 'dueOn',
+          value: null,
+          ts: new Date().toISOString(),
+        },
+      ],
+    });
+
+    expect(res.results[0]?.status).toBe('applied');
+    expect(res.changes.find((c) => c.id === op.id)?.row.dueOn).toBeNull();
   });
 });
