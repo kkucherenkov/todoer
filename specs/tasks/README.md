@@ -10,6 +10,30 @@ blocked, and what has already shipped. Two directories, **one file per entry**:
 There is no index file and nothing to regenerate: `ls specs/tasks/active/` is
 the stack, and `cat specs/tasks/active/*.md` reads it.
 
+## An entry is a task spec
+
+Each entry is the specification of one task: scenarios, numbered requirements
+(`FR-NNN`), edge cases, a Definition of Done and steps (`TNNN`) that reference
+the requirements they satisfy. The sections and their rules are in
+[`templates/feature.md`](templates/feature.md); they follow GitHub Spec Kit's
+specification and task templates, used as a format only — the `specify` CLI is
+not part of this repository.
+
+Three documents, three questions, no overlap:
+
+| Document                     | Answers                                        | Written                   |
+| ---------------------------- | ---------------------------------------------- | ------------------------- |
+| `docs/specs/*-design.md`     | **why this way** — decisions, rejected options | by the design interview   |
+| `specs/tasks/active/<id>.md` | **what must be true** — FRs, DoD, steps        | before the first edit     |
+| `docs/plans/*.md`            | **exactly how** — code, commands, output       | for multi-step work only  |
+
+A requirement cites the design decision it comes from; a step cites the plan
+task that details it. Neither repeats the other document's content, so each
+fact has one place to go stale.
+
+Entries in `done/` written before this format keep their old shape. They are
+the record of what happened and are not rewritten.
+
 ## Why one file per entry
 
 The obvious layout is two files, `active.md` and `done.md`, each an
@@ -33,13 +57,16 @@ entry to done" case that the driver needed special code for cannot arise.
 1. **Before touching code**, create `active/<id>.md` from
    [`templates/feature.md`](templates/feature.md).
 
-2. **While working**, tick sub-steps in place. If the task is blocked, set
-   `Status: blocked` and fill `Blockers:`.
+2. **While working**, tick steps in place. If the task is blocked, set
+   `Status: blocked` and fill `Blockers:`. A requirement that changes during
+   the work changes in the entry first, then in the code.
 
-3. **When shipped**, `git mv specs/tasks/active/<id>.md specs/tasks/done/`,
-   set `Status: done`, and add `- Completed: YYYY-MM-DD` and
-   `- Result: <PR link>`. The entry must reference the spec it implemented so
-   the audit trail survives.
+3. **When shipped**, every Definition of Done item is ticked;
+   `git mv specs/tasks/active/<id>.md specs/tasks/done/`, set `Status: done`,
+   and add `- Completed: YYYY-MM-DD` and `- Result: <PR link>`. Edit the file
+   and `git add` it before the `git mv`, or the move commits the old content.
+   The entry must reference the spec it implemented so the audit trail
+   survives.
 
 4. **Never delete** a file from `done/`. A cancelled task moves there with
    `- Result: cancelled — <reason>`.
