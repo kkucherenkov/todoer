@@ -563,3 +563,91 @@ describe('applyOp — delete', () => {
     expect(applyOp(op, row(), NOW).status).toBe('rejected');
   });
 });
+
+describe('create of an existing row with mergeCreate', () => {
+  const NOW = new Date('2026-09-28T12:00:00.000Z');
+  const current = {
+    id: 'occ',
+    version: 1,
+    fieldTs: {
+      state: '2026-09-28T10:00:00.000Z',
+      taskId: '2026-09-28T10:00:00.000Z',
+    },
+    deletedAt: null,
+    taskId: 't',
+    state: 'done',
+  };
+  const create = (ts: string, fields: Record<string, unknown>) => ({
+    opId: 'op',
+    kind: 'create' as const,
+    table: 'task_occurrence',
+    id: 'occ',
+    fields,
+    ts,
+  });
+
+  it('still rejects a duplicate id without mergeCreate', () => {
+    expect(
+      applyOp(
+        create('2026-09-28T11:00:00.000Z', { state: 'skipped' }),
+        current,
+        NOW,
+      ),
+    ).toEqual({
+      status: 'rejected',
+      reason: 'a row with this id already exists',
+    });
+  });
+
+  it('applies the fields that are newer, per field', () => {
+    const out = applyOp(
+      create('2026-09-28T11:00:00.000Z', { state: 'skipped', value: 2 }),
+      current,
+      NOW,
+      { mergeCreate: true },
+    );
+    expect(out).toMatchObject({
+      status: 'applied',
+      row: {
+        state: 'skipped',
+        value: 2,
+        version: 2,
+        fieldTs: {
+          state: '2026-09-28T11:00:00.000Z',
+          value: '2026-09-28T11:00:00.000Z',
+        },
+      },
+    });
+  });
+
+  it('answers superseded when no field is newer', () => {
+    expect(
+      applyOp(
+        create('2026-09-28T09:00:00.000Z', { state: 'skipped' }),
+        current,
+        NOW,
+        {
+          mergeCreate: true,
+        },
+      ),
+    ).toEqual({ status: 'superseded' });
+  });
+
+  it('still validates the create before merging', () => {
+    expect(
+      applyOp(create('not a time', { state: 'skipped' }), current, NOW, {
+        mergeCreate: true,
+      }),
+    ).toMatchObject({ status: 'rejected' });
+    expect(
+      applyOp(
+        create('2026-09-28T11:00:00.000Z', { version: 9 }),
+        current,
+        NOW,
+        {
+          mergeCreate: true,
+        },
+      ),
+    ).toMatchObject({ status: 'rejected' });
+  });
+});

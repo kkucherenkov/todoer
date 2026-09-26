@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GoneException, Logger } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
+import { taskTagId } from '@todoer/specs';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { PruneService, RETENTION_DAYS } from './prune.service.js';
 import { SyncService } from './sync.service.js';
@@ -256,7 +257,7 @@ describe('PruneService', () => {
   it('keeps a tombstoned tag a live TaskTag still references', async () => {
     const task = uuidv7();
     const tag = uuidv7();
-    const taskTag = uuidv7();
+    const taskTag = taskTagId(task, tag);
     await sync.sync(USER, {
       since: 0,
       ops: [
@@ -283,7 +284,7 @@ describe('PruneService', () => {
   it('keeps a tombstoned task a live TaskTag still references', async () => {
     const task = uuidv7();
     const tag = uuidv7();
-    const taskTag = uuidv7();
+    const taskTag = taskTagId(task, tag);
     await sync.sync(USER, {
       since: 0,
       ops: [
@@ -387,7 +388,7 @@ describe('PruneService', () => {
     const project = uuidv7();
     const tag = uuidv7();
     const task = uuidv7();
-    const taskTag = uuidv7();
+    const taskTag = taskTagId(task, tag);
     await sync.sync(USER, {
       since: 0,
       ops: [
@@ -395,12 +396,18 @@ describe('PruneService', () => {
         create('tag', tag, { name: 'gone' }),
         create('task', task, { title: 'gone', rank: 'a0' }),
         create('task_tag', taskTag, { taskId: task, tagId: tag }),
-        remove('task_tag', taskTag),
         remove('tag', tag),
         remove('task', task),
         remove('project', project),
       ],
     });
+    // A TaskTag tombstone can only exist from before TaskTag became a toggle
+    // (plan C2); stage one directly, with a fresh seq like a real delete.
+    await prisma.$executeRaw`
+      UPDATE "TaskTag" SET "deletedAt" = now(), "seq" = nextval('change_seq'),
+        "version" = "version" + 1
+       WHERE "id" = ${taskTag}::uuid
+    `;
     await age('task_tag', [taskTag], RETENTION_DAYS + 1);
     await age('tag', [tag], RETENTION_DAYS + 1);
     await age('task', [task], RETENTION_DAYS + 1);

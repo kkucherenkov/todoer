@@ -115,7 +115,7 @@ the server half of plan C so the CLI (C1) can build against a merged contract.
 - **Checkpoint:** a task with `dueOn` round-trips through `/sync`.
 - [x] T004 [FR-005, FR-009, FR-012] schema and migration, table wiring —
       plan Task 4
-- [ ] T005 [FR-006, FR-007, FR-008, FR-009] deterministic ids, create-merge,
+- [x] T005 [FR-006, FR-007, FR-008, FR-009] deterministic ids, create-merge,
       no delete — plan Task 5
 - **Checkpoint:** scenario 1 and 2 pass as service tests.
 - [ ] T006 [P] [FR-010, FR-011] row rules for recurrence and state — plan

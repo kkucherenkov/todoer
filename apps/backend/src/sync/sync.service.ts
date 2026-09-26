@@ -8,6 +8,7 @@ import { Prisma } from '@prisma/client';
 import { isIsoDate } from '@todoer/specs';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { applyOp, type Op, type Outcome, type Row } from './apply-op.js';
+import { derivedIdRejection, isDerivedIdTable } from './derived-id.js';
 import { lockUserWrites, type RawClient } from './user-lock.js';
 
 type SyncRequest = { since: number; ops: Op[] };
@@ -587,7 +588,9 @@ export class SyncService {
           : null;
         const badField = table !== null ? unpermittedField(table, op) : null;
         const badValue =
-          table !== null && badField === null ? dateRejection(table, op) : null;
+          table !== null && badField === null
+            ? (dateRejection(table, op) ?? derivedIdRejection(table, op))
+            : null;
 
         let delegate: SyncDelegate | null = null;
         let current: Row | null = null;
@@ -623,7 +626,9 @@ export class SyncService {
             current = await delegate.findFirst({
               where: { id: op.id, userId },
             });
-            outcome = applyOp(op, current, now);
+            outcome = applyOp(op, current, now, {
+              mergeCreate: isDerivedIdTable(table),
+            });
           }
         }
 

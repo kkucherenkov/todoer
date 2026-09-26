@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { BadRequestException, GoneException } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
 import { Prisma } from '@prisma/client';
-import { taskOccurrenceId } from '@todoer/specs';
+import { taskOccurrenceId, taskTagId } from '@todoer/specs';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { SyncService } from './sync.service.js';
 
@@ -1407,5 +1407,188 @@ describe('SyncService', () => {
       status: 'rejected',
       reason: 'taskId does not reference a row you own',
     });
+  });
+
+  // Review Focus 4 / scenario 1.
+  it('completes, undoes and completes again into one row', async () => {
+    const task = createTask('stretch');
+    const t0 = Date.now();
+    const at = (s: number) => new Date(t0 + s * 1000).toISOString();
+    const done = createOccurrence(
+      task.id,
+      '2026-09-28',
+      { state: 'done' },
+      at(0),
+    );
+    await service.sync(USER, { since: 0, ops: [task, done] });
+
+    const undo = {
+      opId: uuidv7(),
+      kind: 'set' as const,
+      table: 'task_occurrence' as const,
+      id: done.id,
+      field: 'state',
+      value: 'open',
+      ts: at(1),
+    };
+    const again = createOccurrence(
+      task.id,
+      '2026-09-28',
+      { state: 'done' },
+      at(2),
+    );
+    const res = await service.sync(USER, { since: 0, ops: [undo, again] });
+
+    expect(res.results.map((r) => r.status)).toEqual(['applied', 'applied']);
+    const rows = await prisma.taskOccurrence.findMany({
+      where: { taskId: task.id },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ state: 'done', version: 3 });
+  });
+
+  // Review Focus 1 / scenario 2: the later action wins, not the first to arrive.
+  it('lets the later of two offline creates win whatever arrives first', async () => {
+    const task = createTask('water the plants');
+    await service.sync(USER, { since: 0, ops: [task] });
+    const t0 = Date.now() - 60_000;
+    const doneAt10 = createOccurrence(
+      task.id,
+      '2026-09-28',
+      { state: 'done' },
+      new Date(t0).toISOString(),
+    );
+    const skippedAt11 = createOccurrence(
+      task.id,
+      '2026-09-28',
+      { state: 'skipped' },
+      new Date(t0 + 30_000).toISOString(),
+    );
+
+    const first = await service.sync(USER, { since: 0, ops: [skippedAt11] });
+    const second = await service.sync(USER, { since: 0, ops: [doneAt10] });
+
+    expect(first.results[0]?.status).toBe('applied');
+    expect(second.results[0]?.status).toBe('superseded');
+    const row = await prisma.taskOccurrence.findUniqueOrThrow({
+      where: { id: skippedAt11.id },
+    });
+    expect(row.state).toBe('skipped');
+  });
+
+  it('keeps one row for a non-recurring completion sent twice', async () => {
+    const task = createTask('file taxes');
+    await service.sync(USER, {
+      since: 0,
+      ops: [
+        task,
+        createOccurrence(task.id, null, { state: 'done' }),
+        createOccurrence(task.id, null, { state: 'done' }),
+      ],
+    });
+
+    expect(
+      await prisma.taskOccurrence.count({ where: { taskId: task.id } }),
+    ).toBe(1);
+  });
+
+  it('rejects a task occurrence whose id is not derived from its fields', async () => {
+    const task = createTask('x');
+    const bad = {
+      ...createOccurrence(task.id, '2026-09-28', { state: 'done' }),
+      id: uuidv7(),
+    };
+
+    const res = await service.sync(USER, { since: 0, ops: [task, bad] });
+
+    expect(res.results[1]).toMatchObject({
+      status: 'rejected',
+      reason: 'id does not match the id derived from taskId, occurrence',
+    });
+  });
+
+  it('refuses to delete a task occurrence or move it to another date', async () => {
+    const task = createTask('x');
+    const done = createOccurrence(task.id, '2026-09-28', { state: 'done' });
+    await service.sync(USER, { since: 0, ops: [task, done] });
+
+    const res = await service.sync(USER, {
+      since: 0,
+      ops: [
+        {
+          opId: uuidv7(),
+          kind: 'delete' as const,
+          table: 'task_occurrence' as const,
+          id: done.id,
+          baseVersion: 1,
+        },
+        {
+          opId: uuidv7(),
+          kind: 'set' as const,
+          table: 'task_occurrence' as const,
+          id: done.id,
+          field: 'occurrence',
+          value: '2026-09-29',
+          ts: new Date().toISOString(),
+        },
+      ],
+    });
+
+    expect(res.results.map((r) => r.status)).toEqual(['rejected', 'rejected']);
+    expect(await prisma.taskOccurrence.count({ where: { id: done.id } })).toBe(
+      1,
+    );
+  });
+
+  // FR-009: the collision this plan found in TaskTag, fixed.
+  it('detaches and re-attaches a tag', async () => {
+    const task = createTask('x');
+    const tag = uuidv7();
+    const link = {
+      opId: uuidv7(),
+      kind: 'create' as const,
+      table: 'task_tag' as const,
+      id: taskTagId(task.id, tag),
+      fields: { taskId: task.id, tagId: tag },
+      ts: new Date(Date.now() - 2000).toISOString(),
+    };
+    await service.sync(USER, {
+      since: 0,
+      ops: [
+        task,
+        {
+          opId: uuidv7(),
+          kind: 'create' as const,
+          table: 'tag' as const,
+          id: tag,
+          fields: { name: 'home' },
+          ts: new Date().toISOString(),
+        },
+        link,
+      ],
+    });
+    const detach = {
+      opId: uuidv7(),
+      kind: 'set' as const,
+      table: 'task_tag' as const,
+      id: link.id,
+      field: 'attached',
+      value: false,
+      ts: new Date(Date.now() - 1000).toISOString(),
+    };
+    const reattach = {
+      ...link,
+      opId: uuidv7(),
+      fields: { ...link.fields, attached: true },
+      ts: new Date().toISOString(),
+    };
+
+    const res = await service.sync(USER, { since: 0, ops: [detach, reattach] });
+
+    expect(res.results.map((r) => r.status)).toEqual(['applied', 'applied']);
+    const row = await prisma.taskTag.findUniqueOrThrow({
+      where: { id: link.id },
+    });
+    expect(row.attached).toBe(true);
   });
 });
