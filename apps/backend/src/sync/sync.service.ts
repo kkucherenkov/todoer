@@ -2,6 +2,7 @@ import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { applyOp, type Op, type Outcome, type Row } from './apply-op.js';
+import { lockUserWrites } from './user-lock.js';
 
 type SyncRequest = { since: number; ops: Op[] };
 type OpResult = {
@@ -489,6 +490,10 @@ export class SyncService {
       // applying its effect must either both happen or neither, or a crash
       // between them turns a retry into a duplicate.
       return await this.prisma.$transaction(async (tx) => {
+        // Before anything else, including the row locks below — see
+        // lockUserWrites for why the order matters.
+        await lockUserWrites(tx, userId);
+
         // Step 1 of the design doc's section 3: "seen before?" — a retry
         // after a lost response is a no-op, whatever today's schema thinks
         // of the op's table or field.

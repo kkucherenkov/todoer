@@ -87,7 +87,7 @@ task makes the server keep the contract and closes the race before B1 ships.
 
 ### Steps
 
-- [ ] T001 [FR-001] Per-user write lock and its two tests — plan Task 1,
+- [x] T001 [FR-001] Per-user write lock and its two tests — plan Task 1,
       `apps/backend/src/sync/user-lock.ts`, `sync.service.ts`
 - **Checkpoint:** scenario 1 holds; the backend suite is green.
 - [ ] T002 [FR-009] Contract for `since: 0` and `410`, then codegen — plan
