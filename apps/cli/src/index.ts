@@ -1,128 +1,72 @@
 #!/usr/bin/env node
-import { readFile, writeFile, mkdir } from 'node:fs/promises';
-import { dirname } from 'node:path';
 import { uuidv7 } from 'uuidv7';
-import { planAdd } from './parse-quick-add.js';
-import { BASE, TOKEN, STATE } from './config.js';
-import { HELP, unknownCommand, wantsHelp } from './usage.js';
-import {
-  applyChanges,
-  assertNotRefused,
-  liveTasks,
-  readSyncResponse,
-  ConflictError,
-  NetworkError,
-  RefusalError,
-  UsageError,
-  type State,
-} from './protocol.js';
+import { readConfig } from './config.js';
+import { ConflictError, RefusalError, UsageError } from './protocol.js';
+import { run } from './run.js';
+import { Store } from './store.js';
+import type { Transport } from './sync.js';
+import { HELP, wantsHelp } from './usage.js';
 
-async function load(): Promise<State> {
-  try {
-    return JSON.parse(await readFile(STATE, 'utf8')) as State;
-  } catch {
-    return { cursor: 0, rows: {} };
-  }
-}
-
-async function save(state: State): Promise<void> {
-  await mkdir(dirname(STATE), { recursive: true });
-  await writeFile(STATE, JSON.stringify(state), { mode: 0o600 });
-}
-
-async function sync(ops: unknown[]) {
-  const state = await load();
-  let response: Response;
-  try {
-    response = await fetch(`${BASE}/sync`, {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${TOKEN}`,
-      },
-      body: JSON.stringify({ since: state.cursor, ops }),
-    });
-  } catch (error) {
-    throw new NetworkError(
-      error instanceof Error ? error.message : String(error),
-    );
-  }
-  const body = await readSyncResponse(response);
-  applyChanges(state, body.changes);
-  state.cursor = body.cursor;
-  await save(state);
-  return { state, results: body.results };
-}
-
-async function main(): Promise<void> {
+async function main(): Promise<number> {
   const argv = process.argv.slice(2);
   if (wantsHelp(argv)) {
     console.log(HELP);
-    return;
+    return 0;
   }
-  const json = argv.includes('--json');
-  const [command, ...rest] = argv.filter((arg) => arg !== '--json');
-
-  if (command === 'add') {
-    // Refuses an empty title and reports what it is not storing — see planAdd.
-    const { title, priority, notice } = planAdd(rest.join(' '));
-    // stderr, so --json's stdout stays a single parseable value.
-    if (notice !== null) console.error(notice);
-    const opId = uuidv7();
-    const id = uuidv7();
-    const { state, results } = await sync([
-      {
-        opId,
-        kind: 'create',
-        table: 'task',
-        id,
-        fields: { title, priority, rank: 'a0' },
-        ts: new Date().toISOString(),
+  const config = readConfig(process.env);
+  const send: Transport = (request) =>
+    fetch(`${config.base}/sync`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${config.token}`,
       },
-    ]);
-    assertNotRefused(results, opId);
-    if (json) {
-      console.log(JSON.stringify(state.rows.task?.[id] ?? null));
-    } else {
-      console.log(title);
-    }
-  } else if (command === 'list') {
-    const { state } = await sync([]);
-    const tasks = liveTasks(state);
-    if (json) {
-      console.log(JSON.stringify(tasks));
-    } else {
-      for (const row of tasks) {
-        console.log(`${String(row.priority)}  ${String(row.title)}`);
-      }
-    }
-  } else {
-    throw unknownCommand(command);
+      body: JSON.stringify(request),
+      // The whole exchange, body included: a server that accepts the
+      // connection and never answers is as unreachable as one that refuses it.
+      signal: AbortSignal.timeout(config.timeoutMs),
+    });
+  const store = Store.open(config.dbPath);
+  try {
+    const outcome = await run(argv, {
+      store,
+      send,
+      now: () => new Date(),
+      newId: uuidv7,
+    });
+    // stderr first, and stdout exactly one value under --json.
+    for (const line of outcome.stderr) console.error(line);
+    for (const line of outcome.stdout) console.log(line);
+    return outcome.exit;
+  } finally {
+    store.close();
   }
 }
 
-main().catch((error: unknown) => {
-  // The one place an error class becomes an exit code; the classes themselves
-  // and what each one means to a caller are in protocol.ts.
-  if (error instanceof UsageError) {
-    // The message, not the whole of HELP: a caller that mistyped a command
-    // does not need thirty lines of stderr, and the one that does is one
-    // flag away from them.
-    console.error(
-      `${error.message}\nrun \`todoer --help\` for usage and exit codes`,
-    );
-    process.exit(2);
-  }
-  if (error instanceof RefusalError) {
-    console.error(error.message);
-    process.exit(1);
-  }
-  if (error instanceof ConflictError) {
-    console.error(error.message);
-    process.exit(4);
-  }
-  // NetworkError, and anything unrecognised: a caller that retries on 3 is
-  // retrying something that might genuinely succeed next time.
-  console.error(error instanceof Error ? error.message : String(error));
-  process.exit(3);
-});
+// The one place an error class becomes an exit code; what each code means to
+// a caller is in usage.ts's HELP.
+main().then(
+  (code) => {
+    process.exitCode = code;
+  },
+  (error: unknown) => {
+    const message = error instanceof Error ? error.message : String(error);
+    if (error instanceof UsageError) {
+      console.error(
+        `${message}\nrun \`todoer --help\` for usage and exit codes`,
+      );
+      process.exitCode = 2;
+    } else if (error instanceof RefusalError) {
+      console.error(message);
+      process.exitCode = 1;
+    } else if (error instanceof ConflictError) {
+      console.error(message);
+      process.exitCode = 4;
+    } else {
+      // An unexpected local failure: the database busy past its timeout,
+      // unreadable, or a bug. No network condition lands here any more.
+      console.error(message);
+      process.exitCode = 3;
+    }
+  },
+);

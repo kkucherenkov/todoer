@@ -119,7 +119,7 @@ and a command without a server answers from the local copy.
   calls them yet.
 - [x] T005 [FR-004] [FR-006] [FR-007] [FR-010] Flush — plan Task 5,
       `apps/cli/src/sync.ts`, `apps/cli/src/protocol.ts`
-- [ ] T006 [FR-004] [FR-006] [FR-008] [FR-009] Commands and the envelope —
+- [x] T006 [FR-004] [FR-006] [FR-008] [FR-009] Commands and the envelope —
       plan Task 6, `apps/cli/src/run.ts`, `apps/cli/src/index.ts`,
       `apps/cli/src/usage.ts`
 - **Checkpoint:** the CLI runs end to end; SC-002 holds.
