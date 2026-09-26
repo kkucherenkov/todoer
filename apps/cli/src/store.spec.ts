@@ -39,11 +39,13 @@ function create(opId: string): Op {
 }
 
 describe('Store', () => {
+  // G4: op ids sort the other way round from queue order, so a passing
+  // result can only come from `ORDER BY position`, not from `op_id` order.
   it('keeps queued operations in the order they were queued', () => {
     const store = storeAt();
-    store.enqueue(create('a'));
     store.enqueue(create('b'));
-    expect(store.pending().map((op) => op.opId)).toEqual(['a', 'b']);
+    store.enqueue(create('a'));
+    expect(store.pending().map((op) => op.opId)).toEqual(['b', 'a']);
   });
 
   it('keeps the outbox on disk across a reopen', () => {
@@ -53,8 +55,12 @@ describe('Store', () => {
     expect(storeAt().pending()).toEqual([create('a')]);
   });
 
-  // Review Focus 1: two invocations share one file. With a JSON file, the
-  // second writer's copy would not contain the first writer's operation.
+  // Review Focus 1: pins that two connections share one file's outbox, so
+  // neither one's writes are shadowed by the other's in-memory copy — with a
+  // JSON file, the second writer's copy would not contain the first writer's
+  // operation. It does not exercise real parallelism (both calls here are
+  // sequential); that is proved by the barrier test below and by
+  // scripts/outbox-e2e.sh.
   it('loses no operation when two connections queue into one file', () => {
     const first = storeAt();
     const second = storeAt();
@@ -146,13 +152,16 @@ describe('Store', () => {
     expect(store.rows('task')).toEqual([{ id: 'x', title: 'task' }]);
   });
 
+  // G3: seq order here is the reverse of id order, so a fixture that
+  // happened to line up with the primary key's own order (tbl, id) cannot
+  // pass by accident — only `ORDER BY seq` can.
   it('returns rows in seq order', () => {
     const store = storeAt();
     store.mergeChanges([
-      { table: 'task', id: 'b', seq: 2, row: { id: 'b' } },
-      { table: 'task', id: 'a', seq: 1, row: { id: 'a' } },
+      { table: 'task', id: 'a', seq: 2, row: { id: 'a' } },
+      { table: 'task', id: 'b', seq: 1, row: { id: 'b' } },
     ]);
-    expect(store.rows('task')).toEqual([{ id: 'a' }, { id: 'b' }]);
+    expect(store.rows('task')).toEqual([{ id: 'b' }, { id: 'a' }]);
   });
 
   it('discards the replica but not the outbox on reset', () => {
