@@ -463,9 +463,13 @@ describe('PruneService', () => {
     expect(await prisma.task.count({ where: { id: ok } })).toBe(0);
     expect(await watermark(OTHER)).toBe(seq);
     // The failing user's tombstone is untouched, and the failure was logged
-    // with enough to find it — the user id and the error itself.
+    // with enough to find it — the user id in the message, the error's stack
+    // as the detail.
     expect(await prisma.task.count({ where: { id: failing } })).toBe(1);
-    expect(errorSpy).toHaveBeenCalledWith(USER, expect.any(Error));
+    expect(errorSpy).toHaveBeenCalledWith(
+      `pruning user ${USER} failed`,
+      expect.any(String),
+    );
   });
 
   it('prunes at startup and once a day after that', () => {

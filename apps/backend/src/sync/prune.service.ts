@@ -74,7 +74,10 @@ export class PruneService
       try {
         deleted += await this.pruneUser(id, cutoff);
       } catch (error) {
-        this.logger.error(id, error);
+        this.logger.error(
+          `pruning user ${id} failed`,
+          error instanceof Error ? error.stack : String(error),
+        );
       }
     }
     return deleted;
@@ -88,6 +91,13 @@ export class PruneService
    * Referencing rows go before the rows they reference. A tombstone that
    * something still points at (a live task in a deleted project, a live
    * TaskTag on a deleted tag) is kept and retried on the next run.
+   *
+   * ponytail: each deleted tombstone fires its FK action (`SET NULL` on
+   * Task.projectId/parentId, `RESTRICT` on TaskTag) which scans unindexed
+   * columns, all inside Prisma's default 5s interactive-transaction timeout —
+   * a user with a very large backlog (first run after deploy) could hit
+   * P2028 every day. Upgrade path: indexes on Task.projectId, Task.parentId,
+   * TaskTag.tagId and/or a `{ timeout }` on this transaction.
    */
   private pruneUser(userId: string, cutoff: Date): Promise<number> {
     return this.prisma.$transaction(async (tx) => {
