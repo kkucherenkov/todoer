@@ -367,9 +367,9 @@ describe('applyOp — set', () => {
     expect(out.reason).toMatch(/tombstone|delet/i);
   });
 
-  // I3: rrule shifts every occurrence, and the completion/exception logs are
-  // keyed by occurrence date — a stale rule change strands them, so this
-  // field opts into the same optimistic lock delete already has.
+  // I3: rrule shifts every occurrence, and task occurrence rows are keyed by
+  // occurrence date — a stale rule change strands them, so this field opts
+  // into the same optimistic lock delete already has.
   it('applies a set with a matching baseVersion', () => {
     const op: Op = {
       opId: 'o17',

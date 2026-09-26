@@ -122,7 +122,7 @@ the server half of plan C so the CLI (C1) can build against a merged contract.
       Task 6
 - [x] T007 [FR-012, FR-013] prune by cascade, snapshot hides orphans — plan
       Task 7
-- [ ] T008 [FR-014] records and docs — plan Task 8
+- [x] T008 [FR-014] records and docs — plan Task 8
 - **Checkpoint:** every FR ticked, the four gates green on the PR.
 
 ### Open questions

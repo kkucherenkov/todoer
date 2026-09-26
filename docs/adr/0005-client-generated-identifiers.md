@@ -31,3 +31,11 @@ smuggle another person's id to.
 
 A client can collide with itself — a retry, or a bug. The server therefore
 refuses a `create` naming an existing row rather than overwriting it.
+
+## Amendment (2026-09-26, plan C)
+
+`task_occurrence` and `task_tag` are the exception: their id is UUIDv5 of the
+natural key, in namespace `40e49f07-6ce6-46fc-b2de-65dd46253bf2`, with the
+name built as the plan C design (Q7) states. The server recomputes the id from
+the fields on every `create` and rejects the operation if it does not match.
+Every other table keeps client-minted UUIDv7.

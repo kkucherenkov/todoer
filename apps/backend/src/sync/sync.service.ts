@@ -681,7 +681,7 @@ export class SyncService {
             );
           }
           // seq is a protocol/storage column applyOp never touches — it comes
-          // from the one sequence shared by all four tables, and it has to be
+          // from the one sequence shared by every table, and it has to be
           // reassigned on *every* applied write (create or update). Postgres
           // only consults a column DEFAULT on INSERT, so leaning on the
           // schema's default would silently stop advancing the cursor for

@@ -345,10 +345,42 @@ month unless the user asks for it with `--on`.
 
 ## Open threads
 
-- The exact shape of TaskTag's detach flag (`attached` boolean or a nullable
-  `detached_at`) is left to the C2 plan; either is a toggle under LWW.
 - Whether `list` offers a way to see missed occurrences (beyond `--on`) is
   left to C1 or later.
+
+## Departures in plan C2
+
+Building C2 surfaced eight places where the plan as implemented differs from
+what this document says. Each is recorded in full, with its reasoning, at the
+top of
+[the plan](../plans/2026-09-26-plan-c2-task-occurrence.md#where-this-plan-departs-from-the-design-doc);
+this is the index.
+
+1. **A `create` that wins on no field answers `superseded`, not `applied`.**
+   "Nothing changed" is the same outcome a losing `set` already reports.
+2. **`value` is `Float`, not `decimal`.** Prisma turns a `Decimal` into a
+   string through `JSON.stringify`, and a habit quantity does not need exact
+   decimal arithmetic.
+3. **TaskTag's flag is `attached Boolean @default(true)`**, not a nullable
+   `detached_at`. This closes the open thread this document left on the exact
+   shape of that flag: a boolean mirrors `state` and needs no clock.
+4. **A snapshot omits children of a tombstoned parent**, rather than leaving
+   clients to infer it. `since: 0` already omits tombstones, so without this a
+   snapshot would deliver task occurrences and TaskTag rows whose task or tag
+   the client is never told about.
+5. **Date columns were fixed before anything else.** Prisma rejects a bare
+   `YYYY-MM-DD` for a `@db.Date` column, so `scheduledOn`, `dueOn` and
+   `dtstart` could not be written through `/sync` at all until this shipped —
+   and `occurrence`'s id derivation hashes the date, so it had to work first.
+6. **The parser is strict about case.** RFC 5545 is case-insensitive;
+   `parseRrule` accepts upper case only, so two stored strings for the same
+   rule never look different.
+7. **`state` is a `String`, checked in code, not a Postgres enum** — the same
+   choice already made for `AppliedOp.status`, because a Postgres enum needs
+   its own migration for every new value.
+8. **TaskTag's `@@unique([taskId, tagId])` becomes two plain indexes.** The
+   derived id is the uniqueness rule (Q7); the indexes keep the cascade and
+   the lookups by task or tag cheap.
 
 ## Follow-up to the records
 
@@ -363,4 +395,5 @@ month unless the user asks for it with `--on`.
   prune.
 - **Domain design, sections 2 and 4:** new ER diagram and table description;
   the parser in `@todoer/specs`.
-- **`.claude/CLAUDE.md`, trap #6:** "four synced tables" becomes five.
+- **`.claude/CLAUDE.md`, trap #6:** "the four synced tables" becomes "every
+  synced table" — a count goes stale the next time one is added.

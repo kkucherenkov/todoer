@@ -41,3 +41,21 @@ Completions are exempt from every pruning discussion: they are permanent
 (see the habit tracker in the spec's out-of-scope section), and a cleanup job
 that treated them as expendable would delete the data a future feature is made
 of.
+
+## Amendment (2026-09-26, plan C)
+
+"A tombstone that a live row still references is kept" no longer covers
+TaskTag or task occurrences: both cascade (`ON DELETE CASCADE`) when the
+task's or tag's tombstone they reference is pruned, rather than holding it
+back. Completions are still never pruned on their own — as `task_occurrence`
+rows they go with their task, exactly as this ADR always meant. A snapshot
+(`since: 0`) omits task occurrences and TaskTag rows whose task or tag is
+tombstoned, so a client is never shown a child of a parent it was never told
+about.
+
+A task occurrence or TaskTag row written after its parent's tombstone — the
+server does not refuse a reference to a tombstoned row — is cascaded away on
+prune without raising the watermark. That is safe because every client whose
+cursor already passed the tombstone holds it and must hide that parent's
+children, and every client whose cursor is still below it is answered `410`
+regardless. Clients MUST hide children of a tombstoned task or tag.

@@ -82,7 +82,7 @@ const MAX_SKEW_AHEAD_MS = 5 * 60_000;
 
 /** Fields whose change is destructive enough to require an explicit
  *  baseVersion opt-in — see ADR 0004. A stale rrule change strands the
- *  completion/exception logs, which are keyed by occurrence date, on
+ *  task occurrence rows, which are keyed by occurrence date, on
  *  dates the new rule no longer generates. */
 const FIELDS_REQUIRING_BASE_VERSION = new Set(['rrule']);
 
