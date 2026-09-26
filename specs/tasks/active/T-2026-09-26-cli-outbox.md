@@ -117,7 +117,7 @@ and a command without a server answers from the local copy.
 - [x] T004 [P] [FR-005] Overlay — plan Task 4, `apps/cli/src/overlay.ts`
 - **Checkpoint:** the store and the overlay pass their own tests; nothing
   calls them yet.
-- [ ] T005 [FR-004] [FR-006] [FR-007] [FR-010] Flush — plan Task 5,
+- [x] T005 [FR-004] [FR-006] [FR-007] [FR-010] Flush — plan Task 5,
       `apps/cli/src/sync.ts`, `apps/cli/src/protocol.ts`
 - [ ] T006 [FR-004] [FR-006] [FR-008] [FR-009] Commands and the envelope —
       plan Task 6, `apps/cli/src/run.ts`, `apps/cli/src/index.ts`,

@@ -113,3 +113,28 @@ export function assertNotRefused(results: OpResult[], opId: string): void {
     );
   }
 }
+
+/**
+ * What happened to the one operation the running command queued, in a
+ * response that may carry many. Throws when the server refused it, so the
+ * command's exit code says so. `unreported` is not an error: the operation
+ * is still in the outbox with its id, and a later command resends it safely.
+ */
+export function ownOutcome(
+  results: OpResult[],
+  opId: string,
+): 'settled' | 'unreported' {
+  const result = results.find((r) => r.opId === opId);
+  if (result === undefined) return 'unreported';
+  if (result.status === 'rejected') {
+    throw new RefusalError(
+      result.reason ?? 'the server refused this operation',
+    );
+  }
+  if (result.status === 'conflict') {
+    throw new ConflictError(
+      `the server holds a newer version of this row (version ${String(result.currentVersion)})`,
+    );
+  }
+  return 'settled';
+}
