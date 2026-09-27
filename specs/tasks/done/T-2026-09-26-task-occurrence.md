@@ -103,7 +103,7 @@ the server half of plan C so the CLI (C1) can build against a merged contract.
 - **SC-002** `pnpm --filter @todoer/specs test` passes every vector in
   `vectors/ids.json`, and every rule in `vectors/rrule.json` parses.
 - [x] every FR has a test that failed before the code made it pass
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
 - [x] no document still asserts the behaviour this task replaced
 - [x] dnote changelog line
