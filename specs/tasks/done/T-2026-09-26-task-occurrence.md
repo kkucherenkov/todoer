@@ -9,6 +9,7 @@
   0010, 0013
 - Plan: [docs/plans/2026-09-26-plan-c2-task-occurrence.md](../../../docs/plans/2026-09-26-plan-c2-task-occurrence.md)
 - Completed: 2026-09-26
+- Result: https://github.com/kkucherenkov/todoer/pull/9
 
 ### Goal
 
