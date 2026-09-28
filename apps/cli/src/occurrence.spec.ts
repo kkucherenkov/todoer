@@ -26,6 +26,19 @@ describe('localDate', () => {
     expect(localDate(new Date(2026, 8, 28, 23, 59))).toBe('2026-09-28');
     expect(localDate(new Date(2026, 0, 1, 0, 0))).toBe('2026-01-01');
   });
+
+  // I1: vitest pins TZ=UTC, so getUTC* would pass here just as well as the
+  // local getters do — only a runtime change of TZ tells them apart.
+  it('is the local date, not UTC, under a real offset', () => {
+    try {
+      process.env.TZ = 'Pacific/Kiritimati'; // UTC+14
+      expect(localDate(new Date('2026-09-26T12:00:00Z'))).toBe('2026-09-27');
+      process.env.TZ = 'Pacific/Pago_Pago'; // UTC-11
+      expect(localDate(new Date('2026-09-26T05:00:00Z'))).toBe('2026-09-25');
+    } finally {
+      process.env.TZ = 'UTC';
+    }
+  });
 });
 
 describe('recurrenceOf', () => {
@@ -132,9 +145,9 @@ describe('isOccurrence', () => {
 describe('latestClosed', () => {
   it("is the task's latest done or skipped occurrence, by date", () => {
     const rows = [
-      { taskId: 't', occurrence: '2026-09-02', state: 'done' },
-      { taskId: 't', occurrence: '2026-09-05', state: 'open' },
       { taskId: 't', occurrence: '2026-09-03', state: 'skipped' },
+      { taskId: 't', occurrence: '2026-09-05', state: 'open' },
+      { taskId: 't', occurrence: '2026-09-02', state: 'done' },
       { taskId: 'u', occurrence: '2026-09-09', state: 'done' },
     ];
     expect(latestClosed(rows, 't')).toEqual({ occurrence: '2026-09-03' });

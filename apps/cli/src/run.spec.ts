@@ -510,6 +510,18 @@ describe('run', () => {
       expect(envelope(out.stdout)).toMatchObject({ data: { state: 'done' } });
     });
 
+    // M2: the refusal names the command that actually queued the operation.
+    it('keeps done queued when the token is refused, naming done', async () => {
+      const d = hexDeps(fakeServer().send);
+      await run(['add', 'water the plants', '--rrule', 'FREQ=DAILY'], d);
+      d.send = () => Promise.resolve(json({ title: 'Unauthorized' }, 401));
+
+      const refused = run(['done', '0002'], d);
+      await expect(refused).rejects.toThrow(RefusalError);
+      await expect(refused).rejects.toThrow(/do not run done again/);
+      expect(d.store.entries().map((e) => e.status)).toEqual(['pending']);
+    });
+
     it('queues a create of the derived task occurrence', async () => {
       const d = hexDeps(unreachable);
       await run(['add', 'x', '--rrule', 'FREQ=DAILY'], d);
@@ -641,6 +653,31 @@ describe('run', () => {
       expect(d.store.pending()).toHaveLength(before);
       await run(['add', 'daily', '--rrule', 'FREQ=DAILY'], d);
       await expect(run(['undo', '0004'], d)).rejects.toThrow(/nothing to undo/);
+    });
+
+    // M1: a tombstoned task is neither listed nor markable.
+    it('omits a tombstoned task from list and refuses to mark it', async () => {
+      const d = hexDeps(fakeServer().send);
+      d.store.mergeChanges([
+        {
+          table: 'task',
+          id: 'ghost-0000-00dddd',
+          seq: 1,
+          row: {
+            id: 'ghost-0000-00dddd',
+            title: 'ghost task',
+            priority: 0,
+            rrule: null,
+            dtstart: null,
+            parentId: null,
+            deletedAt: '2026-09-01T00:00:00.000Z',
+          },
+        },
+      ]);
+      expect(await lines(d)).toEqual([]);
+      await expect(run(['done', 'dddd'], d)).rejects.toThrow(
+        /no task matches dddd/,
+      );
     });
 
     // FR-009: a task occurrence whose task this replica does not hold.
