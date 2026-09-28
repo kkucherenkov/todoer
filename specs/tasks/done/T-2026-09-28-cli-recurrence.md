@@ -2,12 +2,13 @@
 
 - Created: 2026-09-28
 - Owner: claude
-- Status: ready
+- Status: done
 - Blockers: —
 - Spec: [docs/specs/2026-09-26-plan-c-recurrence-design.md](../../../docs/specs/2026-09-26-plan-c-recurrence-design.md)
   (the C1 half: Q3, Q6, Q9, Q10, Q11, "Notes for C1"); ADR 0002, 0009, 0010,
   0015
 - Plan: [docs/plans/2026-09-28-plan-c1-cli-recurrence.md](../../../docs/plans/2026-09-28-plan-c1-cli-recurrence.md)
+- Completed: 2026-09-28
 
 ### Goal
 
@@ -90,11 +91,11 @@ every other command.
   lists it at a date other than today.
 - **SC-002** `pnpm --filter @todoer/cli test` passes every case of
   `vectors/rrule.json`.
-- [ ] every FR has a test that failed before the code made it pass
+- [x] every FR has a test that failed before the code made it pass
 - [ ] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 
