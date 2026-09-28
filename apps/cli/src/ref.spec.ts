@@ -24,7 +24,9 @@ describe('resolveRef', () => {
 
   it('refuses an ambiguous suffix and names the candidates', () => {
     expect(() => resolveRef(tasks, '0111')).toThrow(UsageError);
-    expect(() => resolveRef(tasks, '0111')).toThrow(/0a0111 first.*0b0111 second/);
+    expect(() => resolveRef(tasks, '0111')).toThrow(
+      /0a0111 first.*0b0111 second/,
+    );
   });
 
   it('refuses a suffix that matches nothing', () => {

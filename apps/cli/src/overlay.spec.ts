@@ -105,13 +105,24 @@ describe('overlay', () => {
   // occurrence the replica already holds would otherwise not show.
   it('merges a pending create over an existing task occurrence', () => {
     const stored = [
-      { id: 'occ', taskId: 't', occurrence: '2026-09-26', state: 'done', deletedAt: null },
+      {
+        id: 'occ',
+        taskId: 't',
+        occurrence: '2026-09-26',
+        state: 'done',
+        deletedAt: null,
+      },
     ];
     const undo = op({
       kind: 'create',
       table: 'task_occurrence',
       id: 'occ',
-      fields: { taskId: 't', occurrence: '2026-09-26', state: 'open', completedAt: null },
+      fields: {
+        taskId: 't',
+        occurrence: '2026-09-26',
+        state: 'open',
+        completedAt: null,
+      },
     });
     expect(overlay('task_occurrence', stored, [undo])).toEqual([
       { ...stored[0], state: 'open', completedAt: null },
