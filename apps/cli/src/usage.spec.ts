@@ -44,4 +44,11 @@ describe('HELP', () => {
   it('no longer tells callers that add is unsafe to retry', () => {
     expect(HELP).not.toMatch(/NOT safe to retry/);
   });
+
+  it('documents references, recurrence and the marking commands', () => {
+    expect(HELP).toMatch(/todoer done <ref>/);
+    expect(HELP).toMatch(/todoer undo <ref>/);
+    expect(HELP).toMatch(/--rrule <RRULE>/);
+    expect(HELP).toMatch(/last 6 characters/);
+  });
 });

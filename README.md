@@ -16,16 +16,18 @@ second, independent CLI invocation through the server, over one endpoint:
 - **`POST /api/v1/auth/register`, `POST /api/v1/auth/login`** — open
   registration and a 15-minute bearer token. Invitations, password reset,
   refresh rotation and the device-code flow are not built yet.
-- **`todoer add` / `todoer list` / `todoer outbox`** — a network client with
-  `--json` output and exit codes a script can branch on
+- **`todoer add` / `list` / `done` / `skip` / `undo` / `outbox`** — a network
+  client with `--json` output and exit codes a script can branch on
   ([ADR 0015](docs/adr/0015-the-cli-is-a-client-for-automation.md)). It keeps a
   local SQLite replica and outbox: every operation is queued before it is sent
   and keeps its id on every retry, so `add` is safe to run once. Without a
-  reachable server a command answers from the replica and exits 5.
+  reachable server a command answers from the replica and exits 5. Recurring
+  tasks are created with `--rrule` and listed at their current date; `done`,
+  `skip` and `undo` take the short reference `list` prints.
 
 Not built yet, and each absence is deliberate rather than forgotten: storing
-`#project` and `@tag` from quick-add, recurrence, and the web and Flutter
-clients. The full list, with reasons, is in
+`#project` and `@tag` from quick-add, and the web and Flutter clients. The
+full list, with reasons, is in
 [the plan](docs/plans/2026-09-25-walking-skeleton.md#what-this-plan-does-not-do).
 
 ## Layout

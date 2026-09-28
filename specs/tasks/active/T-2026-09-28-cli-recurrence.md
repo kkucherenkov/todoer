@@ -108,7 +108,7 @@ every other command.
       write — plan Task 4
 - [x] T005 [FR-003, FR-006, FR-007, FR-009] `list` with refs and dates;
       `done`/`skip`/`undo` — plan Task 5
-- [ ] T006 [FR-011] HELP, README, walking skeleton, design departures — plan
+- [x] T006 [FR-011] HELP, README, walking skeleton, design departures — plan
       Task 6
 - **Checkpoint:** scenarios 1–5 pass; the four gates green on the PR.
 

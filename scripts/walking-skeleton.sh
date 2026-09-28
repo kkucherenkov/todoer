@@ -32,10 +32,25 @@ trap 'rm -rf "$WRITER" "$READER"' EXIT
 HOME="$WRITER" TODOER_TOKEN="$TOKEN" node apps/cli/dist/index.js add "$TITLE" >/dev/null
 OUT=$(HOME="$READER" TODOER_TOKEN="$TOKEN" node apps/cli/dist/index.js list)
 
-if printf '%s' "$OUT" | grep -qF "$TITLE"; then
-  echo 'walking skeleton passed'
-else
+printf '%s' "$OUT" | grep -qF "$TITLE" || {
   echo 'FAIL: the task did not reach the second client' >&2
   printf '%s\n' "$OUT" >&2
   exit 1
-fi
+}
+
+# Recurrence (plan C1): a daily task marked done in one replica shows at
+# another date in the second, through the server alone. `date +%Y-%m-%d` is
+# the same local date the CLI calls today.
+RTITLE="recurring $(date +%s)"
+TODAY=$(date +%Y-%m-%d)
+ADDED=$(HOME="$WRITER" TODOER_TOKEN="$TOKEN" node apps/cli/dist/index.js add "$RTITLE" --rrule FREQ=DAILY --json)
+RID=$(printf '%s' "$ADDED" | sed -n 's/.*"id":"\([^"]*\)".*/\1/p')
+[ -n "$RID" ] || { echo "FAIL: add --json printed no id: $ADDED" >&2; exit 1; }
+HOME="$WRITER" TODOER_TOKEN="$TOKEN" node apps/cli/dist/index.js done "$RID" >/dev/null
+LINE=$(HOME="$READER" TODOER_TOKEN="$TOKEN" node apps/cli/dist/index.js list | grep -F "$RTITLE" || true)
+case $LINE in
+  '') echo 'FAIL: the recurring task did not reach the second client' >&2; exit 1 ;;
+  *"$TODAY"*) echo "FAIL: the second client still shows today's date: $LINE" >&2; exit 1 ;;
+esac
+
+echo 'walking skeleton passed'

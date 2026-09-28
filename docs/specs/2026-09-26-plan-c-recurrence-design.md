@@ -350,14 +350,17 @@ month unless the user asks for it with `--on`.
   shell (TUI or web) exists or agents struggle with raw RRULE.
 - **Moving the expander to a shared package.** Reopens when the web client is
   built.
-- **Subtask completion in the CLI.** The CLI cannot create subtasks yet. The
-  rule stands (ADR 0009): a subtask's task occurrence uses the parent's
-  occurrence date in both `occurrence` and the id name.
+- **Subtask completion in the CLI.** C1 reads a subtask on its parent's rule
+  and dates (departure 3, "Departures in plan C1"); the CLI still cannot
+  create one.
 
 ## Open threads
 
-- Whether `list` offers a way to see missed occurrences (beyond `--on`) is
-  left to C1 or later.
+Resolved by the C1 plan
+([docs/plans/2026-09-28-plan-c1-cli-recurrence.md](../plans/2026-09-28-plan-c1-cli-recurrence.md)):
+
+- **Missed occurrences:** `--on` is the only way to reach a missed occurrence
+  in C1; a listing of them is left to a later client.
 
 ## Departures in plan C2
 
@@ -392,6 +395,40 @@ this is the index.
 8. **TaskTag's `@@unique([taskId, tagId])` becomes two plain indexes.** The
    derived id is the uniqueness rule (Q7); the indexes keep the cascade and
    the lookups by task or tag cheap.
+
+## Departures in plan C1
+
+Building C1 surfaced six places where the plan as implemented differs from
+what this document says. Each is recorded in full, with its reasoning, at the
+top of
+[the plan](../plans/2026-09-28-plan-c1-cli-recurrence.md#where-this-plan-departs-from-the-design-doc);
+this is the index.
+
+1. **`undo` reopens the latest done or skipped occurrence, not the current
+   one.** Q11 puts all three commands on the current occurrence, but after
+   `done` the current occurrence has already moved to the next, open one, so a
+   plain `undo` there would reopen nothing.
+2. **The next occurrence skips ones already closed.** Q11's "first occurrence
+   after today" would keep showing tomorrow after it was marked done in
+   advance; C1 takes the first open one after today, looking at most 100
+   occurrences and ten years ahead.
+3. **A subtask reads its parent's rule and dates.** "Deferred" left subtask
+   completion for when the CLI can create one; other clients already can, and
+   without this a subtask of a recurring task would look like a one-off in
+   `list`, and `done` would write a null occurrence — the defect ADR 0009
+   describes. The cost is one parent lookup.
+4. **Two expander details follow python-dateutil, not a reading of the RFC.**
+   A WEEKLY rule's first week offers no candidates before `dtstart`, so
+   BYSETPOS does not count them; a repeated BYMONTH value yields one
+   occurrence. RFC 5545 is silent on the first and lets the parser through on
+   the second as a duplicate; two vectors pin both against the reference
+   implementation.
+5. **`list` gains two columns.** A line is `<ref>  <priority>  <title>`, plus
+   `  <YYYY-MM-DD>` for a recurring task; each `--json` row gains `ref` and
+   `occurrence`.
+6. **The CLI's tests run with `TZ=UTC`.** "Today" is the local date
+   (ADR 0010), and the fixed test clock (`2026-09-26T10:00Z`) would fall on
+   another day in UTC+14; `apps/cli/vitest.config.mjs` pins the zone.
 
 ## Follow-up to the records
 
