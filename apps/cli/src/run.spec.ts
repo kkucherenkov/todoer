@@ -441,7 +441,10 @@ describe('run', () => {
         '000002  0  water the plants  2026-09-27',
       ]);
 
-      await run(['undo', '0002'], d);
+      const undo = await run(['undo', '0002', '--json'], d);
+      expect(envelope(undo.stdout)).toMatchObject({
+        data: { state: 'open', completedAt: null },
+      });
       expect(await lines(d)).toEqual([
         '000002  0  water the plants  2026-09-26',
       ]);
@@ -573,6 +576,9 @@ describe('run', () => {
       await expect(
         run(['done', '0002', '--on', '2026-09-26'], d),
       ).rejects.toThrow(/--on is only for recurring tasks/);
+      const before = d.store.pending().length;
+      await expect(run(['undo', '0002'], d)).rejects.toThrow(/nothing to undo/);
+      expect(d.store.pending()).toHaveLength(before);
       await run(['add', 'daily', '--rrule', 'FREQ=DAILY'], d);
       await expect(run(['undo', '0004'], d)).rejects.toThrow(/nothing to undo/);
     });
