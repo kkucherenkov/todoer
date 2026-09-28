@@ -98,7 +98,7 @@ every other command.
 
 ### Steps
 
-- [ ] T001 [FR-001] expander and two new vectors — plan Task 1
+- [x] T001 [FR-001] expander and two new vectors — plan Task 1
 - [ ] T002 [FR-005, FR-008] task references; overlay merges derived-id
       creates — plan Task 2
 - [ ] T003 [FR-004, FR-006, FR-009, FR-010] current occurrence, recurrence of

@@ -176,6 +176,20 @@
       "dtstart": "2026-09-28",
       "window": { "from": "2026-09-01", "to": "2026-09-27" },
       "expected": []
+    },
+    {
+      "name": "BYSETPOS in a first week that starts before dtstart",
+      "rrule": "FREQ=WEEKLY;INTERVAL=3;BYDAY=FR,SU,MO;BYSETPOS=2;WKST=SU",
+      "dtstart": "2025-10-06",
+      "window": { "from": "2025-09-19", "to": "2025-11-30" },
+      "expected": ["2025-10-10", "2025-10-27", "2025-11-17"]
+    },
+    {
+      "name": "a repeated BYMONTH value yields one occurrence",
+      "rrule": "FREQ=YEARLY;BYMONTH=6,6",
+      "dtstart": "2025-06-26",
+      "window": { "from": "2025-01-01", "to": "2027-12-31" },
+      "expected": ["2025-06-26", "2026-06-26", "2027-06-26"]
     }
   ]
 }
