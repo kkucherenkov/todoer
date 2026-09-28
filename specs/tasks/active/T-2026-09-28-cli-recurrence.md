@@ -106,8 +106,8 @@ every other command.
 - **Checkpoint:** every pure piece is tested; nothing user-visible changed.
 - [x] T004 [FR-002, FR-007] `add --rrule/--from`; one submit path for every
       write — plan Task 4
-- [x] T005 [FR-003, FR-006, FR-007, FR-009] `list` with refs and dates;
-      `done`/`skip`/`undo` — plan Task 5
+- [x] T005 [FR-003, FR-006, FR-007, FR-009, FR-010] `list` with refs and
+      dates; `done`/`skip`/`undo` — plan Task 5
 - [x] T006 [FR-011] HELP, README, walking skeleton, design departures — plan
       Task 6
 - **Checkpoint:** scenarios 1–5 pass; the four gates green on the PR.

@@ -76,8 +76,8 @@ exit codes (ADR 0015 §2):
      command again for the same intent — that would queue it twice
 
 Every write is safe to run once: its operation id is stored with the operation
-and reused on every later send, so a lost response never creates the task
-twice (ADR 0005, ADR 0015 §4).
+and reused on every later send, so a lost response never applies the
+operation twice (ADR 0005, ADR 0015 §4).
 
 An operation the server refuses after the command that queued it has exited
 is kept as failed: todoer outbox lists it, todoer outbox drop forgets it.

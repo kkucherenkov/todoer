@@ -20,15 +20,16 @@ second, independent CLI invocation through the server, over one endpoint:
   client with `--json` output and exit codes a script can branch on
   ([ADR 0015](docs/adr/0015-the-cli-is-a-client-for-automation.md)). It keeps a
   local SQLite replica and outbox: every operation is queued before it is sent
-  and keeps its id on every retry, so `add` is safe to run once. Without a
+  and keeps its id on every retry, so every write is safe to run once. Without a
   reachable server a command answers from the replica and exits 5. Recurring
   tasks are created with `--rrule` and listed at their current date; `done`,
   `skip` and `undo` take the short reference `list` prints.
 
 Not built yet, and each absence is deliberate rather than forgotten: storing
-`#project` and `@tag` from quick-add, and the web and Flutter clients. The
-full list, with reasons, is in
-[the plan](docs/plans/2026-09-25-walking-skeleton.md#what-this-plan-does-not-do).
+`#project` and `@tag` from quick-add, and the web and Flutter clients.
+[The plan](docs/plans/2026-09-25-walking-skeleton.md#what-this-plan-does-not-do)
+lists plan A's original exclusions, narrowed since by plans B and C (offline,
+recurrence).
 
 ## Layout
 
