@@ -1,4 +1,5 @@
-import type { OpCreate } from '@todoer/specs';
+import { isIsoDate, parseRrule, type OpCreate } from '@todoer/specs';
+import { localDate } from './occurrence.js';
 import { liveTasks, overlay } from './overlay.js';
 import { planAdd } from './parse-quick-add.js';
 import { ownOutcome, RefusalError, UsageError } from './protocol.js';
@@ -19,6 +20,47 @@ const UNREACHED =
   'the server was not reached: this answer is local, and any operation this command queued will be sent by a later command';
 
 /**
+ * Pulls `name <value>` out of argv. An option is a whole argument, never a
+ * substring: `add "fix --rrule parsing"` arrives as one argument and stays
+ * the title (plan C1, Review Focus 4).
+ */
+function takeOption(
+  args: string[],
+  name: string,
+): { value: string | undefined; rest: string[] } {
+  const at = args.indexOf(name);
+  if (at === -1) return { value: undefined, rest: args };
+  const value = args[at + 1];
+  if (value === undefined || value.startsWith('--')) {
+    throw new UsageError(`${name} needs a value`);
+  }
+  if (args.indexOf(name, at + 2) !== -1) {
+    throw new UsageError(`${name} given twice`);
+  }
+  return { value, rest: [...args.slice(0, at), ...args.slice(at + 2)] };
+}
+
+/** The recurrence fields `add` sends, checked before anything is queued
+ *  (plan C design, Q9). */
+function planRecurrence(
+  rrule: string | undefined,
+  from: string | undefined,
+  today: string,
+): Record<string, string> {
+  if (rrule === undefined) {
+    if (from !== undefined) throw new UsageError('--from needs --rrule');
+    return {};
+  }
+  const parsed = parseRrule(rrule);
+  if (!parsed.ok) throw new UsageError(`--rrule: ${parsed.error}`);
+  const dtstart = from ?? today;
+  if (!isIsoDate(dtstart)) {
+    throw new UsageError('--from must be a date, YYYY-MM-DD');
+  }
+  return { rrule, dtstart };
+}
+
+/**
  * Every command: flush the outbox and pull first (design doc, Q5), then
  * answer from the replica with the outbox applied on top. Exit 5 whenever
  * the server was not reached (Q3). Refusals and conflicts of the command's
@@ -34,38 +76,25 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
   let human: string[];
 
   if (command === 'add') {
+    const rrule = takeOption(rest, '--rrule');
+    const from = takeOption(rrule.rest, '--from');
+    const recurrence = planRecurrence(
+      rrule.value,
+      from.value,
+      localDate(deps.now()),
+    );
     // Refuses an empty title and reports what it is not storing — see planAdd.
-    const { title, priority, notice } = planAdd(rest.join(' '));
+    const { title, priority, notice } = planAdd(from.rest.join(' '));
     if (notice !== null) stderr.push(notice);
     const op: OpCreate = {
       opId: deps.newId(),
       kind: 'create',
       table: 'task',
       id: deps.newId(),
-      fields: { title, priority, rank: 'a0' },
+      fields: { title, priority, rank: 'a0', ...recurrence },
       ts: deps.now().toISOString(),
     };
-    // Stored before it is sent: from here on, every attempt carries this id.
-    store.enqueue(op);
-    const flushed = await flushOwn(store, deps.send, op.opId);
-    // Evaluated unconditionally, never short-circuited on `flushed.synced`:
-    // a batch-refused own op is removed from the outbox (I1) even when the
-    // follow-up pull that reports it is itself unreached, and that
-    // rejection must still throw rather than be reported as "queued".
-    let own = ownOutcome(flushed.results, op.opId);
-    if (own === 'unreported' && flushed.synced) {
-      // A parallel invocation may have sent it between the enqueue and this
-      // flush's read of the outbox; its entry says what became of it.
-      const entry = store.entry(op.opId);
-      if (entry === undefined) own = 'settled';
-      else if (entry.status === 'failed') {
-        store.remove(op.opId);
-        throw new RefusalError(
-          entry.reason ?? 'the server refused this operation',
-        );
-      }
-    }
-    synced = flushed.synced && own === 'settled';
+    synced = await submit(store, deps.send, op, 'add');
     data = tasks(store).find((row) => row.id === op.id) ?? null;
     human = [title];
   } else if (command === 'list') {
@@ -112,11 +141,50 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
 }
 
 /**
+ * Queues one operation the running command minted and sends it: stored
+ * before it is sent, so every attempt carries its id (ADR 0015 §4). Returns
+ * whether the server has it; throws when the server refused it or holds a
+ * newer version. The one write path for add, done, skip and undo.
+ */
+async function submit(
+  store: Store,
+  send: Transport,
+  op: OpCreate,
+  command: string,
+): Promise<boolean> {
+  store.enqueue(op);
+  const flushed = await flushOwn(store, send, op.opId, command);
+  // Evaluated unconditionally, never short-circuited on `flushed.synced`:
+  // a batch-refused own op is removed from the outbox (I1) even when the
+  // follow-up pull that reports it is itself unreached, and that
+  // rejection must still throw rather than be reported as "queued".
+  let own = ownOutcome(flushed.results, op.opId);
+  if (own === 'unreported' && flushed.synced) {
+    // A parallel invocation may have sent it between the enqueue and this
+    // flush's read of the outbox; its entry says what became of it.
+    const entry = store.entry(op.opId);
+    if (entry === undefined) own = 'settled';
+    else if (entry.status === 'failed') {
+      store.remove(op.opId);
+      throw new RefusalError(
+        entry.reason ?? 'the server refused this operation',
+      );
+    }
+  }
+  return flushed.synced && own === 'settled';
+}
+
+/**
  * A request-level refusal (401, 403, …) leaves the command's own operation
  * queued. Said so in the error, because "refused" alone reads as "nothing
  * happened" and a caller who then repeats the add queues the task twice.
  */
-async function flushOwn(store: Store, send: Transport, opId: string) {
+async function flushOwn(
+  store: Store,
+  send: Transport,
+  opId: string,
+  command: string,
+) {
   try {
     return await flush(store, send, new Set([opId]));
   } catch (error) {
@@ -125,7 +193,7 @@ async function flushOwn(store: Store, send: Transport, opId: string) {
       store.entry(opId)?.status === 'pending'
     ) {
       throw new RefusalError(
-        `${error.message} — this command's operation ${opId} is queued and will be sent once the request is accepted — do not run add again for it`,
+        `${error.message} — this command's operation ${opId} is queued and will be sent once the request is accepted — do not run ${command} again for it`,
       );
     }
     throw error;

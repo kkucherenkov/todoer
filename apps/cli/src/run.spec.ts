@@ -320,4 +320,66 @@ describe('run', () => {
     await expect(run(['frob'], d)).rejects.toThrow(UsageError);
     await expect(run([], d)).rejects.toThrow(UsageError);
   });
+
+  describe('add --rrule', () => {
+    function queuedFields(d: Deps): Record<string, unknown> {
+      const [op] = d.store.pending();
+      if (op?.kind !== 'create') throw new Error('expected a queued create');
+      return op.fields;
+    }
+
+    it('queues the rule with --from as dtstart', async () => {
+      const d = deps(unreachable);
+      await run(
+        [
+          'add',
+          'stand-up',
+          '--rrule',
+          'FREQ=WEEKLY;BYDAY=MO',
+          '--from',
+          '2026-09-28',
+        ],
+        d,
+      );
+      expect(queuedFields(d)).toMatchObject({
+        title: 'stand-up',
+        rrule: 'FREQ=WEEKLY;BYDAY=MO',
+        dtstart: '2026-09-28',
+      });
+    });
+
+    it('anchors the rule today when --from is absent', async () => {
+      const d = deps(unreachable);
+      await run(['add', 'water the plants', '--rrule', 'FREQ=DAILY'], d);
+      expect(queuedFields(d)).toMatchObject({ dtstart: '2026-09-26' });
+    });
+
+    // Review Focus 4.
+    it('keeps an option-looking word inside a quoted title', async () => {
+      const d = deps(unreachable);
+      await run(['add', 'fix --rrule parsing'], d);
+      expect(queuedFields(d)).toMatchObject({ title: 'fix --rrule parsing' });
+      expect(queuedFields(d)).not.toHaveProperty('rrule');
+    });
+
+    it.each([
+      [['--rrule', 'FREQ=DAILY;BYHOUR=9'], /--rrule: BYHOUR is not supported/],
+      [
+        ['--rrule', 'FREQ=DAILY', '--from', '2026-02-30'],
+        /--from must be a date/,
+      ],
+      [['--from', '2026-09-28'], /--from needs --rrule/],
+      [['--rrule'], /--rrule needs a value/],
+      [
+        ['--rrule', 'FREQ=DAILY', '--rrule', 'FREQ=WEEKLY'],
+        /--rrule given twice/,
+      ],
+    ])('refuses %j and queues nothing', async (flags, reason) => {
+      const d = deps(unreachable);
+      const attempt = run(['add', 'x', ...flags], d);
+      await expect(attempt).rejects.toThrow(UsageError);
+      await expect(run(['add', 'x', ...flags], d)).rejects.toThrow(reason);
+      expect(d.store.pending()).toEqual([]);
+    });
+  });
 });
