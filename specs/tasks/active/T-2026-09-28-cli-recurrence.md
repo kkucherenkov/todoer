@@ -101,7 +101,7 @@ every other command.
 - [x] T001 [FR-001] expander and two new vectors — plan Task 1
 - [x] T002 [FR-005, FR-008] task references; overlay merges derived-id
       creates — plan Task 2
-- [ ] T003 [FR-004, FR-006, FR-009, FR-010] current occurrence, recurrence of
+- [x] T003 [FR-004, FR-006, FR-009, FR-010] current occurrence, recurrence of
       a task, latest closed — plan Task 3
 - **Checkpoint:** every pure piece is tested; nothing user-visible changed.
 - [ ] T004 [FR-002, FR-007] `add --rrule/--from`; one submit path for every
