@@ -2,13 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { UsageError } from './protocol.js';
 import { resolveRef, shortRef } from './ref.js';
 
-const a = { id: '0192a1b2-0000-7000-8000-00000a0111', title: 'first' };
-const b = { id: '0192a1b2-0000-7000-8000-00000b0111', title: 'second' };
+const a = { id: '0192a1b2-0000-7000-8000-000000a00111', title: 'first' };
+const b = { id: '0192a1b2-0000-7000-8000-000000b00111', title: 'second' };
 const tasks = [a, b];
 
 describe('shortRef', () => {
   it('is the last six characters of the id', () => {
-    expect(shortRef(a.id)).toBe('0a0111');
+    expect(shortRef(a.id)).toBe('a00111');
   });
 });
 
@@ -18,14 +18,14 @@ describe('resolveRef', () => {
   });
 
   it('finds a task by a unique suffix', () => {
-    expect(resolveRef(tasks, 'a0111')).toBe(a);
-    expect(resolveRef(tasks, '0b0111')).toBe(b);
+    expect(resolveRef(tasks, 'a00111')).toBe(a);
+    expect(resolveRef(tasks, 'b00111')).toBe(b);
   });
 
   it('refuses an ambiguous suffix and names the candidates', () => {
     expect(() => resolveRef(tasks, '0111')).toThrow(UsageError);
     expect(() => resolveRef(tasks, '0111')).toThrow(
-      /0a0111 first.*0b0111 second/,
+      /a00111 first; b00111 second/,
     );
   });
 
@@ -33,7 +33,10 @@ describe('resolveRef', () => {
     expect(() => resolveRef(tasks, 'ffff')).toThrow('no task matches ffff');
   });
 
-  it.each(['1', 'id-2', 'zzzz', ''])('refuses %j as a reference', (ref) => {
-    expect(() => resolveRef(tasks, ref)).toThrow(/at least 4 hex digits/);
-  });
+  it.each(['1', 'id-2', 'zzzz', '', '111'])(
+    'refuses %j as a reference',
+    (ref) => {
+      expect(() => resolveRef(tasks, ref)).toThrow(/at least 4 hex digits/);
+    },
+  );
 });

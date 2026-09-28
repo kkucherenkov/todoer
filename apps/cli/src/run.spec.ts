@@ -397,6 +397,17 @@ describe('run', () => {
         ['--rrule', 'FREQ=DAILY', '--rrule', 'FREQ=WEEKLY'],
         /--rrule given twice/,
       ],
+      [
+        [
+          '--rrule',
+          'FREQ=DAILY',
+          '--from',
+          '2026-09-28',
+          '--from',
+          '2026-09-29',
+        ],
+        /--from given twice/,
+      ],
     ])('refuses %j and queues nothing', async (flags, reason) => {
       const d = deps(unreachable);
       const attempt = run(['add', 'x', ...flags], d);

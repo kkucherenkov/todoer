@@ -99,6 +99,16 @@ describe('currentOccurrence', () => {
     });
   });
 
+  it('is null when UNTIL has passed and its last occurrence is closed, and current there while open', () => {
+    const ended = recurring('FREQ=DAILY;UNTIL=20260905', '2026-09-01');
+    expect(
+      currentOccurrence(ended, closedOn('2026-09-05'), '2026-09-28'),
+    ).toBeNull();
+    expect(currentOccurrence(ended, nothing, '2026-09-28')).toEqual({
+      occurrence: '2026-09-05',
+    });
+  });
+
   it('treats a one-off task as current until it is done or skipped', () => {
     expect(currentOccurrence(null, nothing, '2026-09-28')).toEqual({
       occurrence: null,
