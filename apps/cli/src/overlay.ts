@@ -6,6 +6,17 @@ import type { Row } from './store.js';
 export const PENDING_DELETE = 'pending';
 
 /**
+ * Tables whose ids are derived from a natural key (plan C design, Q2). The
+ * server merges a create of an existing row field by field (Q8), so the
+ * local view merges it too; for every other table a create of an existing id
+ * is a duplicate and changes nothing.
+ */
+const DERIVED_ID_TABLES: ReadonlySet<string> = new Set([
+  'task_occurrence',
+  'task_tag',
+]);
+
+/**
  * One table as this client shows it: the rows the server last sent, with
  * the operations still in the outbox applied on top, in outbox order.
  *
@@ -25,6 +36,8 @@ export function overlay(table: string, rows: Row[], pending: Op[]): Row[] {
     if (op.kind === 'create') {
       if (current === undefined) {
         view.set(op.id, { ...op.fields, id: op.id, deletedAt: null });
+      } else if (DERIVED_ID_TABLES.has(table)) {
+        view.set(op.id, { ...current, ...op.fields });
       }
     } else if (op.kind === 'set') {
       if (current !== undefined) {
