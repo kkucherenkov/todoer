@@ -38,3 +38,11 @@ Idempotency comes from two directions: the operation's own id, and a natural
 key on the tables that carry one — `completion(task_id, occurrence)` is unique,
 so a redelivered completion cannot double-apply even if the operation id were
 lost.
+
+## Amendment (2026-09-26, plan C)
+
+For `task_occurrence` and `task_tag`, a `create` naming an id that already
+exists is not rejected: each field is applied under the same per-field LWW a
+`set` would use, answering `applied` when any field won and `superseded` when
+none did. `delete` on those two tables is refused outright; a client toggles
+`state` or `attached` instead. The three verbs are otherwise unchanged.

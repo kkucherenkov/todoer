@@ -40,3 +40,12 @@ of its own — notes for one Tuesday, subtasks for one run, logged time — it h
 gained identity and this decision should be revisited. See
 [0009](0009-subtask-completion-uses-the-parent-occurrence.md) for how subtasks
 sit on the parent's axis rather than acquiring one.
+
+## Amendment (2026-09-26, plan C)
+
+The `completion` and `exception` logs described above were never built.
+Instead there is one `task_occurrence` row per (task, occurrence), with a
+`state` of `open`, `done` or `skipped`, because done and skipped are mutually
+exclusive and one LWW field settles a disagreement that two tables would push
+into every client. The "rule, not rows" decision stands: an occurrence still
+carries no identity beyond that state.

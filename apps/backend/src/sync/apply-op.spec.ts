@@ -367,9 +367,9 @@ describe('applyOp — set', () => {
     expect(out.reason).toMatch(/tombstone|delet/i);
   });
 
-  // I3: rrule shifts every occurrence, and the completion/exception logs are
-  // keyed by occurrence date — a stale rule change strands them, so this
-  // field opts into the same optimistic lock delete already has.
+  // I3: rrule shifts every occurrence, and task occurrence rows are keyed by
+  // occurrence date — a stale rule change strands them, so this field opts
+  // into the same optimistic lock delete already has.
   it('applies a set with a matching baseVersion', () => {
     const op: Op = {
       opId: 'o17',
@@ -561,5 +561,143 @@ describe('applyOp — delete', () => {
     } as unknown as Op;
 
     expect(applyOp(op, row(), NOW).status).toBe('rejected');
+  });
+});
+
+describe('create of an existing row with mergeCreate', () => {
+  const NOW = new Date('2026-09-28T12:00:00.000Z');
+  const current = {
+    id: 'occ',
+    version: 1,
+    fieldTs: {
+      state: '2026-09-28T10:00:00.000Z',
+      taskId: '2026-09-28T10:00:00.000Z',
+    },
+    deletedAt: null,
+    taskId: 't',
+    state: 'done',
+  };
+  const create = (ts: string, fields: Record<string, unknown>) => ({
+    opId: 'op',
+    kind: 'create' as const,
+    table: 'task_occurrence',
+    id: 'occ',
+    fields,
+    ts,
+  });
+
+  it('still rejects a duplicate id without mergeCreate', () => {
+    expect(
+      applyOp(
+        create('2026-09-28T11:00:00.000Z', { state: 'skipped' }),
+        current,
+        NOW,
+      ),
+    ).toEqual({
+      status: 'rejected',
+      reason: 'a row with this id already exists',
+    });
+  });
+
+  it('applies the fields that are newer, per field', () => {
+    const out = applyOp(
+      create('2026-09-28T11:00:00.000Z', { state: 'skipped', value: 2 }),
+      current,
+      NOW,
+      { mergeCreate: true },
+    );
+    expect(out).toMatchObject({
+      status: 'applied',
+      row: {
+        state: 'skipped',
+        value: 2,
+        version: 2,
+        fieldTs: {
+          state: '2026-09-28T11:00:00.000Z',
+          value: '2026-09-28T11:00:00.000Z',
+        },
+      },
+    });
+  });
+
+  it('answers superseded when no field is newer', () => {
+    expect(
+      applyOp(
+        create('2026-09-28T09:00:00.000Z', { state: 'skipped' }),
+        current,
+        NOW,
+        {
+          mergeCreate: true,
+        },
+      ),
+    ).toEqual({ status: 'superseded' });
+  });
+
+  it('rejects a merge create against a tombstoned row', () => {
+    const deleted = { ...current, deletedAt: '2026-09-27T00:00:00.000Z' };
+    expect(
+      applyOp(
+        create('2026-09-28T11:00:00.000Z', { state: 'skipped' }),
+        deleted,
+        NOW,
+        { mergeCreate: true },
+      ),
+    ).toEqual({
+      status: 'rejected',
+      reason: 'row is deleted (tombstoned)',
+    });
+  });
+
+  it('still validates the create before merging', () => {
+    expect(
+      applyOp(create('not a time', { state: 'skipped' }), current, NOW, {
+        mergeCreate: true,
+      }),
+    ).toMatchObject({ status: 'rejected' });
+    expect(
+      applyOp(
+        create('2026-09-28T11:00:00.000Z', { version: 9 }),
+        current,
+        NOW,
+        {
+          mergeCreate: true,
+        },
+      ),
+    ).toMatchObject({ status: 'rejected' });
+  });
+
+  // M2: taskId and occurrence always carry the same value, so a stale create
+  // could "win" on identity fields alone — here taskId's stored fieldTs is
+  // older than the create, but the field it actually tries to change
+  // (state) is not. Without identityKeys, taskId wins and the create is
+  // wrongly `applied`.
+  it('ignores identity fields when deciding whether a create won', () => {
+    const withOlderIdentityTs = {
+      ...current,
+      fieldTs: { ...current.fieldTs, taskId: '2026-09-28T08:00:00.000Z' },
+    };
+
+    const out = applyOp(
+      create('2026-09-28T09:00:00.000Z', { taskId: 't', state: 'skipped' }),
+      withOlderIdentityTs,
+      NOW,
+      { mergeCreate: true, identityKeys: ['taskId', 'occurrence'] },
+    );
+
+    expect(out).toEqual({ status: 'superseded' });
+  });
+
+  // M3: a create whose ts ties the field's stored ts must lose, the same way
+  // a tied `set` does — pins mergeFields' own `ts <= seen` rather than
+  // relying on the `set` path's equivalent test to also cover this branch.
+  it('answers superseded when a field ts ties the stored one', () => {
+    expect(
+      applyOp(
+        create('2026-09-28T10:00:00.000Z', { state: 'skipped' }),
+        current,
+        NOW,
+        { mergeCreate: true },
+      ),
+    ).toEqual({ status: 'superseded' });
   });
 });

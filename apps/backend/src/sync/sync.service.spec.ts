@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { BadRequestException, GoneException } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
 import { Prisma } from '@prisma/client';
+import { taskOccurrenceId, taskTagId } from '@todoer/specs';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { SyncService } from './sync.service.js';
 
@@ -13,9 +14,11 @@ const USER = '11111111-1111-1111-1111-111111111111';
 
 beforeEach(async () => {
   // taskTag/task/project/tag before user: userId is ON DELETE RESTRICT on
-  // every one of them, so a leftover row from an earlier test would block
-  // deleting the user that owned it.
+  // task, project, tag and taskOccurrence, so a leftover row from an earlier
+  // test would block deleting the user that owned it. TaskTag carries no FK
+  // on userId at all, but it is deleted first anyway, for the same reason.
   await prisma.appliedOp.deleteMany({});
+  await prisma.taskOccurrence.deleteMany({});
   await prisma.taskTag.deleteMany({});
   await prisma.task.deleteMany({});
   await prisma.project.deleteMany({});
@@ -32,7 +35,7 @@ function createTask(title: string) {
     kind: 'create' as const,
     table: 'task' as const,
     id: uuidv7(),
-    fields: { title, rank: 'a0' },
+    fields: { title, rank: 'a0' } as Record<string, unknown>,
     ts: new Date().toISOString(),
   };
 }
@@ -49,6 +52,24 @@ function setParent(id: string, parentId: string) {
   };
 }
 
+function setTask(
+  id: string,
+  field: string,
+  value: unknown,
+  baseVersion?: number,
+) {
+  return {
+    opId: uuidv7(),
+    kind: 'set' as const,
+    table: 'task' as const,
+    id,
+    field,
+    value,
+    ts: new Date().toISOString(),
+    ...(baseVersion !== undefined ? { baseVersion } : {}),
+  };
+}
+
 function deleteTask(id: string, baseVersion: number) {
   return {
     opId: uuidv7(),
@@ -56,6 +77,22 @@ function deleteTask(id: string, baseVersion: number) {
     table: 'task' as const,
     id,
     baseVersion,
+  };
+}
+
+function createOccurrence(
+  taskId: string,
+  occurrence: string | null,
+  fields: Record<string, unknown>,
+  ts = new Date().toISOString(),
+) {
+  return {
+    opId: uuidv7(),
+    kind: 'create' as const,
+    table: 'task_occurrence' as const,
+    id: taskOccurrenceId(taskId, occurrence),
+    fields: { taskId, occurrence, ...fields },
+    ts,
   };
 }
 
@@ -994,9 +1031,11 @@ describe('SyncService', () => {
   // I9: reads are scoped by userId, but projectId/parentId/taskId/tagId are
   // writable and the migration's foreign keys are global. Nothing leaks
   // today, because changesSince filters by userId — but the row is
-  // permanently attached to another account's tree, TaskTag's ON DELETE
-  // RESTRICT turns that into a hold on a row somebody else owns, and the
-  // first feature that walks parentId or projectId crosses the boundary.
+  // permanently attached to another account's tree: TaskTag and
+  // TaskOccurrence are ON DELETE CASCADE on taskId/tagId, so deleting the
+  // referenced task or tag deletes a row somebody else owns, and the first
+  // feature that walks parentId or projectId crosses the boundary the other
+  // way.
   it('rejects a foreign key that points at another account’s row', async () => {
     const mine = createTask('mine');
     const myProject = {
@@ -1283,5 +1322,573 @@ describe('SyncService', () => {
 
     expect(resent.results[0]?.status).toBe('duplicate');
     expect(await prisma.task.count({ where: { id: op.id } })).toBe(1);
+  });
+
+  // ADR 0010 / plan C2 departure 5: Prisma refuses a bare date for @db.Date,
+  // so before this every date field written through /sync was rejected.
+  it('stores a YYYY-MM-DD date and returns it in the same form', async () => {
+    const op = createTask('pay rent');
+    op.fields = { ...op.fields, dueOn: '2026-09-28', dtstart: '2026-09-01' };
+
+    const res = await service.sync(USER, { since: 0, ops: [op] });
+
+    expect(res.results[0]?.status).toBe('applied');
+    const row = res.changes.find((c) => c.id === op.id)?.row;
+    expect(row?.dueOn).toBe('2026-09-28');
+    expect(row?.dtstart).toBe('2026-09-01');
+  });
+
+  it.each(['2026-02-30', '2026-9-28', '2026-09-28T00:00:00Z', 20260928])(
+    'rejects %j in a date field, naming the field',
+    async (value) => {
+      const op = createTask('bad date');
+      await service.sync(USER, { since: 0, ops: [op] });
+
+      const res = await service.sync(USER, {
+        since: 0,
+        ops: [
+          {
+            opId: uuidv7(),
+            kind: 'set' as const,
+            table: 'task' as const,
+            id: op.id,
+            field: 'scheduledOn',
+            value,
+            ts: new Date().toISOString(),
+          },
+        ],
+      });
+
+      expect(res.results[0]).toMatchObject({
+        status: 'rejected',
+        reason: 'scheduledOn must be a date, YYYY-MM-DD',
+      });
+    },
+  );
+
+  it('clears a date with null', async () => {
+    const op = createTask('undated');
+    op.fields = { ...op.fields, dueOn: '2026-09-28' };
+    await service.sync(USER, { since: 0, ops: [op] });
+
+    const res = await service.sync(USER, {
+      since: 0,
+      ops: [
+        {
+          opId: uuidv7(),
+          kind: 'set' as const,
+          table: 'task' as const,
+          id: op.id,
+          field: 'dueOn',
+          value: null,
+          ts: new Date().toISOString(),
+        },
+      ],
+    });
+
+    expect(res.results[0]?.status).toBe('applied');
+    expect(res.changes.find((c) => c.id === op.id)?.row.dueOn).toBeNull();
+  });
+
+  it('stores a task occurrence and returns it with its date', async () => {
+    const task = createTask('water the plants');
+    const done = createOccurrence(task.id, '2026-09-28', {
+      state: 'done',
+      completedAt: '2026-09-28T08:00:00.000Z',
+    });
+
+    const res = await service.sync(USER, { since: 0, ops: [task, done] });
+
+    expect(res.results.map((r) => r.status)).toEqual(['applied', 'applied']);
+    expect(res.changes.find((c) => c.id === done.id)).toMatchObject({
+      table: 'task_occurrence',
+      row: {
+        taskId: task.id,
+        occurrence: '2026-09-28',
+        state: 'done',
+        value: null,
+      },
+    });
+  });
+
+  it('refuses a task occurrence on a task the user does not own', async () => {
+    const OTHER = '22222222-2222-2222-2222-222222222222';
+    await prisma.user.create({
+      data: { id: OTHER, email: 'q@r.s', passwordHash: 'x' },
+    });
+    const theirs = createTask('not yours');
+    await service.sync(OTHER, { since: 0, ops: [theirs] });
+
+    const res = await service.sync(USER, {
+      since: 0,
+      ops: [createOccurrence(theirs.id, '2026-09-28', { state: 'done' })],
+    });
+
+    expect(res.results[0]).toMatchObject({
+      status: 'rejected',
+      reason: 'taskId does not reference a row you own',
+    });
+  });
+
+  // Review Focus 4 / scenario 1.
+  it('completes, undoes and completes again into one row', async () => {
+    const task = createTask('stretch');
+    const t0 = Date.now();
+    const at = (s: number) => new Date(t0 + s * 1000).toISOString();
+    const done = createOccurrence(
+      task.id,
+      '2026-09-28',
+      { state: 'done' },
+      at(0),
+    );
+    await service.sync(USER, { since: 0, ops: [task, done] });
+
+    const undo = {
+      opId: uuidv7(),
+      kind: 'set' as const,
+      table: 'task_occurrence' as const,
+      id: done.id,
+      field: 'state',
+      value: 'open',
+      ts: at(1),
+    };
+    const again = createOccurrence(
+      task.id,
+      '2026-09-28',
+      { state: 'done' },
+      at(2),
+    );
+    const res = await service.sync(USER, { since: 0, ops: [undo, again] });
+
+    expect(res.results.map((r) => r.status)).toEqual(['applied', 'applied']);
+    const rows = await prisma.taskOccurrence.findMany({
+      where: { taskId: task.id },
+    });
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ state: 'done', version: 3 });
+  });
+
+  // Review Focus 1 / scenario 2: the later action wins, not the first to arrive.
+  it('lets the later of two offline creates win whatever arrives first', async () => {
+    const task = createTask('water the plants');
+    await service.sync(USER, { since: 0, ops: [task] });
+    const t0 = Date.now() - 60_000;
+    const doneAt10 = createOccurrence(
+      task.id,
+      '2026-09-28',
+      { state: 'done' },
+      new Date(t0).toISOString(),
+    );
+    const skippedAt11 = createOccurrence(
+      task.id,
+      '2026-09-28',
+      { state: 'skipped' },
+      new Date(t0 + 30_000).toISOString(),
+    );
+
+    const first = await service.sync(USER, { since: 0, ops: [skippedAt11] });
+    const second = await service.sync(USER, { since: 0, ops: [doneAt10] });
+
+    expect(first.results[0]?.status).toBe('applied');
+    expect(second.results[0]?.status).toBe('superseded');
+    const row = await prisma.taskOccurrence.findUniqueOrThrow({
+      where: { id: skippedAt11.id },
+    });
+    expect(row.state).toBe('skipped');
+  });
+
+  // M2: taskId and occurrence always carry the same value on a re-create, so
+  // a stale create used to "win" on them alone — mergeFields saw a fieldTs
+  // older than the stale ts, bumped the row, and reported applied although
+  // nothing visible changed. Identity fields must be ignored when deciding
+  // whether a create won.
+  it('answers superseded for a stale create that only wins on identity fields', async () => {
+    const task = createTask('water the plants');
+    const t0 = Date.now() - 60_000;
+    const at = (s: number) => new Date(t0 + s * 1000).toISOString();
+    const done = createOccurrence(
+      task.id,
+      '2026-09-28',
+      { state: 'done' },
+      at(0),
+    );
+    await service.sync(USER, { since: 0, ops: [task, done] });
+
+    const skip = {
+      opId: uuidv7(),
+      kind: 'set' as const,
+      table: 'task_occurrence' as const,
+      id: done.id,
+      field: 'state',
+      value: 'skipped',
+      ts: at(30),
+    };
+    await service.sync(USER, { since: 0, ops: [skip] });
+
+    const staleCreate = createOccurrence(
+      task.id,
+      '2026-09-28',
+      { state: 'done' },
+      at(10),
+    );
+    const res = await service.sync(USER, { since: 0, ops: [staleCreate] });
+
+    expect(res.results[0]?.status).toBe('superseded');
+    const row = await prisma.taskOccurrence.findUniqueOrThrow({
+      where: { id: done.id },
+    });
+    expect(row.state).toBe('skipped');
+    expect(row.version).toBe(2);
+  });
+
+  it('keeps one row for a non-recurring completion sent twice', async () => {
+    const task = createTask('file taxes');
+    const res = await service.sync(USER, {
+      since: 0,
+      ops: [
+        task,
+        createOccurrence(task.id, null, { state: 'done' }),
+        createOccurrence(task.id, null, { state: 'done' }),
+      ],
+    });
+
+    expect(['applied', 'superseded']).toContain(res.results[2]?.status);
+    expect(
+      await prisma.taskOccurrence.count({ where: { taskId: task.id } }),
+    ).toBe(1);
+  });
+
+  // Pins that dateRejection runs before derivedIdRejection: a random id would
+  // otherwise be rejected for the wrong reason, and a future reorder would
+  // pass every other test while answering the wrong message here.
+  it('rejects a bad occurrence date before the id-derivation check', async () => {
+    const task = createTask('x');
+    await service.sync(USER, { since: 0, ops: [task] });
+
+    const res = await service.sync(USER, {
+      since: 0,
+      ops: [
+        {
+          opId: uuidv7(),
+          kind: 'create' as const,
+          table: 'task_occurrence' as const,
+          id: uuidv7(),
+          fields: { taskId: task.id, occurrence: '2026-9-28', state: 'done' },
+          ts: new Date().toISOString(),
+        },
+      ],
+    });
+
+    expect(res.results[0]).toMatchObject({
+      status: 'rejected',
+      reason: 'occurrence must be a date, YYYY-MM-DD',
+    });
+  });
+
+  it('rejects a task occurrence whose id is not derived from its fields', async () => {
+    const task = createTask('x');
+    const bad = {
+      ...createOccurrence(task.id, '2026-09-28', { state: 'done' }),
+      id: uuidv7(),
+    };
+
+    const res = await service.sync(USER, { since: 0, ops: [task, bad] });
+
+    expect(res.results[1]).toMatchObject({
+      status: 'rejected',
+      reason: 'id does not match the id derived from taskId, occurrence',
+    });
+  });
+
+  it('refuses to delete a task occurrence or move it to another date', async () => {
+    const task = createTask('x');
+    const done = createOccurrence(task.id, '2026-09-28', { state: 'done' });
+    await service.sync(USER, { since: 0, ops: [task, done] });
+
+    const res = await service.sync(USER, {
+      since: 0,
+      ops: [
+        {
+          opId: uuidv7(),
+          kind: 'delete' as const,
+          table: 'task_occurrence' as const,
+          id: done.id,
+          baseVersion: 1,
+        },
+        {
+          opId: uuidv7(),
+          kind: 'set' as const,
+          table: 'task_occurrence' as const,
+          id: done.id,
+          field: 'occurrence',
+          value: '2026-09-29',
+          ts: new Date().toISOString(),
+        },
+      ],
+    });
+
+    expect(res.results.map((r) => r.status)).toEqual(['rejected', 'rejected']);
+    expect(res.results[0]?.reason).toBe(
+      'rows of task_occurrence are never deleted; set state instead',
+    );
+    expect(res.results[1]?.reason).toBe(
+      'occurrence is part of this row’s identity and cannot change',
+    );
+    expect(await prisma.taskOccurrence.count({ where: { id: done.id } })).toBe(
+      1,
+    );
+  });
+
+  // FR-009: the collision this plan found in TaskTag, fixed.
+  it('detaches and re-attaches a tag', async () => {
+    const task = createTask('x');
+    const tag = uuidv7();
+    const link = {
+      opId: uuidv7(),
+      kind: 'create' as const,
+      table: 'task_tag' as const,
+      id: taskTagId(task.id, tag),
+      fields: { taskId: task.id, tagId: tag },
+      ts: new Date(Date.now() - 2000).toISOString(),
+    };
+    await service.sync(USER, {
+      since: 0,
+      ops: [
+        task,
+        {
+          opId: uuidv7(),
+          kind: 'create' as const,
+          table: 'tag' as const,
+          id: tag,
+          fields: { name: 'home' },
+          ts: new Date().toISOString(),
+        },
+        link,
+      ],
+    });
+    const detach = {
+      opId: uuidv7(),
+      kind: 'set' as const,
+      table: 'task_tag' as const,
+      id: link.id,
+      field: 'attached',
+      value: false,
+      ts: new Date(Date.now() - 1000).toISOString(),
+    };
+    const reattach = {
+      ...link,
+      opId: uuidv7(),
+      fields: { ...link.fields, attached: true },
+      ts: new Date().toISOString(),
+    };
+
+    const res = await service.sync(USER, { since: 0, ops: [detach, reattach] });
+
+    expect(res.results.map((r) => r.status)).toEqual(['applied', 'applied']);
+    const row = await prisma.taskTag.findUniqueOrThrow({
+      where: { id: link.id },
+    });
+    expect(row.attached).toBe(true);
+  });
+
+  it('stores a recurring task with a valid rule', async () => {
+    const op = createTask('stand-up');
+    op.fields = {
+      ...op.fields,
+      rrule: 'FREQ=WEEKLY;BYDAY=MO,WE,FR',
+      dtstart: '2026-09-28',
+    };
+
+    const res = await service.sync(USER, { since: 0, ops: [op] });
+
+    expect(res.results[0]?.status).toBe('applied');
+  });
+
+  it.each([
+    [
+      { rrule: 'FREQ=DAILY;BYHOUR=9', dtstart: '2026-09-28' },
+      'rrule: BYHOUR is not supported',
+    ],
+    [{ rrule: 'FREQ=DAILY' }, 'rrule requires dtstart'],
+  ])('rejects a task created with %j', async (fields, reason) => {
+    const op = createTask('bad rule');
+    op.fields = { ...op.fields, ...fields };
+
+    const res = await service.sync(USER, { since: 0, ops: [op] });
+
+    expect(res.results[0]?.status).toBe('rejected');
+    expect(res.results[0]?.reason).toContain(reason);
+    expect(await prisma.task.count({ where: { id: op.id } })).toBe(0);
+  });
+
+  // Review Focus 5: neither op mentions rrule.
+  it('rejects clearing dtstart or adding a parent on a recurring task', async () => {
+    const parent = createTask('parent');
+    const op = createTask('weekly');
+    op.fields = { ...op.fields, rrule: 'FREQ=WEEKLY', dtstart: '2026-09-28' };
+    await service.sync(USER, { since: 0, ops: [parent, op] });
+
+    const res = await service.sync(USER, {
+      since: 0,
+      ops: [setTask(op.id, 'dtstart', null), setParent(op.id, parent.id)],
+    });
+
+    expect(res.results.map((r) => r.reason)).toEqual([
+      'rrule requires dtstart',
+      'a subtask cannot carry an rrule (ADR 0009)',
+    ]);
+  });
+
+  // Neither op mentions rrule, and rowRejection re-validates the whole row on
+  // every applied write — this pins that a recurring task still accepts an
+  // ordinary edit and a delete, not only the rrule-shaped writes above.
+  it('lets an ordinary edit and a delete apply to a recurring task', async () => {
+    const op = createTask('weekly');
+    op.fields = { ...op.fields, rrule: 'FREQ=WEEKLY', dtstart: '2026-09-28' };
+    await service.sync(USER, { since: 0, ops: [op] });
+
+    const renamed = await service.sync(USER, {
+      since: 0,
+      ops: [setTask(op.id, 'title', 'weekly, renamed')],
+    });
+    expect(renamed.results[0]?.status).toBe('applied');
+
+    const deleted = await service.sync(USER, {
+      since: 0,
+      ops: [deleteTask(op.id, 2)],
+    });
+    expect(deleted.results[0]?.status).toBe('applied');
+  });
+
+  // M1: rowRejection ran on every applied write, including delete — so a
+  // legacy row that already violates a rule the parser gained later (rrule
+  // with no dtstart) could never be deleted, only edited into compliance
+  // first, which a delete op cannot do. Inserted directly with Prisma:
+  // applyOp itself refuses `rrule` without `dtstart` on create/set, so this
+  // row cannot arise through the protocol.
+  it('lets a delete through a row that rowRejection would refuse', async () => {
+    const taskId = uuidv7();
+    await prisma.$executeRaw`
+      INSERT INTO "Task" (id, "userId", title, rank, rrule, dtstart, seq, "updatedAt")
+      VALUES (${taskId}::uuid, ${USER}::uuid, 'legacy weekly', 'a0', 'FREQ=DAILY', NULL, nextval('change_seq'), now())
+    `;
+
+    const res = await service.sync(USER, {
+      since: 0,
+      ops: [deleteTask(taskId, 1)],
+    });
+
+    expect(res.results[0]?.status).toBe('applied');
+    const row = await prisma.task.findUniqueOrThrow({ where: { id: taskId } });
+    expect(row.deletedAt).not.toBeNull();
+  });
+
+  it('rejects a rule on a subtask', async () => {
+    const parent = createTask('parent');
+    const child = createTask('child');
+    child.fields = { ...child.fields, parentId: parent.id };
+    await service.sync(USER, { since: 0, ops: [parent, child] });
+
+    const res = await service.sync(USER, {
+      since: 0,
+      ops: [
+        setTask(child.id, 'dtstart', '2026-09-28'),
+        setTask(child.id, 'rrule', 'FREQ=DAILY', 2),
+      ],
+    });
+
+    expect(res.results[1]).toMatchObject({
+      status: 'rejected',
+      reason: 'a subtask cannot carry an rrule (ADR 0009)',
+    });
+  });
+
+  it('rejects a task occurrence state outside open, done, skipped', async () => {
+    const task = createTask('x');
+    const res = await service.sync(USER, {
+      since: 0,
+      ops: [
+        task,
+        createOccurrence(task.id, '2026-09-28', { state: 'finished' }),
+      ],
+    });
+
+    expect(res.results[1]).toMatchObject({
+      status: 'rejected',
+      reason: 'state must be one of open, done, skipped',
+    });
+  });
+
+  // FR-013: a snapshot omits tombstones, so it must omit their children too,
+  // or the client receives rows whose task or tag it is never told about.
+  it('leaves children of a tombstoned task or tag out of a snapshot', async () => {
+    const live = createTask('live');
+    const gone = createTask('gone');
+    const tag = uuidv7();
+    const liveTag = uuidv7();
+    const liveDone = createOccurrence(live.id, '2026-09-28', { state: 'done' });
+    const goneDone = createOccurrence(gone.id, '2026-09-28', { state: 'done' });
+    const tagLink = {
+      opId: uuidv7(),
+      kind: 'create' as const,
+      table: 'task_tag' as const,
+      id: taskTagId(live.id, tag),
+      fields: { taskId: live.id, tagId: tag },
+      ts: new Date().toISOString(),
+    };
+    // The other half of the same rule: a TaskTag survives only if *both*
+    // sides are live. This one hangs off the tombstoned task but a tag that
+    // stays live, so a filter that checked the tag alone would let it through.
+    const goneTaskLiveTagLink = {
+      opId: uuidv7(),
+      kind: 'create' as const,
+      table: 'task_tag' as const,
+      id: taskTagId(gone.id, liveTag),
+      fields: { taskId: gone.id, tagId: liveTag },
+      ts: new Date().toISOString(),
+    };
+    await service.sync(USER, {
+      since: 0,
+      ops: [
+        live,
+        gone,
+        {
+          opId: uuidv7(),
+          kind: 'create' as const,
+          table: 'tag' as const,
+          id: tag,
+          fields: { name: 'x' },
+          ts: new Date().toISOString(),
+        },
+        {
+          opId: uuidv7(),
+          kind: 'create' as const,
+          table: 'tag' as const,
+          id: liveTag,
+          fields: { name: 'still here' },
+          ts: new Date().toISOString(),
+        },
+        liveDone,
+        goneDone,
+        tagLink,
+        goneTaskLiveTagLink,
+        deleteTask(gone.id, 1),
+        {
+          opId: uuidv7(),
+          kind: 'delete' as const,
+          table: 'tag' as const,
+          id: tag,
+          baseVersion: 1,
+        },
+      ],
+    });
+
+    const snapshot = await service.sync(USER, { since: 0, ops: [] });
+    const ids = snapshot.changes.map((c) => c.id);
+
+    expect(ids).toContain(liveDone.id);
+    expect(ids).not.toContain(goneDone.id);
+    expect(ids).not.toContain(tagLink.id);
+    expect(ids).not.toContain(goneTaskLiveTagLink.id);
   });
 });

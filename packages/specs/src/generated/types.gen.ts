@@ -32,10 +32,23 @@ export type Op =
       kind?: 'delete';
     } & OpDelete);
 
+/**
+ * Creates a row. Every id is a client-generated UUIDv7 (ADR 0005),
+ * except in `task_occurrence` and `task_tag`, whose id is derived:
+ * UUIDv5 in namespace 40e49f07-6ce6-46fc-b2de-65dd46253bf2 over
+ * `<taskId>:<occurrence>` (`<taskId>:` when occurrence is null) or
+ * `<taskId>:<tagId>`, ids lower-cased. The server recomputes it and
+ * rejects a mismatch. A create of an existing derived id merges its
+ * fields under per-field last-write-wins; rows of these two tables are
+ * never deleted, they are toggled with `set` (`state`, `attached`).
+ * Dates are `YYYY-MM-DD` strings. `@todoer/specs` exports the
+ * derivation (`taskOccurrenceId`, `taskTagId`) and the rrule parser.
+ *
+ */
 export type OpCreate = {
   opId: string;
   kind: 'create';
-  table: 'task' | 'project' | 'tag' | 'task_tag';
+  table: 'task' | 'project' | 'tag' | 'task_tag' | 'task_occurrence';
   id: string;
   fields: {
     [key: string]: unknown;
@@ -46,7 +59,7 @@ export type OpCreate = {
 export type OpSet = {
   opId: string;
   kind: 'set';
-  table: 'task' | 'project' | 'tag' | 'task_tag';
+  table: 'task' | 'project' | 'tag' | 'task_tag' | 'task_occurrence';
   id: string;
   field: string;
   value: unknown;
@@ -57,7 +70,7 @@ export type OpSet = {
 export type OpDelete = {
   opId: string;
   kind: 'delete';
-  table: 'task' | 'project' | 'tag' | 'task_tag';
+  table: 'task' | 'project' | 'tag' | 'task_tag' | 'task_occurrence';
   id: string;
   baseVersion: number;
 };

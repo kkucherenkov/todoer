@@ -5,8 +5,15 @@ import {
   Logger,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { isIsoDate } from '@todoer/specs';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { applyOp, type Op, type Outcome, type Row } from './apply-op.js';
+import {
+  derivedIdKeys,
+  derivedIdRejection,
+  isDerivedIdTable,
+} from './derived-id.js';
+import { rowRejection } from './row-rules.js';
 import { lockUserWrites, type RawClient } from './user-lock.js';
 
 type SyncRequest = { since: number; ops: Op[] };
@@ -23,7 +30,13 @@ type Change = {
   row: Record<string, unknown>;
 };
 
-const TABLES = ['task', 'project', 'tag', 'task_tag'] as const;
+const TABLES = [
+  'task',
+  'project',
+  'tag',
+  'task_tag',
+  'task_occurrence',
+] as const;
 type TableName = (typeof TABLES)[number];
 
 const DELEGATE = {
@@ -31,10 +44,11 @@ const DELEGATE = {
   project: 'project',
   tag: 'tag',
   task_tag: 'taskTag',
+  task_occurrence: 'taskOccurrence',
 } as const;
 
 /**
- * The same four tables again, spelled as Postgres relations rather than as
+ * Every synced table again, spelled as Postgres relations rather than as
  * Prisma delegates — the row lock below is raw SQL, and Prisma has no
  * `FOR UPDATE` on `findFirst`. Written out instead of derived from
  * `DELEGATE` by capitalisation so that a future `@@map` on a model shows up
@@ -45,6 +59,7 @@ const RELATION = {
   project: 'Project',
   tag: 'Tag',
   task_tag: 'TaskTag',
+  task_occurrence: 'TaskOccurrence',
 } as const;
 
 /**
@@ -52,16 +67,18 @@ const RELATION = {
  * are scoped by `userId`; these columns are not, and the migration's foreign
  * keys are global — so without this map one account can attach its row to
  * another's project or parent task. Nothing leaks today (`changesSince`
- * filters by `userId`), but the row is permanently in someone else's tree,
- * TaskTag's ON DELETE RESTRICT turns it into a hold on a row that account
- * owns, and the first feature to walk `parentId`/`projectId` — a cascade
- * delete, "complete subtasks", a tree view — crosses the boundary.
+ * filters by `userId`), but the row is permanently in someone else's tree:
+ * TaskTag and TaskOccurrence are `ON DELETE CASCADE` on `taskId`/`tagId`, so
+ * deleting the referenced task or tag deletes a row that account does not
+ * own, and the first feature to walk `parentId`/`projectId` — "complete
+ * subtasks", a tree view — crosses the boundary the other way.
  */
 const REFERENCES: Partial<
   Record<TableName, Readonly<Record<string, TableName>>>
 > = {
   task: { projectId: 'project', parentId: 'task' },
   task_tag: { taskId: 'task', tagId: 'tag' },
+  task_occurrence: { taskId: 'task' },
 };
 
 /** The shape every id in this protocol has: a uuid, per the contract. */
@@ -103,8 +120,74 @@ const WRITABLE_FIELDS: Record<TableName, ReadonlySet<string>> = {
   ]),
   project: new Set(['name', 'rank', 'archivedAt']),
   tag: new Set(['name', 'color']),
-  task_tag: new Set(['taskId', 'tagId']),
+  task_tag: new Set(['taskId', 'tagId', 'attached']),
+  task_occurrence: new Set([
+    'taskId',
+    'occurrence',
+    'state',
+    'completedAt',
+    'value',
+  ]),
 };
+
+/**
+ * Columns that hold a calendar date (ADR 0010). On the wire a date is
+ * `YYYY-MM-DD`; Prisma's `@db.Date` takes only a full ISO date-time or a
+ * `Date`, so a bare date reached it as a validation error ("could not be
+ * applied") and a read came back as midnight UTC with a time on it. Both
+ * directions convert here.
+ */
+const DATE_FIELDS: Partial<Record<TableName, ReadonlySet<string>>> = {
+  task: new Set(['scheduledOn', 'dueOn', 'dtstart']),
+  task_occurrence: new Set(['occurrence']),
+};
+
+/**
+ * The `[field, value]` pairs an op writes. A malformed `fields`/`field` yields
+ * nothing: applyOp rejects those, with a better reason than any caller here.
+ */
+function writtenFields(op: Op): Array<[string, unknown]> {
+  if (op.kind === 'create') {
+    return typeof op.fields === 'object' &&
+      op.fields !== null &&
+      !Array.isArray(op.fields)
+      ? Object.entries(op.fields)
+      : [];
+  }
+  if (op.kind === 'set') {
+    return typeof op.field === 'string' ? [[op.field, op.value]] : [];
+  }
+  return [];
+}
+
+/** Why a date field in this op cannot be stored, or `null`. */
+function dateRejection(table: TableName, op: Op): string | null {
+  const dates = DATE_FIELDS[table];
+  if (dates === undefined) return null;
+  for (const [field, value] of writtenFields(op)) {
+    if (dates.has(field) && value !== null && !isIsoDate(value)) {
+      return `${field} must be a date, YYYY-MM-DD`;
+    }
+  }
+  return null;
+}
+
+/** The row as Prisma must receive it: date strings become `Date`s. */
+function toStorage(
+  table: TableName,
+  data: Record<string, unknown>,
+): Record<string, unknown> {
+  const dates = DATE_FIELDS[table];
+  if (dates === undefined) return data;
+  const out = { ...data };
+  for (const field of dates) {
+    const value = out[field];
+    if (typeof value === 'string') {
+      out[field] = new Date(`${value}T00:00:00.000Z`);
+    }
+  }
+  return out;
+}
 
 /**
  * The minimal shape this module needs from a Prisma model delegate, picked
@@ -152,9 +235,15 @@ function toChangeRow(
   table: TableName,
   row: Record<string, unknown>,
 ): Record<string, unknown> {
+  const dates = DATE_FIELDS[table];
   const out: Record<string, unknown> = {};
   for (const key of [...READABLE_PROTOCOL_FIELDS, ...WRITABLE_FIELDS[table]]) {
-    if (key in row) out[key] = row[key];
+    if (!(key in row)) continue;
+    const value = row[key];
+    out[key] =
+      value instanceof Date && dates?.has(key)
+        ? value.toISOString().slice(0, 10)
+        : value;
   }
   return out;
 }
@@ -220,23 +309,7 @@ async function referenceRejection(
   const refs = REFERENCES[table];
   if (refs === undefined) return null;
 
-  let written: Array<[string, unknown]>;
-  if (op.kind === 'create') {
-    // A malformed `fields` is applyOp's to reject, not this function's.
-    if (
-      typeof op.fields !== 'object' ||
-      op.fields === null ||
-      Array.isArray(op.fields)
-    )
-      return null;
-    written = Object.entries(op.fields);
-  } else if (op.kind === 'set') {
-    written = typeof op.field === 'string' ? [[op.field, op.value]] : [];
-  } else {
-    written = [];
-  }
-
-  for (const [field, value] of written) {
+  for (const [field, value] of writtenFields(op)) {
     const target = refs[field];
     // `null` clears the reference, which needs no owner.
     if (target === undefined || value === null || value === undefined) continue;
@@ -455,6 +528,21 @@ function isRetryable(error: unknown): boolean {
   return true;
 }
 
+/**
+ * In a snapshot, rows whose parent is tombstoned are left out with the
+ * tombstone: task occurrences and TaskTag rows are never deleted on their own,
+ * so without this a snapshot delivers children of a task or tag the client is
+ * never told about (plan C2, departure 4). Incremental pulls still deliver
+ * them — a client hides a task occurrence or TaskTag row whose task or tag is
+ * tombstoned *or absent* from its replica; the absent case is what covers a
+ * client bootstrapped from a snapshot, which never receives the tombstone at
+ * all (ADR 0013).
+ */
+const SNAPSHOT_LIVE_PARENTS: Partial<Record<TableName, object>> = {
+  task_occurrence: { task: { deletedAt: null } },
+  task_tag: { task: { deletedAt: null }, tag: { deletedAt: null } },
+};
+
 @Injectable()
 export class SyncService {
   private readonly logger = new Logger(SyncService.name);
@@ -520,6 +608,10 @@ export class SyncService {
           ? (op.table as TableName)
           : null;
         const badField = table !== null ? unpermittedField(table, op) : null;
+        const badValue =
+          table !== null && badField === null
+            ? (dateRejection(table, op) ?? derivedIdRejection(table, op))
+            : null;
 
         let delegate: SyncDelegate | null = null;
         let current: Row | null = null;
@@ -540,6 +632,8 @@ export class SyncService {
           // treats as retryable and turns into a 5xx rather than the honest
           // per-operation rejection it is.
           outcome = { status: 'rejected', reason: 'id is not a uuid' };
+        } else if (badValue !== null) {
+          outcome = { status: 'rejected', reason: badValue };
         } else {
           // Before every read, not after: the locks are what make these
           // reads and the write below one cycle rather than two halves
@@ -553,7 +647,21 @@ export class SyncService {
             current = await delegate.findFirst({
               where: { id: op.id, userId },
             });
-            outcome = applyOp(op, current, now);
+            outcome = applyOp(op, current, now, {
+              mergeCreate: isDerivedIdTable(table),
+              identityKeys: derivedIdKeys(table),
+            });
+            // Never on delete: rowRejection re-validates the row's shape, and
+            // a delete only tombstones — it cannot change the row into
+            // compliance, so a legacy row that violates a rule the parser
+            // gained later (rrule with no dtstart) could otherwise never be
+            // deleted at all (M1).
+            if (outcome.status === 'applied' && op.kind !== 'delete') {
+              const badRow = rowRejection(table, outcome.row);
+              if (badRow !== null) {
+                outcome = { status: 'rejected', reason: badRow };
+              }
+            }
           }
         }
 
@@ -577,17 +685,17 @@ export class SyncService {
 
         if (outcome.status === 'applied') {
           // Guaranteed set together above: `outcome.status` can only be
-          // 'applied' when the permitted-checks passed and `delegate` was
-          // resolved. TS cannot see that coupling across the earlier
-          // if/else, so this makes it an explicit, checked invariant
-          // instead of a silent assumption.
-          if (delegate === null) {
+          // 'applied' when the permitted-checks passed and `delegate` (and
+          // `table`) were resolved. TS cannot see that coupling across the
+          // earlier if/else, so this makes it an explicit, checked
+          // invariant instead of a silent assumption.
+          if (delegate === null || table === null) {
             throw new Error(
               'unreachable: applied outcome without a resolved delegate',
             );
           }
           // seq is a protocol/storage column applyOp never touches — it comes
-          // from the one sequence shared by all four tables, and it has to be
+          // from the one sequence shared by every table, and it has to be
           // reassigned on *every* applied write (create or update). Postgres
           // only consults a column DEFAULT on INSERT, so leaning on the
           // schema's default would silently stop advancing the cursor for
@@ -606,14 +714,14 @@ export class SyncService {
             updatedAt: _updatedAt,
             ...rest
           } = outcome.row;
-          const data = {
+          const data = toStorage(table, {
             ...rest,
             version,
             fieldTs,
             deletedAt,
             userId,
             seq: nextval,
-          };
+          });
           if (current === null) {
             await delegate.create({ data: { ...data, id } });
           } else {
@@ -669,8 +777,8 @@ export class SyncService {
     userId: string,
     since: number,
   ): Promise<{ cursor: number; changes: Change[] }> {
-    // The four tables are read inside one transaction so they share a single
-    // snapshot. Read separately (the original shape of this method), a
+    // Every synced table is read inside one transaction so they share a
+    // single snapshot. Read separately (the original shape of this method), a
     // write that commits between two of the reads is visible to one and not
     // the other, and a cursor built off whichever read happened to see it
     // leaves the other table's matching row below the client's `since`
@@ -729,7 +837,9 @@ export class SyncService {
             where: {
               userId,
               seq: { gt: BigInt(since) },
-              ...(snapshot ? { deletedAt: null } : {}),
+              ...(snapshot
+                ? { deletedAt: null, ...SNAPSHOT_LIVE_PARENTS[table] }
+                : {}),
             },
             orderBy: { seq: 'asc' },
           });

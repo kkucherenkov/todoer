@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GoneException, Logger } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
+import { taskOccurrenceId, taskTagId } from '@todoer/specs';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { PruneService, RETENTION_DAYS } from './prune.service.js';
 import { SyncService } from './sync.service.js';
@@ -15,6 +16,7 @@ const DAY = 24 * 60 * 60 * 1000;
 
 beforeEach(async () => {
   await prisma.appliedOp.deleteMany({});
+  await prisma.taskOccurrence.deleteMany({});
   await prisma.taskTag.deleteMany({});
   await prisma.task.deleteMany({});
   await prisma.project.deleteMany({});
@@ -32,7 +34,7 @@ function daysAgo(days: number): Date {
   return new Date(Date.now() - days * DAY);
 }
 
-type Table = 'task' | 'project' | 'tag' | 'task_tag';
+type Table = 'task' | 'project' | 'tag' | 'task_tag' | 'task_occurrence';
 
 function create(table: Table, id: string, fields: Record<string, unknown>) {
   return {
@@ -248,14 +250,14 @@ describe('PruneService', () => {
     expect(childRow.parentId).toBe(parent);
   });
 
-  // Review finding 2: TaskTag.tagId is ON DELETE RESTRICT (unlike
-  // Task.projectId/parentId, which are SET NULL) — deleting a referenced tag
-  // without the tasks: { none: {} } guard would throw and abort the whole
-  // user's run, not just corrupt one row.
-  it('keeps a tombstoned tag a live TaskTag still references', async () => {
+  // Plan C2: TaskTag rows are toggled, never tombstoned, so a guard that
+  // waited for them to go would keep this tag forever. They cascade instead.
+  // The error spy matters: a rolled-back transaction leaves the same counts
+  // as a guarded one.
+  it('prunes a tombstoned tag together with the TaskTag rows that name it', async () => {
     const task = uuidv7();
     const tag = uuidv7();
-    const taskTag = uuidv7();
+    const taskTag = taskTagId(task, tag);
     await sync.sync(USER, {
       since: 0,
       ops: [
@@ -266,43 +268,85 @@ describe('PruneService', () => {
       ],
     });
     await age('tag', [tag], RETENTION_DAYS + 1);
+    const errorSpy = vi
+      .spyOn(Logger.prototype, 'error')
+      .mockImplementation(() => undefined);
 
-    await expect(prune.prune(new Date())).resolves.toBe(0);
+    await expect(prune.prune(new Date())).resolves.toBe(1);
 
-    expect(await prisma.tag.count({ where: { id: tag } })).toBe(1);
-    expect(await prisma.taskTag.count({ where: { id: taskTag } })).toBe(1);
+    expect(errorSpy).not.toHaveBeenCalled();
+    expect(await prisma.tag.count({ where: { id: tag } })).toBe(0);
+    expect(await prisma.taskTag.count({ where: { id: taskTag } })).toBe(0);
+    expect(await prisma.task.count({ where: { id: task } })).toBe(1);
   });
 
-  // Group 1 fix: the task steps' own `tags: { none: {} }` guard was unpinned
-  // — dropping it from both left every existing test green, because
-  // TaskTag.taskId is also ON DELETE RESTRICT, and the resulting P2003 rolls
-  // back this user's whole transaction. Rollback leaves the DB looking
-  // exactly as if the guard had worked, so the signal that actually catches
-  // the regression is the logged failure, not the row counts alone.
-  it('keeps a tombstoned task a live TaskTag still references', async () => {
+  // Scenario 5.
+  it('prunes a tombstoned task with its TaskTag rows and task occurrences', async () => {
     const task = uuidv7();
     const tag = uuidv7();
-    const taskTag = uuidv7();
+    const taskTag = taskTagId(task, tag);
+    const occurrence = taskOccurrenceId(task, '2026-01-05');
     await sync.sync(USER, {
       since: 0,
       ops: [
         create('task', task, { title: 'task', rank: 'a0' }),
         create('tag', tag, { name: 'tag' }),
         create('task_tag', taskTag, { taskId: task, tagId: tag }),
+        create('task_occurrence', occurrence, {
+          taskId: task,
+          occurrence: '2026-01-05',
+          state: 'done',
+        }),
         remove('task', task),
       ],
     });
     await age('task', [task], RETENTION_DAYS + 1);
+    const { seq } = await prisma.task.findUniqueOrThrow({
+      where: { id: task },
+    });
     const errorSpy = vi
       .spyOn(Logger.prototype, 'error')
       .mockImplementation(() => undefined);
 
-    await expect(prune.prune(new Date())).resolves.toBe(0);
+    await expect(prune.prune(new Date())).resolves.toBe(1);
 
     expect(errorSpy).not.toHaveBeenCalled();
-    expect(await prisma.task.count({ where: { id: task } })).toBe(1);
-    expect(await prisma.taskTag.count({ where: { id: taskTag } })).toBe(1);
-    expect(await watermark(USER)).toBe(0n);
+    expect(await prisma.task.count({ where: { id: task } })).toBe(0);
+    expect(await prisma.taskTag.count({ where: { id: taskTag } })).toBe(0);
+    expect(
+      await prisma.taskOccurrence.count({ where: { id: occurrence } }),
+    ).toBe(0);
+    expect(await prisma.tag.count({ where: { id: tag } })).toBe(1);
+    expect(await watermark(USER)).toBe(seq);
+  });
+
+  it('prunes a tombstoned parent and subtask that both carry tags', async () => {
+    const parent = uuidv7();
+    const child = uuidv7();
+    const tag = uuidv7();
+    await sync.sync(USER, {
+      since: 0,
+      ops: [
+        create('task', parent, { title: 'parent', rank: 'a0' }),
+        create('task', child, { title: 'child', rank: 'a0', parentId: parent }),
+        create('tag', tag, { name: 'tag' }),
+        create('task_tag', taskTagId(parent, tag), {
+          taskId: parent,
+          tagId: tag,
+        }),
+        create('task_tag', taskTagId(child, tag), {
+          taskId: child,
+          tagId: tag,
+        }),
+        remove('task', child),
+        remove('task', parent),
+      ],
+    });
+    await age('task', [parent, child], RETENTION_DAYS + 1);
+
+    await expect(prune.prune(new Date())).resolves.toBe(2);
+
+    expect(await prisma.taskTag.count({ where: { userId: USER } })).toBe(0);
   });
 
   // FR-007: the watermark only ever rises. A tombstone pruned in this run
@@ -386,7 +430,7 @@ describe('PruneService', () => {
     const project = uuidv7();
     const tag = uuidv7();
     const task = uuidv7();
-    const taskTag = uuidv7();
+    const taskTag = taskTagId(task, tag);
     await sync.sync(USER, {
       since: 0,
       ops: [
@@ -394,12 +438,18 @@ describe('PruneService', () => {
         create('tag', tag, { name: 'gone' }),
         create('task', task, { title: 'gone', rank: 'a0' }),
         create('task_tag', taskTag, { taskId: task, tagId: tag }),
-        remove('task_tag', taskTag),
         remove('tag', tag),
         remove('task', task),
         remove('project', project),
       ],
     });
+    // A TaskTag tombstone can only exist from before TaskTag became a toggle
+    // (plan C2); stage one directly, with a fresh seq like a real delete.
+    await prisma.$executeRaw`
+      UPDATE "TaskTag" SET "deletedAt" = now(), "seq" = nextval('change_seq'),
+        "version" = "version" + 1
+       WHERE "id" = ${taskTag}::uuid
+    `;
     await age('task_tag', [taskTag], RETENTION_DAYS + 1);
     await age('tag', [tag], RETENTION_DAYS + 1);
     await age('task', [task], RETENTION_DAYS + 1);

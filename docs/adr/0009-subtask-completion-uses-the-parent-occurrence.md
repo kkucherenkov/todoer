@@ -31,3 +31,10 @@ queued operations, and two clients cascading in opposite directions offline
 produce a result that depends on arrival order. The parent shows derived
 progress — "2 of 3" — which is also more honest than a checkmark over an
 unfinished list.
+
+## Amendment (2026-09-26, plan C)
+
+A subtask's task occurrence carries the parent's occurrence date in
+`occurrence`, and therefore in the id derived from it — a subtask has no
+occurrence axis of its own to derive from. The server now enforces the other
+half of this decision: a subtask carries no `rrule`.

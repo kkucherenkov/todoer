@@ -1,0 +1,46 @@
+{
+  "source": "Expected values computed with Python's uuid.uuid5, independently of @todoer/specs.",
+  "namespace": "40e49f07-6ce6-46fc-b2de-65dd46253bf2",
+  "rfcExample": {
+    "namespace": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
+    "name": "www.example.com",
+    "expected": "2ed6657d-e927-568b-95e1-2665a8aea6a2"
+  },
+  "cases": [
+    {
+      "kind": "task_occurrence",
+      "taskId": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",
+      "occurrence": "2026-09-28",
+      "name": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:2026-09-28",
+      "expected": "77df7b96-7881-5f57-add4-ed6c7f92c95c"
+    },
+    {
+      "kind": "task_occurrence",
+      "taskId": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",
+      "occurrence": null,
+      "name": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:",
+      "expected": "e62951e8-e981-5189-8da8-8e366465d357"
+    },
+    {
+      "kind": "task_tag",
+      "taskId": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b",
+      "tagId": "0192a1b2-c3d4-7e5f-8a9b-ffffffffffff",
+      "name": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:0192a1b2-c3d4-7e5f-8a9b-ffffffffffff",
+      "expected": "55e1d899-660e-5497-a8d3-266b523c7d89"
+    },
+    {
+      "kind": "task_occurrence",
+      "taskId": "0192A1B2-C3D4-7E5F-8A9B-0C1D2E3F4A5B",
+      "occurrence": "2026-09-28",
+      "name": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:2026-09-28",
+      "expected": "77df7b96-7881-5f57-add4-ed6c7f92c95c"
+    },
+    {
+      "kind": "task_tag",
+      "taskId": "0192A1B2-C3D4-7E5F-8A9B-0C1D2E3F4A5B",
+      "tagId": "0192A1B2-C3D4-7E5F-8A9B-FFFFFFFFFFFF",
+      "name": "0192a1b2-c3d4-7e5f-8a9b-0c1d2e3f4a5b:0192a1b2-c3d4-7e5f-8a9b-ffffffffffff",
+      "expected": "55e1d899-660e-5497-a8d3-266b523c7d89"
+    }
+  ]
+}

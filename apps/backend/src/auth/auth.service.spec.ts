@@ -19,6 +19,7 @@ beforeEach(async () => {
   // otherwise block deleting the user that owns it, and which spec file
   // runs first is not guaranteed.
   await prisma.appliedOp.deleteMany({});
+  await prisma.taskOccurrence.deleteMany({});
   await prisma.taskTag.deleteMany({});
   await prisma.task.deleteMany({});
   await prisma.project.deleteMany({});

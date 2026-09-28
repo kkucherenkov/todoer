@@ -19,9 +19,10 @@ model User {
   /// Only ever raised, by the pruning job.
   prunedThroughSeq BigInt @default(0)
 
-  tasks    Task[]
-  projects Project[]
-  tags     Tag[]
+  tasks           Task[]
+  projects        Project[]
+  tags            Tag[]
+  taskOccurrences TaskOccurrence[]
 }
 
 model Task {
@@ -52,11 +53,12 @@ model Task {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  user     User      @relation(fields: [userId], references: [id])
-  project  Project?  @relation(fields: [projectId], references: [id])
-  parent   Task?     @relation("Subtask", fields: [parentId], references: [id])
-  children Task[]    @relation("Subtask")
-  tags     TaskTag[]
+  user        User             @relation(fields: [userId], references: [id])
+  project     Project?         @relation(fields: [projectId], references: [id])
+  parent      Task?            @relation("Subtask", fields: [parentId], references: [id])
+  children    Task[]           @relation("Subtask")
+  tags        TaskTag[]
+  occurrences TaskOccurrence[]
 
   @@index([userId, seq])
 }
@@ -119,6 +121,10 @@ model TaskTag {
   userId String @db.Uuid
   taskId String @db.Uuid
   tagId  String @db.Uuid
+  /// Detach sets this to false; a TaskTag row is never deleted. Its id is
+  /// UUIDv5 of `<taskId>:<tagId>` (plan C design, Q5 and Q7), which is also
+  /// what keeps a pair to one row — no unique index needed.
+  attached Boolean @default(true)
 
   version   Int      @default(1)
   fieldTs   Json     @default("{}")
@@ -133,11 +139,49 @@ model TaskTag {
   deletedAt DateTime?
   createdAt DateTime @default(now())
 
-  task Task @relation(fields: [taskId], references: [id])
-  tag  Tag  @relation(fields: [tagId], references: [id])
+  /// Cascade: when pruning deletes a tombstoned task or tag, its TaskTag rows
+  /// go with it (plan C design, Q13).
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  tag  Tag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
 
-  @@unique([taskId, tagId])
   @@index([userId, seq])
+  @@index([taskId])
+  @@index([tagId])
+}
+
+/// One row per (task, occurrence): whether that occurrence was done or
+/// skipped. Replaces ADR 0002's two logs (plan C design, Q4). Its id is
+/// UUIDv5 of `<taskId>:<occurrence>` and it is never deleted — undo sets
+/// `state` back to `open` — so `deletedAt` is always null; it stays because
+/// every synced table carries the four protocol columns.
+model TaskOccurrence {
+  id          String    @id @db.Uuid
+  userId      String    @db.Uuid
+  taskId      String    @db.Uuid
+  /// Null for a non-recurring task. A subtask uses its parent's occurrence
+  /// date (ADR 0009).
+  occurrence  DateTime? @db.Date
+  /// open | done | skipped — checked by the sync service, not by Postgres.
+  state       String    @default("open")
+  completedAt DateTime?
+  /// Reserved for v2 quantified habits.
+  value       Float?
+
+  version   Int      @default(1)
+  fieldTs   Json     @default("{}")
+  /// Defaults to nextval('change_seq') — set by hand in this table's
+  /// migration, invisible to this schema. See trap 6 in `.claude/CLAUDE.md`.
+  seq       BigInt
+  deletedAt DateTime?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+  /// Cascade: pruning a tombstoned task takes its occurrences (Q13).
+  task Task @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@index([userId, seq])
+  @@index([taskId])
 }
 
 /// One row per operation the server has ever seen, recorded in the same

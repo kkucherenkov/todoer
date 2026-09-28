@@ -4,7 +4,8 @@
  * Kept free of Prisma so that every rule is testable without a database — this
  * is the one module whose correctness is not obvious by reading it, and the
  * cases that matter (an edit arriving late, a clock that is wrong, a create
- * that collides) are awkward to stage against a real server.
+ * that collides (rejected, or merged for a derived-id table)) are awkward to
+ * stage against a real server.
  *
  * Invariant: `applyOp` never throws, for any `op` that is an *object* — an
  * unparseable `ts`, a non-integer `baseVersion`, a `fields` that is not an
@@ -81,7 +82,7 @@ const MAX_SKEW_AHEAD_MS = 5 * 60_000;
 
 /** Fields whose change is destructive enough to require an explicit
  *  baseVersion opt-in — see ADR 0004. A stale rrule change strands the
- *  completion/exception logs, which are keyed by occurrence date, on
+ *  task occurrence rows, which are keyed by occurrence date, on
  *  dates the new rule no longer generates. */
 const FIELDS_REQUIRING_BASE_VERSION = new Set(['rrule']);
 
@@ -148,6 +149,42 @@ function clamp(ts: string, now: Date): string {
   return new Date(Math.min(t, hi)).toISOString();
 }
 
+/**
+ * A create of a row that already exists, for a table whose ids are derived
+ * from a natural key: two clients recorded the same fact. Each field is
+ * applied as a `set` would be — only where it is newer than what the row
+ * holds — so the later action wins whichever create arrives first (plan C
+ * design, Q8). `superseded` when no field won, as for a `set` that lost.
+ *
+ * `identityKeys` (the fields the id is derived from) are skipped entirely:
+ * they always carry the same value as the row already holds, so comparing
+ * their `fieldTs` can only ever produce a spurious win — a stale create
+ * whose `ts` merely outraces an old `fieldTs[identityKey]` would otherwise
+ * bump `version` and report `applied` with nothing visible changed (M2).
+ */
+function mergeFields(
+  current: Row,
+  fields: Record<string, unknown>,
+  ts: string,
+  identityKeys: readonly string[] = [],
+): Outcome {
+  if (current.deletedAt !== null) {
+    return { status: 'rejected', reason: 'row is deleted (tombstoned)' };
+  }
+  const row: Row = { ...current, fieldTs: { ...current.fieldTs } };
+  let won = false;
+  for (const [key, value] of Object.entries(fields)) {
+    if (identityKeys.includes(key)) continue;
+    const seen = current.fieldTs[key];
+    if (seen !== undefined && ts <= seen) continue;
+    row[key] = value;
+    row.fieldTs[key] = ts;
+    won = true;
+  }
+  if (!won) return { status: 'superseded' };
+  return { status: 'applied', row: { ...row, version: current.version + 1 } };
+}
+
 /** True for a value that `new Date(...)` can turn into a real instant. */
 function isParseableTimestamp(ts: unknown): ts is string {
   return typeof ts === 'string' && !Number.isNaN(new Date(ts).getTime());
@@ -168,9 +205,14 @@ function isValidBaseVersion(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value);
 }
 
-export function applyOp(op: Op, current: Row | null, now: Date): Outcome {
+export function applyOp(
+  op: Op,
+  current: Row | null,
+  now: Date,
+  options: { mergeCreate?: boolean; identityKeys?: readonly string[] } = {},
+): Outcome {
   if (op.kind === 'create') {
-    if (current !== null) {
+    if (current !== null && options.mergeCreate !== true) {
       return {
         status: 'rejected',
         reason: 'a row with this id already exists',
@@ -199,6 +241,9 @@ export function applyOp(op: Op, current: Row | null, now: Date): Outcome {
       };
     }
     const ts = clamp(op.ts, now);
+    if (current !== null) {
+      return mergeFields(current, op.fields, ts, options.identityKeys);
+    }
     const fieldTs: Record<string, string> = {};
     for (const key of Object.keys(op.fields)) fieldTs[key] = ts;
     return {
