@@ -3,9 +3,13 @@ import {
   parseRrule,
   taskOccurrenceId,
   type OpCreate,
+  type Rrule,
 } from '@todoer/specs';
+import { expand } from './expand.js';
 import {
+  addDays,
   currentOccurrence,
+  HORIZON_DAYS,
   isOccurrence,
   latestClosed,
   localDate,
@@ -54,16 +58,23 @@ function takeOption(
   return { value, rest: [...args.slice(0, at), ...args.slice(at + 2)] };
 }
 
+type PlannedRecurrence = {
+  fields: Record<string, string>;
+  rule: Rrule | null;
+  dtstart: string | null;
+};
+
 /** The recurrence fields `add` sends, checked before anything is queued
- *  (plan C design, Q9). */
+ *  (plan C design, Q9); carries the parsed rule along so `add` can also warn
+ *  when it produces nothing (M5) without parsing it twice. */
 function planRecurrence(
   rrule: string | undefined,
   from: string | undefined,
   today: string,
-): Record<string, string> {
+): PlannedRecurrence {
   if (rrule === undefined) {
     if (from !== undefined) throw new UsageError('--from needs --rrule');
-    return {};
+    return { fields: {}, rule: null, dtstart: null };
   }
   const parsed = parseRrule(rrule);
   if (!parsed.ok) throw new UsageError(`--rrule: ${parsed.error}`);
@@ -71,7 +82,24 @@ function planRecurrence(
   if (!isIsoDate(dtstart)) {
     throw new UsageError('--from must be a date, YYYY-MM-DD');
   }
-  return { rrule, dtstart };
+  return { fields: { rrule, dtstart }, rule: parsed.rule, dtstart };
+}
+
+/**
+ * `null` when the rule produces at least one occurrence within
+ * `HORIZON_DAYS` of its own dtstart, otherwise the stderr note `add` should
+ * give: the task is still queued (M5), but a caller who never sees it in
+ * `list` deserves to know why up front rather than assume it was lost.
+ */
+function emptyRuleNotice(recurrence: PlannedRecurrence): string | null {
+  const { rule, dtstart } = recurrence;
+  if (rule === null || dtstart === null) return null;
+  const has =
+    expand(rule, dtstart, dtstart, addDays(dtstart, HORIZON_DAYS), 1).length >
+    0;
+  return has
+    ? null
+    : `note: this rule produces no occurrence from ${dtstart} — the task will not be listed`;
 }
 
 /** What each marking command writes into `state` (plan C design, Q4). */
@@ -110,6 +138,8 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
       from.value,
       localDate(deps.now()),
     );
+    const ruleNotice = emptyRuleNotice(recurrence);
+    if (ruleNotice !== null) stderr.push(ruleNotice);
     // Refuses an empty title and reports what it is not storing — see planAdd.
     const { title, priority, notice } = planAdd(from.rest.join(' '));
     if (notice !== null) stderr.push(notice);
@@ -118,7 +148,7 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
       kind: 'create',
       table: 'task',
       id: deps.newId(),
-      fields: { title, priority, rank: 'a0', ...recurrence },
+      fields: { title, priority, rank: 'a0', ...recurrence.fields },
       ts: deps.now().toISOString(),
     };
     synced = await submit(store, deps.send, op, 'add');
@@ -171,7 +201,17 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
       ts: now,
     };
     synced = await submit(store, deps.send, op, command);
-    data = occurrences(store).find((row) => row.id === op.id) ?? null;
+    const marked = occurrences(store).find((row) => row.id === op.id) ?? null;
+    data = marked;
+    // I3: `submit` settled this op, but the row it settled to is not the
+    // state this command wrote — a newer change from elsewhere won under
+    // per-field LWW. --json already carries the real state; a plain caller
+    // gets no other signal that its mark did not stick.
+    if (synced && marked !== null && marked.state !== MARK[command]) {
+      stderr.push(
+        `note: the server kept '${String(marked.state)}' — a later change from another device decided this occurrence`,
+      );
+    }
     human = [
       [
         command,

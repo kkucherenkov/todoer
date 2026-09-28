@@ -415,6 +415,30 @@ describe('run', () => {
       await expect(run(['add', 'x', ...flags], d)).rejects.toThrow(reason);
       expect(d.store.pending()).toEqual([]);
     });
+
+    // M5: a rule producing nothing still queues the task, but says so.
+    it('warns on stderr when the new rule produces no occurrence', async () => {
+      const d = deps(unreachable);
+      const out = await run(
+        ['add', 'leap task', '--rrule', 'FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=31'],
+        d,
+      );
+      expect(queuedFields(d)).toMatchObject({
+        rrule: 'FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=31',
+      });
+      expect(out.stderr.join('\n')).toMatch(
+        /this rule produces no occurrence from 2026-09-26/,
+      );
+    });
+
+    it('says nothing about an empty rule for one that does produce', async () => {
+      const d = deps(unreachable);
+      const out = await run(
+        ['add', 'water the plants', '--rrule', 'FREQ=DAILY'],
+        d,
+      );
+      expect(out.stderr.join('\n')).not.toMatch(/produces no occurrence/);
+    });
   });
 
   describe('recurrence and marks', () => {
@@ -459,6 +483,31 @@ describe('run', () => {
       expect(await lines(d)).toEqual([
         '000002  0  water the plants  2026-09-26',
       ]);
+    });
+
+    // I3: the server settled undo's create, but kept the row's earlier
+    // state — a later change from another device decided it first.
+    it('notes on stderr when the server kept another state', async () => {
+      const d = hexDeps(fakeServer().send);
+      await run(['add', 'water the plants', '--rrule', 'FREQ=DAILY'], d);
+      await run(['done', '0002'], d);
+
+      d.send = (request) =>
+        Promise.resolve(
+          json({
+            cursor: request.since,
+            results: request.ops.map((op) => ({
+              opId: op.opId,
+              status: 'superseded',
+            })),
+            changes: [],
+          }),
+        );
+      const out = await run(['undo', '0002', '--json'], d);
+
+      expect(out.exit).toBe(0);
+      expect(out.stderr.join('\n')).toMatch(/the server kept 'done'/);
+      expect(envelope(out.stdout)).toMatchObject({ data: { state: 'done' } });
     });
 
     it('queues a create of the derived task occurrence', async () => {
