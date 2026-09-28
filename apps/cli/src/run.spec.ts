@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Change, Op, SyncRequest } from '@todoer/specs';
+import { taskOccurrenceId } from '@todoer/specs';
 import { RefusalError, UsageError } from './protocol.js';
 import { run, type Deps } from './run.js';
 import { Store } from './store.js';
@@ -23,6 +24,15 @@ function deps(send: Transport): Deps {
   };
 }
 
+/** Like deps, with ids shaped like UUIDs so a suffix can name them:
+ *  the first task is …000000000002 (op ids take the odd numbers). */
+function hexDeps(send: Transport): Deps {
+  const d = deps(send);
+  let n = 0;
+  d.newId = () => `0192a1b2-0000-7000-8000-${String(++n).padStart(12, '0')}`;
+  return d;
+}
+
 const unreachable: Transport = () =>
   Promise.reject(new TypeError('fetch failed'));
 
@@ -38,12 +48,25 @@ function fakeServer() {
   const send: Transport = (request) => {
     requests.push(structuredClone(request));
     const results = request.ops.map((op) => {
-      if (op.kind === 'create' && !rows.has(op.id)) {
+      const existing = rows.get(op.id);
+      if (op.kind === 'create' && existing === undefined) {
         rows.set(op.id, {
           table: op.table,
           id: op.id,
           seq: ++seq,
           row: { ...op.fields, id: op.id, deletedAt: null },
+        });
+        return { opId: op.opId, status: 'applied' as const };
+      }
+      if (
+        op.kind === 'create' &&
+        op.table === 'task_occurrence' &&
+        existing !== undefined
+      ) {
+        rows.set(op.id, {
+          ...existing,
+          seq: ++seq,
+          row: { ...existing.row, ...op.fields },
         });
         return { opId: op.opId, status: 'applied' as const };
       }
@@ -119,7 +142,7 @@ describe('run', () => {
     await run(['add', 'offline task p1'], d);
     const out = await run(['list'], d);
     expect(out.exit).toBe(5);
-    expect(out.stdout).toEqual(['1  offline task']);
+    expect(out.stdout).toEqual(['id-2  1  offline task']);
   });
 
   it('prints plain text without --json', async () => {
@@ -127,7 +150,7 @@ describe('run', () => {
     expect((await run(['add', 'call the bank p2'], d)).stdout).toEqual([
       'call the bank',
     ]);
-    expect((await run(['list'], d)).stdout).toEqual(['2  call the bank']);
+    expect((await run(['list'], d)).stdout).toEqual(['id-2  2  call the bank']);
   });
 
   // M4: planAdd's notice about a dropped marker is not part of the answer.
@@ -380,6 +403,243 @@ describe('run', () => {
       await expect(attempt).rejects.toThrow(UsageError);
       await expect(run(['add', 'x', ...flags], d)).rejects.toThrow(reason);
       expect(d.store.pending()).toEqual([]);
+    });
+  });
+
+  describe('recurrence and marks', () => {
+    const TASK = '0192a1b2-0000-7000-8000-000000000002';
+
+    async function lines(d: Deps): Promise<string[]> {
+      return (await run(['list'], d)).stdout;
+    }
+
+    // Scenario 1.
+    it('lists a recurring task at today with its reference', async () => {
+      const d = hexDeps(fakeServer().send);
+      await run(['add', 'water the plants', '--rrule', 'FREQ=DAILY'], d);
+      expect(await lines(d)).toEqual([
+        '000002  0  water the plants  2026-09-26',
+      ]);
+    });
+
+    // Scenario 2 and Review Focus 1.
+    it('moves on after done, and undo reopens the same day', async () => {
+      const d = hexDeps(fakeServer().send);
+      await run(['add', 'water the plants', '--rrule', 'FREQ=DAILY'], d);
+
+      const done = await run(['done', '0002', '--json'], d);
+      expect(done.exit).toBe(0);
+      expect(envelope(done.stdout)).toMatchObject({
+        data: {
+          taskId: TASK,
+          occurrence: '2026-09-26',
+          state: 'done',
+          completedAt: '2026-09-26T10:00:00.000Z',
+        },
+      });
+      expect(await lines(d)).toEqual([
+        '000002  0  water the plants  2026-09-27',
+      ]);
+
+      await run(['undo', '0002'], d);
+      expect(await lines(d)).toEqual([
+        '000002  0  water the plants  2026-09-26',
+      ]);
+    });
+
+    it('queues a create of the derived task occurrence', async () => {
+      const d = hexDeps(unreachable);
+      await run(['add', 'x', '--rrule', 'FREQ=DAILY'], d);
+      await run(['skip', '0002'], d);
+      expect(d.store.pending().at(-1)).toMatchObject({
+        kind: 'create',
+        table: 'task_occurrence',
+        id: taskOccurrenceId(TASK, '2026-09-26'),
+        fields: {
+          taskId: TASK,
+          occurrence: '2026-09-26',
+          state: 'skipped',
+          completedAt: null,
+        },
+      });
+    });
+
+    // Scenario 3.
+    it('hides a one-off task once done and shows it again after undo', async () => {
+      const d = hexDeps(fakeServer().send);
+      await run(['add', 'file taxes'], d);
+      await run(['done', '000002'], d);
+      expect(await lines(d)).toEqual([]);
+      await run(['undo', '000002'], d);
+      expect(await lines(d)).toEqual(['000002  0  file taxes']);
+    });
+
+    // Scenario 4 and Review Focus 2.
+    it('marks offline, exits 5, and list already shows it', async () => {
+      const d = hexDeps(fakeServer().send);
+      await run(['add', 'water the plants', '--rrule', 'FREQ=DAILY'], d);
+      d.send = unreachable;
+      expect((await run(['done', '0002'], d)).exit).toBe(5);
+      expect(await lines(d)).toEqual([
+        '000002  0  water the plants  2026-09-27',
+      ]);
+      await run(['undo', '0002'], d);
+      expect(await lines(d)).toEqual([
+        '000002  0  water the plants  2026-09-26',
+      ]);
+    });
+
+    // Scenario 5 and Review Focus 3.
+    it('lists a daily task missed for days once, at today', async () => {
+      const d = hexDeps(fakeServer().send);
+      await run(
+        ['add', 'stretch', '--rrule', 'FREQ=DAILY', '--from', '2026-09-20'],
+        d,
+      );
+      expect(await lines(d)).toEqual(['000002  0  stretch  2026-09-26']);
+    });
+
+    it('marks a named occurrence with --on', async () => {
+      const d = hexDeps(fakeServer().send);
+      await run(
+        [
+          'add',
+          'stand-up',
+          '--rrule',
+          'FREQ=WEEKLY;BYDAY=MO',
+          '--from',
+          '2026-09-28',
+        ],
+        d,
+      );
+      await run(['done', '0002', '--on', '2026-10-05'], d);
+      expect(await lines(d)).toEqual(['000002  0  stand-up  2026-09-28']);
+      await run(['done', '0002'], d);
+      expect(await lines(d)).toEqual(['000002  0  stand-up  2026-10-12']);
+    });
+
+    // Review Focus 5.
+    it('refuses done without --on once the rule has run out', async () => {
+      const d = hexDeps(fakeServer().send);
+      await run(
+        [
+          'add',
+          'twice',
+          '--rrule',
+          'FREQ=DAILY;COUNT=1',
+          '--from',
+          '2026-09-20',
+        ],
+        d,
+      );
+      await run(['done', '0002'], d);
+      expect(await lines(d)).toEqual([]);
+      await expect(run(['done', '0002'], d)).rejects.toThrow(
+        /no open occurrence left/,
+      );
+    });
+
+    it.each([
+      [
+        ['done', '0002', '--on', '2026-09-27'],
+        /2026-09-27 is not an occurrence/,
+      ],
+      [['done', '0002', '--on', 'soon'], /--on must be a date/],
+      [['done'], /needs exactly one task id/],
+      [['done', '0002', '0002'], /needs exactly one task id/],
+      [['done', 'ffff'], /no task matches ffff/],
+    ])('refuses %j with exit 2 and queues nothing', async (argv, reason) => {
+      const d = hexDeps(unreachable);
+      await run(
+        [
+          'add',
+          'weekly',
+          '--rrule',
+          'FREQ=WEEKLY;BYDAY=MO',
+          '--from',
+          '2026-09-28',
+        ],
+        d,
+      );
+      const before = d.store.pending().length;
+      await expect(run(argv, d)).rejects.toThrow(UsageError);
+      await expect(run(argv, d)).rejects.toThrow(reason);
+      expect(d.store.pending()).toHaveLength(before);
+    });
+
+    it('refuses --on for a one-off task, and undo with nothing to undo', async () => {
+      const d = hexDeps(unreachable);
+      await run(['add', 'once'], d);
+      await expect(
+        run(['done', '0002', '--on', '2026-09-26'], d),
+      ).rejects.toThrow(/--on is only for recurring tasks/);
+      await run(['add', 'daily', '--rrule', 'FREQ=DAILY'], d);
+      await expect(run(['undo', '0004'], d)).rejects.toThrow(/nothing to undo/);
+    });
+
+    // FR-009: a task occurrence whose task this replica does not hold.
+    it('ignores a task occurrence whose task is absent', async () => {
+      const d = hexDeps(fakeServer().send);
+      d.store.mergeChanges([
+        {
+          table: 'task_occurrence',
+          id: 'orphan',
+          seq: 1,
+          row: {
+            id: 'orphan',
+            taskId: 'gone',
+            occurrence: null,
+            state: 'done',
+            deletedAt: null,
+          },
+        },
+      ]);
+      await run(['add', 'file taxes'], d);
+      expect(await lines(d)).toEqual(['000002  0  file taxes']);
+    });
+
+    // FR-010, ADR 0009: a subtask lives on its parent's occurrence axis.
+    it("lists a subtask at its parent's occurrence and marks it there", async () => {
+      const d = hexDeps(unreachable);
+      d.store.mergeChanges([
+        {
+          table: 'task',
+          id: 'parent-0000-00aaaa',
+          seq: 1,
+          row: {
+            id: 'parent-0000-00aaaa',
+            title: 'clean the kitchen',
+            priority: 0,
+            rrule: 'FREQ=WEEKLY;BYDAY=MO',
+            dtstart: '2026-09-21',
+            parentId: null,
+            deletedAt: null,
+          },
+        },
+        {
+          table: 'task',
+          id: 'child-00000-00bbbb',
+          seq: 2,
+          row: {
+            id: 'child-00000-00bbbb',
+            title: 'dishes',
+            priority: 0,
+            rrule: null,
+            dtstart: null,
+            parentId: 'parent-0000-00aaaa',
+            deletedAt: null,
+          },
+        },
+      ]);
+      expect(await lines(d)).toEqual([
+        '00aaaa  0  clean the kitchen  2026-09-21',
+        '00bbbb  0  dishes  2026-09-21',
+      ]);
+      await run(['done', 'bbbb'], d);
+      expect(d.store.pending().at(-1)).toMatchObject({
+        id: taskOccurrenceId('child-00000-00bbbb', '2026-09-21'),
+        fields: { taskId: 'child-00000-00bbbb', occurrence: '2026-09-21' },
+      });
     });
   });
 });

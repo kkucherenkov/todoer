@@ -1,8 +1,22 @@
-import { isIsoDate, parseRrule, type OpCreate } from '@todoer/specs';
-import { localDate } from './occurrence.js';
+import {
+  isIsoDate,
+  parseRrule,
+  taskOccurrenceId,
+  type OpCreate,
+} from '@todoer/specs';
+import {
+  currentOccurrence,
+  isOccurrence,
+  latestClosed,
+  localDate,
+  recurrenceOf,
+  type Recurrence,
+  type StateOf,
+} from './occurrence.js';
 import { liveTasks, overlay } from './overlay.js';
 import { planAdd } from './parse-quick-add.js';
 import { ownOutcome, RefusalError, UsageError } from './protocol.js';
+import { resolveRef, shortRef } from './ref.js';
 import type { Row, Store } from './store.js';
 import { flush, type Transport } from './sync.js';
 import { unknownCommand } from './usage.js';
@@ -60,11 +74,24 @@ function planRecurrence(
   return { rrule, dtstart };
 }
 
+/** What each marking command writes into `state` (plan C design, Q4). */
+const MARK = { done: 'done', skip: 'skipped', undo: 'open' } as const;
+type Mark = keyof typeof MARK;
+
+function isMark(command: string | undefined): command is Mark {
+  return command === 'done' || command === 'skip' || command === 'undo';
+}
+
+/** A listed task: the row, its reference, and the date it is due (`null`
+ *  for a one-off task). */
+type Due = Row & { ref: string; occurrence: string | null };
+
 /**
  * Every command: flush the outbox and pull first (design doc, Q5), then
  * answer from the replica with the outbox applied on top. Exit 5 whenever
  * the server was not reached (Q3). Refusals and conflicts of the command's
- * own operation are thrown; index.ts turns them into exit codes.
+ * own operation are thrown; index.ts turns them into exit codes. add, done,
+ * skip and undo each queue one operation through `submit`.
  */
 export async function run(argv: string[], deps: Deps): Promise<Outcome> {
   const json = argv.includes('--json');
@@ -99,9 +126,59 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
     human = [title];
   } else if (command === 'list') {
     ({ synced } = await flush(store, deps.send));
-    const rows = liveTasks(tasks(store));
+    const rows = due(store, localDate(deps.now()));
     data = rows;
-    human = rows.map((row) => `${String(row.priority)}  ${String(row.title)}`);
+    human = rows.map((row) =>
+      [
+        row.ref,
+        String(row.priority),
+        String(row.title),
+        ...(row.occurrence === null ? [] : [row.occurrence]),
+      ].join('  '),
+    );
+  } else if (isMark(command)) {
+    const on = takeOption(rest, '--on');
+    const [ref, ...extra] = on.rest;
+    if (ref === undefined || extra.length > 0) {
+      throw new UsageError(`${command} needs exactly one task id or id suffix`);
+    }
+    // Resolved against what this client can see, before anything is sent:
+    // like every write, a mark works offline.
+    const all = tasks(store);
+    const task = resolveRef(liveTasks(all), ref);
+    const taskId = String(task.id);
+    const marks = occurrences(store);
+    const occurrence = pickOccurrence(
+      command,
+      recurrenceOf(task, parentOf(all, task)),
+      on.value,
+      localDate(deps.now()),
+      marks,
+      taskId,
+    );
+    const now = deps.now().toISOString();
+    const op: OpCreate = {
+      opId: deps.newId(),
+      kind: 'create',
+      table: 'task_occurrence',
+      id: taskOccurrenceId(taskId, occurrence),
+      fields: {
+        taskId,
+        occurrence,
+        state: MARK[command],
+        completedAt: command === 'done' ? now : null,
+      },
+      ts: now,
+    };
+    synced = await submit(store, deps.send, op, command);
+    data = occurrences(store).find((row) => row.id === op.id) ?? null;
+    human = [
+      [
+        command,
+        String(task.title),
+        ...(occurrence === null ? [] : [occurrence]),
+      ].join('  '),
+    ];
   } else if (command === 'outbox' && rest[0] === 'drop') {
     const ids = rest.slice(1);
     if (ids.length === 0) {
@@ -202,4 +279,95 @@ async function flushOwn(
 
 function tasks(store: Store): Row[] {
   return overlay('task', store.rows('task'), store.pending());
+}
+
+function occurrences(store: Store): Row[] {
+  return overlay(
+    'task_occurrence',
+    store.rows('task_occurrence'),
+    store.pending(),
+  );
+}
+
+function parentOf(all: Row[], task: Row): Row | undefined {
+  return typeof task.parentId === 'string'
+    ? all.find((row) => row.id === task.parentId)
+    : undefined;
+}
+
+/**
+ * One task's occurrence states, from `state` alone ("Notes for C1"). Only
+ * rows naming this task are read, so a task occurrence whose task is
+ * tombstoned or absent never affects anything (FR-009).
+ */
+// ponytail: a linear scan per lookup; index by task id if lists grow long.
+function stateOf(marks: Row[], taskId: string): StateOf {
+  return (occurrence) =>
+    marks.find(
+      (row) => row.taskId === taskId && (row.occurrence ?? null) === occurrence,
+    )?.state;
+}
+
+/** Each live task once, at its current occurrence (plan C design, Q11). */
+function due(store: Store, today: string): Due[] {
+  const all = tasks(store);
+  const marks = occurrences(store);
+  return liveTasks(all).flatMap((task) => {
+    const taskId = String(task.id);
+    const current = currentOccurrence(
+      recurrenceOf(task, parentOf(all, task)),
+      stateOf(marks, taskId),
+      today,
+    );
+    return current === null
+      ? []
+      : [{ ...task, ref: shortRef(taskId), occurrence: current.occurrence }];
+  });
+}
+
+/**
+ * The date a mark applies to. `--on` names one the rule produces; otherwise
+ * `done`/`skip` take the current occurrence and `undo` the latest closed one
+ * (plan C1, departure 1). Every refusal is a usage error: nothing is queued.
+ */
+function pickOccurrence(
+  command: Mark,
+  recurrence: Recurrence | null,
+  on: string | undefined,
+  today: string,
+  marks: Row[],
+  taskId: string,
+): string | null {
+  if (recurrence === null) {
+    if (on !== undefined) {
+      throw new UsageError('--on is only for recurring tasks');
+    }
+    if (command === 'undo' && latestClosed(marks, taskId) === null) {
+      throw new UsageError('nothing to undo: this task is not done or skipped');
+    }
+    return null;
+  }
+  if (on !== undefined) {
+    if (!isIsoDate(on)) throw new UsageError('--on must be a date, YYYY-MM-DD');
+    if (!isOccurrence(recurrence, on)) {
+      throw new UsageError(`${on} is not an occurrence of this task`);
+    }
+    return on;
+  }
+  if (command === 'undo') {
+    const last = latestClosed(marks, taskId);
+    if (last === null) {
+      throw new UsageError(
+        'nothing to undo: no occurrence of this task is done or skipped',
+      );
+    }
+    return last.occurrence;
+  }
+  const current = currentOccurrence(recurrence, stateOf(marks, taskId), today);
+  if (current === null) {
+    throw new UsageError(
+      'this task has no open occurrence left — name one with --on',
+    );
+  }
+  return current.occurrence;
 }
