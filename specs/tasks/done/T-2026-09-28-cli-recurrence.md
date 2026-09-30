@@ -93,7 +93,7 @@ every other command.
 - **SC-002** `pnpm --filter @todoer/cli test` passes every case of
   `vectors/rrule.json`.
 - [x] every FR has a test that failed before the code made it pass
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
 - [x] no document still asserts the behaviour this task replaced
 - [x] dnote changelog line
