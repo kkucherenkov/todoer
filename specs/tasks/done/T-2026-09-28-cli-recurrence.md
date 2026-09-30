@@ -9,6 +9,7 @@
   0015
 - Plan: [docs/plans/2026-09-28-plan-c1-cli-recurrence.md](../../../docs/plans/2026-09-28-plan-c1-cli-recurrence.md)
 - Completed: 2026-09-28
+- Result: https://github.com/kkucherenkov/todoer/pull/10
 
 ### Goal
 
