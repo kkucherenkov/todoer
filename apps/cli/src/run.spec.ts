@@ -166,10 +166,19 @@ describe('run', () => {
         'create task_tag',
       ]);
       const [project, tag, task, link] = d.store.pending();
-      expect(project).toMatchObject({ id: 'id-1', fields: { name: 'finance', rank: 'a0' } });
+      expect(project).toMatchObject({
+        id: 'id-1',
+        fields: { name: 'finance', rank: 'a0' },
+      });
       expect(tag).toMatchObject({ id: 'id-3', fields: { name: '@phone' } });
-      expect(task).toMatchObject({ id: 'id-6', fields: { title: 'call the bank', projectId: 'id-1' } });
-      expect(link).toMatchObject({ id: taskTagId('id-6', 'id-3'), fields: { taskId: 'id-6', tagId: 'id-3' } });
+      expect(task).toMatchObject({
+        id: 'id-6',
+        fields: { title: 'call the bank', projectId: 'id-1' },
+      });
+      expect(link).toMatchObject({
+        id: taskTagId('id-6', 'id-3'),
+        fields: { taskId: 'id-6', tagId: 'id-3' },
+      });
       expect(out.stderr).toContain('note: created #finance @phone');
       expect(out.stdout).toEqual(['call the bank']);
     });
@@ -182,7 +191,9 @@ describe('run', () => {
       const creates = d.store.pending().filter((op) => op.table === 'tag');
       expect(creates).toHaveLength(1);
       const links = d.store.pending().filter((op) => op.table === 'task_tag');
-      expect(links.map((op) => (op.kind === 'create' ? op.fields.tagId : null))).toEqual(['id-1', 'id-1']);
+      expect(
+        links.map((op) => (op.kind === 'create' ? op.fields.tagId : null)),
+      ).toEqual(['id-1', 'id-1']);
     });
 
     // Review Focus 5: any refused op is the command's failure.
@@ -193,7 +204,10 @@ describe('run', () => {
             cursor: 0,
             results: request.ops.map((op) => ({
               opId: op.opId,
-              status: op.table === 'tag' ? ('rejected' as const) : ('applied' as const),
+              status:
+                op.table === 'tag'
+                  ? ('rejected' as const)
+                  : ('applied' as const),
               ...(op.table === 'tag' ? { reason: 'nope' } : {}),
             })),
             changes: [],
@@ -207,6 +221,40 @@ describe('run', () => {
       const d = deps(fakeServer().send);
       const out = await run(['add', 'buy milk'], d);
       expect(out.stderr).toEqual([]);
+    });
+
+    // Scenario 3.
+    it('shows labels after the title and filters by all of them', async () => {
+      const d = deps(fakeServer().send);
+      await run(['add', 'call the bank @phone #finance'], d);
+      await run(['add', 'water the plants @home'], d);
+      await run(['add', 'ring the plumber @phone @home'], d);
+
+      expect((await run(['list'], d)).stdout).toEqual([
+        'id-6  0  call the bank  #finance @phone',
+        'id-11  0  water the plants  @home',
+        'id-14  0  ring the plumber  @home @phone',
+      ]);
+      expect((await run(['list', '@Phone', '@home'], d)).stdout).toEqual([
+        'id-14  0  ring the plumber  @home @phone',
+      ]);
+      expect((await run(['list', '#finance'], d)).stdout).toEqual([
+        'id-6  0  call the bank  #finance @phone',
+      ]);
+      expect(
+        envelope((await run(['list', '#finance', '--json'], d)).stdout),
+      ).toMatchObject({
+        data: [
+          { title: 'call the bank', project: 'finance', tags: ['@phone'] },
+        ],
+      });
+    });
+
+    it('refuses a list argument that is not a marker', async () => {
+      const d = deps(unreachable);
+      await expect(run(['list', 'phone'], d)).rejects.toThrow(
+        /list takes @tag and #project filters/,
+      );
     });
   });
 

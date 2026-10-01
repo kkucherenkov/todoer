@@ -1,5 +1,6 @@
 import {
   isIsoDate,
+  nameKey,
   parseRrule,
   taskOccurrenceId,
   taskTagId,
@@ -18,9 +19,9 @@ import {
   type Recurrence,
   type StateOf,
 } from './occurrence.js';
-import { resolveLabels } from './labels.js';
+import { labelsOf, resolveLabels } from './labels.js';
 import { liveTasks, overlay } from './overlay.js';
-import { planAdd } from './parse-quick-add.js';
+import { PROJECT, TAG, planAdd } from './parse-quick-add.js';
 import { ownOutcome, RefusalError, UsageError } from './protocol.js';
 import { resolveRef, shortRef } from './ref.js';
 import type { Row, Store } from './store.js';
@@ -114,7 +115,12 @@ function isMark(command: string | undefined): command is Mark {
 
 /** A listed task: the row, its reference, and the date it is due (`null`
  *  for a one-off task). */
-type Due = Row & { ref: string; occurrence: string | null };
+type Due = Row & {
+  ref: string;
+  occurrence: string | null;
+  project: string | null;
+  tags: string[];
+};
 
 /**
  * Every command: flush the outbox and pull first (design doc, Q5), then
@@ -176,18 +182,44 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
       fields: { taskId: op.id, tagId },
       ts,
     }));
-    synced = await submit(store, deps.send, [...labels.creates, op, ...linkOps], 'add');
+    synced = await submit(
+      store,
+      deps.send,
+      [...labels.creates, op, ...linkOps],
+      'add',
+    );
     data = tasks(store).find((row) => row.id === op.id) ?? null;
     human = [title];
   } else if (command === 'list') {
+    const filters = rest.map((arg) => {
+      if (TAG.test(arg)) return { tag: nameKey(arg) };
+      if (PROJECT.test(arg)) return { project: nameKey(arg.slice(1)) };
+      throw new UsageError(
+        `list takes @tag and #project filters, not ${JSON.stringify(arg)}`,
+      );
+    });
     ({ synced } = await flush(store, deps.send));
-    const rows = due(store, localDate(deps.now()));
+    const rows = due(store, localDate(deps.now())).filter((row) =>
+      filters.every((f) =>
+        'tag' in f
+          ? row.tags.some((name) => nameKey(name) === f.tag)
+          : row.project !== null && nameKey(row.project) === f.project,
+      ),
+    );
     data = rows;
     human = rows.map((row) =>
       [
         row.ref,
         String(row.priority),
         String(row.title),
+        ...(row.project === null && row.tags.length === 0
+          ? []
+          : [
+              [
+                ...(row.project === null ? [] : [`#${row.project}`]),
+                ...row.tags,
+              ].join(' '),
+            ]),
         ...(row.occurrence === null ? [] : [row.occurrence]),
       ].join('  '),
     );
@@ -366,6 +398,10 @@ function tagRows(store: Store): Row[] {
   return overlay('tag', store.rows('tag'), store.pending());
 }
 
+function links(store: Store): Row[] {
+  return overlay('task_tag', store.rows('task_tag'), store.pending());
+}
+
 function occurrences(store: Store): Row[] {
   return overlay(
     'task_occurrence',
@@ -397,6 +433,11 @@ function stateOf(marks: Row[], taskId: string): StateOf {
 function due(store: Store, today: string): Due[] {
   const all = tasks(store);
   const marks = occurrences(store);
+  const labelRows = {
+    projects: projects(store),
+    tags: tagRows(store),
+    links: links(store),
+  };
   return liveTasks(all).flatMap((task) => {
     const taskId = String(task.id);
     const current = currentOccurrence(
@@ -406,7 +447,14 @@ function due(store: Store, today: string): Due[] {
     );
     return current === null
       ? []
-      : [{ ...task, ref: shortRef(taskId), occurrence: current.occurrence }];
+      : [
+          {
+            ...task,
+            ref: shortRef(taskId),
+            occurrence: current.occurrence,
+            ...labelsOf(task, labelRows),
+          },
+        ];
   });
 }
 

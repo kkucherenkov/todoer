@@ -9,8 +9,8 @@ export type QuickAdd = {
 
 // A token only counts when it stands alone, which is what keeps `a@b.c` from
 // being read as a tag and `p5` from being read as a priority.
-const TAG = /^@[\p{L}\p{N}_-]+$/u;
-const PROJECT = /^#[\p{L}\p{N}_-]+$/u;
+export const TAG = /^@[\p{L}\p{N}_-]+$/u;
+export const PROJECT = /^#[\p{L}\p{N}_-]+$/u;
 const PRIORITY = /^p([0-4])$/;
 
 export function parseQuickAdd(input: string): QuickAdd {

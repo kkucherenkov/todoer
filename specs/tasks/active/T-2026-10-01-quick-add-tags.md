@@ -93,7 +93,7 @@ rows as one, and merges them automatically after each pull.
 - [x] T002 [FR-002, FR-004] resolve and label tasks, pure — plan Task 2
 - [x] T003 [FR-003, FR-005] `add` stores the markers; multi-op submit —
       plan Task 3
-- [ ] T004 [FR-006, FR-007] `list` shows and filters by labels — plan Task 4
+- [x] T004 [FR-006, FR-007] `list` shows and filters by labels — plan Task 4
 - [ ] T005 [FR-008] plan the merge, pure — plan Task 5
 - [ ] T006 [FR-008, FR-009] queue the merge after every pull — plan Task 6
 - [ ] T007 [FR-010] HELP, README, ADR 0007, walking skeleton — plan Task 7
