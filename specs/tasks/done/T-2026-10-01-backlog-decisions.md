@@ -2,11 +2,12 @@
 
 - Created: 2026-10-01
 - Owner: claude
-- Status: ready
+- Status: done
 - Blockers: —
 - Spec: [docs/specs/2026-10-01-client-shells-design.md](../../../docs/specs/2026-10-01-client-shells-design.md)
   (Backlog decisions, Q4–Q7); tuxedo #390, #391, #361, #407
 - Plan: [docs/plans/2026-10-01-plan-backlog-fixes.md](../../../docs/plans/2026-10-01-plan-backlog-fixes.md)
+- Completed: 2026-10-01
 
 ### Goal
 
@@ -50,11 +51,11 @@ memory; behind a reverse proxy the per-IP rate limits were instance-wide.
 ### Definition of Done
 
 - **SC-001** the four scenarios pass.
-- [ ] every FR has a test that failed before the code made it pass
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] every FR has a test that failed before the code made it pass
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 

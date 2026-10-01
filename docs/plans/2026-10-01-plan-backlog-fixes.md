@@ -16,7 +16,7 @@ dependencies.
 
 **Spec:** [`docs/specs/2026-10-01-client-shells-design.md`](../specs/2026-10-01-client-shells-design.md),
 section "Backlog decisions". Task spec:
-[`specs/tasks/active/T-2026-10-01-backlog-decisions.md`](../../specs/tasks/active/T-2026-10-01-backlog-decisions.md).
+[`specs/tasks/done/T-2026-10-01-backlog-decisions.md`](../../specs/tasks/done/T-2026-10-01-backlog-decisions.md).
 
 ## Global Constraints
 
