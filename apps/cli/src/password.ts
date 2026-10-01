@@ -22,10 +22,20 @@ export async function readPassword(
   stderr.write('password: ');
   stdin.setRawMode(true);
   let password = '';
+  let skip = 0;
   try {
     for await (const chunk of stdin) {
       for (const ch of String(chunk)) {
-        if (ch === '\r' || ch === '\n') return password;
+        if (skip > 0) {
+          // The `[` and final byte of an escape sequence, e.g. an arrow key.
+          skip -= 1;
+          continue;
+        }
+        if (ch === '\x1b') {
+          skip = 2;
+          continue;
+        }
+        if (ch === '\r' || ch === '\n' || ch === '\x04') return password;
         if (ch === '\x03') {
           // process.exit skips the finally below.
           stdin.setRawMode(false);

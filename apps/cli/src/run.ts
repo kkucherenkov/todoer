@@ -7,7 +7,7 @@ import {
   type OpCreate,
   type Rrule,
 } from '@todoer/specs';
-import type { AuthApi } from './auth.js';
+import type { AuthApi, TokenSource } from './auth.js';
 import { expand } from './expand.js';
 import {
   addDays,
@@ -36,6 +36,10 @@ export type Deps = {
   now: () => Date;
   newId: () => string;
   auth: AuthApi;
+  /** The CLI's own stored session: never `TODOER_TOKEN`, which is not one. */
+  tokens: TokenSource;
+  /** `TODOER_TOKEN` is set. */
+  envToken: boolean;
   readPassword: () => Promise<string>;
 };
 
@@ -150,25 +154,32 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
     }
     const session = await deps.auth.login(email, await deps.readPassword());
     await store.withWriteLock(() => Promise.resolve(store.saveAuth(session)));
-    return accountOutcome(store, json, { email }, `signed in as ${email}`);
+    return accountOutcome(
+      store,
+      json,
+      { email },
+      `signed in as ${email}`,
+      undefined,
+      deps.envToken
+        ? ['TODOER_TOKEN is set and still overrides the stored session']
+        : [],
+    );
   }
   if (command === 'logout') {
     const all = rest.length === 1 && rest[0] === '--all';
     if (rest.length > 0 && !all)
       throw new UsageError('logout takes only --all');
-    const auth = store.auth();
     let failure: unknown;
-    if (auth !== undefined) {
+    if (store.auth() !== undefined) {
       try {
-        await deps.auth.logout(
-          auth.accessToken,
-          all ? { all: true } : { refreshToken: auth.refreshToken },
-        );
+        await revoke(deps, all);
       } catch (error) {
         failure = error;
       }
       // The caller asked to sign out: the tokens go whatever the server said.
       await store.withWriteLock(() => Promise.resolve(store.clearAuth()));
+    } else if (deps.envToken) {
+      stderr.push('TODOER_TOKEN is not a session the CLI can sign out');
     }
     if (failure instanceof RefusalError) {
       throw new RefusalError(`signed out locally, but ${failure.message}`);
@@ -182,6 +193,7 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
       failure === undefined
         ? undefined
         : 'signed out locally, but the server was not reached: the session stays valid there until it expires',
+      stderr,
     );
   }
 
@@ -399,12 +411,43 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
   };
 }
 
+/**
+ * Signs the stored session out on the server. A token this close to expiry is
+ * refreshed first, and a 401 renews once and retries once: `POST /auth/logout`
+ * is behind the access guard, and an expired token would leave the session
+ * alive there. A refused refresh means the session is dead already.
+ */
+async function revoke(deps: Deps, all: boolean): Promise<void> {
+  const { store, tokens } = deps;
+  const ended = (error: unknown) => {
+    if (error instanceof RefusalError) return null;
+    throw error;
+  };
+  const send = (bearer: string) => {
+    const auth = store.auth();
+    return auth === undefined
+      ? Promise.resolve(undefined)
+      : deps.auth.logout(
+          bearer,
+          all ? { all: true } : { refreshToken: auth.refreshToken },
+        );
+  };
+  const bearer = await tokens.current().catch(ended);
+  if (bearer === null || (await send(bearer)) !== 'unauthorized') return;
+  const renewed = await tokens.renew(bearer).catch(ended);
+  if (renewed === null) return;
+  if ((await send(renewed)) === 'unauthorized') {
+    throw new RefusalError('logout refused: 401');
+  }
+}
+
 function accountOutcome(
   store: Store,
   json: boolean,
   data: unknown,
   human: string,
   unreached?: string,
+  notes: string[] = [],
 ): Outcome {
   const synced = unreached === undefined;
   return {
@@ -412,7 +455,7 @@ function accountOutcome(
     stdout: [
       json ? JSON.stringify({ data, synced, outbox: store.counts() }) : human,
     ],
-    stderr: synced ? [] : [unreached],
+    stderr: synced ? notes : [...notes, unreached],
   };
 }
 

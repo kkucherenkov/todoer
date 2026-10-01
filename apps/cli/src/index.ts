@@ -19,15 +19,15 @@ async function main(): Promise<number> {
   const store = Store.open(config.dbPath);
   try {
     const auth = httpAuthApi(config);
+    const now = () => new Date();
     const outcome = await run(argv, {
       store,
-      send: httpTransport(
-        config,
-        tokenSource(store, auth, config.token, () => new Date()),
-      ),
-      now: () => new Date(),
+      send: httpTransport(config, tokenSource(store, auth, config.token, now)),
+      now,
       newId: uuidv7,
       auth,
+      tokens: tokenSource(store, auth, '', now),
+      envToken: config.token !== '',
       readPassword: () => readPassword(process.env),
     });
     // stderr first, and stdout exactly one value under --json.

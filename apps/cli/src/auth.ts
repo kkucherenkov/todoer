@@ -7,7 +7,11 @@ export type AuthApi = {
   login(email: string, password: string): Promise<StoredAuth>;
   /** `'invalid'`: the server no longer accepts this refresh token. */
   refresh(refreshToken: string): Promise<StoredAuth | 'invalid'>;
-  logout(accessToken: string, body: LogoutRequest): Promise<void>;
+  /** `'unauthorized'`: the server refused the access token. */
+  logout(
+    accessToken: string,
+    body: LogoutRequest,
+  ): Promise<'unauthorized' | undefined>;
 };
 
 export type TokenSource = {
@@ -105,6 +109,7 @@ export function httpAuthApi(config: Config): AuthApi {
     },
     async logout(accessToken, body) {
       const response = await post('/auth/logout', body, accessToken);
+      if (response.status === 401) return 'unauthorized';
       if (!response.ok) throw await refuse('logout', response);
     },
   };

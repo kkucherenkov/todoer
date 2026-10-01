@@ -19,6 +19,12 @@ describe('readPassword', () => {
     expect(await readPassword({}, stdin)).toBe('a\nb\n');
   });
 
+  it('strips a CRLF line ending from a pipe', async () => {
+    const stdin = new PassThrough();
+    stdin.end('pw\r\n');
+    expect(await readPassword({}, stdin)).toBe('pw');
+  });
+
   it('reads a terminal in raw mode, honours backspace, restores the mode', async () => {
     const modes: boolean[] = [];
     const stdin = Object.assign(new PassThrough(), {
@@ -31,5 +37,15 @@ describe('readPassword', () => {
     expect(await pending).toBe('abc');
     expect(modes).toEqual([true, false]);
     expect(stderr.out.join('')).not.toContain('abc');
+  });
+
+  it('on a terminal, Ctrl-D ends the line and escape sequences are dropped', async () => {
+    const stdin = Object.assign(new PassThrough(), {
+      isTTY: true,
+      setRawMode: () => undefined,
+    });
+    const pending = readPassword({}, stdin, sink());
+    stdin.write('a\x1b[Ab\x04');
+    expect(await pending).toBe('ab');
   });
 });
