@@ -441,18 +441,21 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
   // (quick-add design, Q9). The merge is queued, not sent: the next command
   // delivers it, like any other queued operation.
   if (synced) {
-    // A failed delete or set on a row that is already a tombstone is moot.
-    // Two clients merging the same duplicates send the same delete, and the
-    // second gets `conflict`; a `done` queued offline on a task another
-    // device deleted has its `set statusId` refused ("row is deleted"). The
-    // row is gone either way, so left alone the entry would sit as failed
-    // forever.
+    // A failed delete, or a failed `set statusId`, on a row that is already a
+    // tombstone is moot. Two clients merging the same duplicates send the
+    // same delete, and the second gets `conflict`; a `done` queued offline on
+    // a task another device deleted has its `set statusId` refused ("row is
+    // deleted") while the mark itself lands. Left alone either entry would
+    // sit as failed forever. Any other failed set on a tombstone stays: it is
+    // an edit the user made, and its failure is theirs to see.
     // A row gone from the replica (after a 410 and a prune) leaves its failed
     // entry in place: there is no tombstone to prove it moot.
     for (const entry of store.entries()) {
       const { op } = entry;
       if (entry.status !== 'failed') continue;
-      if (op.kind !== 'delete' && op.kind !== 'set') continue;
+      const moot =
+        op.kind === 'delete' || (op.kind === 'set' && op.field === 'statusId');
+      if (!moot) continue;
       const gone = store
         .rows(op.table)
         .some((row) => row.id === op.id && row.deletedAt !== null);

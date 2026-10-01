@@ -1177,7 +1177,11 @@ describe('run', () => {
         expect(out.stderr.join('\n')).not.toMatch(/failed/);
       });
 
-      function failedSet(d: Deps, deletedAt: string | null) {
+      function failedSet(
+        d: Deps,
+        deletedAt: string | null,
+        field = 'statusId',
+      ) {
         d.store.mergeChanges([
           {
             table: 'task',
@@ -1191,7 +1195,7 @@ describe('run', () => {
           kind: 'set',
           table: 'task',
           id: 'task-x',
-          field: 'statusId',
+          field,
           value: 's-done',
           ts: 'T',
         });
@@ -1204,12 +1208,20 @@ describe('run', () => {
 
       // A done queued offline on a task another device deleted: the server
       // refuses the set on the tombstone, and nothing can ever fix it.
-      it('removes a failed set whose target row is a tombstone', async () => {
+      it('removes a failed set statusId whose task is a tombstone', async () => {
         const d = deps(fakeServer().send);
         failedSet(d, '2026-09-26T09:00:00.000Z');
         const out = await run(['list'], d);
         expect(d.store.entry('set-t')).toBeUndefined();
         expect(out.stderr.join('\n')).not.toMatch(/failed/);
+      });
+
+      // Any other set is an edit the user made: its failure stays visible.
+      it('keeps a failed edit on a tombstoned row', async () => {
+        const d = deps(fakeServer().send);
+        failedSet(d, '2026-09-26T09:00:00.000Z', 'title');
+        await run(['list'], d);
+        expect(d.store.entry('set-t')?.status).toBe('failed');
       });
 
       it('keeps a failed set whose target row is live', async () => {
