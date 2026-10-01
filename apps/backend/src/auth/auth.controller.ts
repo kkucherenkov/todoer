@@ -3,15 +3,18 @@ import {
   Body,
   ConflictException,
   Controller,
+  Delete,
   HttpCode,
+  Param,
   Post,
   Req,
+  ServiceUnavailableException,
   UnauthorizedException,
   UseGuards,
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
-import { uuidv7 } from 'uuidv7';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { AccountsService } from './accounts.service.js';
 import { AuthGuard, CurrentUser } from './auth.guard.js';
 import { AuthService, normalizeEmail } from './auth.service.js';
 import { passwordProblem } from './password-policy.js';
@@ -33,11 +36,13 @@ export class AuthController {
   private readonly loginByAddress = new RateLimiter(5, WINDOW_MS);
   private readonly loginByIp = new RateLimiter(20, WINDOW_MS);
   private readonly refreshByIp = new RateLimiter(30, WINDOW_MS);
+  private readonly resetByIp = new RateLimiter(20, WINDOW_MS);
 
   constructor(
     private readonly auth: AuthService,
     private readonly sessions: SessionService,
     private readonly prisma: PrismaService,
+    private readonly accounts: AccountsService,
   ) {}
 
   // Checked before any work, so a blocked request neither costs a scrypt call
@@ -123,14 +128,17 @@ export class AuthController {
     return this.sessions.start(userId);
   }
 
-  // Open registration: plan A has no owner-first or invitation gate (ADR
-  // 0014's rules are plan D). Acceptable on a self-hosted local instance,
-  // and load-bearing for Task 8's walking-skeleton.sh, which posts here.
   @Post('register')
-  async register(@Body() body: Credentials): Promise<SessionTokens> {
-    const id = uuidv7();
+  async register(
+    @Body() body: Credentials & { invitation?: string },
+  ): Promise<SessionTokens> {
     try {
-      await this.auth.register(id, body.email, body.password);
+      const { userId } = await this.accounts.register(
+        body.email,
+        body.password,
+        body.invitation,
+      );
+      return await this.sessions.start(userId);
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&
@@ -140,6 +148,57 @@ export class AuthController {
       }
       throw error;
     }
-    return this.sessions.start(id);
+  }
+
+  @Post('invites')
+  @UseGuards(AuthGuard)
+  async invite(
+    @CurrentUser() userId: string,
+    @Body() body: { email?: string },
+  ): Promise<{ token: string; expiresAt: string }> {
+    const { token, expiresAt } = await this.accounts.invite(userId, body.email);
+    return { token, expiresAt: expiresAt.toISOString() };
+  }
+
+  @Post('users/:id/password')
+  @HttpCode(204)
+  @UseGuards(AuthGuard)
+  async setUserPassword(
+    @CurrentUser() userId: string,
+    @Param('id') id: string,
+    @Body() body: { password: string },
+  ): Promise<void> {
+    await this.accounts.setPasswordFor(userId, id, body.password);
+  }
+
+  @Post('forgot')
+  forgot(): never {
+    throw new ServiceUnavailableException(
+      'mail is not configured on this instance — ask its owner to reset your password',
+    );
+  }
+
+  @Post('reset')
+  @HttpCode(204)
+  async reset(
+    @Body() body: { code: string; password: string },
+    @Req() req: Client,
+  ): Promise<void> {
+    const ip = req.ip ?? 'unknown';
+    const now = Date.now();
+    AuthController.check(now, [this.resetByIp, ip]);
+    // Reserved up front, like login; every attempt counts toward the budget.
+    this.resetByIp.fail(ip, now);
+    await this.accounts.reset(body.code, body.password);
+  }
+
+  @Delete('account')
+  @HttpCode(204)
+  @UseGuards(AuthGuard)
+  async deleteAccount(
+    @CurrentUser() userId: string,
+    @Body() body: { password: string },
+  ): Promise<void> {
+    await this.accounts.deleteAccount(userId, body.password);
   }
 }

@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { AccountsService } from './auth/accounts.service.js';
 import { AuthController } from './auth/auth.controller.js';
 import { AuthGuard } from './auth/auth.guard.js';
 import { AuthService } from './auth/auth.service.js';
@@ -18,6 +19,7 @@ import { SyncService } from './sync/sync.service.js';
     SyncService,
     PruneService,
     AuthService,
+    AccountsService,
     SessionService,
     AuthGuard,
   ],

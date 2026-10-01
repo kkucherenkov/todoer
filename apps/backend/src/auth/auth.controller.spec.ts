@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { uuidv7 } from 'uuidv7';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { AppConfig } from '../config/app-config.js';
+import { AccountsService } from './accounts.service.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService } from './auth.service.js';
 import { TooManyRequests } from './rate-limit.js';
@@ -28,7 +29,12 @@ beforeEach(async () => {
   await prisma.invitation.deleteMany({});
   await prisma.resetCode.deleteMany({});
   await prisma.user.deleteMany({});
-  controller = new AuthController(auth, sessions, prisma);
+  controller = new AuthController(
+    auth,
+    sessions,
+    prisma,
+    new AccountsService(prisma, auth, sessions),
+  );
   U = uuidv7();
   await auth.register(U, 'a@b.c', PASSWORD);
 });
@@ -199,5 +205,30 @@ describe('password change', () => {
       controller.refresh({ refreshToken: fresh.refreshToken }, req),
     ).resolves.toBeTruthy();
     await expect(login('a@b.c', NEW)).resolves.toBeTruthy();
+  });
+});
+
+describe('accounts routes', () => {
+  it('refuses registration and invitations to a non-owner, and forgot with 503', async () => {
+    await expect(controller.invite(U, { email: 'n@b.c' })).rejects.toThrow(
+      'owner only',
+    );
+    await expect(
+      controller.register({ email: 'n@b.c', password: PASSWORD }),
+    ).rejects.toThrow('registration is closed');
+    expect(() => controller.forgot()).toThrow(/mail is not configured/);
+  });
+
+  it('blocks the 21st reset from one address with 429', async () => {
+    const spy = vi.spyOn(AccountsService.prototype, 'reset');
+    for (let i = 0; i < 20; i++) {
+      await expect(
+        controller.reset({ code: 'nope', password: PASSWORD }, req),
+      ).rejects.toThrow('invalid code');
+    }
+    await expect(
+      controller.reset({ code: 'nope', password: PASSWORD }, req),
+    ).rejects.toBeInstanceOf(TooManyRequests);
+    expect(spy).toHaveBeenCalledTimes(20);
   });
 });

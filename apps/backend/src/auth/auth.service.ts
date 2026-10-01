@@ -44,7 +44,7 @@ export class AuthService {
     private readonly config: AppConfig,
   ) {}
 
-  private async hashPassword(password: string): Promise<string> {
+  async hashPassword(password: string): Promise<string> {
     const salt = randomBytes(16).toString('hex');
     const hash = ((await scrypt(password, salt, KEY_LEN)) as Buffer).toString(
       'hex',
