@@ -343,3 +343,87 @@ the refresh cookie (ADR 0011), a different flow. `tokenSource` and
 throw them. Messages keep flag names (`--on must be a date`, `do not run done
 again`); rewording them for a GUI is W2's call, since changing them in W0 would
 change CLI output.
+
+## Departures in plan W1
+
+Plan W1 added the SPA hosting and the refresh cookie to the backend and departed
+from this document and ADR 0011 in six places.
+
+**The cookie reaches every `/api/v1/auth/*` route, and the server reads it on
+refresh and logout.** ADR 0011 said "sent to `POST /auth/refresh` and to
+nothing else". This document already scoped the cookie to `/api/v1/auth`.
+Logout must revoke the session the cookie belongs to, and the web cannot read
+an `HttpOnly` cookie to copy it into the body; with a narrower path a web
+logout would leave its session alive for up to 30 days. Rejected: a second
+cookie for logout (two copies of one secret) and logout through `/auth/refresh`
+with a flag (one route, two meanings). ADR 0011 carries the amendment.
+
+**`PasswordChange` takes `transport` too, not only login and register.**
+`POST /auth/password` revokes every session, the cookie's included, and returns
+a fresh pair. Without the opt-in, a web client that changed its password would
+receive the new refresh token in a body JavaScript can read.
+
+**The CSP's script hashes are computed by the backend at startup, from the
+`index.html` it serves.** Nuxt's config script is inline, and no option moves it
+into a file. A nonce means rewriting `index.html` on every request, and hashes
+pinned in `nuxt.config` go stale on every change to public runtime config. So
+the backend reads `index.html` once, hashes each executable inline `<script>`
+and serves that same buffer: the policy always matches the bytes served. The
+cost is that a new build in `WEB_ROOT` needs a backend restart. `WEB_ROOT` is
+trusted content, and symlinks inside it are followed. The hashes cover only
+scripts present in the build artefact, so a script injected at runtime through
+rendered Markdown, the vector ADR 0011 names, matches none.
+
+**`style-src` allows `'unsafe-inline'`, and `script-src` allows
+`'wasm-unsafe-eval'`.** Inline script stays forbidden. Nuxt UI writes its theme
+into a runtime `<style>` element and Nuxt's SPA loading template is inline CSS;
+inline styles cannot run code. SQLite WASM (Q12) compiles WebAssembly, which a
+policy without `'wasm-unsafe-eval'` blocks; that keyword does not allow `eval`
+of JavaScript.
+
+**The fallback answers only requests whose `Accept` contains `text/html`.**
+"Every path outside `/api` and `/health`" would also answer a missing
+`/_nuxt/x.js` with a 200 HTML page. A browser fetches scripts with
+`Accept: */*`, so the result would be a MIME error instead of a 404, and a stale
+service worker could cache it. Navigations send `text/html`.
+
+**`main.ts`'s setup moved into `createApp()`.** `main.ts` calls `bootstrap()` on
+import, so a spec cannot import it. The middleware chain now lives in
+`create-app.ts`, and `create-app.spec.ts` pins the order that matters, the
+body parser before the validator (trap 3), over HTTP. The SPA goes first for
+tidiness only: the validator manages `/api/v1` alone and the SPA passes on
+`/api`, so its position is not load-bearing. The "Cost" of Q9 named `main.ts`; read
+`create-app.ts`.
+
+Two properties of the cookie are not departures but are worth knowing. Its
+Max-Age is fixed at the 30-day idle limit, so near the 365-day absolute limit it
+can outlive the session by up to 30 days; the server stays authoritative and
+answers 401. A duplicated `todoer_refresh` cookie reads as absent (a same-site
+sibling can plant a second one, cookie tossing), and a refused cookie refresh
+clears the cookie.
+
+### W2 notes
+
+**The CSP is fixed by the backend. For the web client to run under it:**
+
+- Keep `app.buildAssetsDir` at `/_nuxt/`. Hashed assets elsewhere get
+  `no-cache`, and assets outside the build get no immutable caching at all.
+- No inline event handlers, no `javascript:` URLs, no `eval` or `new Function`.
+  Do not inject inline scripts at runtime (`useHead({ script: [{ innerHTML }] })`).
+  Only inline scripts already in the generated `index.html` are allowed, by
+  hash.
+- Bundle icons (`@nuxt/icon` with a client bundle or local collections) and
+  fonts. `connect-src` and `default-src` are `'self'`, so the Iconify API and
+  remote font hosts are blocked.
+- Load SQLite WASM and the worker from the same origin. `'wasm-unsafe-eval'` is
+  present; blob: workers are not (`worker-src` falls back to `script-src`).
+- Make the Playwright suite fail on any `securitypolicyviolation` event, and run
+  it against the built SPA served by the backend with `WEB_ROOT`, not against
+  `nuxt dev`, which this CSP does not cover.
+- Sign in with `transport: 'cookie'` and refresh with `{}`. Never read or store
+  `refreshToken`. Before logout, refresh if the access token has expired, since
+  logout needs a valid bearer to clear the cookie.
+
+**Safari and `Secure` cookies on `http://localhost` are open.** W1's tests read
+`Set-Cookie` directly. W2 decides its dev setup (Chromium and Firefox over
+`http://localhost`, or an HTTPS dev server) when it runs Playwright's WebKit.

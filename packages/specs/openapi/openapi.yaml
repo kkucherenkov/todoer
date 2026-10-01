@@ -38,6 +38,14 @@ components:
     # Request schemas are closed (additionalProperties: false): the validator is the
     # runtime gate against drift. Response schemas stay open on purpose, so a server
     # that adds a field later does not break a client built against today's document.
+    # Where the response puts the refresh token (ADR 0011). `body`, the
+    # default when absent, returns it in SessionTokens: the CLI and Flutter.
+    # `cookie` sets it as an HttpOnly cookie scoped to /api/v1/auth and leaves
+    # it out of the body: the web client, where no script may read it.
+    TokenTransport:
+      type: string
+      enum: [body, cookie]
+
     LoginRequest:
       type: object
       required: [email, password]
@@ -52,15 +60,17 @@ components:
         # an ~80ms hash of it.
         email: { type: string, format: email, maxLength: 254 }
         password: { type: string, minLength: 8, maxLength: 256 }
+        transport: { $ref: "#/components/schemas/TokenTransport" }
 
     SessionTokens:
       type: object
-      required: [accessToken, accessExpiresAt, refreshToken]
+      required: [accessToken, accessExpiresAt]
       properties:
         accessToken: { type: string }
         accessExpiresAt: { type: string, format: date-time }
-        # Sent in the body only; the web client's cookie transport (ADR 0011)
-        # lands with the web client. Rotates on every use: store the newest.
+        # Present when the request used the body transport; absent when the
+        # refresh cookie carries it (ADR 0011). Rotates on every use: store
+        # the newest.
         refreshToken: { type: string }
 
     # Passwords below keep LoginRequest's 8..256 bounds. Strength (letters,
@@ -75,10 +85,12 @@ components:
         email: { type: string, format: email, maxLength: 254 }
         password: { type: string, minLength: 8, maxLength: 256 }
         invitation: { type: string, maxLength: 512 }
+        transport: { $ref: "#/components/schemas/TokenTransport" }
 
+    # Absent when the refresh cookie carries the token. The body is still
+    # required, and may be `{}`.
     RefreshRequest:
       type: object
-      required: [refreshToken]
       additionalProperties: false
       properties:
         refreshToken: { type: string, maxLength: 512 }
@@ -97,6 +109,7 @@ components:
       properties:
         currentPassword: { type: string, minLength: 8, maxLength: 256 }
         newPassword: { type: string, minLength: 8, maxLength: 256 }
+        transport: { $ref: "#/components/schemas/TokenTransport" }
 
     InviteRequest:
       type: object
@@ -310,7 +323,9 @@ paths:
       description: >-
         Verifies the password and opens a new session. Every failure is the same
         401, whether the address is unknown or the password wrong. Repeated
-        failures from one address or IP are answered 429 with Retry-After.
+        failures from one address or IP are answered 429 with Retry-After. With `transport: cookie` the refresh token is set as the
+        `todoer_refresh` cookie (`HttpOnly; Secure; SameSite=Strict;
+        Path=/api/v1/auth`) and is absent from the body.
       security: []
       requestBody:
         required: true
@@ -320,6 +335,10 @@ paths:
       responses:
         "200":
           description: signed in
+          headers:
+            Set-Cookie:
+              description: the refresh cookie, in cookie transport only
+              schema: { type: string }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SessionTokens" }
@@ -346,7 +365,9 @@ paths:
       description: >-
         Open only while the instance has no users; the first account becomes the
         owner. Afterwards an invitation is required, single-use and, when it was
-        issued for an address, valid only for that address.
+        issued for an address, valid only for that address. With `transport: cookie` the refresh token is set as the
+        `todoer_refresh` cookie (`HttpOnly; Secure; SameSite=Strict;
+        Path=/api/v1/auth`) and is absent from the body.
       security: []
       requestBody:
         required: true
@@ -356,6 +377,10 @@ paths:
       responses:
         "201":
           description: registered and signed in
+          headers:
+            Set-Cookie:
+              description: the refresh cookie, in cookie transport only
+              schema: { type: string }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SessionTokens" }
@@ -390,10 +415,15 @@ paths:
       operationId: postAuthRefresh
       summary: Exchange a refresh token for a new pair
       description: >-
-        Spends the presented refresh token and returns a new access token and a
-        new refresh token. A just-spent token presented again within about 30
-        seconds returns the same refresh token with a freshly minted access
-        token; a spent token past that window revokes the session. An expired, revoked or unknown token is 401.
+        Takes the refresh token from the body, or, when the body has none, from
+        the `todoer_refresh` cookie. Spends it and returns a new access token and
+        a new refresh token. A cookie-sourced refresh rotates the cookie and
+        leaves `refreshToken` out of the body. A body-sourced one answers in the
+        body. A just-spent token presented again within about 30 seconds returns
+        the same refresh token with a freshly minted access token; a spent token
+        past that window revokes the session. Limits and the grace window are the
+        same for both. An expired, revoked or unknown token is 401, and so is no
+        token at all.
       security: []
       requestBody:
         required: true
@@ -403,6 +433,10 @@ paths:
       responses:
         "200":
           description: rotated
+          headers:
+            Set-Cookie:
+              description: the refresh cookie, in cookie transport only
+              schema: { type: string }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SessionTokens" }
@@ -427,9 +461,10 @@ paths:
       operationId: postAuthLogout
       summary: Revoke the current session or all of them
       description: >-
-        Revokes the session of the presented refresh token, or every session of
-        the caller when `all` is true. Access tokens already issued live out their
-        15 minutes. The body is required but may be `{}`.
+        Revokes the session of the refresh token in the body, or, when the body
+        has none, in the `todoer_refresh` cookie; or every session of the caller
+        when `all` is true. Every 204 clears that cookie. Access tokens already
+        issued live out their 15 minutes. The body is required but may be `{}`.
       security:
         - bearerAuth: []
       requestBody:
@@ -440,6 +475,10 @@ paths:
       responses:
         "204":
           description: signed out
+          headers:
+            Set-Cookie:
+              description: the refresh cookie, cleared (expired) on every 204
+              schema: { type: string }
         "401":
           description: missing or invalid bearer token
           content:
@@ -460,7 +499,9 @@ paths:
         returns a fresh pair, so the client that changed it stays signed in. The
         new password must be strong: letters, digits and symbols. Wrong current
         passwords are limited per user: too many are answered 429 with
-        Retry-After.
+        Retry-After. With `transport: cookie` the refresh token is set as the
+        `todoer_refresh` cookie (`HttpOnly; Secure; SameSite=Strict;
+        Path=/api/v1/auth`) and is absent from the body.
       security:
         - bearerAuth: []
       requestBody:
@@ -471,6 +512,10 @@ paths:
       responses:
         "200":
           description: password changed
+          headers:
+            Set-Cookie:
+              description: the refresh cookie, in cookie transport only
+              schema: { type: string }
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SessionTokens" }

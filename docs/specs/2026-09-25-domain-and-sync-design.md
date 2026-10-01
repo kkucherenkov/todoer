@@ -341,8 +341,9 @@ POST   /auth/login             email and password
 POST   /auth/forgot            request a reset; the answer never reveals whether
                                the address is known
 POST   /auth/reset             consume a reset token
-POST   /auth/refresh           body today; the web's cookie arrives with the web client
-POST   /auth/logout            revoke the refresh token, or every session
+POST   /auth/refresh           the token from the body, or the web's cookie
+POST   /auth/logout            revoke the body's or the cookie's session, or every
+                               session; clears the cookie
 POST   /auth/password          change the password; returns a fresh session
 DELETE /auth/account           purge this user and everything they own
 

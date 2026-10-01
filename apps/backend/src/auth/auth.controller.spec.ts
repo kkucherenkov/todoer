@@ -6,7 +6,12 @@ import { AccountsService } from './accounts.service.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService, normalizeEmail } from './auth.service.js';
 import { TooManyRequests } from './rate-limit.js';
-import { SessionService } from './session.service.js';
+import type { CookieJar } from './refresh-cookie.js';
+import {
+  IDLE_MS,
+  SessionService,
+  type SessionTokens,
+} from './session.service.js';
 import { resetDatabase } from '../testing/reset-database.js';
 
 const prisma = new PrismaService();
@@ -15,8 +20,34 @@ const config = {
 } as AppConfig;
 const auth = new AuthService(prisma, config);
 const sessions = new SessionService(prisma, config, auth);
-const req = { ip: '1.2.3.4' };
+const req = { ip: '1.2.3.4', headers: {} };
 const PASSWORD = 'correct horse battery!1';
+
+type Cookie = { name: string; value: string; options: unknown };
+/** A response that records what the controller asked it to set or clear. */
+const jar = () => {
+  const set: Cookie[] = [];
+  const cleared: Cookie[] = [];
+  return {
+    set,
+    cleared,
+    cookie: (name: string, value: string, options: unknown) =>
+      void set.push({ name, value, options }),
+    clearCookie: (name: string, options: unknown) =>
+      void cleared.push({ name, value: '', options }),
+  } as unknown as CookieJar & { set: Cookie[]; cleared: Cookie[] };
+};
+const withCookie = (value: string) => ({
+  ip: '1.2.3.4',
+  headers: { cookie: `todoer_refresh=${value}` },
+});
+const COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: true,
+  sameSite: 'strict',
+  path: '/api/v1/auth',
+  maxAge: IDLE_MS,
+};
 
 const createUser = async (id: string, email: string): Promise<void> => {
   await prisma.user.create({
@@ -31,8 +62,9 @@ const createUser = async (id: string, email: string): Promise<void> => {
 let controller: AuthController;
 let U: string;
 
+// Body transport: the refresh token is present.
 const login = (email = 'a@b.c', password = PASSWORD, r = req) =>
-  controller.login({ email, password }, r);
+  controller.login({ email, password }, r, jar()) as Promise<SessionTokens>;
 
 beforeEach(async () => {
   vi.restoreAllMocks();
@@ -60,6 +92,7 @@ describe('login and refresh', () => {
     const next = await controller.refresh(
       { refreshToken: first.refreshToken },
       req,
+      jar(),
     );
     expect(next.refreshToken).not.toBe(first.refreshToken);
     expect(auth.verify(next.accessToken)).toBe(U);
@@ -123,7 +156,7 @@ describe('rate limits', () => {
     }
     await expect(login()).rejects.toBeInstanceOf(TooManyRequests);
     await expect(
-      login('a@b.c', PASSWORD, { ip: '5.6.7.8' }),
+      login('a@b.c', PASSWORD, { ip: '5.6.7.8', headers: {} }),
     ).resolves.toBeTruthy();
   });
 
@@ -139,26 +172,30 @@ describe('rate limits', () => {
   it('does not count successful refreshes toward the IP budget', async () => {
     let { refreshToken } = await login();
     for (let i = 0; i < 31; i++) {
-      ({ refreshToken } = await controller.refresh({ refreshToken }, req));
+      ({ refreshToken } = (await controller.refresh(
+        { refreshToken },
+        req,
+        jar(),
+      )) as SessionTokens);
     }
     for (let i = 0; i < 30; i++) {
       await expect(
-        controller.refresh({ refreshToken: 'junk' }, req),
+        controller.refresh({ refreshToken: 'junk' }, req, jar()),
       ).rejects.toThrow(/invalid token/);
     }
     await expect(
-      controller.refresh({ refreshToken }, req),
+      controller.refresh({ refreshToken }, req, jar()),
     ).rejects.toBeInstanceOf(TooManyRequests);
   });
 
   it('blocks an IP after thirty invalid refreshes', async () => {
     for (let i = 0; i < 30; i++) {
       await expect(
-        controller.refresh({ refreshToken: 'junk' }, req),
+        controller.refresh({ refreshToken: 'junk' }, req, jar()),
       ).rejects.toThrow(/invalid token/);
     }
     await expect(
-      controller.refresh({ refreshToken: 'junk' }, req),
+      controller.refresh({ refreshToken: 'junk' }, req, jar()),
     ).rejects.toBeInstanceOf(TooManyRequests);
   });
 });
@@ -166,19 +203,19 @@ describe('rate limits', () => {
 describe('logout', () => {
   it('revokes the session of the given refresh token', async () => {
     const pair = await login();
-    await controller.logout(U, { refreshToken: pair.refreshToken });
+    await controller.logout(U, { refreshToken: pair.refreshToken }, req, jar());
     await expect(
-      controller.refresh({ refreshToken: pair.refreshToken }, req),
+      controller.refresh({ refreshToken: pair.refreshToken }, req, jar()),
     ).rejects.toThrow(/invalid token/);
   });
 
   it('revokes every session with all: true', async () => {
     const a = await login();
     const b = await login();
-    await controller.logout(U, { all: true });
+    await controller.logout(U, { all: true }, req, jar());
     for (const p of [a, b]) {
       await expect(
-        controller.refresh({ refreshToken: p.refreshToken }, req),
+        controller.refresh({ refreshToken: p.refreshToken }, req, jar()),
       ).rejects.toThrow(/invalid token/);
     }
   });
@@ -187,9 +224,14 @@ describe('logout', () => {
     const other = uuidv7();
     await createUser(other, 'c@b.c');
     const theirs = await login('c@b.c');
-    await controller.logout(U, { refreshToken: theirs.refreshToken });
+    await controller.logout(
+      U,
+      { refreshToken: theirs.refreshToken },
+      req,
+      jar(),
+    );
     await expect(
-      controller.refresh({ refreshToken: theirs.refreshToken }, req),
+      controller.refresh({ refreshToken: theirs.refreshToken }, req, jar()),
     ).resolves.toBeTruthy();
   });
 });
@@ -199,28 +241,40 @@ describe('password change', () => {
 
   it('refuses a wrong current password', async () => {
     await expect(
-      controller.changePassword(U, {
-        currentPassword: 'wrong-pass1!',
-        newPassword: NEW,
-      }),
+      controller.changePassword(
+        U,
+        {
+          currentPassword: 'wrong-pass1!',
+          newPassword: NEW,
+        },
+        jar(),
+      ),
     ).rejects.toThrow(/invalid credentials/);
   });
 
   it('blocks the sixth wrong current password with 429, without checking it', async () => {
     for (let i = 0; i < 5; i++) {
       await expect(
-        controller.changePassword(U, {
-          currentPassword: 'wrong-pass1!',
-          newPassword: NEW,
-        }),
+        controller.changePassword(
+          U,
+          {
+            currentPassword: 'wrong-pass1!',
+            newPassword: NEW,
+          },
+          jar(),
+        ),
       ).rejects.toThrow(/invalid credentials/);
     }
     const spy = vi.spyOn(auth, 'verifyPassword');
     await expect(
-      controller.changePassword(U, {
-        currentPassword: PASSWORD,
-        newPassword: NEW,
-      }),
+      controller.changePassword(
+        U,
+        {
+          currentPassword: PASSWORD,
+          newPassword: NEW,
+        },
+        jar(),
+      ),
     ).rejects.toBeInstanceOf(TooManyRequests);
     expect(spy).not.toHaveBeenCalled();
   });
@@ -228,52 +282,76 @@ describe('password change', () => {
   it('a successful change clears the counter', async () => {
     for (let i = 0; i < 4; i++) {
       await expect(
-        controller.changePassword(U, {
-          currentPassword: 'wrong-pass1!',
-          newPassword: NEW,
-        }),
+        controller.changePassword(
+          U,
+          {
+            currentPassword: 'wrong-pass1!',
+            newPassword: NEW,
+          },
+          jar(),
+        ),
       ).rejects.toThrow(/invalid credentials/);
     }
-    await controller.changePassword(U, {
-      currentPassword: PASSWORD,
-      newPassword: NEW,
-    });
+    await controller.changePassword(
+      U,
+      {
+        currentPassword: PASSWORD,
+        newPassword: NEW,
+      },
+      jar(),
+    );
     for (let i = 0; i < 4; i++) {
       await expect(
-        controller.changePassword(U, {
-          currentPassword: 'wrong-pass1!',
-          newPassword: PASSWORD,
-        }),
+        controller.changePassword(
+          U,
+          {
+            currentPassword: 'wrong-pass1!',
+            newPassword: PASSWORD,
+          },
+          jar(),
+        ),
       ).rejects.toThrow(/invalid credentials/);
     }
     await expect(
-      controller.changePassword(U, {
-        currentPassword: NEW,
-        newPassword: PASSWORD,
-      }),
+      controller.changePassword(
+        U,
+        {
+          currentPassword: NEW,
+          newPassword: PASSWORD,
+        },
+        jar(),
+      ),
     ).resolves.toBeTruthy();
   });
 
   it('refuses a weak new password, naming the rule', async () => {
     await expect(
-      controller.changePassword(U, {
-        currentPassword: PASSWORD,
-        newPassword: 'alllowercase',
-      }),
+      controller.changePassword(
+        U,
+        {
+          currentPassword: PASSWORD,
+          newPassword: 'alllowercase',
+        },
+        jar(),
+      ),
     ).rejects.toThrow(/a digit/);
   });
 
   it('revokes old sessions and returns a working pair', async () => {
     const old = await login();
-    const fresh = await controller.changePassword(U, {
-      currentPassword: PASSWORD,
-      newPassword: NEW,
-    });
+    const fresh = await controller.changePassword(
+      U,
+      {
+        currentPassword: PASSWORD,
+        newPassword: NEW,
+      },
+      jar(),
+    );
     await expect(
-      controller.refresh({ refreshToken: old.refreshToken }, req),
+      controller.refresh({ refreshToken: old.refreshToken }, req, jar()),
     ).rejects.toThrow(/invalid token/);
     await expect(
-      controller.refresh({ refreshToken: fresh.refreshToken }, req),
+      controller.refresh({ refreshToken: fresh.refreshToken! }, req, jar()),
     ).resolves.toBeTruthy();
     await expect(login('a@b.c', NEW)).resolves.toBeTruthy();
   });
@@ -283,11 +361,11 @@ describe('accounts routes', () => {
   it('blocks the 21st registration from one address with 429', async () => {
     for (let i = 0; i < 20; i++) {
       await expect(
-        controller.register({ email: 'n@b.c', password: PASSWORD }, req),
+        controller.register({ email: 'n@b.c', password: PASSWORD }, req, jar()),
       ).rejects.toThrow('registration is closed');
     }
     await expect(
-      controller.register({ email: 'n@b.c', password: PASSWORD }, req),
+      controller.register({ email: 'n@b.c', password: PASSWORD }, req, jar()),
     ).rejects.toBeInstanceOf(TooManyRequests);
   });
 
@@ -296,7 +374,7 @@ describe('accounts routes', () => {
       'owner only',
     );
     await expect(
-      controller.register({ email: 'n@b.c', password: PASSWORD }, req),
+      controller.register({ email: 'n@b.c', password: PASSWORD }, req, jar()),
     ).rejects.toThrow('registration is closed');
     expect(() => controller.forgot()).toThrow(/mail is not configured/);
   });
@@ -325,5 +403,238 @@ describe('accounts routes', () => {
       controller.deleteAccount(U, { password: PASSWORD }, req),
     ).rejects.toBeInstanceOf(TooManyRequests);
     expect(spy).toHaveBeenCalledTimes(20);
+  });
+});
+
+describe('the refresh cookie', () => {
+  const NEW = 'brand new pass#9';
+
+  it('login with transport cookie moves the refresh token into the cookie', async () => {
+    const res = jar();
+    const body = await controller.login(
+      { email: 'a@b.c', password: PASSWORD, transport: 'cookie' },
+      req,
+      res,
+    );
+    expect(body).not.toHaveProperty('refreshToken');
+    expect(auth.verify(body.accessToken)).toBe(U);
+    expect(res.set).toHaveLength(1);
+    expect(res.set[0]).toMatchObject({
+      name: 'todoer_refresh',
+      options: COOKIE_OPTIONS,
+    });
+    await expect(
+      controller.refresh({}, withCookie(res.set[0]!.value), jar()),
+    ).resolves.toHaveProperty('accessToken');
+  });
+
+  it('login without transport, or with body, answers in the body and leaves the jar alone', async () => {
+    for (const extra of [{}, { transport: 'body' as const }]) {
+      const res = jar();
+      const body = await controller.login(
+        { email: 'a@b.c', password: PASSWORD, ...extra },
+        req,
+        res,
+      );
+      expect(body.refreshToken).toBeTruthy();
+      expect(res.set).toHaveLength(0);
+    }
+  });
+
+  it('register (owner first) with transport cookie sets the cookie', async () => {
+    await resetDatabase(prisma);
+    const res = jar();
+    const body = await controller.register(
+      { email: 'o@b.c', password: PASSWORD, transport: 'cookie' },
+      req,
+      res,
+    );
+    expect(body).not.toHaveProperty('refreshToken');
+    expect(res.set[0]).toMatchObject({ options: COOKIE_OPTIONS });
+  });
+
+  it('password change with transport cookie sets the cookie', async () => {
+    const res = jar();
+    const body = await controller.changePassword(
+      U,
+      { currentPassword: PASSWORD, newPassword: NEW, transport: 'cookie' },
+      res,
+    );
+    expect(body).not.toHaveProperty('refreshToken');
+    expect(res.set[0]).toMatchObject({ options: COOKIE_OPTIONS });
+  });
+
+  it('refreshes from the cookie with an empty body and rotates the cookie', async () => {
+    const first = await login();
+    const res = jar();
+    const body = await controller.refresh(
+      {},
+      withCookie(first.refreshToken),
+      res,
+    );
+    expect(body).not.toHaveProperty('refreshToken');
+    expect(auth.verify(body.accessToken)).toBe(U);
+    expect(res.set).toHaveLength(1);
+    expect(res.set[0]!.value).not.toBe(first.refreshToken);
+  });
+
+  it('the old cookie inside the grace window gets the same successor', async () => {
+    const first = await login();
+    const a = jar();
+    const b = jar();
+    await controller.refresh({}, withCookie(first.refreshToken), a);
+    const retried = await controller.refresh(
+      {},
+      withCookie(first.refreshToken),
+      b,
+    );
+    expect(b.set[0]!.value).toBe(a.set[0]!.value);
+    expect(retried).not.toHaveProperty('refreshToken');
+  });
+
+  it('a body token wins over the cookie: body answer, jar untouched', async () => {
+    const fromBody = await login();
+    const fromCookie = await login();
+    const res = jar();
+    const body = await controller.refresh(
+      { refreshToken: fromBody.refreshToken },
+      withCookie(fromCookie.refreshToken),
+      res,
+    );
+    expect(body.refreshToken).toBeTruthy();
+    expect(res.set).toHaveLength(0);
+    // The body's session rotated; the cookie's did not. Checked at the
+    // database: a follow-up refresh would succeed either way (grace window).
+    const generation = async (token: string) =>
+      (
+        await prisma.session.findUnique({
+          where: { id: token.split('.')[0]! },
+        })
+      )?.generation;
+    expect(await generation(fromBody.refreshToken)).toBe(1);
+    expect(await generation(fromCookie.refreshToken)).toBe(0);
+    expect(body.refreshToken!.split('.')[0]).toBe(
+      fromBody.refreshToken.split('.')[0],
+    );
+  });
+
+  it('two cookies with the name are refused, not first-wins (cookie tossing)', async () => {
+    const mine = await login();
+    const theirs = await login();
+    const res = jar();
+    await expect(
+      controller.refresh(
+        {},
+        {
+          ip: '1.2.3.4',
+          headers: {
+            cookie: `todoer_refresh=${theirs.refreshToken}; todoer_refresh=${mine.refreshToken}`,
+          },
+        },
+        res,
+      ),
+    ).rejects.toThrow(/invalid token/);
+    expect(res.set).toHaveLength(0);
+  });
+
+  it('a refused cookie refresh clears the cookie so the SPA stops retrying it', async () => {
+    const pair = await login();
+    await controller.logout(U, { refreshToken: pair.refreshToken }, req, jar());
+    for (const dead of [pair.refreshToken, 'junk']) {
+      const res = jar();
+      await expect(
+        controller.refresh({}, withCookie(dead), res),
+      ).rejects.toThrow(/invalid token/);
+      expect(res.set).toHaveLength(0);
+      expect(res.cleared).toHaveLength(1);
+      expect(res.cleared[0]).toMatchObject({
+        name: 'todoer_refresh',
+        options: { path: '/api/v1/auth' },
+      });
+    }
+  });
+
+  it('a refused body refresh does not touch the jar', async () => {
+    const res = jar();
+    await expect(
+      controller.refresh({ refreshToken: 'junk' }, req, res),
+    ).rejects.toThrow(/invalid token/);
+    expect(res.set).toHaveLength(0);
+    expect(res.cleared).toHaveLength(0);
+  });
+
+  it('a refresh with neither token is a 401 and counts toward the IP limit', async () => {
+    await expect(controller.refresh({}, req, jar())).rejects.toThrow(
+      /invalid token/,
+    );
+    for (let i = 0; i < 29; i++) {
+      await expect(controller.refresh({}, req, jar())).rejects.toThrow(
+        /invalid token/,
+      );
+    }
+    await expect(controller.refresh({}, req, jar())).rejects.toBeInstanceOf(
+      TooManyRequests,
+    );
+  });
+
+  it('blocks an IP after thirty invalid cookie refreshes', async () => {
+    for (let i = 0; i < 30; i++) {
+      await expect(
+        controller.refresh({}, withCookie('junk'), jar()),
+      ).rejects.toThrow(/invalid token/);
+    }
+    await expect(
+      controller.refresh({}, withCookie('junk'), jar()),
+    ).rejects.toBeInstanceOf(TooManyRequests);
+  });
+
+  it('logout with the cookie only revokes that session and clears the cookie', async () => {
+    const pair = await login();
+    const res = jar();
+    await controller.logout(U, {}, withCookie(pair.refreshToken), res);
+    expect(res.cleared).toHaveLength(1);
+    expect(res.cleared[0]).toMatchObject({
+      name: 'todoer_refresh',
+      options: { path: '/api/v1/auth' },
+    });
+    await expect(
+      controller.refresh({ refreshToken: pair.refreshToken }, req, jar()),
+    ).rejects.toThrow(/invalid token/);
+  });
+
+  it('logout with a body token and another cookie revokes the body session, clears the cookie, spares the cookie session', async () => {
+    // Consistent with "body wins" on refresh.
+    const fromBody = await login();
+    const fromCookie = await login();
+    const res = jar();
+    await controller.logout(
+      U,
+      { refreshToken: fromBody.refreshToken },
+      withCookie(fromCookie.refreshToken),
+      res,
+    );
+    expect(res.cleared).toHaveLength(1);
+    const revokedAt = async (token: string) =>
+      (await prisma.session.findUnique({ where: { id: token.split('.')[0]! } }))
+        ?.revokedAt;
+    expect(await revokedAt(fromBody.refreshToken)).not.toBeNull();
+    expect(await revokedAt(fromCookie.refreshToken)).toBeNull();
+  });
+
+  it('logout all clears the cookie', async () => {
+    const res = jar();
+    await controller.logout(U, { all: true }, req, res);
+    expect(res.cleared).toHaveLength(1);
+  });
+
+  it("logout with another user's cookie clears it but revokes nothing", async () => {
+    await createUser(uuidv7(), 'c@b.c');
+    const theirs = await login('c@b.c');
+    const res = jar();
+    await controller.logout(U, {}, withCookie(theirs.refreshToken), res);
+    expect(res.cleared).toHaveLength(1);
+    await expect(
+      controller.refresh({ refreshToken: theirs.refreshToken }, req, jar()),
+    ).resolves.toBeTruthy();
   });
 });

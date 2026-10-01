@@ -8,6 +8,7 @@ import {
   Param,
   Post,
   Req,
+  Res,
   ServiceUnavailableException,
   UnauthorizedException,
   UseGuards,
@@ -20,15 +21,38 @@ import { AuthService, normalizeEmail } from './auth.service.js';
 import { passwordProblem } from './password-policy.js';
 import { RateLimiter, TooManyRequests } from './rate-limit.js';
 import {
+  clearRefreshCookie,
+  readRefreshCookie,
+  setRefreshCookie,
+  type CookieJar,
+} from './refresh-cookie.js';
+import {
   parse,
   SessionService,
   type SessionTokens,
 } from './session.service.js';
 
-type Credentials = { email: string; password: string };
-type Client = { ip?: string };
+type Transport = { transport?: 'body' | 'cookie' };
+type Credentials = { email: string; password: string } & Transport;
+type Client = { ip?: string; headers?: { cookie?: string } };
+type Delivered = Omit<SessionTokens, 'refreshToken'> & {
+  refreshToken?: string;
+};
 
 const WINDOW_MS = 15 * 60_000;
+
+/** The pair as the request asked for it: whole in the body, or with the
+ *  refresh token moved into the cookie (ADR 0011). */
+function deliver(
+  tokens: SessionTokens,
+  cookie: boolean,
+  res: CookieJar,
+): Delivered {
+  if (!cookie) return tokens;
+  setRefreshCookie(res, tokens.refreshToken);
+  const { refreshToken: _sent, ...rest } = tokens;
+  return rest;
+}
 
 @Controller({ path: 'auth', version: '1' })
 export class AuthController {
@@ -62,7 +86,8 @@ export class AuthController {
   async login(
     @Body() body: Credentials,
     @Req() req: Client,
-  ): Promise<SessionTokens> {
+    @Res({ passthrough: true }) res: CookieJar,
+  ): Promise<Delivered> {
     const ip = req.ip ?? 'unknown';
     const address = normalizeEmail(body.email);
     const now = Date.now();
@@ -79,26 +104,42 @@ export class AuthController {
     this.loginByIp.fail(ip, now);
     const { userId } = await this.auth.login(body.email, body.password);
     this.loginByAddress.clear(address);
-    return this.sessions.start(userId);
+    return deliver(
+      await this.sessions.start(userId),
+      body.transport === 'cookie',
+      res,
+    );
   }
 
   @Post('refresh')
   @HttpCode(200)
   async refresh(
-    @Body() body: { refreshToken: string },
+    @Body() body: { refreshToken?: string },
     @Req() req: Client,
-  ): Promise<SessionTokens> {
+    @Res({ passthrough: true }) res: CookieJar,
+  ): Promise<Delivered> {
     const ip = req.ip ?? 'unknown';
     const now = Date.now();
     AuthController.check(now, [this.refreshByIp, ip]);
     // Not reserved up front: an HMAC check and one lookup are cheap, so only
     // invalid refreshes (401) count and a busy legitimate client is never
     // limited.
+    // The body wins: a client that sends a token wants the answer in the
+    // body. Only a refresh that came from the cookie writes the cookie.
+    const cookie =
+      body.refreshToken === undefined
+        ? readRefreshCookie(req.headers?.cookie)
+        : undefined;
     try {
-      return await this.sessions.refresh(body.refreshToken);
+      const tokens = await this.sessions.refresh(
+        body.refreshToken ?? cookie ?? '',
+      );
+      return deliver(tokens, cookie !== undefined, res);
     } catch (error) {
       if (error instanceof UnauthorizedException) {
         this.refreshByIp.fail(ip, now);
+        // A dead cookie would otherwise be replayed on every page load.
+        if (cookie !== undefined) clearRefreshCookie(res);
       }
       throw error;
     }
@@ -110,9 +151,13 @@ export class AuthController {
   async logout(
     @CurrentUser() userId: string,
     @Body() body: { refreshToken?: string; all?: boolean },
+    @Req() req: Client,
+    @Res({ passthrough: true }) res: CookieJar,
   ): Promise<void> {
+    clearRefreshCookie(res);
     if (body.all === true) return this.sessions.revokeAll(userId);
-    const token = body.refreshToken ?? '';
+    const token =
+      body.refreshToken ?? readRefreshCookie(req.headers?.cookie) ?? '';
     const parsed = parse(token);
     if (parsed === null) return;
     const session = await this.prisma.session.findUnique({
@@ -126,8 +171,10 @@ export class AuthController {
   @UseGuards(AuthGuard)
   async changePassword(
     @CurrentUser() userId: string,
-    @Body() body: { currentPassword: string; newPassword: string },
-  ): Promise<SessionTokens> {
+    @Body()
+    body: { currentPassword: string; newPassword: string } & Transport,
+    @Res({ passthrough: true }) res: CookieJar,
+  ): Promise<Delivered> {
     // A stolen token must not allow unlimited guessing of the password.
     // Reserved before the scrypt call, like login, and released on success.
     const now = Date.now();
@@ -141,14 +188,19 @@ export class AuthController {
     if (problem !== null) throw new BadRequestException(problem);
     await this.auth.setPassword(userId, body.newPassword);
     await this.sessions.revokeAll(userId);
-    return this.sessions.start(userId);
+    return deliver(
+      await this.sessions.start(userId),
+      body.transport === 'cookie',
+      res,
+    );
   }
 
   @Post('register')
   async register(
     @Body() body: Credentials & { invitation?: string },
     @Req() req: Client,
-  ): Promise<SessionTokens> {
+    @Res({ passthrough: true }) res: CookieJar,
+  ): Promise<Delivered> {
     const ip = req.ip ?? 'unknown';
     const now = Date.now();
     AuthController.check(now, [this.registerByIp, ip]);
@@ -160,7 +212,11 @@ export class AuthController {
         body.password,
         body.invitation,
       );
-      return await this.sessions.start(userId);
+      return deliver(
+        await this.sessions.start(userId),
+        body.transport === 'cookie',
+        res,
+      );
     } catch (error) {
       if (
         error instanceof Prisma.PrismaClientKnownRequestError &&

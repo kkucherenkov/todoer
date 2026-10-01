@@ -1,5 +1,7 @@
 import { Injectable, type INestApplication } from '@nestjs/common';
 import type { Application } from 'express';
+import { existsSync } from 'node:fs';
+import { join, resolve } from 'node:path';
 
 /**
  * The only place in the application that reads process.env. Everything else
@@ -13,6 +15,7 @@ export class AppConfig {
   readonly databaseUrl = this.required('DATABASE_URL');
   readonly jwtSecret = this.required('JWT_SECRET');
   readonly trustProxy = this.proxyTrust('TRUST_PROXY');
+  readonly webRoot = this.spaRoot('WEB_ROOT');
 
   /**
    * Express's `trust proxy` setting: a hop count or a list of addresses and
@@ -52,6 +55,23 @@ export class AppConfig {
       );
     }
     return value;
+  }
+
+  /**
+   * The built SPA's directory, absolute, or undefined to serve none. Refused
+   * for the same reason as `portNumber`: a typo should stop the process at
+   * startup, not produce a server that answers every page with 404.
+   */
+  private spaRoot(name: string): string | undefined {
+    const raw = process.env[name];
+    if (raw === undefined || raw.trim() === '') return undefined;
+    const root = resolve(raw);
+    if (!existsSync(join(root, 'index.html'))) {
+      throw new Error(
+        `${name} must be a directory holding index.html, not ${raw}`,
+      );
+    }
+    return root;
   }
 
   private required(name: string): string {

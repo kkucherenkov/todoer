@@ -103,11 +103,19 @@ export function httpAuthApi(config: HttpConfig): AuthApi {
     new RefusalError(
       `${path} refused: ${response.status} ${await response.text().catch(() => '')}`,
     );
-  const tokens = (body: SessionTokens): StoredAuth => ({
-    accessToken: body.accessToken,
-    accessExpiresAt: body.accessExpiresAt,
-    refreshToken: body.refreshToken,
-  });
+  // The CLI asks for the body transport (it never sends `transport`), so a
+  // missing token means a server that does not speak this contract. Storing
+  // it as undefined would leave a session that can never refresh.
+  const tokens = (body: SessionTokens): StoredAuth => {
+    if (typeof body.refreshToken !== 'string' || body.refreshToken === '') {
+      throw new RefusalError('the server sent no refresh token');
+    }
+    return {
+      accessToken: body.accessToken,
+      accessExpiresAt: body.accessExpiresAt,
+      refreshToken: body.refreshToken,
+    };
+  };
 
   return {
     async login(email, password) {

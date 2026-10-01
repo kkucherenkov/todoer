@@ -12,25 +12,29 @@ export type Health = {
   version: string;
 };
 
+export type TokenTransport = 'body' | 'cookie';
+
 export type LoginRequest = {
   email: string;
   password: string;
+  transport?: TokenTransport;
 };
 
 export type SessionTokens = {
   accessToken: string;
   accessExpiresAt: string;
-  refreshToken: string;
+  refreshToken?: string;
 };
 
 export type RegisterRequest = {
   email: string;
   password: string;
   invitation?: string;
+  transport?: TokenTransport;
 };
 
 export type RefreshRequest = {
-  refreshToken: string;
+  refreshToken?: string;
 };
 
 export type LogoutRequest = {
@@ -41,6 +45,7 @@ export type LogoutRequest = {
 export type PasswordChange = {
   currentPassword: string;
   newPassword: string;
+  transport?: TokenTransport;
 };
 
 export type InviteRequest = {
