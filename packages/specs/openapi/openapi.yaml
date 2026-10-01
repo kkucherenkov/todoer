@@ -413,7 +413,7 @@ paths:
       description: >-
         Revokes the session of the presented refresh token, or every session of
         the caller when `all` is true. Access tokens already issued live out their
-        15 minutes.
+        15 minutes. The body is required but may be `{}`.
       security:
         - bearerAuth: []
       requestBody:
