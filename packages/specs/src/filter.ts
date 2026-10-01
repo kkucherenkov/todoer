@@ -109,7 +109,9 @@ export function filterProblem(filter: unknown): string | null {
       case 'priority':
         return Array.isArray(value) &&
           value.length > 0 &&
-          value.every((p) => Number.isInteger(p) && p >= 0 && p <= 4)
+          Array.from(value).every(
+            (p) => Number.isInteger(p) && p >= 0 && p <= 4,
+          )
           ? null
           : `${at}: not a non-empty list of priorities 0-4`;
       case 'scheduled':
@@ -140,7 +142,9 @@ function inRange(
 
 /**
  * Whether `task` is in a view with `filter`, on the client's local `today`
- * (`YYYY-MM-DD`). `filter` must have passed `filterProblem`.
+ * (`YYYY-MM-DD`). `filter` must have passed `filterProblem`. `today` must be
+ * a valid date: an invalid one makes `addDays` throw a RangeError, and there
+ * is no guard because callers pass their own clock.
  */
 export function matches(
   filter: Filter,

@@ -34,5 +34,5 @@ export function displayStatus(
   if (occurrenceClosed && completing !== undefined) return completing;
   const first = (ordered.find((s) => !s.completing) ?? ordered[0])?.id ?? null;
   const own = ordered.find((s) => s.id === statusId);
-  return own === undefined || own.id === completing ? first : own.id;
+  return own === undefined || own.completing ? first : own.id;
 }

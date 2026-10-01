@@ -68,6 +68,11 @@ describe('filterProblem', () => {
     expect(filterProblem(huge)).toMatch(/nodes/);
   });
 
+  it('refuses a sparse priority list: holes are not priorities', () => {
+    expect(filterProblem({ priority: new Array(3) })).toMatch(/priorities/);
+    expect(filterProblem({ priority: [1, , 2] })).toMatch(/priorities/);
+  });
+
   it('names where the problem is', () => {
     expect(filterProblem({ and: [{ recurring: true }, { tag: 'x' }] })).toBe(
       'filter.and[1].tag: not a uuid',
