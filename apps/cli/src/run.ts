@@ -417,6 +417,8 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
         projects: projects(store),
         tags: tagRows(store),
         links: links(store),
+        statuses: statusRows(store),
+        views: viewRows(store),
       },
       deps.newId,
       deps.now().toISOString(),
@@ -592,6 +594,14 @@ function projects(store: Store): Row[] {
 
 function tagRows(store: Store): Row[] {
   return overlay('tag', store.rows('tag'), store.pending());
+}
+
+function statusRows(store: Store): Row[] {
+  return overlay('status', store.rows('status'), store.pending());
+}
+
+function viewRows(store: Store): Row[] {
+  return overlay('view', store.rows('view'), store.pending());
 }
 
 function links(store: Store): Row[] {

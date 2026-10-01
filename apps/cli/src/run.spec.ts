@@ -1068,6 +1068,45 @@ describe('run', () => {
       expect(third.stderr.join('\n')).not.toMatch(/merging/);
     });
 
+    it('rewrites a view that names the merged-away tag', async () => {
+      const server = fakeServer();
+      const d = deps(server.send);
+      const win = '00000000-0000-4000-8000-00000000000a';
+      const lose = '00000000-0000-4000-8000-00000000000b';
+      const tag = (id: string, name: string, seq: number) =>
+        server.rows.set(id, {
+          table: 'tag',
+          id,
+          seq,
+          row: { id, name, version: 1, deletedAt: null },
+        });
+      tag(win, '@phone', 1);
+      tag(lose, '@Phone', 2);
+      server.rows.set('v1', {
+        table: 'view',
+        id: 'v1',
+        seq: 3,
+        row: {
+          id: 'v1',
+          name: 'calls',
+          filter: { not: { tag: lose } },
+          version: 1,
+          deletedAt: null,
+        },
+      });
+
+      await run(['list'], d);
+      expect(d.store.pending().map((op) => `${op.kind} ${op.table}`)).toEqual([
+        'delete tag',
+        'set view',
+      ]);
+      expect(d.store.pending()[1]).toMatchObject({
+        id: 'v1',
+        field: 'filter',
+        value: { not: { tag: win } },
+      });
+    });
+
     it('does not merge when the server was not reached', async () => {
       const d = deps(unreachable);
       d.store.mergeChanges([

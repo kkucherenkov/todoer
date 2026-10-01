@@ -78,7 +78,7 @@ drops it from every view that names it.
 ### Steps
 
 - [x] T001 [FR-001] shared status helpers and replaceIds — plan Task 1
-- [ ] T002 [FR-002] merge statuses, rewrite view filters — plan Task 2
+- [x] T002 [FR-002] merge statuses, rewrite view filters — plan Task 2
 - [ ] T003 [FR-003, FR-004] statuses in list, done/undo — plan Task 3
 - [ ] T004 [FR-005, FR-006] views and list --view — plan Task 4
 - [ ] T005 [FR-007] end to end and documents — plan Task 5

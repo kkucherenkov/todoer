@@ -1,14 +1,30 @@
-import { nameKey, taskTagId, type Op } from '@todoer/specs';
+import {
+  filterProblem,
+  nameKey,
+  replaceIds,
+  taskTagId,
+  type Filter,
+  type Op,
+} from '@todoer/specs';
 import {
   compareIds,
   isAttached,
   liveProjects,
+  liveStatuses,
   liveTags,
+  liveViews,
   winner,
 } from './labels.js';
 import type { Row } from './store.js';
 
-export type View = { tasks: Row[]; projects: Row[]; tags: Row[]; links: Row[] };
+export type Replica = {
+  tasks: Row[];
+  projects: Row[];
+  tags: Row[];
+  links: Row[];
+  statuses: Row[];
+  views: Row[];
+};
 
 /**
  * Groups of two or more rows sharing a name key, each sorted by id (winner
@@ -62,27 +78,32 @@ function lateTombstones(rows: Row[], live: Row[]): [Row, Row][] {
 /**
  * The operations that fold duplicate names into the lowest id (quick-add
  * design, Q7, Q10): a losing tag's attached links are re-made on the winner
- * and detached, a losing project's live tasks are moved, then the loser is
- * deleted. The winner keeps its own fields. Deterministic, so two clients
+ * and detached, a losing project's or status's live tasks are moved, then the
+ * loser is deleted. A live view whose filter names a row that lost is
+ * rewritten to the winner, one write per view, after the loser's own ops. The winner keeps its own fields.
+ * Deterministic, so two clients
  * that see the same duplicates plan the same merge, and the derived TaskTag
  * ids make the repeated creates idempotent. The op order is by id, whatever
- * the order of `view`. A link of a deleted or unknown task is left where it is.
+ * the order of `replica`. A link of a deleted or unknown task is left where it is.
  */
 export function planMerge(
-  view: View,
+  replica: Replica,
   newId: () => string,
   ts: string,
 ): { ops: Op[]; merged: string[] } {
   const ops: Op[] = [];
   const merged: string[] = [];
-  const tasks = [...view.tasks].sort(compareIds);
+  const tasks = [...replica.tasks].sort(compareIds);
   const liveTaskIds = new Set(
     tasks.filter((t) => t.deletedAt === null).map((t) => String(t.id)),
   );
-  const links = [...view.links].sort(compareIds);
+  const links = [...replica.links].sort(compareIds);
+  /** Every tag, project and status id that lost, to the id that took its place. */
+  const replaced = new Map<string, string>();
 
   /** Re-makes `from`'s attached links of live tasks on `to` and detaches them. */
   const moveLinks = (from: Row, to: Row): number => {
+    replaced.set(String(from.id), String(to.id));
     const before = ops.length;
     for (const link of links) {
       if (link.tagId !== from.id || !isAttached(link)) continue;
@@ -108,25 +129,32 @@ export function planMerge(
     }
     return ops.length - before;
   };
-  /** Moves `from`'s live tasks to project `to`. */
-  const moveTasks = (from: Row, to: Row): number => {
+  /** Moves `from`'s live tasks to `to`, by the task field `field`. */
+  const moveRefs = (
+    field: 'projectId' | 'statusId',
+    from: Row,
+    to: Row,
+  ): number => {
+    replaced.set(String(from.id), String(to.id));
     const before = ops.length;
     for (const task of tasks) {
-      if (task.projectId !== from.id || task.deletedAt !== null) continue;
+      if (task[field] !== from.id || task.deletedAt !== null) continue;
       ops.push({
         opId: newId(),
         kind: 'set',
         table: 'task',
         id: String(task.id),
-        field: 'projectId',
+        field,
         value: String(to.id),
         ts,
       });
     }
     return ops.length - before;
   };
+  const moveTasks = (from: Row, to: Row) => moveRefs('projectId', from, to);
+  const moveStatus = (from: Row, to: Row) => moveRefs('statusId', from, to);
 
-  for (const group of duplicates(liveTags(view.tags))) {
+  for (const group of duplicates(liveTags(replica.tags))) {
     const [keep] = group;
     if (keep === undefined) continue;
     for (const loser of group) {
@@ -143,7 +171,7 @@ export function planMerge(
     merged.push(`${String(keep.name)} (${String(group.length)})`);
   }
 
-  for (const group of duplicates(liveProjects(view.projects))) {
+  for (const group of duplicates(liveProjects(replica.projects))) {
     const [keep] = group;
     if (keep === undefined) continue;
     for (const loser of group) {
@@ -160,20 +188,65 @@ export function planMerge(
     merged.push(`#${String(keep.name)} (${String(group.length)})`);
   }
 
+  for (const group of duplicates(liveStatuses(replica.statuses))) {
+    const [keep] = group;
+    if (keep === undefined) continue;
+    for (const loser of group) {
+      if (loser === keep) continue;
+      moveStatus(loser, keep);
+      ops.push({
+        opId: newId(),
+        kind: 'delete',
+        table: 'status',
+        id: String(loser.id),
+        baseVersion: Number(loser.version),
+      });
+    }
+    merged.push(`${String(keep.name)} (${String(group.length)})`);
+  }
+
   // A device that was offline can attach a tag, or a project, that has been
   // merged away since: the server accepts it, and nothing above sees it
   // because the tombstone is in no group. Move it to the live winner.
-  for (const [tomb, keep] of lateTombstones(view.tags, liveTags(view.tags))) {
+  for (const [tomb, keep] of lateTombstones(
+    replica.tags,
+    liveTags(replica.tags),
+  )) {
     if (moveLinks(tomb, keep) > 0)
       merged.push(`${String(keep.name)} (late links)`);
   }
   for (const [tomb, keep] of lateTombstones(
-    view.projects,
-    liveProjects(view.projects),
+    replica.projects,
+    liveProjects(replica.projects),
   )) {
     if (moveTasks(tomb, keep) > 0) {
       merged.push(`#${String(keep.name)} (late tasks)`);
     }
+  }
+  for (const [tomb, keep] of lateTombstones(
+    replica.statuses,
+    liveStatuses(replica.statuses),
+  )) {
+    if (moveStatus(tomb, keep) > 0) {
+      merged.push(`${String(keep.name)} (late tasks)`);
+    }
+  }
+
+  // A view naming a row that just lost keeps pointing at the winner
+  // (plan V1, departure 6). One write per view, whatever it names.
+  for (const view of [...liveViews(replica.views)].sort(compareIds)) {
+    if (filterProblem(view.filter) !== null) continue;
+    const next = replaceIds(view.filter as Filter, replaced);
+    if (next === view.filter) continue;
+    ops.push({
+      opId: newId(),
+      kind: 'set',
+      table: 'view',
+      id: String(view.id),
+      field: 'filter',
+      value: next,
+      ts,
+    });
   }
   return { ops, merged };
 }

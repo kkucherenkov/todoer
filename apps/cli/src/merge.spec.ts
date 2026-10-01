@@ -45,6 +45,8 @@ const view = {
     { id: 'l1', taskId: 't1', tagId: 'gb', deletedAt: null },
     { id: 'l2', taskId: 't2', tagId: 'gb', deletedAt: null, attached: false },
   ],
+  statuses: [],
+  views: [],
 };
 
 describe('planMerge', () => {
@@ -109,6 +111,8 @@ describe('planMerge', () => {
       projects: [...view.projects].reverse(),
       tags: [...view.tags].reverse(),
       links: [...view.links].reverse(),
+      statuses: [],
+      views: [],
     };
     expect(planMerge(reversed, ids(), 'T')).toEqual(
       planMerge(view, ids(), 'T'),
@@ -177,6 +181,8 @@ describe('planMerge', () => {
           // Deleted link: not moved.
           link('l3', 't3', 'a3', '2026-09-01T00:00:00Z'),
         ],
+        statuses: [],
+        views: [],
       },
       ids(),
       'T',
@@ -202,6 +208,8 @@ describe('planMerge', () => {
           { id: 'b1', name: '@caf\u00e9', version: 4, deletedAt: null },
         ],
         links: [],
+        statuses: [],
+        views: [],
       },
       ids(),
       'T',
@@ -220,6 +228,8 @@ describe('planMerge', () => {
           projects: [],
           tags: [{ id: 'a', name: '@a', version: 1, deletedAt: null }],
           links: [],
+          statuses: [],
+          views: [],
         },
         ids(),
         'T',
@@ -244,6 +254,8 @@ describe('planMerge', () => {
             { id: 'g1', name: '@Phone', version: 2, deletedAt: null },
           ],
           links: [{ id: 'l1', taskId: 't1', tagId: 'g2', deletedAt: null }],
+          statuses: [],
+          views: [],
         },
         ids(),
         'T',
@@ -262,6 +274,8 @@ describe('planMerge', () => {
           projects: [],
           tags: [{ id: 'g2', name: '@phone', version: 4, deletedAt: DEL }],
           links: [{ id: 'l1', taskId: 't1', tagId: 'g2', deletedAt: null }],
+          statuses: [],
+          views: [],
         },
         ids(),
         'T',
@@ -285,6 +299,8 @@ describe('planMerge', () => {
           ],
           tags: [],
           links: [],
+          statuses: [],
+          views: [],
         },
         ids(),
         'T',
@@ -325,11 +341,185 @@ describe('planMerge', () => {
           ],
           tags: [],
           links: [],
+          statuses: [],
+          views: [],
         },
         ids(),
         'T',
       );
       expect(ops).toEqual([]);
+    });
+  });
+
+  describe('statuses and views', () => {
+    const DEL = '2026-09-01T00:00:00Z';
+    const status = (
+      id: string,
+      name: string,
+      deletedAt: string | null = null,
+    ) => ({
+      id,
+      name,
+      version: 2,
+      deletedAt,
+    });
+    const viewRow = (
+      id: string,
+      filter: unknown,
+      deletedAt: string | null = null,
+    ) => ({ id, name: id, filter, deletedAt });
+    const GA = '00000000-0000-4000-8000-00000000000a';
+    const GB = '00000000-0000-4000-8000-00000000000b';
+    const PA = '00000000-0000-4000-8000-0000000000a0';
+    const PB = '00000000-0000-4000-8000-0000000000b0';
+    const empty = {
+      tasks: [],
+      projects: [],
+      tags: [],
+      links: [],
+      statuses: [],
+      views: [],
+    };
+    const setFilter = (id: string, value: unknown) => ({
+      opId: expect.any(String) as string,
+      kind: 'set',
+      table: 'view',
+      id,
+      field: 'filter',
+      value,
+      ts: 'T',
+    });
+
+    it('moves the live tasks of a losing status to the winner, then deletes it', () => {
+      const { ops, merged } = planMerge(
+        {
+          ...empty,
+          tasks: [
+            { id: 't1', statusId: 's2', deletedAt: null },
+            { id: 't2', statusId: 's1', deletedAt: null },
+            { id: 't3', statusId: 's2', deletedAt: DEL },
+          ],
+          statuses: [status('s2', 'doing'), status('s1', 'Doing')],
+        },
+        ids(),
+        'T',
+      );
+      expect(ops).toEqual([
+        {
+          opId: 'n1',
+          kind: 'set',
+          table: 'task',
+          id: 't1',
+          field: 'statusId',
+          value: 's1',
+          ts: 'T',
+        },
+        {
+          opId: 'n2',
+          kind: 'delete',
+          table: 'status',
+          id: 's2',
+          baseVersion: 2,
+        },
+      ]);
+      expect(merged).toEqual(['Doing (2)']);
+    });
+
+    it('moves a live task of a tombstoned status to the live same-named one', () => {
+      const { ops, merged } = planMerge(
+        {
+          ...empty,
+          tasks: [{ id: 't1', statusId: 's2', deletedAt: null }],
+          statuses: [status('s2', 'doing', DEL), status('s1', 'Doing')],
+        },
+        ids(),
+        'T',
+      );
+      expect(ops.map((op) => `${op.kind} ${op.table} ${op.id}`)).toEqual([
+        'set task t1',
+      ]);
+      expect(merged).toEqual(['Doing (late tasks)']);
+    });
+
+    it('rewrites a view that names a losing tag in a nested not, before the delete', () => {
+      const { ops } = planMerge(
+        {
+          ...empty,
+          tasks: [{ id: 't1', deletedAt: null }],
+          tags: [
+            { id: GB, name: '@x', version: 1, deletedAt: null },
+            { id: GA, name: '@X', version: 1, deletedAt: null },
+          ],
+          links: [{ id: 'l1', taskId: 't1', tagId: GB, deletedAt: null }],
+          views: [
+            viewRow('v1', { and: [{ priority: [1] }, { not: { tag: GB } }] }),
+            viewRow('v2', { tag: GA }),
+            viewRow('v3', { tag: GB }, DEL),
+          ],
+        },
+        ids(),
+        'T',
+      );
+      expect(ops.map((op) => `${op.kind} ${op.table} ${op.id}`)).toEqual([
+        `create task_tag ${taskTagId('t1', GA)}`,
+        'set task_tag l1',
+        `delete tag ${GB}`,
+        'set view v1',
+      ]);
+      expect(ops[3]).toEqual(
+        setFilter('v1', { and: [{ priority: [1] }, { not: { tag: GA } }] }),
+      );
+    });
+
+    it('writes one set filter for a view naming two losers', () => {
+      const { ops } = planMerge(
+        {
+          ...empty,
+          projects: [
+            {
+              id: PB,
+              name: 'F',
+              version: 1,
+              deletedAt: null,
+              archivedAt: null,
+            },
+            {
+              id: PA,
+              name: 'f',
+              version: 1,
+              deletedAt: null,
+              archivedAt: null,
+            },
+          ],
+          tags: [
+            { id: GB, name: '@x', version: 1, deletedAt: null },
+            { id: GA, name: '@X', version: 1, deletedAt: null },
+          ],
+          views: [viewRow('v1', { or: [{ tag: GB }, { project: PB }] })],
+        },
+        ids(),
+        'T',
+      );
+      const sets = ops.filter((op) => op.table === 'view');
+      expect(sets).toEqual([
+        setFilter('v1', { or: [{ tag: GA }, { project: PA }] }),
+      ]);
+    });
+
+    it('leaves a view whose stored filter is invalid alone, without throwing', () => {
+      const { ops } = planMerge(
+        {
+          ...empty,
+          tags: [
+            { id: 'gb', name: '@x', version: 1, deletedAt: null },
+            { id: 'ga', name: '@X', version: 1, deletedAt: null },
+          ],
+          views: [viewRow('v1', { tag: 'gb', priority: [1] })],
+        },
+        ids(),
+        'T',
+      );
+      expect(ops.some((op) => op.table === 'view')).toBe(false);
     });
   });
 });
