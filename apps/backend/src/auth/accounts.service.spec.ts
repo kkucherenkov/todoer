@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { uuidv7 } from 'uuidv7';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { AppConfig } from '../config/app-config.js';
@@ -21,8 +21,7 @@ const days = (d: number): Date => new Date(t0.getTime() + d * 86_400_000);
 
 let owner: string;
 
-beforeEach(async () => {
-  vi.restoreAllMocks();
+const wipe = async (): Promise<void> => {
   await prisma.appliedOp.deleteMany({});
   await prisma.taskOccurrence.deleteMany({});
   await prisma.taskTag.deleteMany({});
@@ -31,6 +30,14 @@ beforeEach(async () => {
   await prisma.tag.deleteMany({});
   await prisma.invitation.deleteMany({});
   await prisma.user.deleteMany({});
+};
+
+// Other specs delete users without clearing synced rows; leave none behind.
+afterAll(wipe);
+
+beforeEach(async () => {
+  vi.restoreAllMocks();
+  await wipe();
   owner = (await accounts.register('o@e.test', PASSWORD)).userId;
 });
 
@@ -70,6 +77,14 @@ describe('register', () => {
     expect(results.filter((r) => r.status === 'fulfilled')).toHaveLength(1);
     expect(await prisma.user.count({ where: { isOwner: true } })).toBe(1);
     expect(await prisma.user.count()).toBe(1);
+  });
+
+  it('refuses a closed-instance registration without hashing', async () => {
+    const spy = vi.spyOn(auth, 'hashPassword');
+    await expect(accounts.register('b@e.test', PASSWORD)).rejects.toThrow(
+      'registration is closed',
+    );
+    expect(spy).not.toHaveBeenCalled();
   });
 
   it('refuses a weak password', async () => {
@@ -145,6 +160,9 @@ describe('setPasswordFor', () => {
       accounts.setPasswordFor(target, owner, 'another pass phrase!2'),
     ).rejects.toThrow('owner only');
     await expect(
+      accounts.setPasswordFor(owner, owner, 'another pass phrase!2'),
+    ).rejects.toThrow('use /auth/password');
+    await expect(
       accounts.setPasswordFor(owner, uuidv7(), 'another pass phrase!2'),
     ).rejects.toThrow('no such user');
     await expect(
@@ -182,6 +200,15 @@ describe('reset codes', () => {
     await accounts.reset(code, 'another pass phrase!2', minutes(1));
   });
 
+  it('leave one valid code at a time', async () => {
+    const first = await accounts.issueResetCode(owner, t0);
+    const second = await accounts.issueResetCode(owner, t0);
+    await expect(
+      accounts.reset(first, 'another pass phrase!2', minutes(1)),
+    ).rejects.toThrow('invalid code');
+    await accounts.reset(second, 'another pass phrase!2', minutes(1));
+  });
+
   it('refuse an unknown code', async () => {
     await expect(
       accounts.reset('nope', 'another pass phrase!2'),
@@ -196,8 +223,7 @@ describe('deleteAccount', () => {
     ).rejects.toThrow('invalid credentials');
   });
 
-  it('purges the user and everything they own', async () => {
-    const u = await join('b@e.test');
+  const seed = async (u: string): Promise<void> => {
     const task = uuidv7();
     const project = uuidv7();
     const tag = uuidv7();
@@ -239,24 +265,50 @@ describe('deleteAccount', () => {
     });
     await sessions.start(u);
     await accounts.issueResetCode(u);
+  };
+
+  const counts = async (userId: string): Promise<number[]> =>
+    Promise.all(
+      [
+        prisma.task,
+        prisma.project,
+        prisma.tag,
+        prisma.taskTag,
+        prisma.taskOccurrence,
+        prisma.appliedOp,
+        prisma.session,
+        prisma.resetCode,
+      ].map((model) =>
+        (model as { count(a: object): Promise<number> }).count({
+          where: { userId },
+        }),
+      ),
+    );
+
+  it('purges the user and everything they own, and nothing of anyone else', async () => {
+    const u = await join('b@e.test');
+    await seed(u);
+    await seed(owner);
+    const kept = await counts(owner);
+    expect(kept.every((n) => n > 0)).toBe(true);
 
     await accounts.deleteAccount(u, PASSWORD);
 
-    const where = { userId: u };
     expect(await prisma.user.findUnique({ where: { id: u } })).toBeNull();
-    for (const count of [
-      prisma.task.count({ where }),
-      prisma.project.count({ where }),
-      prisma.tag.count({ where }),
-      prisma.taskTag.count({ where }),
-      prisma.taskOccurrence.count({ where }),
-      prisma.appliedOp.count({ where }),
-      prisma.session.count({ where }),
-      prisma.resetCode.count({ where }),
-    ]) {
-      expect(await count).toBe(0);
-    }
+    expect(await counts(u)).toEqual(Array<number>(8).fill(0));
+    expect(await counts(owner)).toEqual(kept);
     expect(await prisma.user.count()).toBe(1);
+  });
+
+  it('takes the unspent invitations of a deleted owner with them', async () => {
+    const { token } = await accounts.invite(owner);
+    await accounts.deleteAccount(owner, PASSWORD);
+    expect(await prisma.invitation.count()).toBe(0);
+    const fresh = await accounts.register('n@e.test', PASSWORD);
+    expect(fresh.owner).toBe(true);
+    await expect(
+      accounts.register('m@e.test', PASSWORD, token),
+    ).rejects.toThrow('invalid invitation');
   });
 
   it('keeps the owner while another user exists, deletes them alone', async () => {

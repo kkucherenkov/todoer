@@ -16,6 +16,7 @@ import { SessionService } from './session.service.js';
 const INVITATION_TTL_MS = 7 * 86_400_000;
 const RESET_TTL_MS = 15 * 60_000;
 const INVALID_INVITATION = 'invalid invitation';
+const REGISTRATION_CLOSED = 'registration is closed';
 const INVALID_CODE = 'invalid code';
 
 const newSecret = (): string => randomBytes(32).toString('base64url');
@@ -25,6 +26,34 @@ const digest = (secret: string): string =>
 function requireStrong(password: string): void {
   const problem = passwordProblem(password);
   if (problem !== null) throw new BadRequestException(problem);
+}
+
+/**
+ * One valid code at a time: earlier unspent codes of the user are spent.
+ * Needs only Prisma, so the host script can call it without the rest.
+ */
+export async function issueResetCode(
+  prisma: PrismaService,
+  userId: string,
+  now = new Date(),
+): Promise<string> {
+  const code = newSecret();
+  await prisma.$transaction([
+    prisma.resetCode.updateMany({
+      where: { userId, usedAt: null },
+      data: { usedAt: now },
+    }),
+    prisma.resetCode.create({
+      data: {
+        id: uuidv7(),
+        userId,
+        codeHash: digest(code),
+        expiresAt: new Date(now.getTime() + RESET_TTL_MS),
+        createdAt: now,
+      },
+    }),
+  ]);
+  return code;
 }
 
 /**
@@ -53,6 +82,11 @@ export class AccountsService {
     now = new Date(),
   ): Promise<{ userId: string; owner: boolean }> {
     requireStrong(password);
+    // Refused before scrypt: an anonymous call on a closed instance must not
+    // cost a hash. Checked again under the lock below.
+    if (invitation === undefined && (await this.prisma.user.count()) > 0) {
+      throw new ForbiddenException(REGISTRATION_CLOSED);
+    }
     const address = normalizeEmail(email);
     const passwordHash = await this.auth.hashPassword(password);
     const id = uuidv7();
@@ -64,7 +98,7 @@ export class AccountsService {
       const first = (await tx.user.count()) === 0;
       if (!first) {
         if (invitation === undefined) {
-          throw new ForbiddenException('registration is closed');
+          throw new ForbiddenException(REGISTRATION_CLOSED);
         }
         const { count } = await tx.invitation.updateMany({
           where: {
@@ -113,6 +147,9 @@ export class AccountsService {
     password: string,
   ): Promise<void> {
     await this.requireOwner(ownerId);
+    if (targetId === ownerId) {
+      throw new ForbiddenException('use /auth/password to change your own');
+    }
     requireStrong(password);
     const target = await this.prisma.user.findUnique({
       where: { id: targetId },
@@ -122,19 +159,8 @@ export class AccountsService {
     await this.sessions.revokeAll(targetId);
   }
 
-  // Host script only; needs nothing but Prisma.
-  async issueResetCode(userId: string, now = new Date()): Promise<string> {
-    const code = newSecret();
-    await this.prisma.resetCode.create({
-      data: {
-        id: uuidv7(),
-        userId,
-        codeHash: digest(code),
-        expiresAt: new Date(now.getTime() + RESET_TTL_MS),
-        createdAt: now,
-      },
-    });
-    return code;
+  issueResetCode(userId: string, now?: Date): Promise<string> {
+    return issueResetCode(this.prisma, userId, now);
   }
 
   async reset(code: string, password: string, now = new Date()): Promise<void> {
@@ -184,6 +210,7 @@ export class AccountsService {
       await tx.project.deleteMany({ where });
       await tx.tag.deleteMany({ where });
       // Sessions and reset codes cascade.
+      await tx.invitation.deleteMany({ where: { createdBy: userId } });
       await tx.user.delete({ where: { id: userId } });
     });
   }

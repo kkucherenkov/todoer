@@ -36,6 +36,7 @@ export class AuthController {
   private readonly loginByAddress = new RateLimiter(5, WINDOW_MS);
   private readonly loginByIp = new RateLimiter(20, WINDOW_MS);
   private readonly refreshByIp = new RateLimiter(30, WINDOW_MS);
+  private readonly registerByIp = new RateLimiter(20, WINDOW_MS);
   private readonly resetByIp = new RateLimiter(20, WINDOW_MS);
 
   constructor(
@@ -131,7 +132,13 @@ export class AuthController {
   @Post('register')
   async register(
     @Body() body: Credentials & { invitation?: string },
+    @Req() req: Client,
   ): Promise<SessionTokens> {
+    const ip = req.ip ?? 'unknown';
+    const now = Date.now();
+    AuthController.check(now, [this.registerByIp, ip]);
+    // Reserved up front: registration costs a scrypt call.
+    this.registerByIp.fail(ip, now);
     try {
       const { userId } = await this.accounts.register(
         body.email,

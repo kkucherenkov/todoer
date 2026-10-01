@@ -25,6 +25,12 @@ const login = (email = 'a@b.c', password = PASSWORD, r = req) =>
 
 beforeEach(async () => {
   vi.restoreAllMocks();
+  // Sync specs leave synced rows behind, which restrict deleting their user.
+  await prisma.taskOccurrence.deleteMany({});
+  await prisma.taskTag.deleteMany({});
+  await prisma.task.deleteMany({});
+  await prisma.project.deleteMany({});
+  await prisma.tag.deleteMany({});
   await prisma.session.deleteMany({});
   await prisma.invitation.deleteMany({});
   await prisma.resetCode.deleteMany({});
@@ -209,12 +215,23 @@ describe('password change', () => {
 });
 
 describe('accounts routes', () => {
+  it('blocks the 21st registration from one address with 429', async () => {
+    for (let i = 0; i < 20; i++) {
+      await expect(
+        controller.register({ email: 'n@b.c', password: PASSWORD }, req),
+      ).rejects.toThrow('registration is closed');
+    }
+    await expect(
+      controller.register({ email: 'n@b.c', password: PASSWORD }, req),
+    ).rejects.toBeInstanceOf(TooManyRequests);
+  });
+
   it('refuses registration and invitations to a non-owner, and forgot with 503', async () => {
     await expect(controller.invite(U, { email: 'n@b.c' })).rejects.toThrow(
       'owner only',
     );
     await expect(
-      controller.register({ email: 'n@b.c', password: PASSWORD }),
+      controller.register({ email: 'n@b.c', password: PASSWORD }, req),
     ).rejects.toThrow('registration is closed');
     expect(() => controller.forgot()).toThrow(/mail is not configured/);
   });
