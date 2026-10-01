@@ -33,7 +33,9 @@ describe('AuthGuard', () => {
     vi.useRealTimers();
   });
 
-  const validToken = auth.sign('01920000-0000-7000-8000-000000000001');
+  const validToken = auth.signWithExpiry(
+    '01920000-0000-7000-8000-000000000001',
+  ).token;
 
   it.each([
     ['no Authorization header', {}],
@@ -55,7 +57,9 @@ describe('AuthGuard', () => {
     const other = new AuthService(prisma, {
       jwtSecret: 'a-different-secret-32-chars-long!!',
     } as AppConfig);
-    const foreign = other.sign('01920000-0000-7000-8000-000000000002');
+    const foreign = other.signWithExpiry(
+      '01920000-0000-7000-8000-000000000002',
+    ).token;
     const request = { headers: { authorization: `Bearer ${foreign}` } };
 
     expect(() => guard.canActivate(contextFor(request))).toThrow();
@@ -64,7 +68,9 @@ describe('AuthGuard', () => {
   it('rejects an expired token', () => {
     vi.useFakeTimers();
     vi.setSystemTime(0);
-    const token = auth.sign('01920000-0000-7000-8000-000000000003');
+    const token = auth.signWithExpiry(
+      '01920000-0000-7000-8000-000000000003',
+    ).token;
     vi.setSystemTime(60 * 60_000); // an hour later; the token's TTL is 15 minutes
 
     const request = { headers: { authorization: `Bearer ${token}` } };
@@ -90,11 +96,15 @@ describe('AuthGuard', () => {
     const other = new AuthService(prisma, {
       jwtSecret: 'a-different-secret-32-chars-long!!',
     } as AppConfig);
-    const foreign = other.sign('01920000-0000-7000-8000-000000000099');
+    const foreign = other.signWithExpiry(
+      '01920000-0000-7000-8000-000000000099',
+    ).token;
 
     vi.useFakeTimers();
     vi.setSystemTime(0);
-    const expiring = auth.sign('01920000-0000-7000-8000-000000000098');
+    const expiring = auth.signWithExpiry(
+      '01920000-0000-7000-8000-000000000098',
+    ).token;
     vi.setSystemTime(60 * 60_000); // an hour later; the token's TTL is 15 minutes
 
     const cases: Array<Record<string, string>> = [
@@ -133,10 +143,10 @@ describe('AuthGuard', () => {
 
   it('sets request.userId independently per call — one guard instance serves every request', () => {
     const requestA: GuardedRequest = {
-      headers: { authorization: `Bearer ${auth.sign('AAAA')}` },
+      headers: { authorization: `Bearer ${auth.signWithExpiry('AAAA').token}` },
     };
     const requestB: GuardedRequest = {
-      headers: { authorization: `Bearer ${auth.sign('BBBB')}` },
+      headers: { authorization: `Bearer ${auth.signWithExpiry('BBBB').token}` },
     };
 
     guard.canActivate(contextFor(requestA));
@@ -164,8 +174,8 @@ describe('tenant isolation: guard + controller together', () => {
       .fn()
       .mockResolvedValue({ cursor: 0, results: [], changes: [] });
     const controller = new SyncController({ sync } as unknown as SyncService);
-    const tokenA = auth.sign('user-A');
-    const tokenB = auth.sign('user-B');
+    const tokenA = auth.signWithExpiry('user-A').token;
+    const tokenB = auth.signWithExpiry('user-B').token;
     const requestA = { headers: { authorization: `Bearer ${tokenA}` } };
     const requestB = { headers: { authorization: `Bearer ${tokenB}` } };
 

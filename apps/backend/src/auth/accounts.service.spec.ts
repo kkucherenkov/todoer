@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { uuidv7 } from 'uuidv7';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { AppConfig } from '../config/app-config.js';
-import { AccountsService } from './accounts.service.js';
+import { AccountsService, issueResetCode } from './accounts.service.js';
 import { AuthService } from './auth.service.js';
 import { SessionService } from './session.service.js';
 import { lockUserWrites } from '../sync/user-lock.js';
@@ -175,7 +175,7 @@ describe('setPasswordFor', () => {
 describe('reset codes', () => {
   it('set the password once, within 15 minutes, and revoke sessions', async () => {
     await sessions.start(owner);
-    const code = await accounts.issueResetCode(owner, t0);
+    const code = await issueResetCode(prisma, owner, t0);
     await accounts.reset(code, 'another pass phrase!2', minutes(14));
     expect(await prisma.session.count({ where: { revokedAt: null } })).toBe(0);
     await auth.login('o@e.test', 'another pass phrase!2');
@@ -187,14 +187,14 @@ describe('reset codes', () => {
   });
 
   it('expire after 15 minutes', async () => {
-    const code = await accounts.issueResetCode(owner, t0);
+    const code = await issueResetCode(prisma, owner, t0);
     await expect(
       accounts.reset(code, 'another pass phrase!2', minutes(16)),
     ).rejects.toThrow('invalid code');
   });
 
   it('refuse a weak password without spending the code', async () => {
-    const code = await accounts.issueResetCode(owner, t0);
+    const code = await issueResetCode(prisma, owner, t0);
     await expect(accounts.reset(code, 'weak', minutes(1))).rejects.toThrow(
       /a password needs/,
     );
@@ -202,8 +202,8 @@ describe('reset codes', () => {
   });
 
   it('leave one valid code at a time', async () => {
-    const first = await accounts.issueResetCode(owner, t0);
-    const second = await accounts.issueResetCode(owner, t0);
+    const first = await issueResetCode(prisma, owner, t0);
+    const second = await issueResetCode(prisma, owner, t0);
     await expect(
       accounts.reset(first, 'another pass phrase!2', minutes(1)),
     ).rejects.toThrow('invalid code');
@@ -265,7 +265,7 @@ describe('deleteAccount', () => {
       data: { opId: uuidv7(), userId: u, status: 'applied' },
     });
     await sessions.start(u);
-    await accounts.issueResetCode(u);
+    await issueResetCode(prisma, u);
   };
 
   const counts = async (userId: string): Promise<number[]> =>

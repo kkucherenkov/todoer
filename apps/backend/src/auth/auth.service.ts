@@ -52,16 +52,6 @@ export class AuthService {
     return `${salt}:${hash}`;
   }
 
-  async register(id: string, email: string, password: string): Promise<void> {
-    await this.prisma.user.create({
-      data: {
-        id,
-        email: normalizeEmail(email),
-        passwordHash: await this.hashPassword(password),
-      },
-    });
-  }
-
   async setPassword(userId: string, password: string): Promise<void> {
     await this.prisma.user.update({
       where: { id: userId },
@@ -102,10 +92,6 @@ export class AuthService {
     if (user === null || !hashesMatch) throw failure;
 
     return { userId: user.id };
-  }
-
-  sign(userId: string): string {
-    return this.signWithExpiry(userId).token;
   }
 
   signWithExpiry(

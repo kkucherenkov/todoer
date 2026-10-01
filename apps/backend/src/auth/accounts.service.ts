@@ -160,10 +160,6 @@ export class AccountsService {
     await this.sessions.revokeAll(targetId);
   }
 
-  issueResetCode(userId: string, now?: Date): Promise<string> {
-    return issueResetCode(this.prisma, userId, now);
-  }
-
   async reset(code: string, password: string, now = new Date()): Promise<void> {
     requireStrong(password);
     const passwordHash = await this.auth.hashPassword(password);
