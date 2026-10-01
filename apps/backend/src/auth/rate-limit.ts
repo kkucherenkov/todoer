@@ -19,15 +19,31 @@ export class RateLimiter {
     );
     if (kept.length === 0) this.failures.delete(key);
     else this.failures.set(key, kept);
+
+    // Evict expired keys from the front: stop at the first live one.
+    for (const [k, times] of this.failures) {
+      if (times.length > 0 && times[times.length - 1] > now - this.windowMs) {
+        break;
+      }
+      this.failures.delete(k);
+    }
+
     return kept;
   }
 
   fail(key: string, now: number): void {
-    this.failures.set(key, [...this.recent(key, now), now]);
+    const recent = this.recent(key, now);
+    this.failures.delete(key);
+    // Cap with only the last `limit` timestamps.
+    this.failures.set(key, [...recent, now].slice(-this.limit));
   }
 
   clear(key: string): void {
     this.failures.delete(key);
+  }
+
+  get size(): number {
+    return this.failures.size;
   }
 
   /** Seconds until the key may try again, or `null` if it may now. */

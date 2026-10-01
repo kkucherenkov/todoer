@@ -146,6 +146,7 @@ describe('HttpExceptionFilter', () => {
     filter.catch(new TooManyRequests(120), host);
 
     expect(response.status).toHaveBeenCalledWith(429);
+    expect(response.type).toHaveBeenCalledWith('application/problem+json');
     expect(response.setHeader).toHaveBeenCalledWith('Retry-After', '120');
   });
 });
