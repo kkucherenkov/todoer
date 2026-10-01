@@ -348,6 +348,11 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/SessionTokens" }
+        "400":
+          description: the password is too weak
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
         "403":
           description: registration is closed, or the invitation is invalid, spent, expired or issued for another address
           content:
@@ -376,8 +381,8 @@ paths:
       description: >-
         Spends the presented refresh token and returns a new access token and a
         new refresh token. A just-spent token presented again within about 30
-        seconds returns the same pair; a spent token past that window revokes the
-        session. An expired, revoked or unknown token is 401.
+        seconds returns the same refresh token with a freshly minted access
+        token; a spent token past that window revokes the session. An expired, revoked or unknown token is 401.
       security: []
       requestBody:
         required: true
@@ -442,7 +447,9 @@ paths:
       description: >-
         Needs the current password. Revokes every session of the caller and
         returns a fresh pair, so the client that changed it stays signed in. The
-        new password must be strong: letters, digits and symbols.
+        new password must be strong: letters, digits and symbols. Wrong current
+        passwords are limited per user: too many are answered 429 with
+        Retry-After.
       security:
         - bearerAuth: []
       requestBody:
@@ -463,6 +470,11 @@ paths:
               schema: { $ref: "#/components/schemas/Problem" }
         "401":
           description: missing or invalid bearer token, or wrong current password
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "429":
+          description: too many attempts; see Retry-After
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
@@ -542,7 +554,7 @@ paths:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
         "403":
-          description: the caller is not the owner
+          description: the caller is not the owner, or targets themselves (use POST /auth/password)
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
@@ -623,7 +635,7 @@ paths:
       description: >-
         Needs the current password. Purges the user and everything they own,
         without tombstones. The owner cannot delete the account while other users
-        exist. Attempts per address are limited: too many are answered 429 with
+        exist. Attempts per IP address are limited: too many are answered 429 with
         Retry-After.
       security:
         - bearerAuth: []
