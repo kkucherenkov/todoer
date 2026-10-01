@@ -41,7 +41,9 @@ export type FilterTask = {
 export const FILTER_MAX_DEPTH = 8;
 export const FILTER_MAX_NODES = 256;
 const MAX_OFFSET_DAYS = 36_600;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+// Lower-case only: Postgres returns uuid columns lower-case and JSONB keeps a
+// filter's strings as written, so an upper-case id would never match.
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
 
 const isUuid = (value: unknown): boolean =>
   typeof value === 'string' && UUID.test(value);

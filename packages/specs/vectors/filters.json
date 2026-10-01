@@ -223,6 +223,10 @@
     { "name": "not of an array", "filter": { "not": [] } },
     { "name": "tag not a uuid", "filter": { "tag": "@phone" } },
     { "name": "tag null", "filter": { "tag": null } },
+    {
+      "name": "tag upper-case",
+      "filter": { "tag": "018F0000-0000-7000-8000-00000000000A" }
+    },
     { "name": "status null", "filter": { "status": null } },
     { "name": "project a name", "filter": { "project": "work" } },
     { "name": "priority empty", "filter": { "priority": [] } },
