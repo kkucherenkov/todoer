@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { uuidv7 } from 'uuidv7';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { resetDatabase } from '../testing/reset-database.js';
 import { AuthService } from './auth.service.js';
 import { SessionService } from './session.service.js';
 import type { AppConfig } from '../config/app-config.js';
@@ -19,10 +20,7 @@ const days = (d: number): Date => new Date(t0.getTime() + d * 86_400_000);
 let U: string;
 
 beforeEach(async () => {
-  await prisma.session.deleteMany({});
-  await prisma.invitation.deleteMany({});
-  await prisma.resetCode.deleteMany({});
-  await prisma.user.deleteMany({});
+  await resetDatabase(prisma);
   U = uuidv7();
   await prisma.user.create({
     data: { id: U, email: 'u@example.com', passwordHash: 'x:y' },

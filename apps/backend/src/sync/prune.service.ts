@@ -34,10 +34,10 @@ type Prunable = {
  * nothing to delete.
  *
  * Only the synchronised tables with tombstones (task, tag, project, status,
- * view and the TaskTag rows), named one by one. Task
- * occurrences are never pruned on their own (ADR 0013); they go with their
- * task, by cascade, when its tombstone is pruned. A loop over every table
- * with `deletedAt` would reach them directly.
+ * view and the TaskTag rows), named one by one. Task occurrences are never
+ * pruned on their own (ADR 0013); they go with their task, by cascade, when
+ * its tombstone is pruned. A loop over every table with `deletedAt` would
+ * reach them directly.
  */
 @Injectable()
 export class PruneService
@@ -95,11 +95,11 @@ export class PruneService
    * subtask under a deleted parent) is kept and retried on the next run.
    *
    * ponytail: each deleted tombstone fires its FK action (`SET NULL` on
-   * Task.projectId/parentId/statusId, `CASCADE` on TaskTag and TaskOccurrence), all
-   * inside Prisma's default 5s interactive-transaction timeout. TaskTag and
-   * TaskOccurrence scan their own indexed `taskId`/`tagId` columns;
-   * Task.statusId is indexed too; only Task.projectId and Task.parentId are
-   * still unindexed, so a user with a
+   * Task.projectId/parentId/statusId, `CASCADE` on TaskTag and
+   * TaskOccurrence), all inside Prisma's default 5s interactive-transaction
+   * timeout. TaskTag and TaskOccurrence scan their own indexed
+   * `taskId`/`tagId` columns; Task.statusId is indexed too; only
+   * Task.projectId and Task.parentId are still unindexed, so a user with a
    * very large backlog (first run after deploy) could hit P2028 there.
    * Upgrade path: indexes on Task.projectId, Task.parentId and/or a
    * `{ timeout }` on this transaction.

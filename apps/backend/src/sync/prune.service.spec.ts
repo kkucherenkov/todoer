@@ -231,6 +231,27 @@ describe('PruneService', () => {
     expect(await watermark(USER)).toBeGreaterThanOrEqual(seq);
   });
 
+  it('keeps a status tombstone whose only referrer is a task tombstone still too young', async () => {
+    const status = uuidv7();
+    const task = uuidv7();
+    await sync.sync(USER, {
+      since: 0,
+      ops: [
+        create('status', status, { name: 's', rank: 'a0' }),
+        create('task', task, { title: 't', rank: 'a0', statusId: status }),
+        remove('status', status),
+        remove('task', task),
+      ],
+    });
+    await age('status', [status], RETENTION_DAYS + 1);
+    await age('task', [task], RETENTION_DAYS - 1);
+
+    await prune.prune(new Date());
+
+    expect(await prisma.status.count({ where: { id: status } })).toBe(1);
+    expect(await prisma.task.count({ where: { id: task } })).toBe(1);
+  });
+
   it('keeps a status tombstone younger than the window', async () => {
     const id = uuidv7();
     await sync.sync(USER, {

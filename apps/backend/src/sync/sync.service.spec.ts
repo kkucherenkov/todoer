@@ -2020,6 +2020,58 @@ describe('SyncService statuses, views and task origins', () => {
     ).toEqual(view.filter);
   });
 
+  it('rejects a set filter of null and keeps the stored one', async () => {
+    const v = create('view', view);
+    await service.sync(USER, { since: 0, ops: [v] });
+
+    const { results } = await service.sync(USER, {
+      since: 0,
+      ops: [
+        {
+          opId: uuidv7(),
+          kind: 'set',
+          table: 'view',
+          id: v.id,
+          field: 'filter',
+          value: null,
+          ts: new Date().toISOString(),
+        },
+      ],
+    });
+
+    expect(results[0]).toMatchObject({
+      status: 'rejected',
+      reason: 'filter: filter: not an object',
+    });
+    expect(
+      (await prisma.view.findUnique({ where: { id: v.id } }))?.filter,
+    ).toEqual(view.filter);
+  });
+
+  it('returns the statusId and originTaskId of a pulled task', async () => {
+    const s = create('status', status);
+    const source = createTask('source');
+    const copy = createTask('copy');
+    copy.fields.statusId = s.id;
+    copy.fields.originTaskId = source.id;
+    copy.fields.originOccurrence = '2026-10-05';
+
+    const { results } = await service.sync(USER, {
+      since: 0,
+      ops: [s, source, copy],
+    });
+
+    expect(results.map((r) => r.status)).toEqual([
+      'applied',
+      'applied',
+      'applied',
+    ]);
+    expect((await pull()).find((c) => c.id === copy.id)!.row).toMatchObject({
+      statusId: s.id,
+      originTaskId: source.id,
+    });
+  });
+
   it('rejects an unknown field on a view', async () => {
     const { results } = await service.sync(USER, {
       since: 0,
@@ -2054,8 +2106,8 @@ describe('SyncService statuses, views and task origins', () => {
 
   it('lets a task move to a tombstoned status of the user', async () => {
     const s = create('status', status);
-    await service.sync(USER, { since: 0, ops: [s] });
-    await service.sync(USER, {
+    const created = await service.sync(USER, { since: 0, ops: [s] });
+    const deleted = await service.sync(USER, {
       since: 0,
       ops: [
         {
@@ -2068,7 +2120,10 @@ describe('SyncService statuses, views and task origins', () => {
       ],
     });
     const t = createTask('t');
-    await service.sync(USER, { since: 0, ops: [t] });
+    const task = await service.sync(USER, { since: 0, ops: [t] });
+    expect(created.results[0]).toMatchObject({ status: 'applied' });
+    expect(deleted.results[0]).toMatchObject({ status: 'applied' });
+    expect(task.results[0]).toMatchObject({ status: 'applied' });
 
     const { results } = await service.sync(USER, {
       since: 0,
