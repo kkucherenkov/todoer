@@ -23,6 +23,12 @@ usage:
                                           done or skipped occurrence)
   todoer outbox [--json]                  list operations the server has not accepted
   todoer outbox drop <op-id>... [--json]  forget failed operations
+  todoer login <email> [--json]           sign in; the password comes from
+                                          TODOER_PASSWORD, a pipe on stdin, or
+                                          a prompt on a terminal
+  todoer logout [--all] [--json]          sign out (--all: every session);
+                                          the local tokens go even when the
+                                          server cannot be reached (exit 5)
   todoer --help
 
 Every command first sends the operations waiting in the outbox and fetches
@@ -59,7 +65,9 @@ environment:
   TODOER_URL         instance base URL, default http://localhost:3000/api/v1
   TODOER_TOKEN       bearer token; when set it is used as is and never renewed.
                      Without it the CLI uses the session it stored itself and
-                     refreshes it before it expires.
+                     refreshes it before it expires. login stores that
+                     session; TODOER_TOKEN still overrides it.
+  TODOER_PASSWORD    the password login uses instead of reading one
   TODOER_TIMEOUT_MS  how long to wait for the server, default 3000
 
 local state:

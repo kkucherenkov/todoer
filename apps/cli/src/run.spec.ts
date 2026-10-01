@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Change, Op, SyncRequest } from '@todoer/specs';
 import { taskOccurrenceId, taskTagId } from '@todoer/specs';
+import type { AuthApi } from './auth.js';
 import { RefusalError, UsageError } from './protocol.js';
 import { run, type Deps } from './run.js';
 import { Store } from './store.js';
@@ -21,7 +22,35 @@ function deps(send: Transport): Deps {
     send,
     now: () => new Date('2026-09-26T10:00:00.000Z'),
     newId: () => `id-${++n}`,
+    auth: fakeAuth().api,
+    readPassword: () => Promise.resolve('secret'),
   };
+}
+
+const SESSION = {
+  accessToken: 'acc',
+  accessExpiresAt: '2026-09-26T10:15:00.000Z',
+  refreshToken: 'ref',
+};
+
+function fakeAuth(overrides: Partial<AuthApi> = {}) {
+  const calls: { login: string[][]; logout: unknown[] } = {
+    login: [],
+    logout: [],
+  };
+  const api: AuthApi = {
+    login: (email, password) => {
+      calls.login.push([email, password]);
+      return Promise.resolve(SESSION);
+    },
+    refresh: () => Promise.reject(new Error('unused')),
+    logout: (access, body) => {
+      calls.logout.push([access, body]);
+      return Promise.resolve();
+    },
+    ...overrides,
+  };
+  return { api, calls };
 }
 
 /** Like deps, with ids shaped like UUIDs so a suffix can name them:
@@ -1210,5 +1239,120 @@ describe('run', () => {
       expect(server.rows.get('t1')?.row.projectId).toBe('p-a');
       expect(d.store.pending()).toEqual([]);
     });
+  });
+});
+
+describe('login and logout', () => {
+  const never: Transport = () => Promise.reject(new Error('must not sync'));
+
+  it('login reads the password, stores the session and says who signed in', async () => {
+    const d = deps(never);
+    const { api, calls } = fakeAuth();
+    d.auth = api;
+    const out = await run(['login', 'a@b.c'], d);
+    expect(calls.login).toEqual([['a@b.c', 'secret']]);
+    expect(d.store.auth()).toEqual(SESSION);
+    expect(out).toEqual({
+      exit: 0,
+      stdout: ['signed in as a@b.c'],
+      stderr: [],
+    });
+  });
+
+  it('login --json prints the envelope', async () => {
+    const out = await run(['login', 'a@b.c', '--json'], deps(never));
+    expect(JSON.parse(out.stdout[0] ?? '')).toEqual({
+      data: { email: 'a@b.c' },
+      synced: true,
+      outbox: { pending: 0, failed: 0 },
+    });
+  });
+
+  it('a refused login is a refusal and stores nothing', async () => {
+    const d = deps(never);
+    d.auth = fakeAuth({
+      login: () => Promise.reject(new RefusalError('login refused: 401')),
+    }).api;
+    await expect(run(['login', 'a@b.c'], d)).rejects.toThrow(RefusalError);
+    expect(d.store.auth()).toBeUndefined();
+  });
+
+  it('login without exactly one email is a usage error', async () => {
+    await expect(run(['login'], deps(never))).rejects.toThrow(UsageError);
+    await expect(run(['login', 'a', 'b'], deps(never))).rejects.toThrow(
+      UsageError,
+    );
+  });
+
+  it('logout sends the stored refresh token and clears the session', async () => {
+    const d = deps(never);
+    const { api, calls } = fakeAuth();
+    d.auth = api;
+    d.store.saveAuth(SESSION);
+    const out = await run(['logout'], d);
+    expect(calls.logout).toEqual([['acc', { refreshToken: 'ref' }]]);
+    expect(d.store.auth()).toBeUndefined();
+    expect(out).toEqual({ exit: 0, stdout: ['signed out'], stderr: [] });
+  });
+
+  it('logout --all sends all: true', async () => {
+    const d = deps(never);
+    const { api, calls } = fakeAuth();
+    d.auth = api;
+    d.store.saveAuth(SESSION);
+    await run(['logout', '--all'], d);
+    expect(calls.logout).toEqual([['acc', { all: true }]]);
+  });
+
+  it('logout with nothing stored sends nothing and exits 0', async () => {
+    const d = deps(never);
+    const { api, calls } = fakeAuth();
+    d.auth = api;
+    expect((await run(['logout'], d)).exit).toBe(0);
+    expect(calls.logout).toEqual([]);
+  });
+
+  it('logout --json prints data: null', async () => {
+    const out = await run(['logout', '--json'], deps(never));
+    expect(JSON.parse(out.stdout[0] ?? '')).toEqual({
+      data: null,
+      synced: true,
+      outbox: { pending: 0, failed: 0 },
+    });
+  });
+
+  it('a refused logout still clears the session, then fails with exit 1', async () => {
+    const d = deps(never);
+    d.auth = fakeAuth({
+      logout: () => Promise.reject(new RefusalError('logout refused: 401')),
+    }).api;
+    d.store.saveAuth(SESSION);
+    await expect(run(['logout'], d)).rejects.toThrow(
+      /signed out locally.*logout refused: 401/,
+    );
+    expect(d.store.auth()).toBeUndefined();
+  });
+
+  it('an unreachable server on logout still clears the session and exits 5', async () => {
+    const d = deps(never);
+    d.auth = fakeAuth({
+      logout: () => Promise.reject(new TypeError('fetch failed')),
+    }).api;
+    d.store.saveAuth(SESSION);
+    const out = await run(['logout', '--json'], d);
+    expect(out.exit).toBe(5);
+    expect(out.stderr.join()).toMatch(/signed out locally/);
+    expect(JSON.parse(out.stdout[0] ?? '')).toMatchObject({ synced: false });
+    expect(d.store.auth()).toBeUndefined();
+  });
+
+  it('lets a RefusalError from flush through, for index.ts to exit 1', async () => {
+    const ended: Transport = () =>
+      Promise.reject(
+        new RefusalError('your session has ended — run todoer login'),
+      );
+    await expect(run(['list'], deps(ended))).rejects.toThrow(
+      'your session has ended — run todoer login',
+    );
   });
 });

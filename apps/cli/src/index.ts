@@ -3,6 +3,7 @@ import { uuidv7 } from 'uuidv7';
 import { httpAuthApi, tokenSource } from './auth.js';
 import { readConfig } from './config.js';
 import { ConflictError, RefusalError, UsageError } from './protocol.js';
+import { readPassword } from './password.js';
 import { run } from './run.js';
 import { Store } from './store.js';
 import { httpTransport } from './transport.js';
@@ -17,14 +18,17 @@ async function main(): Promise<number> {
   const config = readConfig(process.env);
   const store = Store.open(config.dbPath);
   try {
+    const auth = httpAuthApi(config);
     const outcome = await run(argv, {
       store,
       send: httpTransport(
         config,
-        tokenSource(store, httpAuthApi(config), config.token, () => new Date()),
+        tokenSource(store, auth, config.token, () => new Date()),
       ),
       now: () => new Date(),
       newId: uuidv7,
+      auth,
+      readPassword: () => readPassword(process.env),
     });
     // stderr first, and stdout exactly one value under --json.
     for (const line of outcome.stderr) console.error(line);

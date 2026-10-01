@@ -7,6 +7,7 @@ import {
   type OpCreate,
   type Rrule,
 } from '@todoer/specs';
+import type { AuthApi } from './auth.js';
 import { expand } from './expand.js';
 import {
   addDays,
@@ -34,6 +35,8 @@ export type Deps = {
   send: Transport;
   now: () => Date;
   newId: () => string;
+  auth: AuthApi;
+  readPassword: () => Promise<string>;
 };
 
 export type Outcome = { exit: 0 | 5; stdout: string[]; stderr: string[] };
@@ -138,6 +141,49 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
   let synced: boolean;
   let data: unknown;
   let human: string[];
+
+  // Neither command syncs: they only move the session.
+  if (command === 'login') {
+    const [email, ...extra] = rest;
+    if (email === undefined || extra.length > 0) {
+      throw new UsageError('login needs exactly one email');
+    }
+    const session = await deps.auth.login(email, await deps.readPassword());
+    await store.withWriteLock(() => Promise.resolve(store.saveAuth(session)));
+    return accountOutcome(store, json, { email }, `signed in as ${email}`);
+  }
+  if (command === 'logout') {
+    const all = rest.length === 1 && rest[0] === '--all';
+    if (rest.length > 0 && !all)
+      throw new UsageError('logout takes only --all');
+    const auth = store.auth();
+    let failure: unknown;
+    if (auth !== undefined) {
+      try {
+        await deps.auth.logout(
+          auth.accessToken,
+          all ? { all: true } : { refreshToken: auth.refreshToken },
+        );
+      } catch (error) {
+        failure = error;
+      }
+      // The caller asked to sign out: the tokens go whatever the server said.
+      await store.withWriteLock(() => Promise.resolve(store.clearAuth()));
+    }
+    if (failure instanceof RefusalError) {
+      throw new RefusalError(`signed out locally, but ${failure.message}`);
+    }
+    // A server not reached is exit 5 like everywhere else; the local half is done.
+    return accountOutcome(
+      store,
+      json,
+      null,
+      'signed out',
+      failure === undefined
+        ? undefined
+        : 'signed out locally, but the server was not reached: the session stays valid there until it expires',
+    );
+  }
 
   if (command === 'add') {
     const rrule = takeOption(rest, '--rrule');
@@ -350,6 +396,23 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
     exit: synced ? 0 : 5,
     stdout: json ? [JSON.stringify({ data, synced, outbox })] : human,
     stderr,
+  };
+}
+
+function accountOutcome(
+  store: Store,
+  json: boolean,
+  data: unknown,
+  human: string,
+  unreached?: string,
+): Outcome {
+  const synced = unreached === undefined;
+  return {
+    exit: synced ? 0 : 5,
+    stdout: [
+      json ? JSON.stringify({ data, synced, outbox: store.counts() }) : human,
+    ],
+    stderr: synced ? [] : [unreached],
   };
 }
 

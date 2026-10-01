@@ -66,4 +66,11 @@ describe('HELP', () => {
     expect(HELP).toMatch(/todoer list \[@tag\|#project \.\.\.\]/);
     expect(HELP).not.toMatch(/parsed, not stored/);
   });
+
+  it('documents sign-in and the environment it uses', () => {
+    expect(HELP).toMatch(/todoer login <email>/);
+    expect(HELP).toMatch(/todoer logout \[--all\]/);
+    expect(HELP).toMatch(/TODOER_PASSWORD/);
+    expect(HELP).not.toMatch(/POST \/auth\/login/);
+  });
 });
