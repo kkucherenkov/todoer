@@ -136,7 +136,8 @@ replica count that changes when the CLI writes.
 - A refresh answered 429 → the session stays signed in, and `sync.problem`
   says why (FR-009, T001, T004).
 - The new leader opens the pool before the old worker released it → the
-  install retries for up to about 5 s (FR-006, T004, T007).
+  install retries ten times, 100 ms doubling to 1 s apart, about 6.5 s in
+  all. A browser without OPFS fails at once (FR-006, T004, T007).
 - A tab killed mid-transaction → the hot journal rolls back on the next
   open. There is no WAL (FR-003, FR-006, T002; Review Focus 1).
 - A request sent before any worker exists, or while one restarts →
