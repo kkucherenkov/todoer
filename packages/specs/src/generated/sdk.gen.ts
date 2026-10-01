@@ -143,7 +143,7 @@ export const postAuthRefresh = <ThrowOnError extends boolean = false>(
 
 /**
  * Revoke the current session or all of them
- * Revokes the session of the presented refresh token, or every session of the caller when `all` is true. Access tokens already issued live out their 15 minutes.
+ * Revokes the session of the presented refresh token, or every session of the caller when `all` is true. Access tokens already issued live out their 15 minutes. The body is required but may be `{}`.
  */
 export const postAuthLogout = <ThrowOnError extends boolean = false>(
   options: Options<PostAuthLogoutData, ThrowOnError>,
