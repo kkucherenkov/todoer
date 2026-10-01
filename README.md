@@ -106,8 +106,9 @@ registration, successful or not, counts toward a per-IP budget of 20 per
 15 minutes, so many rapid runs from one address can hit `429`; wait the
 seconds in its `Retry-After` header (up to 15 minutes).
 
-Behind a reverse proxy every client shares the proxy's IP, because the backend
-does not configure `trust proxy`, so the per-IP limits become instance-wide.
+Behind a reverse proxy, set `TRUST_PROXY` to the number of proxies in front
+(usually `1`) or to their addresses. Unset, every client behind a proxy shares
+one IP for the rate limits.
 
 ### Environment
 
@@ -116,6 +117,7 @@ does not configure `trust proxy`, so the per-IP limits become instance-wide.
 | `DATABASE_URL`                  | backend     | —                                                | required; Postgres connection string                                                       |
 | `JWT_SECRET`                    | backend     | —                                                | required; signs the access token, at least 32 characters                                   |
 | `PORT`                          | backend     | `3000`                                           | refuses a value that is not a whole port number                                            |
+| `TRUST_PROXY`                   | backend     | unset                                            | proxy hop count (`1`) or addresses/subnets (`loopback, 10.0.0.0/8`); `true` is refused     |
 | `APP_VERSION`                   | backend     | `0.0.0-dev`                                      | reported by `GET /api/v1/health`                                                           |
 | `TODOER_URL`                    | CLI         | `http://localhost:3000/api/v1`                   | instance base URL                                                                          |
 | `TODOER_TOKEN`                  | CLI         | —                                                | bearer token; when set it is used as is, never refreshed, and overrides the stored session |

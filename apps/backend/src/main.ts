@@ -5,7 +5,7 @@ import { json } from 'express';
 import * as OpenApiValidator from 'express-openapi-validator';
 import { fileURLToPath } from 'node:url';
 import { AppModule } from './app.module.js';
-import { AppConfig } from './config/app-config.js';
+import { AppConfig, applyTrustProxy } from './config/app-config.js';
 import { HttpExceptionFilter } from './http-exception.filter.js';
 
 const specPath = fileURLToPath(
@@ -46,6 +46,9 @@ async function bootstrap(): Promise<void> {
   );
 
   const config = app.get(AppConfig);
+  // Per-IP rate limits key on req.ip, which behind a reverse proxy is the
+  // proxy's address unless told otherwise. See README, "Environment".
+  applyTrustProxy(app, config);
   await app.listen(config.port);
 }
 

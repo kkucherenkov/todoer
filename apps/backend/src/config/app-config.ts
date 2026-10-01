@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, type INestApplication } from '@nestjs/common';
+import type { Application } from 'express';
 
 /**
  * The only place in the application that reads process.env. Everything else
@@ -11,6 +12,27 @@ export class AppConfig {
   readonly version = process.env.APP_VERSION ?? '0.0.0-dev';
   readonly databaseUrl = this.required('DATABASE_URL');
   readonly jwtSecret = this.required('JWT_SECRET');
+  readonly trustProxy = this.proxyTrust('TRUST_PROXY');
+
+  /**
+   * Express's `trust proxy` setting: a hop count or a list of addresses and
+   * subnets, or undefined to trust nothing. `true` is refused on purpose: it
+   * trusts every hop, so any client could forge X-Forwarded-For and dodge the
+   * per-IP rate limits.
+   */
+  private proxyTrust(name: string): number | string | undefined {
+    const raw = process.env[name]?.trim();
+    if (!raw) return undefined;
+    if (/^\d+$/.test(raw)) return Number(raw);
+    // Anything numeric-looking that is not a whole count (-1, 1.5), and the
+    // booleans express would accept, are not an address list.
+    if (/^[-+.\d]+$/.test(raw) || /^(true|false)$/i.test(raw)) {
+      throw new Error(
+        `${name} must be a hop count or a list of addresses/subnets`,
+      );
+    }
+    return raw;
+  }
 
   /**
    * A port, or a refusal. `Number('abc')` is NaN and `listen(NaN)` binds a
@@ -38,4 +60,16 @@ export class AppConfig {
     }
     return value;
   }
+}
+
+/** Wires `TRUST_PROXY` into express; see the README for what to set. */
+export function applyTrustProxy(
+  app: INestApplication,
+  config: Pick<AppConfig, 'trustProxy'>,
+): void {
+  if (config.trustProxy === undefined) return;
+  (app.getHttpAdapter().getInstance() as Application).set(
+    'trust proxy',
+    config.trustProxy,
+  );
 }
