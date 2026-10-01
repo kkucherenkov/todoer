@@ -185,6 +185,8 @@ export function createEngine({
   };
 
   const signIn = async (email: string, password: string): Promise<Result> => {
+    // The previous account's sync must not end in this account's replica.
+    await running;
     const grant = await auth.login(email, password);
     if (grant === 'invalid') {
       return fail('invalid-credentials', 'wrong email or password');
@@ -197,6 +199,8 @@ export function createEngine({
   };
 
   const signOut = async (): Promise<Result> => {
+    // A 401 for a sync started before this is not a session that ended.
+    await running;
     try {
       // current() renews an expired token first: logout needs a live bearer.
       const bearer = await tokens.current();

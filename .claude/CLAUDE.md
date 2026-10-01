@@ -112,7 +112,7 @@ the list is what a protection rule should name when one is added.
 
 A pnpm workspace under turbo. Five packages. `@todoer/specs` is upstream of
 all others — it holds the OpenAPI document and the client generated from it —
-and `@todoer/client-core` is upstream of the CLI.
+and `@todoer/client-core` is upstream of both the CLI and the web client.
 
 | Path | What |
 | --- | --- |

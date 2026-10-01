@@ -170,10 +170,11 @@ ports, `tailscale serve` gives it an HTTPS name inside your tailnet.
 
 Browsers. Chromium and Firefox are tested in CI. Firefox skips one case, the
 return from offline to online, because Playwright's emulation fires no `online`
-event there; the app syncs on a manual "Sync now" after it. A blob worker is
-refused under the CSP in Chromium and reported to the test, but Firefox neither
-enforces nor reports it for a worker created inside a worker, so that check runs
-in Chromium only. Safari is untested: OPFS needs 16.4 or newer, and its handling
+event there; the app syncs on a manual "Sync now" after it. The blob-worker
+check is the guard fixture, not a separate test: a blob worker is refused under
+the CSP and reported there, but only in Chromium. Firefox neither enforces nor
+reports it for a worker created inside a worker, so the guard is effective in
+Chromium only. Safari is untested: OPFS needs 16.4 or newer, and its handling
 of `Secure` cookies on `http://localhost` differs, so use HTTPS. Signing out
 keeps the local replica in the browser; signing in as another account resets
 it. A one-bit hint in `localStorage` (`todoer.session`) tells a signed-out tab

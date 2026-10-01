@@ -209,6 +209,31 @@ describe('signIn', () => {
     expect(send).not.toHaveBeenCalled();
   });
 
+  it("waits for the previous account's sync: its answer never reaches the new replica", async () => {
+    // Cursor 0 on both sides: store.applyResponse's guard cannot tell them apart.
+    const answer = (id?: string) =>
+      json({ cursor: id ? 3 : 0, results: [], changes: id ? [task(id)] : [] });
+    send.mockImplementation(() => Promise.resolve(answer()));
+    const e = engine();
+    await e.start(true);
+    let release = () => {};
+    send.mockImplementationOnce(
+      () =>
+        new Promise<Response>((resolve) => {
+          release = () => resolve(answer('of-u1'));
+        }),
+    );
+    const syncing = e.handle({ kind: 'sync', reason: 'manual' });
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+    send.mockImplementation(() => Promise.resolve(answer('of-u2')));
+    auth.login.mockResolvedValue(grant('u2'));
+    const signIn = e.handle({ kind: 'signIn', email: 'b@b.c', password: 'x' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    release();
+    await Promise.all([syncing, signIn]);
+    expect(store.rows('task').map((r) => r.id)).toEqual(['of-u2']);
+  });
+
   it('as another account with an empty outbox: the replica reset, then signed-in', async () => {
     store.setOwner('u1');
     store.mergeChanges([task('old')]);
@@ -244,9 +269,38 @@ describe('signOut', () => {
     expect(auth.refresh).toHaveBeenCalledTimes(1);
     expect(auth.logout).toHaveBeenCalledWith(token('u1', 1));
     expect(last('session')?.state).toBe('signed-out');
+    expect(tokens.signedIn()).toBe(false);
 
     await e.handle({ kind: 'sync', reason: 'manual' });
     expect(send).not.toHaveBeenCalled();
+    expect(auth.refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('waits for a sync in flight: its 401 is not a session that ended', async () => {
+    const e = engine(
+      httpTransport({ base: '/api/v1', timeoutMs: 1000 }, tokens),
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(json(CANNED))),
+    );
+    await e.start(true);
+    let release = () => {};
+    const fetched = vi.fn(
+      () =>
+        new Promise<Response>((resolve) => {
+          release = () => resolve(json({}, 401));
+        }),
+    );
+    vi.stubGlobal('fetch', fetched);
+    auth.refresh.mockResolvedValue('invalid');
+    const syncing = e.handle({ kind: 'sync', reason: 'manual' });
+    await vi.waitFor(() => expect(fetched).toHaveBeenCalledTimes(1));
+    const out = e.handle({ kind: 'signOut' });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    release();
+    await Promise.all([syncing, out]);
+    expect(last('session')).toEqual({ state: 'signed-out', reason: null });
   });
 
   it("renews once on 'unauthorized' and logs out with the renewed token", async () => {

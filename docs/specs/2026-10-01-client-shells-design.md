@@ -498,12 +498,15 @@ quirks stay a documented risk in the README, untested. The "Safari and `Secure`
 cookies" note above is therefore still open: W2 documented it and did not test
 it.
 
+**For W3:** `sync.problem` is published but nothing renders it, so a refused
+sync is invisible except as offline. W3's screens should show it.
+
 ### Behaviour worth knowing
 
 - **Sync cadence.** A return to a tab (`focus` and `visibilitychange` together)
   collapses into one sync within 1 s. Ticks from several windows collapse in the
   engine: it drops a tick when the last sync ended less than 25 s ago, measured
-  on the worker's clock. The e2e tick test therefore waits 25 s of real time,
+  on the worker's clock. The e2e tick test therefore waits 26 s of real time,
   because Playwright's fake clock does not reach a dedicated worker.
 - **An update reloads every prompted tab.** Accepting the prompt in one tab
   reloads each tab that showed it (vite-pwa's prompt mode listens for
