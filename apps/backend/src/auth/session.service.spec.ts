@@ -52,6 +52,17 @@ describe('SessionService', () => {
     expect(retry.refreshToken).toBe(second.refreshToken);
   });
 
+  // Only the immediately previous generation gets the grace.
+  it('revokes the session when a token two rotations old comes back in time', async () => {
+    const first = await sessions.start(U, t0);
+    const second = await sessions.refresh(first.refreshToken, at(1));
+    await sessions.refresh(second.refreshToken, at(2));
+    await expect(sessions.refresh(first.refreshToken, at(3))).rejects.toThrow(
+      'invalid token',
+    );
+    expect((await prisma.session.findFirstOrThrow()).revokedAt).not.toBeNull();
+  });
+
   // FR-001.
   it('revokes the session when a spent token comes back after the window', async () => {
     const first = await sessions.start(U, t0);
