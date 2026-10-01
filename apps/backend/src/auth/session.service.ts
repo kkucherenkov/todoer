@@ -25,7 +25,7 @@ const GENERATION = /^(0|[1-9]\d{0,8})$/;
 
 type Parsed = { id: string; generation: number; mac: string };
 
-function parse(token: string): Parsed | null {
+export function parse(token: string): Parsed | null {
   const parts = token.split('.');
   if (parts.length !== 3) return null;
   const [id, gen, mac] = parts;

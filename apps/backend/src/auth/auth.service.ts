@@ -44,24 +44,46 @@ export class AuthService {
     private readonly config: AppConfig,
   ) {}
 
-  async register(id: string, email: string, password: string): Promise<void> {
+  private async hashPassword(password: string): Promise<string> {
     const salt = randomBytes(16).toString('hex');
     const hash = ((await scrypt(password, salt, KEY_LEN)) as Buffer).toString(
       'hex',
     );
+    return `${salt}:${hash}`;
+  }
+
+  async register(id: string, email: string, password: string): Promise<void> {
     await this.prisma.user.create({
       data: {
         id,
         email: normalizeEmail(email),
-        passwordHash: `${salt}:${hash}`,
+        passwordHash: await this.hashPassword(password),
       },
     });
   }
 
-  async login(
-    email: string,
-    password: string,
-  ): Promise<{ accessToken: string }> {
+  async setPassword(userId: string, password: string): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: await this.hashPassword(password) },
+    });
+  }
+
+  async verifyPassword(userId: string, password: string): Promise<boolean> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (user === null) return false;
+    return this.matches(user.passwordHash, password);
+  }
+
+  private async matches(stored: string, password: string): Promise<boolean> {
+    const [salt, expected] = stored.split(':');
+    if (salt === undefined || expected === undefined) return false;
+    const actual = (await scrypt(password, salt, KEY_LEN)) as Buffer;
+    const b = Buffer.from(expected, 'hex');
+    return actual.length === b.length && timingSafeEqual(actual, b);
+  }
+
+  async login(email: string, password: string): Promise<{ userId: string }> {
     const user = await this.prisma.user.findUnique({
       where: { email: normalizeEmail(email) },
     });
@@ -88,7 +110,7 @@ export class AuthService {
     const hashesMatch = a.length === b.length && timingSafeEqual(a, b);
     if (user === null || !hashesMatch) throw failure;
 
-    return { accessToken: this.sign(user.id) };
+    return { userId: user.id };
   }
 
   sign(userId: string): string {

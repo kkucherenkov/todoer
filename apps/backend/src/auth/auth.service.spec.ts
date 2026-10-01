@@ -31,16 +31,13 @@ beforeEach(async () => {
 });
 
 describe('AuthService', () => {
-  it('issues a token the guard accepts, carrying the user id', async () => {
+  it('returns the id of the user who signed in', async () => {
     const id = uuidv7();
     await service.register(id, 'a@b.c', 'correct horse battery');
 
-    const { accessToken } = await service.login(
-      'a@b.c',
-      'correct horse battery',
-    );
+    const { userId } = await service.login('a@b.c', 'correct horse battery');
 
-    expect(service.verify(accessToken)).toBe(id);
+    expect(userId).toBe(id);
   });
 
   it('refuses a wrong password', async () => {
@@ -102,12 +99,12 @@ describe('AuthService', () => {
       'correct horse battery',
     );
 
-    const { accessToken } = await service.login(
+    const { userId } = await service.login(
       'mixed.case@example.com',
       'correct horse battery',
     );
 
-    expect(service.verify(accessToken)).toBe(id);
+    expect(userId).toBe(id);
   });
 
   it("removes a deleted user's sessions with it", async () => {
