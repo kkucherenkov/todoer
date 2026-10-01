@@ -42,8 +42,10 @@ function json(body: unknown, status = 200): Response {
 
 /** Just enough of the server: creates rows, reports duplicates, pulls. */
 function fakeServer() {
-  let seq = 0;
   const rows = new Map<string, Change>();
+  // Above every row, including ones a test seeded with its own seq.
+  const nextSeq = () =>
+    Math.max(0, ...[...rows.values()].map((c) => c.seq)) + 1;
   const requests: SyncRequest[] = [];
   const send: Transport = (request) => {
     requests.push(structuredClone(request));
@@ -53,8 +55,8 @@ function fakeServer() {
         rows.set(op.id, {
           table: op.table,
           id: op.id,
-          seq: ++seq,
-          row: { ...op.fields, id: op.id, deletedAt: null },
+          seq: nextSeq(),
+          row: { ...op.fields, id: op.id, deletedAt: null, version: 1 },
         });
         return { opId: op.opId, status: 'applied' as const };
       }
@@ -65,8 +67,34 @@ function fakeServer() {
       ) {
         rows.set(op.id, {
           ...existing,
-          seq: ++seq,
-          row: { ...existing.row, ...op.fields },
+          seq: nextSeq(),
+          row: {
+            ...existing.row,
+            ...op.fields,
+            version: Number(existing.row.version ?? 1) + 1,
+          },
+        });
+        return { opId: op.opId, status: 'applied' as const };
+      }
+      if (op.kind === 'set' && existing !== undefined) {
+        const version = Number(existing.row.version ?? 1) + 1;
+        rows.set(op.id, {
+          ...existing,
+          seq: nextSeq(),
+          row: { ...existing.row, [op.field]: op.value, version },
+        });
+        return { opId: op.opId, status: 'applied' as const };
+      }
+      if (op.kind === 'delete' && existing !== undefined) {
+        const version = Number(existing.row.version ?? 1) + 1;
+        rows.set(op.id, {
+          ...existing,
+          seq: nextSeq(),
+          row: {
+            ...existing.row,
+            deletedAt: '2026-09-26T10:00:00.000Z',
+            version,
+          },
         });
         return { opId: op.opId, status: 'applied' as const };
       }
@@ -76,7 +104,7 @@ function fakeServer() {
     const cursor = Math.max(request.since, ...changes.map((c) => c.seq));
     return Promise.resolve(json({ cursor, results, changes }));
   };
-  return { send, requests };
+  return { send, requests, rows };
 }
 
 function envelope(stdout: string[]): unknown {
@@ -98,7 +126,7 @@ describe('run', () => {
     const out = await run(['add', 'call the bank p2', '--json'], d);
     expect(out.exit).toBe(0);
     expect(envelope(out.stdout)).toEqual({
-      data: task,
+      data: { ...task, version: 1 },
       synced: true,
       outbox: { pending: 0, failed: 0 },
     });
@@ -914,6 +942,59 @@ describe('run', () => {
         id: taskOccurrenceId('child-00000-00bbbb', '2026-09-21'),
         fields: { taskId: 'child-00000-00bbbb', occurrence: '2026-09-21' },
       });
+    });
+  });
+
+  describe('merging duplicate names', () => {
+    // Scenario 4 and Review Focus 3.
+    it('queues the merge after a pull, sends it with the next command, and stops', async () => {
+      const server = fakeServer();
+      const d = deps(server.send);
+      await run(['add', 'call the bank @phone'], d);
+      // Another device created the same name offline.
+      server.rows.set('other-tag', {
+        table: 'tag',
+        id: 'other-tag',
+        seq: 100,
+        row: { id: 'other-tag', name: '@Phone', version: 1, deletedAt: null },
+      });
+
+      const first = await run(['list'], d);
+      expect(first.stderr.join('\n')).toMatch(/merging duplicate @phone \(2\)/);
+      expect(d.store.pending().map((op) => `${op.kind} ${op.table}`)).toEqual([
+        'delete tag',
+      ]);
+
+      await run(['list'], d);
+      const liveTags = [...server.rows.values()].filter(
+        (c) => c.table === 'tag' && c.row.deletedAt === null,
+      );
+      expect(liveTags.map((c) => c.id)).toEqual(['id-1']);
+      expect(d.store.pending()).toEqual([]);
+
+      const third = await run(['list'], d);
+      expect(third.stderr.join('\n')).not.toMatch(/merging/);
+    });
+
+    it('does not merge when the server was not reached', async () => {
+      const d = deps(unreachable);
+      d.store.mergeChanges([
+        {
+          table: 'tag',
+          id: 'tag-a',
+          seq: 1,
+          row: { id: 'tag-a', name: '@phone', version: 1, deletedAt: null },
+        },
+        {
+          table: 'tag',
+          id: 'tag-b',
+          seq: 2,
+          row: { id: 'tag-b', name: '@Phone', version: 1, deletedAt: null },
+        },
+      ]);
+      const out = await run(['list'], d);
+      expect(out.stderr.join('\n')).not.toMatch(/merging/);
+      expect(d.store.pending()).toEqual([]);
     });
   });
 });

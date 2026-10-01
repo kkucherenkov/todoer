@@ -20,6 +20,7 @@ import {
   type StateOf,
 } from './occurrence.js';
 import { labelsOf, resolveLabels } from './labels.js';
+import { planMerge } from './merge.js';
 import { liveTasks, overlay } from './overlay.js';
 import { PROJECT, TAG, planAdd } from './parse-quick-add.js';
 import { ownOutcome, RefusalError, UsageError } from './protocol.js';
@@ -298,6 +299,32 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
     throw unknownCommand(
       command === 'outbox' ? `outbox ${rest.join(' ')}` : command,
     );
+  }
+
+  // Every pull may bring a duplicate name another device created offline
+  // (quick-add design, Q9). The merge is queued, not sent: the next command
+  // delivers it, like any other queued operation.
+  if (synced) {
+    const { ops, merged } = planMerge(
+      {
+        tasks: tasks(store),
+        projects: projects(store),
+        tags: tagRows(store),
+        links: links(store),
+      },
+      deps.newId,
+      deps.now().toISOString(),
+    );
+    if (ops.length > 0) {
+      store.transaction(() => {
+        for (const op of ops) store.enqueue(op);
+      });
+      for (const name of merged) {
+        stderr.push(
+          `note: merging duplicate ${name} — sent with the next command`,
+        );
+      }
+    }
   }
 
   const outbox = store.counts();
