@@ -69,13 +69,27 @@ op() { printf '{"opId":"%s","kind":"create","table":"%s","id":"%s","fields":%s,"
   "$(node -e 'console.log(crypto.randomUUID())')" "$1" "$2" "$3" "$NOW"; }
 STATUS_OP=$(op status "$SID" '{"name":"Doing","rank":"a1","completing":false}')
 VIEW_OP=$(op view "$VID" "{\"name\":\"Doing now\",\"layout\":\"kanban\",\"sort\":\"manual\",\"rank\":\"a0\",\"filter\":{\"status\":\"$SID\"}}")
+RVID=$(node -e 'console.log(crypto.randomUUID())')
+RECURRING_OP=$(op view "$RVID" '{"name":"Recurring","layout":"list","sort":"manual","rank":"a2","filter":{"recurring":true}}')
 BAD_OP=$(op view "$(node -e 'console.log(crypto.randomUUID())')" '{"name":"bad","layout":"list","sort":"due","rank":"a1","filter":{"tag":"x"}}')
-api /sync "{\"since\":0,\"ops\":[$STATUS_OP,$VIEW_OP,$BAD_OP]}" "$TOKEN"
+api /sync "{\"since\":0,\"ops\":[$STATUS_OP,$VIEW_OP,$RECURRING_OP,$BAD_OP]}" "$TOKEN"
 [ "$STATUS" = 200 ] || { echo "FAIL: /sync with a status and a view returned $STATUS: $BODY_OUT" >&2; exit 1; }
 APPLIED=$(printf '%s' "$BODY_OUT" | grep -o '"status":"applied"' | wc -l)
-[ "$APPLIED" -eq 2 ] || { echo "FAIL: expected the status and the view applied: $BODY_OUT" >&2; exit 1; }
+[ "$APPLIED" -eq 3 ] || { echo "FAIL: expected the status and both views applied: $BODY_OUT" >&2; exit 1; }
 printf '%s' "$BODY_OUT" | grep -qF 'filter.tag: not a uuid' ||
   { echo "FAIL: the invalid filter was not rejected with its reason: $BODY_OUT" >&2; exit 1; }
+
+# ...and the CLI reads them back: the view is listed, and `list --view` applies
+# its filter, so only the recurring task is shown.
+VIEWS=$(HOME="$READER" TODOER_TOKEN="$TOKEN" node apps/cli/dist/index.js views)
+printf '%s' "$VIEWS" | grep -qF 'Recurring' ||
+  { echo "FAIL: todoer views did not list the view: $VIEWS" >&2; exit 1; }
+ONLY=$(HOME="$READER" TODOER_TOKEN="$TOKEN" node apps/cli/dist/index.js list --view recurring)
+printf '%s' "$ONLY" | grep -qF "$RTITLE" ||
+  { echo "FAIL: list --view did not show the recurring task: $ONLY" >&2; exit 1; }
+if printf '%s' "$ONLY" | grep -qF "$TITLE"; then
+  echo "FAIL: list --view showed a one-off task: $ONLY" >&2; exit 1
+fi
 
 # The CLI's own sign-in: no TODOER_TOKEN, only what `login` stored.
 SIGNED=$(mktemp -d)

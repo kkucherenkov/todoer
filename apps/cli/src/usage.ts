@@ -13,10 +13,14 @@ usage:
   todoer add "<text>" [--rrule <RRULE> [--from YYYY-MM-DD]] [--json]
                                           create a task; with --rrule it recurs
                                           from --from (default: today)
-  todoer list [@tag|#project ...] [--json]   what is open now: each task once,
-                                          a recurring one at its current date;
-                                          filters keep tasks carrying every
-                                          named label
+  todoer list [@tag|#project ...] [--view <name>] [--json]
+                                          what is open now: each task once,
+                                          a recurring one at its current date,
+                                          then its status; label filters keep
+                                          tasks carrying every named label;
+                                          --view applies the filter and sort of
+                                          a synced view (layout is ignored)
+  todoer views [--json]                   list the views: name, layout, sort
   todoer done <ref> [--on YYYY-MM-DD] [--json]   mark done
   todoer skip <ref> [--on YYYY-MM-DD] [--json]   mark skipped
   todoer undo <ref> [--on YYYY-MM-DD] [--json]   reopen (default: the latest
@@ -40,6 +44,18 @@ references:
   list starts each line with the last 6 characters of the task's id. done,
   skip and undo take the full id or any unique ending of it, at least 4 hex
   digits — an ending, not a beginning: ids start with a timestamp.
+
+statuses:
+  list ends each line with the task's status; --json carries it as status
+  (null when the user has no statuses). A task without a status shows in the
+  first non-completing one. done moves the task to the completing status,
+  undo clears it. The CLI never moves a task between other statuses. The first
+  done on an account with no statuses creates Inbox, Doing and Done, once.
+
+views:
+  --view takes a view's name in any case (the lowest id among duplicates).
+  An unknown name, or no views at all, is a usage error (exit 2): the list
+  is never printed unfiltered. Creating and editing views is for GUI clients.
 
 recurrence:
   --rrule takes an RFC 5545 rule, restricted to FREQ (DAILY, WEEKLY,

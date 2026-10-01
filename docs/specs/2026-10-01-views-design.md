@@ -286,6 +286,26 @@ plan lists them at its top
    field, so neither can change once the copy exists: both are given in the
    `create` of the copy.
 
+Plan V1 (the CLI) departs from this document in six places; the plan lists
+them at its top
+([plan V1](../plans/2026-10-01-plan-v1-views-cli.md#where-this-plan-departs-from-the-design-doc)).
+
+1. **The CLI seeds statuses only when `done` needs one.** Q9 has a client that
+   finds no statuses create `Inbox`, `Doing` and `Done`; the CLI is an
+   automation client (ADR 0015), so it seeds, in the batch that marks the
+   task, only when the user has no live status.
+2. **`undo` clears `statusId`.** Null already means "the first status", and it
+   stays right when the user reorders columns.
+3. **`skip` leaves `statusId` alone.** A skipped occurrence is shown by the
+   occurrence rule anyway.
+4. **Sort by priority puts 4 first, 0 last.** Quick-add's `p4` is the
+   strongest marker a user can type.
+5. **A recurring task is filtered at its current occurrence:** its
+   `scheduledOn` is the date `list` shows, its `dueOn` the task's own field.
+6. **The merge rewrites view filters.** Folding a tag, project or status into
+   another gives each live view that names the loser one `set filter` with the
+   winner's id, so a merge never drops rows from a view.
+
 ## Open threads
 
 None.

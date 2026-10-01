@@ -41,6 +41,13 @@ describe('HELP', () => {
     expect(HELP).toMatch(/TODOER_TIMEOUT_MS/);
   });
 
+  it('documents views and statuses', () => {
+    expect(HELP).toMatch(/todoer views/);
+    expect(HELP).toMatch(/--view <name>/);
+    expect(HELP).toMatch(/Inbox, Doing and Done/);
+    expect(HELP).toMatch(/undo clears it/);
+  });
+
   it('no longer tells callers that add is unsafe to retry', () => {
     expect(HELP).not.toMatch(/NOT safe to retry/);
   });
