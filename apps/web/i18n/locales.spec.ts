@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
+import { FAILURE_KINDS } from '../app/db/protocol';
 
 type Tree = { [key: string]: string | Tree };
 
@@ -29,5 +30,12 @@ describe('locales', () => {
     ['ru', ru],
   ])('%s has no empty value', (_, flat) => {
     expect(Object.entries(flat).filter(([, v]) => v.trim() === '')).toEqual([]);
+  });
+
+  it.each([
+    ['en', en],
+    ['ru', ru],
+  ])('%s words every failure kind', (_, flat) => {
+    expect(FAILURE_KINDS.filter((k) => !(`errors.${k}` in flat))).toEqual([]);
   });
 });

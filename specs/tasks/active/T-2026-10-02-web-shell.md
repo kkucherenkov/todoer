@@ -195,7 +195,7 @@ replica count that changes when the CLI writes.
       plan Task 3
 - [x] T004 [FR-006, FR-007, FR-008, FR-009] The worker, the protocol, the
       leader tab, the engine — plan Task 4
-- [ ] T005 [FR-009, FR-010] Sign-in, the sync cadence, the placeholder —
+- [x] T005 [FR-009, FR-010] Sign-in, the sync cadence, the placeholder —
       plan Task 5
 - **Checkpoint:** a person signs in from a browser, sees a CLI write arrive,
   reloads without signing in again, and opens a second tab on the same

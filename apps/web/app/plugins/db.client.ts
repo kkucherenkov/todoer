@@ -1,3 +1,4 @@
+import { startCadence } from '~/db/cadence';
 import { connect, type Db } from '~/db/client';
 import { lead } from '~/db/leader';
 
@@ -33,5 +34,7 @@ export default defineNuxtPlugin(() => {
     if (session?.state === 'signed-in') writeHint(true);
     if (session?.state === 'signed-out') writeHint(false);
   });
+  // A sync that fails reports through the sync topic; the reply adds nothing.
+  startCadence((reason) => void db.request({ kind: 'sync', reason }));
   return { provide: { db: db as Db | null } };
 });
