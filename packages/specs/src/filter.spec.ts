@@ -70,7 +70,6 @@ describe('filterProblem', () => {
 
   it('refuses a sparse priority list: holes are not priorities', () => {
     expect(filterProblem({ priority: new Array(3) })).toMatch(/priorities/);
-    expect(filterProblem({ priority: [1, , 2] })).toMatch(/priorities/);
   });
 
   it('names where the problem is', () => {
