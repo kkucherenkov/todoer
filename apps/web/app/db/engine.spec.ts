@@ -393,9 +393,9 @@ describe('sync', () => {
 });
 
 describe('dispatcher', () => {
-  const signIn = (id: number, build = 'b1'): ToWorker => ({
+  const signIn = (id: number, build = 'b1', tab = 't1'): ToWorker => ({
     type: 'request',
-    tab: 't1',
+    tab,
     id,
     command: { kind: 'signIn', email: 'a@b.c', password: 'x' },
     build,
@@ -411,6 +411,16 @@ describe('dispatcher', () => {
     );
     return { e, replies, dispatch };
   };
+
+  it('keys a run by tab, so two tabs sharing an id each get a run', async () => {
+    const { e, replies, dispatch } = setup();
+    await e.start(false);
+    dispatch(signIn(1, 'b1', 't1'));
+    dispatch(signIn(1, 'b1', 't2'));
+    await vi.waitFor(() => expect(replies).toHaveLength(2));
+    expect(auth.login).toHaveBeenCalledTimes(2);
+    expect(replies.map(([tab]) => tab).sort()).toEqual(['t1', 't2']);
+  });
 
   it('attaches a resent request to the run already in flight', async () => {
     let release = () => {};

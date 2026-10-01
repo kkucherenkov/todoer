@@ -6,7 +6,7 @@ import {
 } from '@todoer/client-core';
 import { openWasmStore } from '@todoer/client-core/sqlite-wasm';
 import { createEngine, dispatcher } from './engine';
-import { installPool } from './pool';
+import { installOpfsPool, installPool } from './pool';
 import {
   CHANNEL,
   type Fatal,
@@ -23,13 +23,7 @@ type Unstamped<T> = T extends unknown ? Omit<T, 'build'> : never;
 self.onmessage = async ({ data }: MessageEvent<Init>) => {
   try {
     const sqlite3 = await sqlite3InitModule();
-    // sqlite-wasm caches a failed install per VFS name and rethrows it to
-    // every later call; without this option a retry never retries. Its
-    // typings omit it, hence the variable (no excess-property check).
-    const options = { name: 'todoer', forceReinitIfPreviouslyFailed: true };
-    const pool = await installPool(() =>
-      sqlite3.installOpfsSAHPoolVfs(options),
-    );
+    const pool = await installPool(() => installOpfsPool(sqlite3));
     // No journal_mode change: opfs-sahpool has no WAL; the rollback journal
     // undoes a transaction a killed tab left behind.
     const store = openWasmStore(

@@ -255,6 +255,8 @@ export function dispatcher(
 ): (m: ToWorker) => void {
   const runs = new Map<string, Promise<Result>>();
   return (m) => {
+    // A foreign-build publish or reply reaching this channel lands here too
+    // and triggers a snapshot as well; harmless, topics are idempotent.
     if (m.build !== build || m.type === 'hello') return engine.snapshot();
     // The leader's own topic posts reach this channel too.
     if (m.type !== 'request') return;

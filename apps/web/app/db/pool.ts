@@ -33,3 +33,19 @@ export async function installPool<T>(
     }
   }
 }
+
+/**
+ * sqlite-wasm caches a failed install per VFS name and rethrows it to every
+ * later call; without `forceReinitIfPreviouslyFailed` a retry never retries.
+ * Its typings omit the option, hence the structural parameter.
+ */
+export const installOpfsPool = <T>(sqlite3: {
+  installOpfsSAHPoolVfs(options: {
+    name: string;
+    forceReinitIfPreviouslyFailed: boolean;
+  }): Promise<T>;
+}) =>
+  sqlite3.installOpfsSAHPoolVfs({
+    name: 'todoer',
+    forceReinitIfPreviouslyFailed: true,
+  });

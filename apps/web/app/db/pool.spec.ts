@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { installPool } from './pool';
+import { installOpfsPool, installPool } from './pool';
 
 describe('installPool', () => {
   it('retries a busy pool with doubling delays until it installs', async () => {
@@ -34,5 +34,28 @@ describe('installPool', () => {
     );
     expect(install).toHaveBeenCalledTimes(1);
     expect(sleep).not.toHaveBeenCalled();
+  });
+});
+
+describe('installOpfsPool', () => {
+  it('retries after a failed install because it forces a re-init', async () => {
+    // Like sqlite-wasm: a failure is cached per name unless the flag is set.
+    let cached: Promise<string> | undefined;
+    let busy = true;
+    const sqlite3 = {
+      installOpfsSAHPoolVfs: (o: {
+        name: string;
+        forceReinitIfPreviouslyFailed: boolean;
+      }) => {
+        if (o.forceReinitIfPreviouslyFailed) cached = undefined;
+        cached ??= busy
+          ? Promise.reject(new Error('busy'))
+          : Promise.resolve('pool');
+        return cached;
+      },
+    };
+    await expect(installOpfsPool(sqlite3)).rejects.toThrow('busy');
+    busy = false;
+    await expect(installOpfsPool(sqlite3)).resolves.toBe('pool');
   });
 });
