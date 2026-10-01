@@ -1,6 +1,6 @@
 import { addDays, parseRrule, type Rrule } from '@todoer/specs';
 import { expand } from './expand.js';
-import type { Row } from './store.js';
+import type { Row } from '@todoer/client-core';
 
 /** How far ahead the next open occurrence is looked for; also how far ahead
  *  `add --rrule` checks for a rule producing nothing at all (M5). */

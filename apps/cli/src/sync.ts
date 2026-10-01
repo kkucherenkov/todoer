@@ -1,6 +1,6 @@
 import type { Op, OpResult, SyncRequest, SyncResponse } from '@todoer/specs';
 import { RefusalError } from '@todoer/client-core';
-import type { Store } from './store.js';
+import type { Store } from '@todoer/client-core';
 
 /** One POST /sync. Injected, so the flush is testable without a network. */
 export type Transport = (request: SyncRequest) => Promise<Response>;

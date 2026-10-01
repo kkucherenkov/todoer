@@ -7,7 +7,8 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { httpAuthApi, tokenSource, type AuthApi } from './auth.js';
 import type { Config } from './config.js';
 import { RefusalError } from '@todoer/client-core';
-import { Store, type StoredAuth } from './store.js';
+import type { Store, StoredAuth } from '@todoer/client-core';
+import { openStore } from './store.js';
 
 const NOW = new Date('2026-10-01T12:00:00.000Z');
 const now = () => NOW;
@@ -30,7 +31,7 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 const storeAt = () => {
-  const store = Store.open(join(dir, 'todoer.db'));
+  const store = openStore(join(dir, 'todoer.db'));
   stores.push(store);
   return store;
 };

@@ -1,5 +1,5 @@
 import { UsageError } from '@todoer/client-core';
-import type { Row } from './store.js';
+import type { Row } from '@todoer/client-core';
 
 /**
  * How `list` names a task: the last six characters of its id. Suffix, not

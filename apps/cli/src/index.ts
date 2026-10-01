@@ -5,7 +5,7 @@ import { readConfig } from './config.js';
 import { ConflictError, RefusalError, UsageError } from '@todoer/client-core';
 import { readPassword } from './password.js';
 import { run } from './run.js';
-import { Store } from './store.js';
+import { openStore } from './store.js';
 import { httpTransport } from './transport.js';
 import { HELP, wantsHelp } from './usage.js';
 
@@ -16,7 +16,7 @@ async function main(): Promise<number> {
     return 0;
   }
   const config = readConfig(process.env);
-  const store = Store.open(config.dbPath);
+  const store = openStore(config.dbPath);
   try {
     const auth = httpAuthApi(config);
     const now = () => new Date();

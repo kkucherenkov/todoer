@@ -14,7 +14,7 @@ import {
   notDeleted,
   winner,
 } from './labels.js';
-import type { Row } from './store.js';
+import type { Row } from '@todoer/client-core';
 
 export type Replica = {
   tasks: Row[];

@@ -105,7 +105,7 @@ client, and scripts and agents depend on its exact output and exit codes
 
 - [x] T001 [FR-001, FR-003, FR-004] Scaffold the package, move the protocol
       errors, add the lint guard — plan Task 1
-- [ ] T002 [FR-002, FR-003, FR-006] `Store` on `SqlDatabase`, `NodeSqlite`,
+- [x] T002 [FR-002, FR-003, FR-006] `Store` on `SqlDatabase`, `NodeSqlite`,
       the CLI's `openStore`; split `store.spec` — plan Task 2
 - **Checkpoint:** the CLI runs on client-core's `Store`; e2e green.
 - [ ] T003 [FR-004, FR-006] Move the expander, occurrence, labels, merge,

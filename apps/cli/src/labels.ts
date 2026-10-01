@@ -1,5 +1,5 @@
 import { nameKey, type OpCreate } from '@todoer/specs';
-import type { Row } from './store.js';
+import type { Row } from '@todoer/client-core';
 
 /** Tags quick-add and `list` can see: not deleted. */
 export function liveTags(tags: Row[]): Row[] {
