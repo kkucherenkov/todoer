@@ -1,16 +1,25 @@
 import {
+  addDays,
+  completingStatus,
+  displayStatus,
+  filterProblem,
   isIsoDate,
+  matches,
   nameKey,
   parseRrule,
   taskOccurrenceId,
   taskTagId,
+  type Filter,
+  type FilterTask,
+  type Op,
   type OpCreate,
+  type OpSet,
   type Rrule,
+  type StatusRow,
 } from '@todoer/specs';
 import type { AuthApi, TokenSource } from './auth.js';
 import { expand } from './expand.js';
 import {
-  addDays,
   currentOccurrence,
   HORIZON_DAYS,
   isOccurrence,
@@ -20,7 +29,15 @@ import {
   type Recurrence,
   type StateOf,
 } from './occurrence.js';
-import { labelsOf, resolveLabels } from './labels.js';
+import {
+  compareIds,
+  isAttached,
+  labelsOf,
+  liveTags,
+  notDeleted,
+  resolveLabels,
+  winner,
+} from './labels.js';
 import { planMerge } from './merge.js';
 import { liveTasks, overlay } from './overlay.js';
 import { PROJECT, TAG, planAdd } from './parse-quick-add.js';
@@ -128,6 +145,8 @@ type Due = Row & {
   occurrence: string | null;
   project: string | null;
   tags: string[];
+  /** The status's name; `null` when the user has no statuses. */
+  status: string | null;
 };
 
 /** The `sub` claim of an access token (base64url(JSON) + '.' + mac). Read, not
@@ -289,7 +308,8 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
     data = tasks(store).find((row) => row.id === op.id) ?? null;
     human = [title];
   } else if (command === 'list') {
-    const filters = rest.map((arg) => {
+    const view = takeOption(rest, '--view');
+    const filters = view.rest.map((arg) => {
       if (TAG.test(arg)) return { tag: nameKey(arg) };
       if (PROJECT.test(arg)) return { project: nameKey(arg.slice(1)) };
       throw new UsageError(
@@ -297,13 +317,21 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
       );
     });
     ({ synced } = await flush(store, deps.send));
-    const rows = due(store, localDate(deps.now())).filter((row) =>
-      filters.every((f) =>
-        'tag' in f
-          ? row.tags.some((name) => nameKey(name) === f.tag)
-          : row.project !== null && nameKey(row.project) === f.project,
+    const today = localDate(deps.now());
+    const chosen =
+      view.value === undefined ? undefined : pickView(store, view.value);
+    const rows = sortFor(
+      chosen,
+      due(store, today).filter(
+        ({ row, facts }) =>
+          filters.every((f) =>
+            'tag' in f
+              ? row.tags.some((name) => nameKey(name) === f.tag)
+              : row.project !== null && nameKey(row.project) === f.project,
+          ) &&
+          (chosen === undefined || matches(chosen.filter, facts, today)),
       ),
-    );
+    ).map(({ row }) => row);
     data = rows;
     human = rows.map((row) =>
       [
@@ -319,8 +347,16 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
               ].join(' '),
             ]),
         ...(row.occurrence === null ? [] : [row.occurrence]),
+        ...(row.status === null ? [] : [row.status]),
       ].join('  '),
     );
+  } else if (command === 'views') {
+    ({ synced } = await flush(store, deps.send));
+    const rows = notDeleted(viewRows(store)).sort(
+      (a, b) => compareStrings(a.rank, b.rank) || compareIds(a, b),
+    );
+    data = rows;
+    human = rows.map((v) => [v.name, v.layout, v.sort].map(String).join('  '));
   } else if (isMark(command)) {
     const on = takeOption(rest, '--on');
     const [ref, ...extra] = on.rest;
@@ -355,7 +391,15 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
       },
       ts: now,
     };
-    synced = await submit(store, deps.send, [op], command);
+    synced = await submit(
+      store,
+      deps.send,
+      () => [
+        ...statusOps(command, task, statusRows(store), deps.newId, now),
+        op,
+      ],
+      command,
+    );
     const marked = occurrences(store).find((row) => row.id === op.id) ?? null;
     data = marked;
     // I3: `submit` settled this op, but the row it settled to is not the
@@ -397,15 +441,21 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
   // (quick-add design, Q9). The merge is queued, not sent: the next command
   // delivers it, like any other queued operation.
   if (synced) {
-    // A failed delete of a row that is already a tombstone is moot: two
-    // clients merging the same duplicates send the same delete, and the
-    // second gets `conflict` although the row is gone. Left alone it would
-    // sit as a failed entry forever.
+    // A failed delete, or a failed `set statusId`, on a row that is already a
+    // tombstone is moot. Two clients merging the same duplicates send the
+    // same delete, and the second gets `conflict`; a `done` queued offline on
+    // a task another device deleted has its `set statusId` refused ("row is
+    // deleted") while the mark itself lands. Left alone either entry would
+    // sit as failed forever. Any other failed set on a tombstone stays: it is
+    // an edit the user made, and its failure is theirs to see.
     // A row gone from the replica (after a 410 and a prune) leaves its failed
-    // delete in place: there is no tombstone to prove it moot.
+    // entry in place: there is no tombstone to prove it moot.
     for (const entry of store.entries()) {
       const { op } = entry;
-      if (entry.status !== 'failed' || op.kind !== 'delete') continue;
+      if (entry.status !== 'failed') continue;
+      const moot =
+        op.kind === 'delete' || (op.kind === 'set' && op.field === 'statusId');
+      if (!moot) continue;
       const gone = store
         .rows(op.table)
         .some((row) => row.id === op.id && row.deletedAt !== null);
@@ -417,6 +467,8 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
         projects: projects(store),
         tags: tagRows(store),
         links: links(store),
+        statuses: statusRows(store),
+        views: viewRows(store),
       },
       deps.newId,
       deps.now().toISOString(),
@@ -512,19 +564,22 @@ function listOutbox(store: Store): { data: unknown; human: string[] } {
 
 /**
  * Queues the operations the running command minted, in one transaction and in
- * order, and sends them: stored before they are sent, so every attempt
- * carries their ids (ADR 0015 §4). Every one counts as the command's own, so
- * a refusal of any of them is the command's exit 1. Returns whether the
- * server has all of them.
+ * order, and sends them. A builder is called inside that transaction, for ops
+ * that depend on rows a parallel invocation may be writing. The ops are
+ * stored before they are sent, so every attempt carries their ids (ADR 0015
+ * §4). Every one counts as the command's own, so a refusal of any of them is
+ * the command's exit 1. Returns whether the server has all of them.
  */
 async function submit(
   store: Store,
   send: Transport,
-  ops: OpCreate[],
+  build: Op[] | (() => Op[]),
   command: string,
 ): Promise<boolean> {
-  store.transaction(() => {
-    for (const op of ops) store.enqueue(op);
+  const ops = store.transaction(() => {
+    const queued = typeof build === 'function' ? build() : build;
+    for (const op of queued) store.enqueue(op);
+    return queued;
   });
   const opIds = ops.map((op) => op.opId);
   const flushed = await flushOwn(store, send, opIds, command);
@@ -594,6 +649,14 @@ function tagRows(store: Store): Row[] {
   return overlay('tag', store.rows('tag'), store.pending());
 }
 
+function statusRows(store: Store): Row[] {
+  return overlay('status', store.rows('status'), store.pending());
+}
+
+function viewRows(store: Store): Row[] {
+  return overlay('view', store.rows('view'), store.pending());
+}
+
 function links(store: Store): Row[] {
   return overlay('task_tag', store.rows('task_tag'), store.pending());
 }
@@ -625,8 +688,85 @@ function stateOf(marks: Row[], taskId: string): StateOf {
     )?.state;
 }
 
+function setTask(
+  task: Row,
+  field: string,
+  value: unknown,
+  newId: () => string,
+  ts: string,
+): OpSet {
+  return {
+    opId: newId(),
+    kind: 'set',
+    table: 'task',
+    id: String(task.id),
+    field,
+    value,
+    ts,
+  };
+}
+
+/** The statuses as `displayStatus` and `completingStatus` read them. */
+function statusFacts(statuses: Row[]): StatusRow[] {
+  return notDeleted(statuses).map((s) => ({
+    id: String(s.id),
+    rank: String(s.rank),
+    completing: s.completing === true,
+  }));
+}
+
+/**
+ * The statusId writes that keep a board aligned with a mark (views design,
+ * Q7): done moves the task to the completing status, seeding Inbox, Doing,
+ * Done first when the user has none (plan V1, departure 1); undo clears it
+ * (departure 2); skip leaves it (departure 3).
+ */
+function statusOps(
+  command: Mark,
+  task: Row,
+  statuses: Row[],
+  newId: () => string,
+  ts: string,
+): Op[] {
+  if (command === 'skip') return [];
+  if (command === 'undo') {
+    return task.statusId === null || task.statusId === undefined
+      ? []
+      : [setTask(task, 'statusId', null, newId, ts)];
+  }
+  const live = statusFacts(statuses);
+  const seeded: OpCreate[] =
+    live.length > 0
+      ? []
+      : [
+          { name: 'Inbox', rank: 'a0', completing: false },
+          { name: 'Doing', rank: 'a1', completing: false },
+          { name: 'Done', rank: 'a2', completing: true },
+        ].map((fields) => ({
+          opId: newId(),
+          kind: 'create',
+          table: 'status',
+          id: newId(),
+          fields,
+          ts,
+        }));
+  const target = completingStatus([
+    ...live,
+    ...seeded.map((op) => ({
+      id: op.id,
+      rank: String(op.fields.rank),
+      completing: op.fields.completing === true,
+    })),
+  ]);
+  if (target === undefined || task.statusId === target) return seeded;
+  return [...seeded, setTask(task, 'statusId', target, newId, ts)];
+}
+
+/** A task with the facts a view's filter reads. */
+type Listed = { row: Due; facts: FilterTask };
+
 /** Each live task once, at its current occurrence (plan C design, Q11). */
-function due(store: Store, today: string): Due[] {
+function due(store: Store, today: string): Listed[] {
   const all = tasks(store);
   const marks = occurrences(store);
   const labelRows = {
@@ -634,23 +774,105 @@ function due(store: Store, today: string): Due[] {
     tags: tagRows(store),
     links: links(store),
   };
+  const live = notDeleted(statusRows(store));
+  const facts = statusFacts(live);
+  const names = new Map(live.map((s) => [String(s.id), String(s.name)]));
+  const liveTagIds = new Set(liveTags(labelRows.tags).map((t) => String(t.id)));
   return liveTasks(all).flatMap((task) => {
     const taskId = String(task.id);
+    const recurrence = recurrenceOf(task, parentOf(all, task));
     const current = currentOccurrence(
-      recurrenceOf(task, parentOf(all, task)),
+      recurrence,
       stateOf(marks, taskId),
       today,
     );
-    return current === null
-      ? []
-      : [
-          {
-            ...task,
-            ref: shortRef(taskId),
-            occurrence: current.occurrence,
-            ...labelsOf(task, labelRows),
-          },
-        ];
+    if (current === null) return [];
+    const statusId =
+      displayStatus(
+        typeof task.statusId === 'string' ? task.statusId : null,
+        facts,
+        false,
+      ) ?? null;
+    const row = {
+      ...task,
+      ref: shortRef(taskId),
+      occurrence: current.occurrence,
+      ...labelsOf(task, labelRows),
+      status: statusId === null ? null : (names.get(statusId) ?? null),
+    };
+    return [
+      {
+        row,
+        facts: {
+          tagIds: labelRows.links
+            .filter(
+              (l) =>
+                l.taskId === task.id &&
+                isAttached(l) &&
+                liveTagIds.has(String(l.tagId)),
+            )
+            .map((l) => String(l.tagId)),
+          projectId: row.project === null ? null : String(task.projectId),
+          statusId,
+          priority: Number(task.priority),
+          scheduledOn:
+            recurrence === null
+              ? typeof task.scheduledOn === 'string'
+                ? task.scheduledOn
+                : null
+              : current.occurrence,
+          dueOn: typeof task.dueOn === 'string' ? task.dueOn : null,
+          recurring: recurrence !== null,
+        },
+      },
+    ];
+  });
+}
+
+type ChosenView = { sort: string; filter: Filter };
+
+/** The live view `--view` names: by name key, the lowest id among duplicates.
+ *  Never a silent "all tasks": an unknown name or a filter this client cannot
+ *  evaluate is an error. */
+function pickView(store: Store, name: string): ChosenView {
+  const key = nameKey(name);
+  const found = winner(
+    notDeleted(viewRows(store)).filter(
+      (v) => typeof v.name === 'string' && nameKey(v.name) === key,
+    ),
+  );
+  if (found === undefined) throw new UsageError(`no view named ${name}`);
+  const problem = filterProblem(found.filter);
+  if (problem !== null) {
+    throw new RefusalError(`view ${name} has an invalid filter: ${problem}`);
+  }
+  return { sort: String(found.sort), filter: found.filter as Filter };
+}
+
+function compareStrings(a: unknown, b: unknown): number {
+  return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
+}
+
+/** The view's order (plan V1, Global Constraints); without a view, `list`
+ *  keeps its own. Every key ends in rank, then id. */
+function sortFor(view: ChosenView | undefined, rows: Listed[]): Listed[] {
+  if (view === undefined) return rows;
+  const key = (l: Listed): string | number | null =>
+    view.sort === 'priority'
+      ? -l.facts.priority
+      : view.sort === 'due'
+        ? l.facts.dueOn
+        : view.sort === 'scheduled'
+          ? l.facts.scheduledOn
+          : 0;
+  return [...rows].sort((a, b) => {
+    const [x, y] = [key(a), key(b)];
+    if (x !== y) {
+      if (x === null) return 1;
+      if (y === null) return -1;
+      return x < y ? -1 : 1;
+    }
+    return compareStrings(a.row.rank, b.row.rank) || compareIds(a.row, b.row);
   });
 }
 

@@ -13,10 +13,14 @@ usage:
   todoer add "<text>" [--rrule <RRULE> [--from YYYY-MM-DD]] [--json]
                                           create a task; with --rrule it recurs
                                           from --from (default: today)
-  todoer list [@tag|#project ...] [--json]   what is open now: each task once,
-                                          a recurring one at its current date;
-                                          filters keep tasks carrying every
-                                          named label
+  todoer list [@tag|#project ...] [--view <name>] [--json]
+                                          what is open now: each task once,
+                                          a recurring one at its current date,
+                                          then its status; label filters keep
+                                          tasks carrying every named label;
+                                          --view applies the filter and sort of
+                                          a synced view (layout is ignored)
+  todoer views [--json]                   list the views: name, layout, sort
   todoer done <ref> [--on YYYY-MM-DD] [--json]   mark done
   todoer skip <ref> [--on YYYY-MM-DD] [--json]   mark skipped
   todoer undo <ref> [--on YYYY-MM-DD] [--json]   reopen (default: the latest
@@ -40,6 +44,20 @@ references:
   list starts each line with the last 6 characters of the task's id. done,
   skip and undo take the full id or any unique ending of it, at least 4 hex
   digits — an ending, not a beginning: ids start with a timestamp.
+
+statuses:
+  list ends each line with the task's status; --json carries it as status
+  (null when the user has no statuses). A task without a status shows in the
+  first non-completing one. done moves the task to the completing status
+  when the account has one (statuses but none completing: nothing changes),
+  undo clears it. The CLI never moves a task between other statuses. The first
+  done on an account with no statuses creates Inbox, Doing and Done, once.
+
+views:
+  --view takes a view's name in any case (the lowest id among duplicates).
+  An unknown name, or no views at all, is a usage error (exit 2): the list
+  is never printed unfiltered. A stored filter this client cannot evaluate
+  exits 1 with nothing printed. Creating and editing views is for GUI clients.
 
 recurrence:
   --rrule takes an RFC 5545 rule, restricted to FREQ (DAILY, WEEKLY,
@@ -92,7 +110,8 @@ exit codes (ADR 0015 §2):
   3  an unexpected local failure, such as the local database staying busy
   4  reserved for a conflict — the server holds a newer version of the row.
      No command sends an operation that can return one yet: add, done, skip
-     and undo each send a create, and a create never conflicts
+     and undo send creates and statusId sets, which carry no baseVersion, so
+     none of them conflicts
   5  the server was not reached: the answer is local, and any operation
      this command queued will be sent by a later command. Do not run the
      command again for the same intent — that would queue it twice
@@ -104,7 +123,8 @@ operation twice (ADR 0005, ADR 0015 §4).
 An operation the server refuses after the command that queued it has exited
 is kept as failed: todoer outbox lists it, todoer outbox drop forgets it.
 A failed delete whose row is already deleted on the server is dropped from the
-outbox automatically.
+outbox automatically, and so is the status change done and undo add for a task
+deleted meanwhile; a failed edit of a deleted row stays.
 `;
 
 /**

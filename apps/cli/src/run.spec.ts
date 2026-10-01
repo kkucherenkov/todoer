@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Change, Op, SyncRequest } from '@todoer/specs';
 import { taskOccurrenceId, taskTagId } from '@todoer/specs';
@@ -764,7 +767,7 @@ describe('run', () => {
         },
       });
       expect(await lines(d)).toEqual([
-        '000002  0  water the plants  2026-09-27',
+        '000002  0  water the plants  2026-09-27  Inbox',
       ]);
 
       const undo = await run(['undo', '0002', '--json'], d);
@@ -772,7 +775,7 @@ describe('run', () => {
         data: { state: 'open', completedAt: null },
       });
       expect(await lines(d)).toEqual([
-        '000002  0  water the plants  2026-09-26',
+        '000002  0  water the plants  2026-09-26  Inbox',
       ]);
     });
 
@@ -810,7 +813,15 @@ describe('run', () => {
       const refused = run(['done', '0002'], d);
       await expect(refused).rejects.toThrow(RefusalError);
       await expect(refused).rejects.toThrow(/do not run done again/);
-      expect(d.store.entries().map((e) => e.status)).toEqual(['pending']);
+      expect(
+        d.store.entries().map((e) => [e.status, e.op.kind, e.op.table]),
+      ).toEqual([
+        ['pending', 'create', 'status'],
+        ['pending', 'create', 'status'],
+        ['pending', 'create', 'status'],
+        ['pending', 'set', 'task'],
+        ['pending', 'create', 'task_occurrence'],
+      ]);
     });
 
     it('queues a create of the derived task occurrence', async () => {
@@ -837,7 +848,7 @@ describe('run', () => {
       await run(['done', '000002'], d);
       expect(await lines(d)).toEqual([]);
       await run(['undo', '000002'], d);
-      expect(await lines(d)).toEqual(['000002  0  file taxes']);
+      expect(await lines(d)).toEqual(['000002  0  file taxes  Inbox']);
     });
 
     // Scenario 4 and Review Focus 2.
@@ -847,11 +858,11 @@ describe('run', () => {
       d.send = unreachable;
       expect((await run(['done', '0002'], d)).exit).toBe(5);
       expect(await lines(d)).toEqual([
-        '000002  0  water the plants  2026-09-27',
+        '000002  0  water the plants  2026-09-27  Inbox',
       ]);
       await run(['undo', '0002'], d);
       expect(await lines(d)).toEqual([
-        '000002  0  water the plants  2026-09-26',
+        '000002  0  water the plants  2026-09-26  Inbox',
       ]);
     });
 
@@ -879,9 +890,13 @@ describe('run', () => {
         d,
       );
       await run(['done', '0002', '--on', '2026-10-05'], d);
-      expect(await lines(d)).toEqual(['000002  0  stand-up  2026-09-28']);
+      expect(await lines(d)).toEqual([
+        '000002  0  stand-up  2026-09-28  Inbox',
+      ]);
       await run(['done', '0002'], d);
-      expect(await lines(d)).toEqual(['000002  0  stand-up  2026-10-12']);
+      expect(await lines(d)).toEqual([
+        '000002  0  stand-up  2026-10-12  Inbox',
+      ]);
     });
 
     // Review Focus 5.
@@ -1068,6 +1083,45 @@ describe('run', () => {
       expect(third.stderr.join('\n')).not.toMatch(/merging/);
     });
 
+    it('rewrites a view that names the merged-away tag', async () => {
+      const server = fakeServer();
+      const d = deps(server.send);
+      const win = '00000000-0000-4000-8000-00000000000a';
+      const lose = '00000000-0000-4000-8000-00000000000b';
+      const tag = (id: string, name: string, seq: number) =>
+        server.rows.set(id, {
+          table: 'tag',
+          id,
+          seq,
+          row: { id, name, version: 1, deletedAt: null },
+        });
+      tag(win, '@phone', 1);
+      tag(lose, '@Phone', 2);
+      server.rows.set('v1', {
+        table: 'view',
+        id: 'v1',
+        seq: 3,
+        row: {
+          id: 'v1',
+          name: 'calls',
+          filter: { not: { tag: lose } },
+          version: 1,
+          deletedAt: null,
+        },
+      });
+
+      await run(['list'], d);
+      expect(d.store.pending().map((op) => `${op.kind} ${op.table}`)).toEqual([
+        'delete tag',
+        'set view',
+      ]);
+      expect(d.store.pending()[1]).toMatchObject({
+        id: 'v1',
+        field: 'filter',
+        value: { not: { tag: win } },
+      });
+    });
+
     it('does not merge when the server was not reached', async () => {
       const d = deps(unreachable);
       d.store.mergeChanges([
@@ -1123,38 +1177,58 @@ describe('run', () => {
         expect(out.stderr.join('\n')).not.toMatch(/failed/);
       });
 
-      // The cleanup is for moot deletes only: a failed set on a tombstone
-      // is evidence the user may want to see.
-      it('keeps a failed non-delete entry on a tombstoned row', async () => {
-        const d = deps(fakeServer().send);
+      function failedSet(
+        d: Deps,
+        deletedAt: string | null,
+        field = 'statusId',
+      ) {
         d.store.mergeChanges([
           {
-            table: 'tag',
-            id: 'tag-x',
+            table: 'task',
+            id: 'task-x',
             seq: 1,
-            row: {
-              id: 'tag-x',
-              name: '@x',
-              version: 3,
-              deletedAt: '2026-09-26T09:00:00.000Z',
-            },
+            row: { id: 'task-x', title: 'x', version: 3, deletedAt },
           },
         ]);
         d.store.enqueue({
-          opId: 'set-x',
+          opId: 'set-t',
           kind: 'set',
-          table: 'tag',
-          id: 'tag-x',
-          field: 'name',
-          value: '@y',
+          table: 'task',
+          id: 'task-x',
+          field,
+          value: 's-done',
           ts: 'T',
         });
         d.store.settle(
-          [{ opId: 'set-x', status: 'conflict', currentVersion: 3 }],
+          [{ opId: 'set-t', status: 'conflict', currentVersion: 3 }],
           new Set(),
         );
+        expect(d.store.entry('set-t')?.status).toBe('failed');
+      }
+
+      // A done queued offline on a task another device deleted: the server
+      // refuses the set on the tombstone, and nothing can ever fix it.
+      it('removes a failed set statusId whose task is a tombstone', async () => {
+        const d = deps(fakeServer().send);
+        failedSet(d, '2026-09-26T09:00:00.000Z');
+        const out = await run(['list'], d);
+        expect(d.store.entry('set-t')).toBeUndefined();
+        expect(out.stderr.join('\n')).not.toMatch(/failed/);
+      });
+
+      // Any other set is an edit the user made: its failure stays visible.
+      it('keeps a failed edit on a tombstoned row', async () => {
+        const d = deps(fakeServer().send);
+        failedSet(d, '2026-09-26T09:00:00.000Z', 'title');
         await run(['list'], d);
-        expect(d.store.entry('set-x')?.status).toBe('failed');
+        expect(d.store.entry('set-t')?.status).toBe('failed');
+      });
+
+      it('keeps a failed set whose target row is live', async () => {
+        const d = deps(fakeServer().send);
+        failedSet(d, null);
+        await run(['list'], d);
+        expect(d.store.entry('set-t')?.status).toBe('failed');
       });
 
       it('leaves a moot failed delete out of outbox --json, data and counts alike', async () => {
@@ -1554,6 +1628,509 @@ describe('login and logout', () => {
       );
     await expect(run(['list'], deps(ended))).rejects.toThrow(
       'your session has ended — run todoer login',
+    );
+  });
+
+  describe('statuses', () => {
+    const status = (
+      id: string,
+      name: string,
+      rank: string,
+      completing = false,
+    ) => ({
+      table: 'status',
+      id,
+      seq: 1,
+      row: { id, name, rank, completing, deletedAt: null },
+    });
+    const taskRow = (id: string, title: string, statusId?: string) => ({
+      table: 'task',
+      id,
+      seq: 1,
+      row: {
+        id,
+        title,
+        priority: 0,
+        rank: 'a0',
+        rrule: null,
+        dtstart: null,
+        parentId: null,
+        deletedAt: null,
+        ...(statusId === undefined ? {} : { statusId }),
+      },
+    });
+    const TASK_ID = '0192a1b2-0000-7000-8000-000000000002';
+    const SEEDED = [
+      status('s-inbox', 'Inbox', 'a0'),
+      status('s-doing', 'Doing', 'a1'),
+      status('s-done', 'Done', 'a2', true),
+    ];
+    const setStatusOps = (d: Deps) =>
+      d.store
+        .pending()
+        .filter((op) => op.kind === 'set' && op.field === 'statusId');
+
+    it('lists the old line shape and status null with no statuses', async () => {
+      const d = hexDeps(unreachable);
+      d.store.mergeChanges([taskRow('t-000001', 'plain')]);
+      expect((await run(['list'], d)).stdout).toEqual(['000001  0  plain']);
+      const out = await run(['list', '--json'], d);
+      expect(envelope(out.stdout)).toMatchObject({ data: [{ status: null }] });
+    });
+
+    it('shows the status last, falling back to the first non-completing one', async () => {
+      const d = hexDeps(unreachable);
+      d.store.mergeChanges([
+        ...SEEDED,
+        {
+          ...status('s-gone', 'Gone', 'a3'),
+          row: {
+            id: 's-gone',
+            name: 'Gone',
+            rank: 'a3',
+            completing: false,
+            deletedAt: '2026-09-01T00:00:00.000Z',
+          },
+        },
+        taskRow('t-000001', 'doing one', 's-doing'),
+        taskRow('t-000002', 'no status'),
+        taskRow('t-000003', 'deleted status', 's-gone'),
+        taskRow('t-000004', 'open at done', 's-done'),
+      ]);
+      expect((await run(['list'], d)).stdout).toEqual([
+        '000001  0  doing one  Doing',
+        '000002  0  no status  Inbox',
+        '000003  0  deleted status  Inbox',
+        '000004  0  open at done  Inbox',
+      ]);
+      const rows = (
+        envelope((await run(['list', '--json'], d)).stdout) as {
+          data: Record<string, unknown>[];
+        }
+      ).data;
+      expect(rows[0]).toMatchObject({ status: 'Doing', statusId: 's-doing' });
+    });
+
+    it('seeds Inbox, Doing, Done and sets statusId on done', async () => {
+      const d = hexDeps(unreachable);
+      await run(['add', 'once'], d);
+      await run(['done', '0002'], d);
+      const [, ...ops] = d.store.pending();
+      expect(ops.map((op) => `${op.kind} ${op.table}`)).toEqual([
+        'create status',
+        'create status',
+        'create status',
+        'set task',
+        'create task_occurrence',
+      ]);
+      expect(ops.slice(0, 3)).toMatchObject([
+        { fields: { name: 'Inbox', rank: 'a0', completing: false } },
+        { fields: { name: 'Doing', rank: 'a1', completing: false } },
+        { fields: { name: 'Done', rank: 'a2', completing: true } },
+      ]);
+      expect(ops[3]).toMatchObject({
+        id: TASK_ID,
+        field: 'statusId',
+        value: ops[2]?.id,
+      });
+    });
+
+    it('seeds once when a second done runs before any sync answers', async () => {
+      const d = hexDeps(unreachable);
+      await run(['add', 'one'], d);
+      await run(['add', 'two'], d);
+      await run(['done', '0002'], d);
+      await run(['done', '0004'], d);
+      const creates = d.store.pending().filter((op) => op.table === 'status');
+      expect(creates).toHaveLength(3);
+      const sets = setStatusOps(d);
+      expect(sets).toHaveLength(2);
+      expect(sets[1]).toMatchObject({ value: creates[2]?.id });
+      expect(sets[0]).toMatchObject({ value: creates[2]?.id });
+    });
+
+    it('sends no seed and no set when no status is completing', async () => {
+      const d = hexDeps(unreachable);
+      d.store.mergeChanges([
+        status('s-inbox', 'Inbox', 'a0'),
+        status('s-doing', 'Doing', 'a1'),
+        taskRow('t-000001', 'x', 's-doing'),
+      ]);
+      await run(['done', '000001'], d);
+      expect(d.store.pending().map((op) => `${op.kind} ${op.table}`)).toEqual([
+        'create task_occurrence',
+      ]);
+    });
+
+    it('moves a task to the lowest-id completing status when there are two', async () => {
+      const d = hexDeps(unreachable);
+      d.store.mergeChanges([
+        status('s-b-done', 'Done', 'a2', true),
+        status('s-a-done', 'Done 2', 'a3', true),
+        status('s-doing', 'Doing', 'a1'),
+        taskRow('t-000001', 'x', 's-b-done'),
+      ]);
+      await run(['done', '000001'], d);
+      expect(setStatusOps(d)).toMatchObject([
+        { id: 't-000001', value: 's-a-done' },
+      ]);
+    });
+
+    // Two processes cannot interleave inside one event loop, so the race is
+    // staged: the second Store commits the seed between the first one's
+    // command starting and its write transaction opening. The seed must be
+    // read inside that transaction, or both sets of creates land.
+    it('reads the statuses inside the write transaction, so a seed that landed meanwhile is not repeated', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'todoer-run-'));
+      try {
+        const [a, b] = [
+          Store.open(join(dir, 'todoer.db')),
+          Store.open(join(dir, 'todoer.db')),
+        ];
+        stores.push(a, b);
+        const d = hexDeps(unreachable);
+        d.store = a;
+        a.mergeChanges([taskRow('t-000001', 'x'), taskRow('t-000002', 'y')]);
+        const transaction = a.transaction.bind(a);
+        let raced = false;
+        a.transaction = ((fn: () => unknown) => {
+          if (!raced) {
+            raced = true;
+            b.transaction(() => {
+              for (const id of ['seed-1', 'seed-2', 'seed-3']) {
+                b.enqueue({
+                  opId: `op-${id}`,
+                  kind: 'create',
+                  table: 'status',
+                  id,
+                  fields: {
+                    name: id,
+                    rank: id,
+                    completing: id === 'seed-1',
+                  },
+                  ts: 'T',
+                });
+              }
+            });
+          }
+          return transaction(fn);
+        }) as typeof a.transaction;
+        await Promise.all([
+          run(['done', '000001'], d),
+          run(['done', '000002'], d),
+        ]);
+        const creates = a.pending().filter((op) => op.table === 'status');
+        expect(creates).toHaveLength(3);
+        expect(
+          setStatusOps(d).map((op) => (op as { value: unknown }).value),
+        ).toEqual(['seed-1', 'seed-1']);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
+    });
+
+    it('sends no set when the task already sits at the completing status', async () => {
+      const d = hexDeps(unreachable);
+      d.store.mergeChanges([...SEEDED, taskRow('t-000001', 'x', 's-done')]);
+      await run(['done', '000001'], d);
+      expect(setStatusOps(d)).toEqual([]);
+      expect(d.store.pending().map((op) => op.table)).toEqual([
+        'task_occurrence',
+      ]);
+    });
+
+    it('sets statusId to the existing completing status', async () => {
+      const d = hexDeps(unreachable);
+      d.store.mergeChanges([...SEEDED, taskRow('t-000001', 'x', 's-doing')]);
+      await run(['done', '000001'], d);
+      expect(setStatusOps(d)).toMatchObject([
+        { id: 't-000001', value: 's-done' },
+      ]);
+    });
+
+    it('undo clears statusId when the task has one, and skip never writes it', async () => {
+      const d = hexDeps(unreachable);
+      d.store.mergeChanges([...SEEDED, taskRow('t-000001', 'x', 's-done')]);
+      await run(['skip', '000001'], d);
+      expect(setStatusOps(d)).toEqual([]);
+      await run(['undo', '000001'], d);
+      expect(setStatusOps(d)).toMatchObject([
+        { id: 't-000001', field: 'statusId', value: null },
+      ]);
+    });
+
+    it('undo sends no set for a task without a status', async () => {
+      const d = hexDeps(unreachable);
+      d.store.mergeChanges([
+        taskRow('t-000001', 'x'),
+        {
+          table: 'task_occurrence',
+          id: 'o-1',
+          seq: 1,
+          row: {
+            id: 'o-1',
+            taskId: 't-000001',
+            occurrence: null,
+            state: 'done',
+            deletedAt: null,
+          },
+        },
+      ]);
+      await run(['undo', '000001'], d);
+      expect(setStatusOps(d)).toEqual([]);
+    });
+
+    it('still sets statusId for a named occurrence of a recurring task', async () => {
+      const d = hexDeps(unreachable);
+      d.store.mergeChanges(SEEDED);
+      await run(
+        [
+          'add',
+          'weekly',
+          '--rrule',
+          'FREQ=WEEKLY;BYDAY=MO',
+          '--from',
+          '2026-09-28',
+        ],
+        d,
+      );
+      await run(['done', '0002', '--on', '2026-10-05'], d);
+      expect(setStatusOps(d)).toMatchObject([{ value: 's-done' }]);
+    });
+  });
+});
+
+describe('views', () => {
+  const uuid = (n: number) =>
+    `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  const WORK = uuid(1);
+  const HOME = uuid(2);
+  const PHONE = uuid(3);
+  const INBOX = uuid(4);
+  const DOING = uuid(5);
+
+  type Fields = Record<string, unknown>;
+  let seq = 0;
+  function seed(d: Deps, table: string, id: string, fields: Fields): void {
+    d.store.mergeChanges([
+      {
+        table,
+        id,
+        seq: ++seq,
+        row: { id, version: 1, deletedAt: null, ...fields },
+      },
+    ]);
+  }
+  const addTask = (d: Deps, n: number, fields: Fields) =>
+    seed(d, 'task', uuid(100 + n), {
+      title: `t${n}`,
+      priority: 0,
+      rank: 'a0',
+      ...fields,
+    });
+  const addView = (d: Deps, name: string, fields: Fields) =>
+    seed(d, 'view', uuid(50 + seq), {
+      name,
+      layout: 'list',
+      sort: 'manual',
+      rank: 'a0',
+      filter: { priority: [0, 1, 2, 3, 4] },
+      ...fields,
+    });
+  function fixture(): Deps {
+    const d = deps(unreachable);
+    seed(d, 'project', WORK, { name: 'Work' });
+    seed(d, 'project', HOME, { name: 'Home' });
+    seed(d, 'tag', PHONE, { name: '@phone' });
+    seed(d, 'status', INBOX, { name: 'Inbox', rank: 'a0', completing: false });
+    seed(d, 'status', DOING, { name: 'Doing', rank: 'a1', completing: false });
+    return d;
+  }
+  async function titles(d: Deps, ...args: string[]): Promise<string[]> {
+    const out = await run(['list', ...args, '--json'], d);
+    return (envelope(out.stdout) as { data: { title: string }[] }).data.map(
+      (row) => row.title,
+    );
+  }
+
+  it('prints live views by rank then id, and the rows with --json', async () => {
+    const d = fixture();
+    addView(d, 'Later', { rank: 'a1', sort: 'due' });
+    addView(d, 'Work', { rank: 'a0', layout: 'board' });
+    addView(d, 'Gone', { rank: 'a0', deletedAt: '2026-09-01T00:00:00.000Z' });
+    const out = await run(['views'], d);
+    expect(out.stdout).toEqual(['Work  board  manual', 'Later  list  due']);
+    const rows = envelope((await run(['views', '--json'], d)).stdout) as {
+      data: { name: string }[];
+    };
+    expect(rows.data.map((v) => v.name)).toEqual(['Work', 'Later']);
+  });
+
+  it('prints nothing and exits 0 with no views', async () => {
+    const out = await run(['views'], deps(fakeServer().send));
+    expect(out).toMatchObject({ exit: 0, stdout: [] });
+  });
+
+  it('lists only the tasks in the view, matching the name by case, and ANDs @tag', async () => {
+    const d = fixture();
+    addView(d, 'Work', { filter: { project: WORK } });
+    addTask(d, 1, { projectId: WORK });
+    addTask(d, 2, { projectId: HOME });
+    addTask(d, 3, { projectId: WORK });
+    seed(d, 'task_tag', taskTagId(uuid(103), PHONE), {
+      taskId: uuid(103),
+      tagId: PHONE,
+      attached: true,
+    });
+    expect(await titles(d, '--view', 'work')).toEqual(['t1', 't3']);
+    expect(await titles(d, '--view', 'WORK', '@phone')).toEqual(['t3']);
+  });
+
+  it('refuses a missing or unknown view name as a usage error', async () => {
+    const d = fixture();
+    addView(d, 'Work', { filter: { project: WORK } });
+    addTask(d, 1, {});
+    await expect(run(['list', '--view'], d)).rejects.toThrow(UsageError);
+    await expect(run(['list', '--view', 'Nope'], d)).rejects.toThrow(/Nope/);
+    await expect(run(['list', '--view', 'Nope'], d)).rejects.toThrow(
+      UsageError,
+    );
+  });
+
+  it('orders by the view sort', async () => {
+    const d = fixture();
+    const p = [0, 1, 3, 4];
+    p.forEach((priority, i) =>
+      addTask(d, i + 1, {
+        priority,
+        rank: `a${3 - i}`,
+        dueOn: i === 2 ? null : `2026-10-0${4 - i}`,
+      }),
+    );
+    addView(d, 'P', { sort: 'priority' });
+    addView(d, 'D', { sort: 'due' });
+    addView(d, 'M', { sort: 'manual' });
+    expect(await titles(d, '--view', 'P')).toEqual(['t4', 't3', 't2', 't1']);
+    expect(await titles(d, '--view', 'D')).toEqual(['t4', 't2', 't1', 't3']);
+    expect(await titles(d, '--view', 'M')).toEqual(['t4', 't3', 't2', 't1']);
+  });
+
+  it('breaks ties by id', async () => {
+    const d = fixture();
+    addTask(d, 2, {});
+    addTask(d, 1, {});
+    addView(d, 'M', {});
+    expect(await titles(d, '--view', 'M')).toEqual(['t1', 't2']);
+  });
+
+  it('filters on the status a task is shown in', async () => {
+    const d = fixture();
+    addView(d, 'Doing', { filter: { status: DOING } });
+    addTask(d, 1, { statusId: DOING });
+    addTask(d, 2, {});
+    expect(await titles(d, '--view', 'Doing')).toEqual(['t1']);
+  });
+
+  it('filters on the current occurrence of a recurring task', async () => {
+    const d = fixture();
+    addView(d, 'Today', { filter: { scheduled: { from: 0, to: 0 } } });
+    addTask(d, 1, { rrule: 'FREQ=DAILY', dtstart: '2026-09-01' });
+    addTask(d, 2, { scheduledOn: '2026-09-26' });
+    addTask(d, 3, { scheduledOn: '2026-09-27' });
+    expect(await titles(d, '--view', 'Today')).toEqual(['t1', 't2']);
+  });
+
+  describe('tag and project facts', () => {
+    const DEAD_TAG = uuid(6);
+    const DEAD_PROJECT = uuid(7);
+    const ARCHIVED = uuid(8);
+    const link = (d: Deps, n: number, tagId: string) =>
+      seed(d, 'task_tag', taskTagId(uuid(100 + n), tagId), {
+        taskId: uuid(100 + n),
+        tagId,
+        attached: true,
+      });
+
+    it('lists a task linked to a live tag, not one linked only to a deleted tag', async () => {
+      const d = fixture();
+      seed(d, 'tag', DEAD_TAG, {
+        name: '@dead',
+        deletedAt: '2026-09-01T00:00:00.000Z',
+      });
+      addView(d, 'Phone', { filter: { tag: PHONE } });
+      addView(d, 'Dead', { filter: { tag: DEAD_TAG } });
+      addTask(d, 1, {});
+      addTask(d, 2, {});
+      link(d, 1, PHONE);
+      link(d, 2, DEAD_TAG);
+      expect(await titles(d, '--view', 'Phone')).toEqual(['t1']);
+      expect(await titles(d, '--view', 'Dead')).toEqual([]);
+    });
+
+    it('lists a task whose tag attach is still queued', async () => {
+      const d = fixture();
+      let n = 200;
+      d.newId = () => uuid(++n);
+      addView(d, 'Phone', { filter: { tag: PHONE } });
+      const out = await run(['add', 'x @phone'], d);
+      expect(out.exit).toBe(5);
+      expect(await titles(d, '--view', 'Phone')).toEqual(['x']);
+    });
+
+    it('treats a deleted project as no project, and an archived one as a project', async () => {
+      const d = fixture();
+      seed(d, 'project', DEAD_PROJECT, {
+        name: 'Dead',
+        deletedAt: '2026-09-01T00:00:00.000Z',
+      });
+      seed(d, 'project', ARCHIVED, {
+        name: 'Old',
+        archivedAt: '2026-09-01T00:00:00.000Z',
+      });
+      addView(d, 'Dead', { filter: { project: DEAD_PROJECT } });
+      addView(d, 'None', { filter: { project: null } });
+      addView(d, 'Old', { filter: { project: ARCHIVED } });
+      addTask(d, 1, { projectId: DEAD_PROJECT });
+      addTask(d, 2, { projectId: ARCHIVED });
+      expect(await titles(d, '--view', 'Dead')).toEqual([]);
+      expect(await titles(d, '--view', 'None')).toEqual(['t1']);
+      expect(await titles(d, '--view', 'Old')).toEqual(['t2']);
+    });
+  });
+
+  it('orders by scheduled date, dateless last, ties by rank then id', async () => {
+    const d = fixture();
+    addTask(d, 1, { scheduledOn: '2026-10-05', rank: 'a0' });
+    addTask(d, 2, { rank: 'a0' });
+    addTask(d, 3, { scheduledOn: '2026-10-01', rank: 'a1' });
+    addTask(d, 4, { scheduledOn: '2026-10-05', rank: 'a0' });
+    addTask(d, 5, { scheduledOn: '2026-10-05', rank: '9z' });
+    addView(d, 'S', { sort: 'scheduled' });
+    expect(await titles(d, '--view', 'S')).toEqual([
+      't3',
+      't5',
+      't1',
+      't4',
+      't2',
+    ]);
+  });
+
+  it('prints the views from the replica and exits 5 when unreachable', async () => {
+    const d = fixture();
+    addView(d, 'Work', {});
+    const out = await run(['views'], d);
+    expect(out.exit).toBe(5);
+    expect(out.stdout).toEqual(['Work  list  manual']);
+  });
+
+  it('refuses a view whose stored filter is invalid', async () => {
+    const d = fixture();
+    addView(d, 'Broken', { filter: { project: 'Work' } });
+    await expect(run(['list', '--view', 'Broken'], d)).rejects.toThrow(
+      /view Broken has an invalid filter: .*project/,
+    );
+    await expect(run(['list', '--view', 'Broken'], d)).rejects.toThrow(
+      RefusalError,
     );
   });
 });

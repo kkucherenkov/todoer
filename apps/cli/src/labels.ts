@@ -16,6 +16,11 @@ export function liveProjects(projects: Row[]): Row[] {
   );
 }
 
+/** Rows of any table that are not deleted. */
+export function notDeleted(rows: Row[]): Row[] {
+  return rows.filter((row) => row.deletedAt === null);
+}
+
 function idOf(row: Row): string {
   return String(row.id).toLowerCase();
 }

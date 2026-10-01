@@ -5,6 +5,7 @@ import {
   FILTER_MAX_NODES,
   filterProblem,
   matches,
+  replaceIds,
   type Filter,
   type FilterTask,
 } from './filter';
@@ -76,5 +77,27 @@ describe('filterProblem', () => {
     expect(filterProblem({ and: [{ recurring: true }, { tag: 'x' }] })).toBe(
       'filter.and[1].tag: not a uuid',
     );
+  });
+});
+
+describe('replaceIds', () => {
+  const A = '018f0000-0000-7000-8000-00000000000a';
+  const B = '018f0000-0000-7000-8000-00000000000b';
+  const ids = new Map([[A, B]]);
+  it('rewrites tag, project and status leaves at any depth', () => {
+    expect(
+      replaceIds(
+        { and: [{ tag: A }, { not: { or: [{ project: A }, { status: A }] } }] },
+        ids,
+      ),
+    ).toEqual({
+      and: [{ tag: B }, { not: { or: [{ project: B }, { status: B }] } }],
+    });
+  });
+  it('returns the same object when nothing names a replaced id', () => {
+    const filter = {
+      and: [{ tag: B }, { project: null }, { recurring: true }],
+    };
+    expect(replaceIds(filter, ids)).toBe(filter);
   });
 });
