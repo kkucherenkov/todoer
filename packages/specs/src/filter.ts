@@ -166,3 +166,35 @@ export function matches(
   if ('due' in filter) return inRange(task.dueOn, filter.due, today);
   return task.recurring === filter.recurring;
 }
+
+/**
+ * `filter` with every tag, project and status id found in `ids` replaced by
+ * its value — how a client keeps a view pointing at the row a duplicate was
+ * folded into. The same object comes back when nothing changes, so a caller
+ * can tell whether a write is needed.
+ */
+export function replaceIds(
+  filter: Filter,
+  ids: ReadonlyMap<string, string>,
+): Filter {
+  if ('and' in filter || 'or' in filter) {
+    const key = 'and' in filter ? 'and' : 'or';
+    const children = 'and' in filter ? filter.and : filter.or;
+    const next = children.map((child) => replaceIds(child, ids));
+    return next.every((child, i) => child === children[i])
+      ? filter
+      : ({ [key]: next } as Filter);
+  }
+  if ('not' in filter) {
+    const next = replaceIds(filter.not, ids);
+    return next === filter.not ? filter : { not: next };
+  }
+  for (const key of ['tag', 'project', 'status'] as const) {
+    if (key in filter) {
+      const id = (filter as Record<string, unknown>)[key];
+      const to = typeof id === 'string' ? ids.get(id) : undefined;
+      return to === undefined ? filter : ({ [key]: to } as Filter);
+    }
+  }
+  return filter;
+}

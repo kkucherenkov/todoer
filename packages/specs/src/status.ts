@@ -12,6 +12,23 @@ const byRankThenId = (a: StatusRow, b: StatusRow): number =>
           ? 1
           : 0;
 
+/** The completing status: with several (merged seed sets), the lowest id. */
+export function completingStatus(
+  statuses: readonly StatusRow[],
+): string | undefined {
+  return statuses
+    .filter((s) => s.completing)
+    .map((s) => s.id)
+    .sort()[0];
+}
+
+/** Where a task with no status goes: the first non-completing status by
+ *  rank, or the first at all when every status is completing. */
+export function firstStatus(statuses: readonly StatusRow[]): string | null {
+  const ordered = [...statuses].sort(byRankThenId);
+  return (ordered.find((s) => !s.completing) ?? ordered[0])?.id ?? null;
+}
+
 /**
  * The status a board shows a task in (views design, Q7-Q9). The occurrence
  * wins: a closed current occurrence puts the task in the completing status,
@@ -26,13 +43,8 @@ export function displayStatus(
   statuses: readonly StatusRow[],
   occurrenceClosed: boolean,
 ): string | null {
-  const ordered = [...statuses].sort(byRankThenId);
-  const completing = statuses
-    .filter((s) => s.completing)
-    .map((s) => s.id)
-    .sort()[0];
+  const completing = completingStatus(statuses);
   if (occurrenceClosed && completing !== undefined) return completing;
-  const first = (ordered.find((s) => !s.completing) ?? ordered[0])?.id ?? null;
-  const own = ordered.find((s) => s.id === statusId);
-  return own === undefined || own.completing ? first : own.id;
+  const own = statuses.find((s) => s.id === statusId);
+  return own === undefined || own.completing ? firstStatus(statuses) : own.id;
 }
