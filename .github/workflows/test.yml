@@ -35,6 +35,13 @@ jobs:
       - name: Run them again with a byte-counting locale
         run: LC_ALL=C sh scripts/check-pr-title.test.sh
 
+      - name: Run the migration guard's tests
+        run: sh scripts/check-migrations.test.sh
+
+      # Trap 6: a generated migration must never drop change_seq or a seq default.
+      - name: Check the migrations
+        run: sh scripts/check-migrations.sh
+
   # A job of its own rather than a step in `Workspace tests`: it needs no
   # database, so it reports without waiting on the Postgres service.
   lint:

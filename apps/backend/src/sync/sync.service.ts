@@ -301,15 +301,22 @@ function unpermittedField(table: TableName, op: Op): string | null {
  * - the referenced row must belong to the same user (reads are scoped by
  *   `userId`; these columns were not, and the migration's foreign keys are
  *   global);
- * - a `parentId` must point at a task with no parent of its own;
+ * - a `parentId` must point at a live task with no parent of its own;
  * - a task that has live subtasks cannot be given a parent.
  *
- * The last two are the whole depth rule for a hierarchy the design caps at
+ * The last three are the whole depth rule for a hierarchy the design caps at
  * two levels (project → task → subtask), and the second also closes every
  * cycle: a cycle needs every row in it to have a parent, so the edge that
  * would close one always points at a row that already has one. No recursive
  * query, no depth counter. Deleted subtasks do not count: a tombstone cannot
- * be resurrected, so it never becomes a live third level.
+ * be resurrected, so it never becomes a live third level. A tombstoned parent
+ * is refused for the opposite reason: `deleteRejection` keeps a parent from
+ * being deleted over live subtasks, and this keeps one from being given
+ * afterwards.
+ *
+ * `deleteRejection` is the depth rule's counterpart for deletes: a task with
+ * live subtasks cannot be deleted, since the server never cascades and the
+ * subtasks would be left under a tombstone.
  *
  * Both rules read rows another request may be changing, so they hold only
  * because `lockRows` has already locked the written row and the target
@@ -338,9 +345,14 @@ async function referenceRejection(
     const isParent = field === 'parentId';
     const found = await delegateFor(client, target).findFirst({
       where: { id: value, userId },
-      select: isParent ? { id: true, parentId: true } : { id: true },
+      select: isParent
+        ? { id: true, parentId: true, deletedAt: true }
+        : { id: true },
     });
     if (found === null) return `${field} does not reference a row you own`;
+    if (isParent && (found as { deletedAt?: Date | null }).deletedAt !== null) {
+      return 'parentId must point at a live task';
+    }
     if (isParent && (found as { parentId?: string | null }).parentId !== null) {
       return 'parentId must point at a task that has no parent of its own';
     }
@@ -356,6 +368,23 @@ async function referenceRejection(
     }
   }
   return null;
+}
+
+/** Why this op cannot delete its row, or `null` — see `referenceRejection`. */
+async function deleteRejection(
+  client: unknown,
+  table: TableName,
+  op: Op,
+  userId: string,
+): Promise<string | null> {
+  if (table !== 'task' || op.kind !== 'delete') return null;
+  const child = await delegateFor(client, 'task').findFirst({
+    where: { parentId: op.id, userId, deletedAt: null },
+    select: { id: true },
+  });
+  return child === null
+    ? null
+    : 'a task with subtasks cannot be deleted — delete its subtasks first';
 }
 
 /** The task a `parentId` write points at, if this op makes one. */
@@ -658,7 +687,9 @@ export class SyncService {
           // reads and the write below one cycle rather than two halves
           // another transaction can interleave with.
           await lockRows(tx, table, op, userId);
-          const badReference = await referenceRejection(tx, table, op, userId);
+          const badReference =
+            (await referenceRejection(tx, table, op, userId)) ??
+            (await deleteRejection(tx, table, op, userId));
           if (badReference !== null) {
             outcome = { status: 'rejected', reason: badReference };
           } else {

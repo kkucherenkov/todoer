@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { BadRequestException, GoneException } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
@@ -303,6 +304,60 @@ describe('SyncService', () => {
     expect(results[0]).toMatchObject({ status: 'rejected' });
     expect(results[0]?.reason).toMatch(/has subtasks/i);
     expect(results[1]).toMatchObject({ status: 'applied' });
+  });
+
+  // #391's second door: a delete of a parent with live subtasks is refused,
+  // but a subtask written *after* the parent was tombstoned would be a live
+  // row under a tombstone.
+  it('refuses a subtask under a tombstoned parent', async () => {
+    const parent = createTask('parent');
+    const live = createTask('live parent');
+    const mover = createTask('mover');
+    await service.sync(USER, { since: 0, ops: [parent, live, mover] });
+    await service.sync(USER, {
+      since: 0,
+      ops: [
+        {
+          opId: uuidv7(),
+          kind: 'delete' as const,
+          table: 'task' as const,
+          id: parent.id,
+          baseVersion: 1,
+        },
+      ],
+    });
+
+    const underTombstone = {
+      opId: uuidv7(),
+      kind: 'create' as const,
+      table: 'task' as const,
+      id: uuidv7(),
+      fields: { title: 'orphan', rank: 'a1', parentId: parent.id },
+      ts: new Date().toISOString(),
+    };
+    const underLive = {
+      opId: uuidv7(),
+      kind: 'create' as const,
+      table: 'task' as const,
+      id: uuidv7(),
+      fields: { title: 'fine', rank: 'a2', parentId: live.id },
+      ts: new Date().toISOString(),
+    };
+
+    const { results } = await service.sync(USER, {
+      since: 0,
+      ops: [underTombstone, setParent(mover.id, parent.id), underLive],
+    });
+
+    expect(results[0]).toMatchObject({ status: 'rejected' });
+    expect(results[0]?.reason).toMatch(/live task/i);
+    expect(results[1]).toMatchObject({ status: 'rejected' });
+    expect(results[1]?.reason).toMatch(/live task/i);
+    expect(results[2]).toMatchObject({ status: 'applied' });
+    expect(
+      (await prisma.task.findUniqueOrThrow({ where: { id: mover.id } }))
+        .parentId,
+    ).toBeNull();
   });
 
   // Tuxedo 356: the single-op argument above holds only one op at a time.
@@ -2166,5 +2221,111 @@ describe('SyncService statuses, views and task origins', () => {
     expect(
       (await pull()).find((c) => c.id === good.id)!.row.originOccurrence,
     ).toBe('2026-10-05');
+  });
+});
+
+describe('SyncService deleting a task with subtasks (#391)', () => {
+  const REASON =
+    'a task with subtasks cannot be deleted — delete its subtasks first';
+
+  async function parentWithChild() {
+    const parent = createTask('parent');
+    const child = createTask('child');
+    await service.sync(USER, { since: 0, ops: [parent, child] });
+    await service.sync(USER, {
+      since: 0,
+      ops: [setParent(child.id, parent.id)],
+    });
+    return { parent, child };
+  }
+
+  it('refuses to delete a task that has a live subtask', async () => {
+    const { parent } = await parentWithChild();
+
+    const { results } = await service.sync(USER, {
+      since: 0,
+      ops: [deleteTask(parent.id, 1)],
+    });
+
+    expect(results[0]).toMatchObject({ status: 'rejected', reason: REASON });
+    const row = await prisma.task.findUniqueOrThrow({
+      where: { id: parent.id },
+    });
+    expect(row.deletedAt).toBeNull();
+  });
+
+  it('applies [delete subtask, delete parent] in one batch', async () => {
+    const { parent, child } = await parentWithChild();
+
+    const { results } = await service.sync(USER, {
+      since: 0,
+      ops: [deleteTask(child.id, 2), deleteTask(parent.id, 1)],
+    });
+
+    expect(results.map((r) => r.status)).toEqual(['applied', 'applied']);
+  });
+
+  it('deletes a task whose only subtasks are tombstoned', async () => {
+    const { parent, child } = await parentWithChild();
+    await service.sync(USER, { since: 0, ops: [deleteTask(child.id, 2)] });
+
+    const { results } = await service.sync(USER, {
+      since: 0,
+      ops: [deleteTask(parent.id, 1)],
+    });
+
+    expect(results[0]).toMatchObject({ status: 'applied' });
+  });
+
+  it('never refuses deleting a subtask', async () => {
+    const { child } = await parentWithChild();
+
+    const { results } = await service.sync(USER, {
+      since: 0,
+      ops: [deleteTask(child.id, 2)],
+    });
+
+    expect(results[0]).toMatchObject({ status: 'applied' });
+  });
+});
+
+describe('migration tombstone_orphan_subtasks (#391)', () => {
+  it('tombstones a live subtask under a tombstoned parent', async () => {
+    const parent = createTask('parent');
+    const child = createTask('child');
+    const orphan = createTask('orphan');
+    await service.sync(USER, { since: 0, ops: [parent, child, orphan] });
+    await service.sync(USER, {
+      since: 0,
+      ops: [setParent(child.id, parent.id), setParent(orphan.id, parent.id)],
+    });
+    // The state older servers could reach: the parent tombstoned directly,
+    // its subtasks left live.
+    await prisma.task.update({
+      where: { id: parent.id },
+      data: { deletedAt: new Date() },
+    });
+    const before = await prisma.task.findUniqueOrThrow({
+      where: { id: child.id },
+    });
+
+    const sql = readFileSync(
+      new URL(
+        '../../prisma/migrations/20261001194224_tombstone_orphan_subtasks/migration.sql',
+        import.meta.url,
+      ),
+      'utf8',
+    );
+    await prisma.$executeRawUnsafe(sql);
+
+    const after = await prisma.task.findUniqueOrThrow({
+      where: { id: child.id },
+    });
+    const parentRow = await prisma.task.findUniqueOrThrow({
+      where: { id: parent.id },
+    });
+    expect(after.deletedAt).toEqual(parentRow.deletedAt);
+    expect(after.version).toBe(before.version + 1);
+    expect(after.seq).toBeGreaterThan(before.seq);
   });
 });

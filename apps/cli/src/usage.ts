@@ -67,6 +67,11 @@ recurrence:
   at the next open one; missed dates before it are not listed. done and
   skip act on that date, or on --on's.
 
+marks:
+  repeating the same mark changes nothing and queues nothing, but it still
+  syncs first, so offline it exits 5 like list; switching done and skipped
+  needs undo first.
+
 quick-add markers:
   p0..p4      priority
   #project    the live, non-archived project of that name (any case);

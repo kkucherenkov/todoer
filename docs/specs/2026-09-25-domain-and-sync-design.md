@@ -235,8 +235,15 @@ For each operation, in the order given:
    first. Moving them implicitly would write rows the operation never named,
    which the op log has no way to express. Deleted subtasks do not count; a
    tombstone cannot be resurrected, so it never becomes a live third level.
+   The mirror rule: a `parent_id` cannot point at a tombstoned task, or a
+   subtask written after the parent's delete would be live under a tombstone.
 
-   Both checks read rows another request may be writing, so they run only
+   Deleting is bound by the same hierarchy: a task with live subtasks cannot
+   be deleted; clients delete the subtasks first, in the same batch. The
+   server never cascades, so allowing it would leave live subtasks under a
+   tombstone. Tombstoned subtasks do not count.
+
+   All three checks read rows another request may be writing, so they run only
    after the written row and the `parent_id` target are locked `FOR UPDATE`,
    **in id order**. Unlocked, two requests setting A under B and B under A
    each read the other while it is still parentless and a cycle is stored;
