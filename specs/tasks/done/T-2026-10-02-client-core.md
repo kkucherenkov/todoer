@@ -5,7 +5,7 @@
 - Status: done
 - Blockers: —
 - Completed: 2026-10-02
-- Result: branch refactor/client-core (PR pending)
+- Result: https://github.com/kkucherenkov/todoer/pull/17
 - Spec: [docs/specs/2026-10-01-client-shells-design.md](../../../docs/specs/2026-10-01-client-shells-design.md)
   (Q3, Q12, Q13, Q16 — plan W0)
 - Plan: [docs/plans/2026-10-02-plan-w0-client-core.md](../../../docs/plans/2026-10-02-plan-w0-client-core.md)
