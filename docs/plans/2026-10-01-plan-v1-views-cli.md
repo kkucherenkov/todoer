@@ -20,7 +20,7 @@ no server change.
 — Q9, Q10, Q12, Q15 and the departures of plan V2 at its end. Plan V2:
 [`docs/plans/2026-10-01-plan-v2-views-server.md`](2026-10-01-plan-v2-views-server.md).
 Task spec:
-[`specs/tasks/active/T-2026-10-01-views-cli.md`](../../specs/tasks/active/T-2026-10-01-views-cli.md).
+[`specs/tasks/done/T-2026-10-01-views-cli.md`](../../specs/tasks/done/T-2026-10-01-views-cli.md).
 
 ## Where this plan departs from the design doc
 

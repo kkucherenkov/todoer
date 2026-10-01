@@ -2,11 +2,12 @@
 
 - Created: 2026-10-01
 - Owner: claude
-- Status: ready
+- Status: done
 - Blockers: —
 - Spec: [docs/specs/2026-10-01-views-design.md](../../../docs/specs/2026-10-01-views-design.md)
   (Q9, Q10, Q12, Q15); tuxedo #406
 - Plan: [docs/plans/2026-10-01-plan-v1-views-cli.md](../../../docs/plans/2026-10-01-plan-v1-views-cli.md)
+- Completed: 2026-10-01
 
 ### Goal
 
@@ -69,11 +70,11 @@ drops it from every view that names it.
 
 - **SC-001** `sh scripts/walking-skeleton.sh` lists a synced view with
   `todoer views` and filters by it with `list --view`.
-- [ ] every FR has a test that failed before the code made it pass
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] every FR has a test that failed before the code made it pass
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 
