@@ -80,7 +80,7 @@ export const getHealth = <ThrowOnError extends boolean = false>(
 
 /**
  * Sign in
- * Verifies the password and opens a new session. Every failure is the same 401, whether the address is unknown or the password wrong. Repeated failures from one address or IP are answered 429 with Retry-After.
+ * Verifies the password and opens a new session. Every failure is the same 401, whether the address is unknown or the password wrong. Repeated failures from one address or IP are answered 429 with Retry-After. With `transport: cookie` the refresh token is set as the `todoer_refresh` cookie (`HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth`) and is absent from the body.
  */
 export const postAuthLogin = <ThrowOnError extends boolean = false>(
   options: Options<PostAuthLoginData, ThrowOnError>,
@@ -101,7 +101,7 @@ export const postAuthLogin = <ThrowOnError extends boolean = false>(
 
 /**
  * Create an account and sign in
- * Open only while the instance has no users; the first account becomes the owner. Afterwards an invitation is required, single-use and, when it was issued for an address, valid only for that address.
+ * Open only while the instance has no users; the first account becomes the owner. Afterwards an invitation is required, single-use and, when it was issued for an address, valid only for that address. With `transport: cookie` the refresh token is set as the `todoer_refresh` cookie (`HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth`) and is absent from the body.
  */
 export const postAuthRegister = <ThrowOnError extends boolean = false>(
   options: Options<PostAuthRegisterData, ThrowOnError>,
@@ -122,7 +122,7 @@ export const postAuthRegister = <ThrowOnError extends boolean = false>(
 
 /**
  * Exchange a refresh token for a new pair
- * Spends the presented refresh token and returns a new access token and a new refresh token. A just-spent token presented again within about 30 seconds returns the same refresh token with a freshly minted access token; a spent token past that window revokes the session. An expired, revoked or unknown token is 401.
+ * Takes the refresh token from the body, or, when the body has none, from the `todoer_refresh` cookie. Spends it and returns a new access token and a new refresh token. A cookie-sourced refresh rotates the cookie and leaves `refreshToken` out of the body. A body-sourced one answers in the body. A just-spent token presented again within about 30 seconds returns the same refresh token with a freshly minted access token; a spent token past that window revokes the session. Limits and the grace window are the same for both. An expired, revoked or unknown token is 401, and so is no token at all.
  */
 export const postAuthRefresh = <ThrowOnError extends boolean = false>(
   options: Options<PostAuthRefreshData, ThrowOnError>,
@@ -143,7 +143,7 @@ export const postAuthRefresh = <ThrowOnError extends boolean = false>(
 
 /**
  * Revoke the current session or all of them
- * Revokes the session of the presented refresh token, or every session of the caller when `all` is true. Access tokens already issued live out their 15 minutes. The body is required but may be `{}`.
+ * Revokes the session of the refresh token in the body, or, when the body has none, in the `todoer_refresh` cookie; or every session of the caller when `all` is true. Every 204 clears that cookie. Access tokens already issued live out their 15 minutes. The body is required but may be `{}`.
  */
 export const postAuthLogout = <ThrowOnError extends boolean = false>(
   options: Options<PostAuthLogoutData, ThrowOnError>,
@@ -170,7 +170,7 @@ export const postAuthLogout = <ThrowOnError extends boolean = false>(
 
 /**
  * Change the caller's password
- * Needs the current password. Revokes every session of the caller and returns a fresh pair, so the client that changed it stays signed in. The new password must be strong: letters, digits and symbols. Wrong current passwords are limited per user: too many are answered 429 with Retry-After.
+ * Needs the current password. Revokes every session of the caller and returns a fresh pair, so the client that changed it stays signed in. The new password must be strong: letters, digits and symbols. Wrong current passwords are limited per user: too many are answered 429 with Retry-After. With `transport: cookie` the refresh token is set as the `todoer_refresh` cookie (`HttpOnly; Secure; SameSite=Strict; Path=/api/v1/auth`) and is absent from the body.
  */
 export const postAuthPassword = <ThrowOnError extends boolean = false>(
   options: Options<PostAuthPasswordData, ThrowOnError>,

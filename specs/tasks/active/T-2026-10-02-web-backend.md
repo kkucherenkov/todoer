@@ -141,7 +141,7 @@ it does: scripts and agents depend on it (ADR 0015).
 
 - [x] T001 [FR-009] client-core refuses a session without a refresh token —
       plan Task 1
-- [ ] T002 [FR-008] Contract: `TokenTransport`, optional `refreshToken`;
+- [x] T002 [FR-008] Contract: `TokenTransport`, optional `refreshToken`;
       codegen in its own commit — plan Task 2
 - [ ] T003 [FR-002] `createApp()` and the HTTP spec over the real chain —
       plan Task 3
