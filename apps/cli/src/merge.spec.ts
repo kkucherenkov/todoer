@@ -144,6 +144,74 @@ describe('planMerge', () => {
     expect(ops.some((op) => op.id === 'gb' && op.kind === 'delete')).toBe(true);
   });
 
+  it('merges a group of three, moving the links of both losers', () => {
+    const tag = (id: string, name: string) => ({
+      id,
+      name,
+      version: 1,
+      deletedAt: null,
+    });
+    const link = (
+      id: string,
+      taskId: string,
+      tagId: string,
+      deletedAt: string | null = null,
+    ) => ({
+      id,
+      taskId,
+      tagId,
+      deletedAt,
+    });
+    const { ops, merged } = planMerge(
+      {
+        tasks: [
+          { id: 't1', deletedAt: null },
+          { id: 't2', deletedAt: null },
+          { id: 't3', deletedAt: null },
+        ],
+        projects: [],
+        tags: [tag('a3', '@x'), tag('a1', '@X'), tag('a2', '@x')],
+        links: [
+          link('l1', 't1', 'a2'),
+          link('l2', 't2', 'a3'),
+          // Deleted link: not moved.
+          link('l3', 't3', 'a3', '2026-09-01T00:00:00Z'),
+        ],
+      },
+      ids(),
+      'T',
+    );
+    expect(ops.map((op) => `${op.kind} ${op.table} ${op.id}`)).toEqual([
+      `create task_tag ${taskTagId('t1', 'a1')}`,
+      'set task_tag l1',
+      'delete tag a2',
+      `create task_tag ${taskTagId('t2', 'a1')}`,
+      'set task_tag l2',
+      'delete tag a3',
+    ]);
+    expect(merged).toEqual(['@X (3)']);
+  });
+
+  it('treats composed and decomposed spellings as one group', () => {
+    const { ops, merged } = planMerge(
+      {
+        tasks: [],
+        projects: [],
+        tags: [
+          { id: 'b2', name: '@cafe\u0301', version: 1, deletedAt: null },
+          { id: 'b1', name: '@caf\u00e9', version: 4, deletedAt: null },
+        ],
+        links: [],
+      },
+      ids(),
+      'T',
+    );
+    expect(ops).toEqual([
+      { opId: 'n1', kind: 'delete', table: 'tag', id: 'b2', baseVersion: 1 },
+    ]);
+    expect(merged).toEqual(['@caf\u00e9 (2)']);
+  });
+
   it('plans nothing when no two live names collide', () => {
     expect(
       planMerge(

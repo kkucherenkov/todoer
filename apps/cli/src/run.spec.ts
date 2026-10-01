@@ -243,6 +243,16 @@ describe('run', () => {
         ),
       );
       await expect(run(['add', 'x @phone'], d)).rejects.toThrow(RefusalError);
+      expect(d.store.entries().some((e) => e.op.table === 'tag')).toBe(false);
+    });
+
+    // `submit` queues every op or none: a half-queued add would leave a tag
+    // with no task, or a link with no task.
+    it("queues nothing when one of the add's operations cannot be queued", async () => {
+      const d = deps(unreachable);
+      d.newId = () => 'same';
+      await expect(run(['add', 'x @t'], d)).rejects.toThrow();
+      expect(d.store.pending()).toEqual([]);
     });
 
     it('says nothing about markers when there are none', async () => {
@@ -1050,6 +1060,80 @@ describe('run', () => {
         expect(d.store.entry('del-x')?.status).toBe('failed');
         expect(out.stderr.join('\n')).toMatch(/1 queued operation\(s\) failed/);
       });
+    });
+
+    // Review: a merge op the server refuses is an ordinary failed entry; the
+    // command that reports it still succeeds.
+    it('turns a refused merge op into a failed entry without failing the command', async () => {
+      const server = fakeServer();
+      const d = deps(server.send);
+      await run(['add', 'call the bank @phone'], d);
+      server.rows.set('other-tag', {
+        table: 'tag',
+        id: 'other-tag',
+        seq: 100,
+        row: { id: 'other-tag', name: '@Phone', version: 1, deletedAt: null },
+      });
+      await run(['list'], d);
+      expect(d.store.pending().map((op) => op.kind)).toEqual(['delete']);
+
+      d.send = (request) =>
+        Promise.resolve(
+          json({
+            cursor: 0,
+            results: request.ops.map((op) => ({
+              opId: op.opId,
+              status: 'conflict',
+              currentVersion: 9,
+            })),
+            changes: [],
+          }),
+        );
+      const out = await run(['list'], d);
+      expect(out.exit).toBe(0);
+      expect(
+        d.store.entries().filter((e) => e.status === 'failed'),
+      ).toMatchObject([{ op: { kind: 'delete', table: 'tag' } }]);
+      expect(out.stderr.join('\n')).toMatch(/queued operation\(s\) failed/);
+    });
+
+    it('merges duplicate projects: the winner stays and takes the tasks', async () => {
+      const server = fakeServer();
+      const project = (id: string, name: string) =>
+        server.rows.set(id, {
+          table: 'project',
+          id,
+          seq: id === 'p-a' ? 1 : 2,
+          row: { id, name, rank: 'a0', version: 1, deletedAt: null },
+        });
+      project('p-a', 'finance');
+      project('p-b', 'Finance');
+      server.rows.set('t1', {
+        table: 'task',
+        id: 't1',
+        seq: 3,
+        row: {
+          id: 't1',
+          title: 'pay rent',
+          priority: 0,
+          rank: 'a0',
+          projectId: 'p-b',
+          version: 1,
+          deletedAt: null,
+        },
+      });
+      const d = deps(server.send);
+
+      await run(['list'], d);
+      await run(['list'], d);
+
+      const live = (table: string) =>
+        [...server.rows.values()].filter(
+          (c) => c.table === table && c.row.deletedAt === null,
+        );
+      expect(live('project').map((c) => c.id)).toEqual(['p-a']);
+      expect(server.rows.get('t1')?.row.projectId).toBe('p-a');
+      expect(d.store.pending()).toEqual([]);
     });
   });
 });
