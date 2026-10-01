@@ -190,7 +190,7 @@ replica count that changes when the CLI writes.
       contract — plan Task 2
 - **Checkpoint:** the core runs in a browser worker and holds the web's
   session without seeing its refresh token. The CLI is unchanged.
-- [ ] T003 [FR-004, FR-005] `apps/web` scaffold under the backend's CSP —
+- [x] T003 [FR-004, FR-005] `apps/web` scaffold under the backend's CSP —
       plan Task 3
 - [ ] T004 [FR-006, FR-007, FR-008, FR-009] The worker, the protocol, the
       leader tab, the engine — plan Task 4

@@ -5,7 +5,14 @@ import { defineConfig } from 'eslint/config';
 import tseslint from 'typescript-eslint';
 
 export default defineConfig(
-  { ignores: ['**/dist/', 'packages/specs/src/generated/'] },
+  {
+    ignores: [
+      '**/dist/',
+      '**/.nuxt/',
+      '**/.output/',
+      'packages/specs/src/generated/',
+    ],
+  },
   js.configs.recommended,
   tseslint.configs.recommendedTypeChecked,
   {
@@ -56,6 +63,9 @@ export default defineConfig(
       'no-restricted-globals': ['error', 'Buffer', 'process'],
     },
   },
+  // Nuxt's auto-imports live in generated .nuxt/ types that ESLint's project
+  // service cannot see: syntax rules only (typecheck is vue-tsc's job).
+  { files: ['apps/web/**'], extends: [tseslint.configs.disableTypeChecked] },
   // Config files outside every tsconfig: syntax rules only.
   { files: ['**/*.{js,mjs}'], extends: [tseslint.configs.disableTypeChecked] },
 );
