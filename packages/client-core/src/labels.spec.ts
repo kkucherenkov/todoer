@@ -179,4 +179,23 @@ describe('labelsOf', () => {
       tags: ['@phone'],
     });
   });
+
+  // Ids and names sort opposite ways, so only the name-key sort gives this.
+  it('lists tags in name-key order, not id order', () => {
+    const swapped = {
+      projects: [],
+      tags: [
+        { id: 'a', name: '@zeta', deletedAt: null },
+        { id: 'b', name: '@Alpha', deletedAt: null },
+      ],
+      links: [
+        { taskId: 't', tagId: 'a', deletedAt: null },
+        { taskId: 't', tagId: 'b', deletedAt: null },
+      ],
+    };
+    expect(labelsOf({ id: 't', projectId: null }, swapped).tags).toEqual([
+      '@Alpha',
+      '@zeta',
+    ]);
+  });
 });

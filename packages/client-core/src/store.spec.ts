@@ -364,4 +364,23 @@ describe('Store auth', () => {
     ).rejects.toThrow('boom');
     expect(busyTimeout().timeout).toBe(5000);
   });
+
+  // BEGIN IMMEDIATE inside an open transaction fails with a non-busy error
+  // (SQLITE_ERROR), the path that skips the retry and rethrows.
+  it('restores the busy timeout when BEGIN itself fails', async () => {
+    const store = storeAt();
+    const db = (
+      store as unknown as {
+        db: { exec(sql: string): void; all<T>(sql: string): T[] };
+      }
+    ).db;
+    db.exec('BEGIN');
+    await expect(store.withWriteLock(() => Promise.resolve())).rejects.toThrow(
+      /within a transaction/,
+    );
+    db.exec('ROLLBACK');
+    expect(db.all<{ timeout: number }>('PRAGMA busy_timeout')[0]?.timeout).toBe(
+      5000,
+    );
+  });
 });
