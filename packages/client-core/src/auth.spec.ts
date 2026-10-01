@@ -4,9 +4,17 @@ import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { httpAuthApi, tokenSource, type AuthApi } from './auth.js';
+import {
+  cookieTokenSource,
+  httpAuthApi,
+  httpCookieAuthApi,
+  subject,
+  tokenSource,
+  type AuthApi,
+  type CookieAuthApi,
+} from './auth.js';
 import { RefusalError } from './protocol.js';
-import type { Store, StoredAuth } from './store.js';
+import type { AccessGrant, Store, StoredAuth } from './store.js';
 import { openStore } from './test-store.js';
 
 const NOW = new Date('2026-10-01T12:00:00.000Z');
@@ -261,5 +269,221 @@ describe('httpAuthApi', () => {
         { path: '/auth/login', body: { email: 'a@b.c', password: 'pw' } },
       ]);
     });
+  });
+});
+
+const grant = (access: string, seconds: number): AccessGrant => ({
+  accessToken: access,
+  accessExpiresAt: at(seconds),
+});
+
+/** A CookieAuthApi whose refresh answers from `results`, last one repeating. */
+function fakeCookieApi(...results: (AccessGrant | 'invalid' | Error)[]) {
+  const calls = { refresh: 0 };
+  const api: CookieAuthApi = {
+    login: () => Promise.reject(new Error('unused')),
+    refresh: async () => {
+      const result = results[Math.min(calls.refresh++, results.length - 1)];
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      if (result instanceof Error) throw result;
+      return result ?? 'invalid';
+    },
+    logout: () => Promise.reject(new Error('unused')),
+  };
+  return { api, calls };
+}
+
+describe('cookieTokenSource', () => {
+  it('refreshes once before any grant and returns the new token', async () => {
+    const { api, calls } = fakeCookieApi(grant('new', 900));
+    const tokens = cookieTokenSource(api, now);
+    expect(await tokens.current()).toBe('new');
+    expect(await tokens.current()).toBe('new');
+    expect(calls.refresh).toBe(1);
+  });
+
+  it('returns an adopted grant without calling the API', async () => {
+    const { api, calls } = fakeCookieApi(grant('new', 900));
+    const tokens = cookieTokenSource(api, now);
+    tokens.adopt(grant('fresh', 600));
+    expect(await tokens.current()).toBe('fresh');
+    expect(calls.refresh).toBe(0);
+  });
+
+  it('refreshes a grant within 60 s of expiry', async () => {
+    const { api, calls } = fakeCookieApi(grant('new', 900));
+    const tokens = cookieTokenSource(api, now);
+    tokens.adopt(grant('old', 30));
+    expect(await tokens.current()).toBe('new');
+    expect(calls.refresh).toBe(1);
+  });
+
+  it('shares one refresh between current and renew in flight', async () => {
+    const { api, calls } = fakeCookieApi(grant('new', 900));
+    const tokens = cookieTokenSource(api, now);
+    const [a, b] = await Promise.all([tokens.current(), tokens.renew('x')]);
+    expect(calls.refresh).toBe(1);
+    expect([a, b]).toEqual(['new', 'new']);
+  });
+
+  it('renew returns the held token when it differs from the refused one', async () => {
+    const { api, calls } = fakeCookieApi(grant('new', 900));
+    const tokens = cookieTokenSource(api, now);
+    tokens.adopt(grant('held', 600));
+    expect(await tokens.renew('stale')).toBe('held');
+    expect(calls.refresh).toBe(0);
+  });
+
+  it('a refused refresh rejects, signs out, and is not tried again', async () => {
+    const { api, calls } = fakeCookieApi('invalid');
+    const tokens = cookieTokenSource(api, now);
+    expect(tokens.signedIn()).toBe(true);
+    await expect(tokens.current()).rejects.toThrow(RefusalError);
+    expect(tokens.signedIn()).toBe(false);
+    await expect(tokens.current()).rejects.toThrow(RefusalError);
+    expect(calls.refresh).toBe(1);
+  });
+
+  it('after adopt(undefined) current rejects without calling the API', async () => {
+    const { api, calls } = fakeCookieApi(grant('new', 900));
+    const tokens = cookieTokenSource(api, now);
+    tokens.adopt(grant('held', 600));
+    tokens.adopt(undefined);
+    expect(tokens.signedIn()).toBe(false);
+    await expect(tokens.current()).rejects.toThrow(RefusalError);
+    expect(calls.refresh).toBe(0);
+  });
+
+  it('retries a network error once', async () => {
+    const { api, calls } = fakeCookieApi(
+      new TypeError('fetch failed'),
+      grant('new', 900),
+    );
+    expect(await cookieTokenSource(api, now).current()).toBe('new');
+    expect(calls.refresh).toBe(2);
+  });
+
+  it('propagates a second network error and stays signed in', async () => {
+    const { api, calls } = fakeCookieApi(new TypeError('fetch failed'));
+    const tokens = cookieTokenSource(api, now);
+    await expect(tokens.current()).rejects.toThrow(TypeError);
+    expect(calls.refresh).toBe(2);
+    expect(tokens.signedIn()).toBe(true);
+  });
+
+  it('does not retry a refusal and stays signed in', async () => {
+    const { api, calls } = fakeCookieApi(
+      new RefusalError('refresh refused: 429'),
+    );
+    const tokens = cookieTokenSource(api, now);
+    await expect(tokens.current()).rejects.toThrow(RefusalError);
+    expect(calls.refresh).toBe(1);
+    expect(tokens.signedIn()).toBe(true);
+  });
+});
+
+describe('httpCookieAuthApi', () => {
+  let server: Server | undefined;
+  afterEach(async () => {
+    server?.closeAllConnections();
+    await new Promise((resolve) => server?.close(resolve));
+    server = undefined;
+  });
+
+  type Got = Seen & { authorization: string | undefined };
+  async function serve(status: number, body: unknown, seen: Got[] = []) {
+    server = createServer((req, res) => {
+      let raw = '';
+      req.on('data', (chunk) => (raw += chunk));
+      req.on('end', () => {
+        seen.push({
+          path: req.url,
+          body: raw === '' ? undefined : JSON.parse(raw),
+          authorization: req.headers.authorization,
+        });
+        res.writeHead(status, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(body));
+      });
+    });
+    await new Promise<void>((resolve) =>
+      server?.listen(0, '127.0.0.1', resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    return httpCookieAuthApi({
+      base: `http://127.0.0.1:${port}`,
+      timeoutMs: 1000,
+    });
+  }
+
+  const two = { accessToken: 'a', accessExpiresAt: at(900) };
+
+  it('login sends exactly email, password and the cookie transport', async () => {
+    const seen: Got[] = [];
+    const api = await serve(200, two, seen);
+    await api.login('a@b.c', 'pw');
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.path).toBe('/auth/login');
+    expect(seen[0]?.body).toEqual({
+      email: 'a@b.c',
+      password: 'pw',
+      transport: 'cookie',
+    });
+  });
+
+  it('login resolves to the two grant fields', async () => {
+    expect(await (await serve(200, two)).login('a@b.c', 'pw')).toStrictEqual(
+      two,
+    );
+  });
+
+  it('never keeps a refresh token the server sent anyway', async () => {
+    const api = await serve(200, { ...two, refreshToken: 'secret' });
+    const result = await api.login('a@b.c', 'pw');
+    expect(Object.keys(result as object).sort()).toEqual([
+      'accessExpiresAt',
+      'accessToken',
+    ]);
+  });
+
+  it('login maps 401 to invalid and 429 to a RefusalError', async () => {
+    expect(await (await serve(401, {})).login('a@b.c', 'pw')).toBe('invalid');
+    await expect(
+      (await serve(429, {})).login('a@b.c', 'pw'),
+    ).rejects.toBeInstanceOf(RefusalError);
+  });
+
+  it('refresh sends an empty object; 401 is invalid', async () => {
+    const seen: Got[] = [];
+    const api = await serve(200, two, seen);
+    await api.refresh();
+    expect(seen[0]?.path).toBe('/auth/refresh');
+    expect(seen[0]?.body).toEqual({});
+    expect(await (await serve(401, {})).refresh()).toBe('invalid');
+  });
+
+  it('logout sends an empty object with the bearer; 401 is unauthorized', async () => {
+    const seen: Got[] = [];
+    const api = await serve(204, {}, seen);
+    await api.logout('tok');
+    expect(seen[0]?.path).toBe('/auth/logout');
+    expect(seen[0]?.body).toEqual({});
+    expect(seen[0]?.authorization).toBe('Bearer tok');
+    expect(await (await serve(401, {})).logout('tok')).toBe('unauthorized');
+  });
+});
+
+describe('subject', () => {
+  it('decodes an unpadded base64url payload holding - and _', () => {
+    // '>>>???' base64 is 'Pj4+Pz8/'; in base64url it carries - and _.
+    const sub = '>>>???';
+    const segment = Buffer.from(JSON.stringify({ sub })).toString('base64url');
+    expect(segment).toMatch(/[-_]/);
+    expect(segment).not.toContain('=');
+    expect(subject(`${segment}.mac`)).toBe(sub);
+  });
+
+  it('returns undefined for garbage', () => {
+    expect(subject('not a token')).toBeUndefined();
+    expect(subject('')).toBeUndefined();
   });
 });

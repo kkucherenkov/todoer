@@ -184,7 +184,7 @@ replica count that changes when the CLI writes.
 
 ### Steps
 
-- [ ] T001 [FR-001, FR-002] client-core: the cookie-mode session and the
+- [x] T001 [FR-001, FR-002] client-core: the cookie-mode session and the
       account rule — plan Task 1
 - [ ] T002 [FR-003] client-core: the `./sqlite-wasm` adapter and the shared
       contract — plan Task 2

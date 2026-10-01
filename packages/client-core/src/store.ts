@@ -72,12 +72,11 @@ export const SCHEMA = `
   );
 `;
 
-/** The session as `POST /auth/login` and `/auth/refresh` return it. */
-export type StoredAuth = {
-  accessToken: string;
-  accessExpiresAt: string;
-  refreshToken: string;
-};
+/** An access token and when it lapses: what every session response carries. */
+export type AccessGrant = { accessToken: string; accessExpiresAt: string };
+
+/** The session as the body transport returns it (the CLI). */
+export type StoredAuth = AccessGrant & { refreshToken: string };
 
 type OutboxRow = {
   op_id: string;
