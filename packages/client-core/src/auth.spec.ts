@@ -189,7 +189,9 @@ describe('tokenSource', () => {
   });
 });
 
-describe('httpAuthApi.logout', () => {
+type Seen = { path: string | undefined; body: unknown };
+
+describe('httpAuthApi', () => {
   let server: Server | undefined;
   afterEach(async () => {
     server?.closeAllConnections();
@@ -197,27 +199,67 @@ describe('httpAuthApi.logout', () => {
     server = undefined;
   });
 
-  async function logoutWith(status: number) {
-    server = createServer((_req, res) => {
-      res.writeHead(status, { 'content-type': 'application/json' });
-      res.end('{}');
+  /** Answers every request with `status` and `body`, recording what it got. */
+  async function serve(status: number, body: unknown, seen: Seen[] = []) {
+    server = createServer((req, res) => {
+      let raw = '';
+      req.on('data', (chunk) => (raw += chunk));
+      req.on('end', () => {
+        seen.push({
+          path: req.url,
+          body: raw === '' ? undefined : JSON.parse(raw),
+        });
+        res.writeHead(status, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(body));
+      });
     });
     await new Promise<void>((resolve) =>
       server?.listen(0, '127.0.0.1', resolve),
     );
     const { port } = server.address() as AddressInfo;
-    const config = {
-      base: `http://127.0.0.1:${port}`,
-      timeoutMs: 1000,
-    };
-    return httpAuthApi(config).logout('access', { all: true });
+    return httpAuthApi({ base: `http://127.0.0.1:${port}`, timeoutMs: 1000 });
   }
 
-  it('maps a 401 to unauthorized', async () => {
-    expect(await logoutWith(401)).toBe('unauthorized');
+  describe('logout', () => {
+    it('maps a 401 to unauthorized', async () => {
+      const api = await serve(401, {});
+      expect(await api.logout('access', { all: true })).toBe('unauthorized');
+    });
+
+    it('rejects any other failure with a RefusalError', async () => {
+      const api = await serve(500, {});
+      await expect(api.logout('access', { all: true })).rejects.toBeInstanceOf(
+        RefusalError,
+      );
+    });
   });
 
-  it('rejects any other failure with a RefusalError', async () => {
-    await expect(logoutWith(500)).rejects.toBeInstanceOf(RefusalError);
+  describe('sessions', () => {
+    const noRefresh = { accessToken: 'a', accessExpiresAt: at(900) };
+
+    it('login refuses a response without a refresh token', async () => {
+      const api = await serve(200, noRefresh);
+      await expect(api.login('a@b.c', 'pw')).rejects.toThrow(
+        /no refresh token/,
+      );
+      await expect(api.login('a@b.c', 'pw')).rejects.toBeInstanceOf(
+        RefusalError,
+      );
+    });
+
+    it('refresh refuses a response without a refresh token', async () => {
+      const api = await serve(200, noRefresh);
+      await expect(api.refresh('r')).rejects.toThrow(/no refresh token/);
+      await expect(api.refresh('r')).rejects.toBeInstanceOf(RefusalError);
+    });
+
+    it('login sends exactly email and password', async () => {
+      const seen: Seen[] = [];
+      const api = await serve(200, { ...noRefresh, refreshToken: 'r' }, seen);
+      await api.login('a@b.c', 'pw');
+      expect(seen).toEqual([
+        { path: '/auth/login', body: { email: 'a@b.c', password: 'pw' } },
+      ]);
+    });
   });
 });

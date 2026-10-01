@@ -139,7 +139,7 @@ it does: scripts and agents depend on it (ADR 0015).
 
 ### Steps
 
-- [ ] T001 [FR-009] client-core refuses a session without a refresh token —
+- [x] T001 [FR-009] client-core refuses a session without a refresh token —
       plan Task 1
 - [ ] T002 [FR-008] Contract: `TokenTransport`, optional `refreshToken`;
       codegen in its own commit — plan Task 2
