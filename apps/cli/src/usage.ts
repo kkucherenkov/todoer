@@ -104,7 +104,9 @@ exit codes (ADR 0015 §2):
      session: run todoer login (or fix TODOER_TOKEN). Queued operations
      stay queued. If a write command (add, done, skip, undo) exits 1 this way,
      its operation is still queued: fix the cause and run any command (for
-     example list) to send it, not the same command again
+     example list) to send it, not the same command again. A command that
+     sent several operations lists every refused one and how many others
+     were applied: the rest of the batch may have landed
   2  usage error — the command did nothing (the outbox may still have been
      sent)
   3  an unexpected local failure, such as the local database staying busy

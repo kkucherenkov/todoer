@@ -57,7 +57,7 @@ as "nothing happened", repeats the command and queues duplicates.
 
 ### Steps
 
-- [ ] T001 [FR-001, FR-002, FR-003] collect every own outcome in `submit`
+- [x] T001 [FR-001, FR-002, FR-003] collect every own outcome in `submit`
       before throwing; one error naming each refused operation and the
       applied/queued count; HELP's exit-code text if it changes —
       `apps/cli/src/run.ts`, `apps/cli/src/protocol.ts`, `run.spec.ts`,
