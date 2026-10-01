@@ -11,6 +11,7 @@ import { uuidv7 } from 'uuidv7';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AuthService, normalizeEmail } from './auth.service.js';
 import { passwordProblem } from './password-policy.js';
+import { lockUserWrites } from '../sync/user-lock.js';
 import { SessionService } from './session.service.js';
 
 const INVITATION_TTL_MS = 7 * 86_400_000;
@@ -194,6 +195,7 @@ export class AccountsService {
       throw new UnauthorizedException('invalid credentials');
     }
     await this.prisma.$transaction(async (tx) => {
+      await lockUserWrites(tx, userId);
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(2, 0)`;
       const user = await tx.user.findUnique({ where: { id: userId } });
       if (user === null) return;

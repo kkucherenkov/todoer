@@ -5,6 +5,7 @@ import type { AppConfig } from '../config/app-config.js';
 import { AccountsService } from './accounts.service.js';
 import { AuthService } from './auth.service.js';
 import { SessionService } from './session.service.js';
+import { lockUserWrites } from '../sync/user-lock.js';
 
 const prisma = new PrismaService();
 const config = {
@@ -298,6 +299,44 @@ describe('deleteAccount', () => {
     expect(await counts(u)).toEqual(Array<number>(8).fill(0));
     expect(await counts(owner)).toEqual(kept);
     expect(await prisma.user.count()).toBe(1);
+  });
+
+  // A /sync in flight holds this lock and may still insert rows that point at
+  // the user; deleting underneath it would 500 that sync on a foreign key.
+  it('waits for a transaction holding the per-user write lock', async () => {
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let signalLocked!: () => void;
+    const locked = new Promise<void>((resolve) => {
+      signalLocked = resolve;
+    });
+    const holder = prisma.$transaction(
+      async (tx) => {
+        await lockUserWrites(tx, owner);
+        signalLocked();
+        await gate;
+      },
+      { timeout: 10_000 },
+    );
+    await locked;
+
+    const deleted = accounts.deleteAccount(owner, PASSWORD);
+    try {
+      const timedOut = Symbol('timed out');
+      const raced = await Promise.race([
+        deleted.then(() => 'settled' as const),
+        new Promise((resolve) => setTimeout(() => resolve(timedOut), 300)),
+      ]);
+      expect(raced).toBe(timedOut);
+    } finally {
+      release();
+      await holder;
+    }
+
+    await expect(deleted).resolves.toBeUndefined();
+    expect(await prisma.user.count()).toBe(0);
   });
 
   it('takes the unspent invitations of a deleted owner with them', async () => {
