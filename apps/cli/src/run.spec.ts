@@ -1931,6 +1931,86 @@ describe('views', () => {
     expect(await titles(d, '--view', 'Today')).toEqual(['t1', 't2']);
   });
 
+  describe('tag and project facts', () => {
+    const DEAD_TAG = uuid(6);
+    const DEAD_PROJECT = uuid(7);
+    const ARCHIVED = uuid(8);
+    const link = (d: Deps, n: number, tagId: string) =>
+      seed(d, 'task_tag', taskTagId(uuid(100 + n), tagId), {
+        taskId: uuid(100 + n),
+        tagId,
+        attached: true,
+      });
+
+    it('lists a task linked to a live tag, not one linked only to a deleted tag', async () => {
+      const d = fixture();
+      seed(d, 'tag', DEAD_TAG, {
+        name: '@dead',
+        deletedAt: '2026-09-01T00:00:00.000Z',
+      });
+      addView(d, 'Phone', { filter: { tag: PHONE } });
+      addView(d, 'Dead', { filter: { tag: DEAD_TAG } });
+      addTask(d, 1, {});
+      addTask(d, 2, {});
+      link(d, 1, PHONE);
+      link(d, 2, DEAD_TAG);
+      expect(await titles(d, '--view', 'Phone')).toEqual(['t1']);
+      expect(await titles(d, '--view', 'Dead')).toEqual([]);
+    });
+
+    it('lists a task whose tag attach is still queued', async () => {
+      const d = fixture();
+      let n = 200;
+      d.newId = () => uuid(++n);
+      addView(d, 'Phone', { filter: { tag: PHONE } });
+      const out = await run(['add', 'x @phone'], d);
+      expect(out.exit).toBe(5);
+      expect(await titles(d, '--view', 'Phone')).toEqual(['x']);
+    });
+
+    it('treats a deleted project as no project, and an archived one as a project', async () => {
+      const d = fixture();
+      seed(d, 'project', DEAD_PROJECT, {
+        name: 'Dead',
+        deletedAt: '2026-09-01T00:00:00.000Z',
+      });
+      seed(d, 'project', ARCHIVED, { name: 'Old', archived: true });
+      addView(d, 'Dead', { filter: { project: DEAD_PROJECT } });
+      addView(d, 'None', { filter: { project: null } });
+      addView(d, 'Old', { filter: { project: ARCHIVED } });
+      addTask(d, 1, { projectId: DEAD_PROJECT });
+      addTask(d, 2, { projectId: ARCHIVED });
+      expect(await titles(d, '--view', 'Dead')).toEqual([]);
+      expect(await titles(d, '--view', 'None')).toEqual(['t1']);
+      expect(await titles(d, '--view', 'Old')).toEqual(['t2']);
+    });
+  });
+
+  it('orders by scheduled date, dateless last, ties by rank then id', async () => {
+    const d = fixture();
+    addTask(d, 1, { scheduledOn: '2026-10-05', rank: 'a0' });
+    addTask(d, 2, { rank: 'a0' });
+    addTask(d, 3, { scheduledOn: '2026-10-01', rank: 'a1' });
+    addTask(d, 4, { scheduledOn: '2026-10-05', rank: 'a0' });
+    addTask(d, 5, { scheduledOn: '2026-10-05', rank: '9z' });
+    addView(d, 'S', { sort: 'scheduled' });
+    expect(await titles(d, '--view', 'S')).toEqual([
+      't3',
+      't5',
+      't1',
+      't4',
+      't2',
+    ]);
+  });
+
+  it('prints the views from the replica and exits 5 when unreachable', async () => {
+    const d = fixture();
+    addView(d, 'Work', {});
+    const out = await run(['views'], d);
+    expect(out.exit).toBe(5);
+    expect(out.stdout).toEqual(['Work  list  manual']);
+  });
+
   it('refuses a view whose stored filter is invalid', async () => {
     const d = fixture();
     addView(d, 'Broken', { filter: { project: 'Work' } });

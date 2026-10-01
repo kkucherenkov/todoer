@@ -783,15 +783,16 @@ function due(store: Store, today: string): Listed[] {
         facts,
         false,
       ) ?? null;
+    const row = {
+      ...task,
+      ref: shortRef(taskId),
+      occurrence: current.occurrence,
+      ...labelsOf(task, labelRows),
+      status: names.get(statusId ?? '') ?? null,
+    };
     return [
       {
-        row: {
-          ...task,
-          ref: shortRef(taskId),
-          occurrence: current.occurrence,
-          ...labelsOf(task, labelRows),
-          status: names.get(statusId ?? '') ?? null,
-        },
+        row,
         facts: {
           tagIds: labelRows.links
             .filter(
@@ -801,7 +802,7 @@ function due(store: Store, today: string): Listed[] {
                 liveTagIds.has(String(l.tagId)),
             )
             .map((l) => String(l.tagId)),
-          projectId: typeof task.projectId === 'string' ? task.projectId : null,
+          projectId: row.project === null ? null : String(task.projectId),
           statusId,
           priority: Number(task.priority),
           scheduledOn:
