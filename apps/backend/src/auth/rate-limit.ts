@@ -22,10 +22,11 @@ export class RateLimiter {
 
     // Evict expired keys from the front: stop at the first live one.
     for (const [k, times] of this.failures) {
-      if (times.length > 0 && times[times.length - 1] > now - this.windowMs) {
+      if ((times.at(-1) ?? 0) <= now - this.windowMs) {
+        this.failures.delete(k);
+      } else {
         break;
       }
-      this.failures.delete(k);
     }
 
     return kept;
