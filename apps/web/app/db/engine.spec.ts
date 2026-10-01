@@ -338,6 +338,49 @@ describe('sync', () => {
     });
   });
 
+  it('a refresh answered 429 during a sync keeps the session and says why', async () => {
+    const e = engine(
+      httpTransport({ base: '/api/v1', timeoutMs: 1000 }, tokens),
+    );
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(json(CANNED))),
+    );
+    await e.start(true);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(json({}, 401))),
+    );
+    auth.refresh.mockRejectedValue(new RefusalError('refresh refused: 429'));
+    await e.handle({ kind: 'sync', reason: 'manual' });
+    expect(last('session')?.state).toBe('signed-in');
+    expect(last('sync')?.problem).toContain('429');
+  });
+
+  it('a sync asked for while the session restores waits for it', async () => {
+    let release = () => {};
+    auth.refresh.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve(grant('u1'));
+        }),
+    );
+    const e = engine();
+    const started = e.start(true);
+    const answer = e.handle({ kind: 'sync', reason: 'manual' });
+    await vi.waitFor(() => expect(auth.refresh).toHaveBeenCalled());
+    release();
+    expect(await answer).toEqual({ ok: true });
+    await started;
+  });
+
+  it("a sync before start is answered 'unavailable', not signed-out", async () => {
+    expect(await engine().handle({ kind: 'sync', reason: 'manual' })).toEqual({
+      ok: false,
+      failure: { kind: 'unavailable', detail: expect.any(String) },
+    });
+  });
+
   it('a pending task op shows in summary.tasks before it is synced', async () => {
     const e = engine();
     await e.start(true);

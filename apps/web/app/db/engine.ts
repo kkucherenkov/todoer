@@ -214,6 +214,11 @@ export function createEngine({
           case 'signOut':
             return await serial(signOut);
           case 'sync':
+            // Until start settles the session is unknown, not signed out.
+            if (session.state === 'restoring') await chain;
+            if (session.state === 'restoring') {
+              return fail('unavailable', 'the session is still restoring');
+            }
             await runSync(command.reason);
             return session.state === 'signed-in'
               ? OK
