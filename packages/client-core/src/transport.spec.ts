@@ -4,9 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { Config } from './config.js';
+import type { HttpConfig } from './transport.js';
 import { RefusalError } from './protocol.js';
-import { Store } from './store.js';
+import type { Store } from './store.js';
+import { openStore } from './test-store.js';
 import { flush } from './sync.js';
 import { tokenSource, type AuthApi, type TokenSource } from './auth.js';
 import { httpTransport } from './transport.js';
@@ -44,7 +45,7 @@ const task = {
 /** Answers each request with the next status, recording its authorization. */
 async function serve(
   statuses: number[],
-): Promise<{ config: Config; seen: Array<string | undefined> }> {
+): Promise<{ config: HttpConfig; seen: Array<string | undefined> }> {
   const seen: Array<string | undefined> = [];
   server = createServer((req, res) => {
     seen.push(req.headers.authorization);
@@ -58,8 +59,6 @@ async function serve(
   return {
     config: {
       base: `http://127.0.0.1:${port}`,
-      token: '',
-      dbPath: ':memory:',
       timeoutMs: 1000,
     },
     seen,
@@ -107,7 +106,7 @@ describe('httpTransport', () => {
 
   it('refreshes once on a 401 for a token that looks valid', async () => {
     const { config, seen } = await serve([401, 200]);
-    store = Store.open(':memory:');
+    store = openStore(':memory:');
     const now = new Date('2026-10-01T12:00:00.000Z');
     store.saveAuth({
       accessToken: 'skewed',
@@ -149,14 +148,12 @@ describe('httpTransport', () => {
       server?.listen(0, '127.0.0.1', resolve),
     );
     const { port } = server.address() as AddressInfo;
-    const config: Config = {
+    const config: HttpConfig = {
       base: `http://127.0.0.1:${port}`,
-      token: '',
-      dbPath: ':memory:',
       timeoutMs: 1000,
     };
     const dir = mkdtempSync(join(tmpdir(), 'todoer-transport-'));
-    const stores = [0, 1].map(() => Store.open(join(dir, 'todoer.db')));
+    const stores = [0, 1].map(() => openStore(join(dir, 'todoer.db')));
     try {
       stores[0]?.saveAuth({
         accessToken: 'old',
@@ -199,7 +196,7 @@ describe('httpTransport', () => {
 
   it('surfaces a refusal from the token source and keeps operations pending', async () => {
     const { config } = await serve([200]);
-    store = Store.open(':memory:');
+    store = openStore(':memory:');
     store.enqueue(task);
     const source: TokenSource = {
       current: () =>
@@ -222,7 +219,7 @@ describe('httpTransport', () => {
 
   it('turns a 401 into a refusal that says to log in', async () => {
     const { config } = await serve([401, 401]);
-    store = Store.open(':memory:');
+    store = openStore(':memory:');
     store.enqueue(task);
     await expect(flush(store, httpTransport(config, tokens()))).rejects.toThrow(
       /run todoer login/,
@@ -237,12 +234,10 @@ describe('httpTransport', () => {
       server?.listen(0, '127.0.0.1', resolve),
     );
     const { port } = server.address() as AddressInfo;
-    store = Store.open(':memory:');
+    store = openStore(':memory:');
     const send = httpTransport(
       {
         base: `http://127.0.0.1:${port}`,
-        token: '',
-        dbPath: ':memory:',
         timeoutMs: 200,
       },
       tokens(),

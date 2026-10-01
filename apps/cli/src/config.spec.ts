@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { readConfig } from './config.js';
-import { UsageError } from './protocol.js';
+import { UsageError } from '@todoer/client-core';
 
 describe('readConfig', () => {
   it('defaults the URL, the token and the timeout', () => {

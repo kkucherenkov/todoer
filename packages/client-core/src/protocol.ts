@@ -1,9 +1,9 @@
 /**
  * This CLI's whole exit-code vocabulary, and the only place the mapping is
- * decided — `index.ts` does nothing but translate an error class into a
- * status. What is left here: the three error classes that map to exit codes
- * 1, 2 and 4 (exit 5 needs no error — `run.ts` returns it directly), and
- * `ownOutcome`, which reads the one operation a running command minted out
+ * decided — the CLI's `index.ts` does nothing but translate an error class
+ * into a status. What is left here: the three error classes that map to exit
+ * codes 1, 2 and 4 (exit 5 needs no error — the CLI's `run.ts` returns it
+ * directly), and `ownOutcome`, which reads the one operation a running command minted out
  * of a `/sync` response that may report many.
  *
  * `OpResult` comes from @todoer/specs rather than being hand-rolled here — a

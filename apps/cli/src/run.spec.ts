@@ -4,11 +4,17 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Change, Op, SyncRequest } from '@todoer/specs';
 import { taskOccurrenceId, taskTagId } from '@todoer/specs';
-import { tokenSource, type AuthApi } from './auth.js';
-import { ConflictError, RefusalError, UsageError } from './protocol.js';
+import {
+  ConflictError,
+  RefusalError,
+  Store,
+  tokenSource,
+  UsageError,
+  type AuthApi,
+  type Transport,
+} from '@todoer/client-core';
 import { run, type Deps } from './run.js';
-import { Store } from './store.js';
-import type { Transport } from './sync.js';
+import { openStore } from './store.js';
 
 const stores: Store[] = [];
 
@@ -17,7 +23,7 @@ afterEach(() => {
 });
 
 function deps(send: Transport): Deps {
-  const store = Store.open(':memory:');
+  const store = openStore(':memory:');
   stores.push(store);
   let n = 0;
   const now = () => new Date('2026-09-26T10:00:00.000Z');
@@ -1966,8 +1972,8 @@ describe('login and logout', () => {
       const dir = mkdtempSync(join(tmpdir(), 'todoer-run-'));
       try {
         const [a, b] = [
-          Store.open(join(dir, 'todoer.db')),
-          Store.open(join(dir, 'todoer.db')),
+          openStore(join(dir, 'todoer.db')),
+          openStore(join(dir, 'todoer.db')),
         ];
         stores.push(a, b);
         const d = hexDeps(unreachable);

@@ -5,9 +5,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { httpAuthApi, tokenSource, type AuthApi } from './auth.js';
-import type { Config } from './config.js';
 import { RefusalError } from './protocol.js';
-import { Store, type StoredAuth } from './store.js';
+import type { Store, StoredAuth } from './store.js';
+import { openStore } from './test-store.js';
 
 const NOW = new Date('2026-10-01T12:00:00.000Z');
 const now = () => NOW;
@@ -30,7 +30,7 @@ afterEach(() => {
   rmSync(dir, { recursive: true, force: true });
 });
 const storeAt = () => {
-  const store = Store.open(join(dir, 'todoer.db'));
+  const store = openStore(join(dir, 'todoer.db'));
   stores.push(store);
   return store;
 };
@@ -209,7 +209,7 @@ describe('httpAuthApi.logout', () => {
     const config = {
       base: `http://127.0.0.1:${port}`,
       timeoutMs: 1000,
-    } as Config;
+    };
     return httpAuthApi(config).logout('access', { all: true });
   }
 

@@ -1,6 +1,6 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
-import { UsageError } from './protocol.js';
+import { UsageError } from '@todoer/client-core';
 
 export type Config = {
   base: string;

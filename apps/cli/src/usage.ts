@@ -1,4 +1,4 @@
-import { UsageError } from './protocol.js';
+import { UsageError } from '@todoer/client-core';
 
 /**
  * Everything a caller has to know that is not in the wire contract: what the

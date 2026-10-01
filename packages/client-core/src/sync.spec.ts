@@ -2,13 +2,14 @@ import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Change, Op, OpResult, SyncRequest } from '@todoer/specs';
 import { ownOutcome, RefusalError } from './protocol.js';
-import { Store } from './store.js';
+import type { Store } from './store.js';
+import { openStore } from './test-store.js';
 import { MAX_OPS, flush, type Transport } from './sync.js';
 
 let store: Store;
 
 beforeEach(() => {
-  store = Store.open(':memory:');
+  store = openStore(':memory:');
 });
 
 afterEach(() => {
