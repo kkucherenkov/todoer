@@ -28,6 +28,9 @@ export type EngineDeps = {
   publish: <T extends Topic>(topic: T, value: Topics[T]) => void;
 };
 
+/** A tick this soon after a sync is dropped (the cadence is 30 s). */
+const TICK_GAP_MS = 25_000;
+
 const OK: Result = { ok: true };
 const fail = (kind: Failure['kind'], detail: string): Result => ({
   ok: false,
@@ -97,6 +100,7 @@ export function createEngine({
   // ── sync: single-flight; a trigger during a run repeats it once ───────
   let running: Promise<void> | undefined;
   let again = false;
+  let finishedAt = -Infinity;
 
   const once = async () => {
     if (session.state !== 'signed-in') return;
@@ -125,6 +129,10 @@ export function createEngine({
       if (reason !== 'tick') again = true;
       return running;
     }
+    // Every visible window ticks; one sync per period is enough.
+    if (reason === 'tick' && now().getTime() - finishedAt < TICK_GAP_MS) {
+      return Promise.resolve();
+    }
     running = (async () => {
       try {
         do {
@@ -132,6 +140,7 @@ export function createEngine({
           await once();
         } while (again);
       } finally {
+        finishedAt = now().getTime();
         running = undefined;
       }
     })();

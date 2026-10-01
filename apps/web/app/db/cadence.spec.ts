@@ -9,8 +9,13 @@ const setup = () => {
   });
   const win = new EventTarget();
   const sent: SyncReason[] = [];
-  const stop = startCadence((r) => sent.push(r), { doc, win });
-  return { doc, win, sent, stop };
+  const clock = { at: 0 };
+  const stop = startCadence((r) => sent.push(r), {
+    doc,
+    win,
+    now: () => clock.at,
+  });
+  return { doc, win, sent, stop, clock };
 };
 
 describe('startCadence', () => {
@@ -51,6 +56,16 @@ describe('startCadence', () => {
     doc.visibilityState = 'visible';
     doc.dispatchEvent(new Event('visibilitychange'));
     expect(sent).toEqual(['focus']);
+  });
+
+  it('sends one sync for the focus and visibility events of one return', () => {
+    const { doc, win, sent, clock } = setup();
+    win.dispatchEvent(new Event('focus'));
+    doc.dispatchEvent(new Event('visibilitychange'));
+    expect(sent).toEqual(['focus']);
+    clock.at = 1000;
+    win.dispatchEvent(new Event('focus'));
+    expect(sent).toEqual(['focus', 'focus']);
   });
 
   it('syncs when the network comes back', () => {

@@ -95,6 +95,7 @@ beforeEach(() => {
   tokens = cookieTokenSource(auth, () => NOW);
   send = vi.fn(() => Promise.resolve(json(CANNED))) as typeof send;
   published = {};
+  clock = NOW;
 });
 
 afterEach(() => {
@@ -102,13 +103,14 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
+let clock = NOW;
 const engine = (transport: Transport = send) =>
   createEngine({
     store,
     auth,
     tokens,
     send: transport,
-    now: () => NOW,
+    now: () => clock,
     publish: (topic, value) => {
       (published[topic] ??= [] as never[]).push(value as never);
     },
@@ -312,6 +314,23 @@ describe('sync', () => {
     const tick = e.handle({ kind: 'sync', reason: 'tick' });
     release();
     await Promise.all([first, tick]);
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  it('a tick within 25 s of the last sync is dropped; any other trigger runs', async () => {
+    const e = engine();
+    await e.start(true);
+    send.mockClear();
+    clock = new Date(NOW.getTime() + 24_999);
+    await e.handle({ kind: 'sync', reason: 'tick' });
+    expect(send).not.toHaveBeenCalled();
+    for (const reason of ['focus', 'online', 'write', 'manual'] as const) {
+      await e.handle({ kind: 'sync', reason });
+    }
+    expect(send).toHaveBeenCalledTimes(4);
+    send.mockClear();
+    clock = new Date(clock.getTime() + 25_000);
+    await e.handle({ kind: 'sync', reason: 'tick' });
     expect(send).toHaveBeenCalledTimes(1);
   });
 

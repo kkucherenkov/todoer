@@ -13,8 +13,7 @@ onScopeDispose(() => clearInterval(clock));
 
 const tasks = computed(() => {
   const n = summary.value?.tasks ?? 0;
-  const form = new Intl.PluralRules(locale.value).select(n);
-  return t(`summary.tasks.${form}`, { n });
+  return t(`summary.tasks.${pluralForm(locale.value, n)}`, { n });
 });
 
 const lastSynced = computed(() => {
