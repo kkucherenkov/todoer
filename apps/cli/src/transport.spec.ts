@@ -1,4 +1,7 @@
 import { createServer, type Server } from 'node:http';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Config } from './config.js';
@@ -129,6 +132,69 @@ describe('httpTransport', () => {
     expect(response.status).toBe(200);
     expect(refreshed).toEqual(['r-skewed']);
     expect(seen).toEqual(['Bearer skewed', 'Bearer new']);
+  });
+
+  // Review Focus 4 on the 401 path: two processes hold the same refused
+  // token; the refresh token rotates, so exactly one may spend it.
+  it('refreshes once when two processes both get a 401 for the same stored token', async () => {
+    const seen: Array<string | undefined> = [];
+    server = createServer((req, res) => {
+      seen.push(req.headers.authorization);
+      res.writeHead(req.headers.authorization === 'Bearer new' ? 200 : 401, {
+        'content-type': 'application/json',
+      });
+      res.end('{}');
+    });
+    await new Promise<void>((resolve) =>
+      server?.listen(0, '127.0.0.1', resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    const config: Config = {
+      base: `http://127.0.0.1:${port}`,
+      token: '',
+      dbPath: ':memory:',
+      timeoutMs: 1000,
+    };
+    const dir = mkdtempSync(join(tmpdir(), 'todoer-transport-'));
+    const stores = [0, 1].map(() => Store.open(join(dir, 'todoer.db')));
+    try {
+      stores[0]?.saveAuth({
+        accessToken: 'old',
+        // Looks valid, so only the 401 triggers a refresh.
+        accessExpiresAt: '2026-10-01T12:10:00.000Z',
+        refreshToken: 'r-old',
+      });
+      const refreshed: string[] = [];
+      const api: AuthApi = {
+        login: () => Promise.reject(new Error('unused')),
+        refresh: async (refreshToken) => {
+          refreshed.push(refreshToken);
+          await new Promise((resolve) => setTimeout(resolve, 30));
+          return {
+            accessToken: 'new',
+            accessExpiresAt: '2026-10-01T12:15:00.000Z',
+            refreshToken: 'r-new',
+          };
+        },
+        logout: () => Promise.reject(new Error('unused')),
+      };
+      const at = new Date('2026-10-01T12:00:00.000Z');
+      const responses = await Promise.all(
+        stores.map((s) =>
+          httpTransport(
+            config,
+            tokenSource(s, api, '', () => at),
+          )(request),
+        ),
+      );
+      expect(responses.map((r) => r.status)).toEqual([200, 200]);
+      expect(refreshed).toEqual(['r-old']);
+      expect(seen.filter((h) => h === 'Bearer old')).toHaveLength(2);
+      expect(seen.filter((h) => h === 'Bearer new')).toHaveLength(2);
+    } finally {
+      for (const s of stores) s.close();
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 
   it('surfaces a refusal from the token source and keeps operations pending', async () => {
