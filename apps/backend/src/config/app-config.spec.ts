@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, relative, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { INestApplication } from '@nestjs/common';
 import { AppConfig, applyTrustProxy } from './app-config.js';
@@ -5,6 +8,7 @@ import { AppConfig, applyTrustProxy } from './app-config.js';
 const original = {
   PORT: process.env.PORT,
   TRUST_PROXY: process.env.TRUST_PROXY,
+  WEB_ROOT: process.env.WEB_ROOT,
 };
 
 afterEach(() => {
@@ -71,6 +75,45 @@ describe('AppConfig', () => {
       expect(() => read(raw)).toThrow(
         'TRUST_PROXY must be a hop count or a list of addresses/subnets',
       );
+    });
+  });
+
+  describe('WEB_ROOT', () => {
+    const dirs: string[] = [];
+    const tmp = (withIndex: boolean): string => {
+      const dir = mkdtempSync(join(tmpdir(), 'web-root-'));
+      dirs.push(dir);
+      if (withIndex) writeFileSync(join(dir, 'index.html'), '<html></html>');
+      return dir;
+    };
+    afterEach(() => {
+      for (const d of dirs.splice(0)) rmSync(d, { recursive: true });
+    });
+
+    it('is undefined when unset or blank', () => {
+      delete process.env.WEB_ROOT;
+      expect(new AppConfig().webRoot).toBeUndefined();
+      process.env.WEB_ROOT = '  ';
+      expect(new AppConfig().webRoot).toBeUndefined();
+    });
+
+    it('is the absolute path of a directory holding index.html', () => {
+      const dir = tmp(true);
+      process.env.WEB_ROOT = dir;
+      expect(new AppConfig().webRoot).toBe(dir);
+    });
+
+    it('resolves a relative path', () => {
+      const dir = tmp(true);
+      process.env.WEB_ROOT = relative(process.cwd(), dir);
+      expect(new AppConfig().webRoot).toBe(resolve(dir));
+    });
+
+    it('refuses a missing directory and one without index.html', () => {
+      process.env.WEB_ROOT = join(tmp(false), 'nope');
+      expect(() => new AppConfig()).toThrow(/WEB_ROOT must be a directory/);
+      process.env.WEB_ROOT = tmp(false);
+      expect(() => new AppConfig()).toThrow(/WEB_ROOT must be a directory/);
     });
   });
 

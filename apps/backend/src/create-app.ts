@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { AppModule } from './app.module.js';
 import { AppConfig, applyTrustProxy } from './config/app-config.js';
 import { HttpExceptionFilter } from './http-exception.filter.js';
+import { spa } from './web/spa.js';
 
 const specPath = fileURLToPath(
   new URL('../../../packages/specs/openapi/openapi.yaml', import.meta.url),
@@ -14,7 +15,9 @@ const specPath = fileURLToPath(
 
 /** The application with its whole HTTP chain, not yet listening. main.ts and
  *  create-app.spec.ts both build it here, so the spec runs the real order. */
-export async function createApp(): Promise<INestApplication> {
+export async function createApp(
+  overrides: { webRoot?: string } = {},
+): Promise<INestApplication> {
   // Nest's built-in body parser is registered by app.listen()/init(), which
   // runs after every app.use() call below — so with the default bodyParser,
   // express-openapi-validator would read req.body before anything ever
@@ -25,6 +28,15 @@ export async function createApp(): Promise<INestApplication> {
   app.setGlobalPrefix('api');
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
   app.useGlobalFilters(new HttpExceptionFilter());
+
+  const config = app.get(AppConfig);
+  // Order matters, as with the body parser below (trap 3). The SPA comes
+  // first and passes on everything under /api and /health, every non-GET,
+  // and every non-navigation it has no file for. The validator only ever
+  // manages /api/v1 (its base path), so static paths are never validated.
+  // create-app.spec.ts pins all of it.
+  const webRoot = overrides.webRoot ?? config.webRoot;
+  if (webRoot !== undefined) app.use(spa(webRoot));
 
   // express.json() defaults to a 100kb limit. The contract allows up to
   // 1000 ops per sync batch; even a minimal delete op is ~105 bytes, so a
@@ -44,7 +56,6 @@ export async function createApp(): Promise<INestApplication> {
     }),
   );
 
-  const config = app.get(AppConfig);
   // Per-IP rate limits key on req.ip, which behind a reverse proxy is the
   // proxy's address unless told otherwise. See README, "Environment".
   applyTrustProxy(app, config);
