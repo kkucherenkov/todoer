@@ -504,6 +504,13 @@ describe('run', () => {
     expect(d.store.entries().map((e) => e.status)).toEqual(['pending']);
   });
 
+  it('names every queued operation of a multi-op add when the token is refused', async () => {
+    const d = deps(() => Promise.resolve(json({ title: 'Unauthorized' }, 401)));
+    await expect(run(['add', 'x @phone'], d)).rejects.toThrow(
+      /operations id-\d+, id-\d+, id-\d+ are queued .* do not run add again for them$/,
+    );
+  });
+
   // Minor 4: a parallel invocation can settle this command's op between its
   // enqueue and its flush, so the response never mentions it.
   it('calls an add synced when a parallel command already delivered its operation', async () => {
@@ -1109,6 +1116,16 @@ describe('run', () => {
         );
         await run(['list'], d);
         expect(d.store.entry('set-x')?.status).toBe('failed');
+      });
+
+      it('leaves a moot failed delete out of outbox --json, data and counts alike', async () => {
+        const d = deps(fakeServer().send);
+        failedDelete(d, '2026-09-26T09:00:00.000Z');
+        const out = await run(['outbox', '--json'], d);
+        expect(envelope(out.stdout)).toMatchObject({
+          data: [],
+          outbox: { pending: 0, failed: 0 },
+        });
       });
 
       it('keeps a failed delete whose row is still live', async () => {

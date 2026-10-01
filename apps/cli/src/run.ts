@@ -288,13 +288,8 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
     human = ids.map((id) => `dropped ${id}`);
   } else if (command === 'outbox' && rest.length === 0) {
     ({ synced } = await flush(store, deps.send));
-    const entries = store.entries();
-    data = entries;
-    human = entries.map((e) =>
-      [e.status, e.opId, `${e.op.kind} ${e.op.table}`, e.reason ?? '']
-        .join('  ')
-        .trimEnd(),
-    );
+    // Read again below: the cleanup and merge may change what it lists.
+    ({ data, human } = listOutbox(store));
   } else {
     throw unknownCommand(
       command === 'outbox' ? `outbox ${rest.join(' ')}` : command,
@@ -309,6 +304,8 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
     // clients merging the same duplicates send the same delete, and the
     // second gets `conflict` although the row is gone. Left alone it would
     // sit as a failed entry forever.
+    // A row gone from the replica (after a 410 and a prune) leaves its failed
+    // delete in place: there is no tombstone to prove it moot.
     for (const entry of store.entries()) {
       const { op } = entry;
       if (entry.status !== 'failed' || op.kind !== 'delete') continue;
@@ -339,6 +336,9 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
     }
   }
 
+  if (synced && command === 'outbox' && rest.length === 0) {
+    ({ data, human } = listOutbox(store));
+  }
   const outbox = store.counts();
   if (!synced) stderr.push(UNREACHED);
   if (outbox.failed > 0) {
@@ -350,6 +350,18 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
     exit: synced ? 0 : 5,
     stdout: json ? [JSON.stringify({ data, synced, outbox })] : human,
     stderr,
+  };
+}
+
+function listOutbox(store: Store): { data: unknown; human: string[] } {
+  const entries = store.entries();
+  return {
+    data: entries,
+    human: entries.map((e) =>
+      [e.status, e.opId, `${e.op.kind} ${e.op.table}`, e.reason ?? '']
+        .join('  ')
+        .trimEnd(),
+    ),
   };
 }
 
@@ -418,7 +430,7 @@ async function flushOwn(
           ? `operation ${opIds.join('')} is`
           : `operations ${opIds.join(', ')} are`;
       throw new RefusalError(
-        `${error.message} — this command's ${which} queued and will be sent once the request is accepted — do not run ${command} again for it`,
+        `${error.message} — this command's ${which} queued and will be sent once the request is accepted — do not run ${command} again for ${opIds.length === 1 ? 'it' : 'them'}`,
       );
     }
     throw error;
