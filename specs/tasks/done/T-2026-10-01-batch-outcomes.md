@@ -2,10 +2,11 @@
 
 - Created: 2026-10-01
 - Owner: claude
-- Status: ready
+- Status: done
 - Blockers: —
 - Spec: tuxedo #408; found by the plan V1 review (views CLI, Task 3)
 - Plan: none; the steps below are the whole change
+- Completed: 2026-10-01
 
 ### Goal
 
@@ -49,11 +50,11 @@ as "nothing happened", repeats the command and queues duplicates.
 
 - **SC-001** `done` with a refused status create prints both the refusal and
   that the mark was applied.
-- [ ] every FR has a test that failed before the code made it pass
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] every FR has a test that failed before the code made it pass
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 
