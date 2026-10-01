@@ -5,7 +5,7 @@
 - Status: done
 - Blockers: —
 - Completed: 2026-10-02
-- Result: branch feat/web-shell, pull request not opened yet
+- Result: https://github.com/kkucherenkov/todoer/pull/19
 - Spec: [docs/specs/2026-10-01-client-shells-design.md](../../../docs/specs/2026-10-01-client-shells-design.md)
   (Q2, Q3, Q9–Q14, Q16 — plan W2, Q19, Q20, visual design note, W1 notes);
   [ADR 0011](../../../docs/adr/0011-bearer-everywhere-cookie-only-for-refresh.md)
@@ -183,7 +183,7 @@ replica count that changes when the CLI writes.
 - [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
 - [x] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] dnote changelog line
 
 ### Steps
 
