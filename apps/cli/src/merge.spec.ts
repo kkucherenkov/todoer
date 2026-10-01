@@ -506,6 +506,55 @@ describe('planMerge', () => {
       ]);
     });
 
+    it('plans the same view writes whatever the order the views arrive in', () => {
+      const replica = {
+        ...empty,
+        tags: [
+          { id: GB, name: '@x', version: 1, deletedAt: null },
+          { id: GA, name: '@X', version: 1, deletedAt: null },
+        ],
+        views: [
+          viewRow('v1', { tag: GB }),
+          viewRow('v2', { not: { tag: GB } }),
+        ],
+      };
+      const plan = (views: (typeof replica.views)[number][]) =>
+        planMerge({ ...replica, views }, ids(), 'T').ops.map((op) => ({
+          ...op,
+          opId: undefined,
+        }));
+      const forward = plan(replica.views);
+      expect(forward.filter((op) => op.table === 'view')).toHaveLength(2);
+      expect(plan([...replica.views].reverse())).toEqual(forward);
+    });
+
+    it.each([
+      ['tag', 'tags', GA, GB],
+      ['status', 'statuses', GA, GB],
+    ])(
+      'rewrites a view naming a late %s tombstone to the live winner',
+      (key, table, live, tomb) => {
+        const row = (id: string, deletedAt: string | null) => ({
+          id,
+          name: key === 'tag' ? '@x' : 'x',
+          version: 2,
+          deletedAt,
+        });
+        const { ops } = planMerge(
+          {
+            ...empty,
+            [table]: [row(tomb, DEL), row(live, null)],
+            views: [viewRow('v1', { [key]: tomb })],
+          },
+          ids(),
+          'T',
+        );
+        expect(ops.filter((op) => op.table === 'view')).toEqual([
+          setFilter('v1', { [key]: live }),
+        ]);
+      },
+    );
+
     it('leaves a view whose stored filter is invalid alone, without throwing', () => {
       const { ops } = planMerge(
         {

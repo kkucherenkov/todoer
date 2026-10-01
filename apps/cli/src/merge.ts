@@ -79,12 +79,14 @@ function lateTombstones(rows: Row[], live: Row[]): [Row, Row][] {
  * The operations that fold duplicate names into the lowest id (quick-add
  * design, Q7, Q10): a losing tag's attached links are re-made on the winner
  * and detached, a losing project's or status's live tasks are moved, then the
- * loser is deleted. A live view whose filter names a row that lost is
- * rewritten to the winner, one write per view, after the loser's own ops. The winner keeps its own fields.
- * Deterministic, so two clients
- * that see the same duplicates plan the same merge, and the derived TaskTag
- * ids make the repeated creates idempotent. The op order is by id, whatever
- * the order of `replica`. A link of a deleted or unknown task is left where it is.
+ * loser is deleted. The winner keeps its own fields. A live view whose filter
+ * names a row that lost is rewritten to the winner, one write per view, after
+ * the loser's own ops.
+ *
+ * Deterministic, so two clients that see the same duplicates plan the same
+ * merge, and the derived TaskTag ids make the repeated creates idempotent.
+ * The op order is by id, whatever the order of `replica`. A link of a deleted
+ * or unknown task is left where it is.
  */
 export function planMerge(
   replica: Replica,
