@@ -217,6 +217,22 @@ retries with the new version.
 - **Renaming tags and projects from the CLI.** Not asked for; a rename is an
   ordinary `set` whenever it is built.
 
+## Departures in the plan
+
+The [implementation plan](../plans/2026-10-01-plan-quick-add-tags.md#where-this-plan-departs-from-the-design-doc)
+departs from this document in four places, and the plan wins where they differ.
+
+1. **Only server-confirmed rows are merged.** A tag still pending in the outbox
+   has no `version`, and a loser cannot be deleted without a `baseVersion`, so
+   the merge ignores rows without a numeric `version`. Quick-add still reuses
+   a pending tag by name.
+1. **A tag named twice in one add (`@a @A`) is one tag and one TaskTag.**
+1. **Created labels and queued merges are reported on stderr**
+   (`note: created @phone`, and a merge queued after a pull); stdout and
+   `--json` keep their shape apart from the new `project` and `tags` fields.
+1. **A pair of duplicates attached to one task shows once**, spelled as the
+   lowest-id tag spells it.
+
 ## Open threads
 
 None.

@@ -23,10 +23,11 @@ second, independent CLI invocation through the server, over one endpoint:
   and keeps its id on every retry, so every write is safe to run once. Without a
   reachable server a command answers from the replica and exits 5. Recurring
   tasks are created with `--rrule` and listed at their current date; `done`,
-  `skip` and `undo` take the short reference `list` prints.
+  `skip` and `undo` take the short reference `list` prints. Quick-add stores
+`#project` and `@tag`, and `list @tag #project` filters by them.
 
-Not built yet, and each absence is deliberate rather than forgotten: storing
-`#project` and `@tag` from quick-add, and the web and Flutter clients.
+Not built yet, and each absence is deliberate rather than forgotten: the web and
+Flutter clients.
 [The plan](docs/plans/2026-09-25-walking-skeleton.md#what-this-plan-does-not-do)
 lists plan A's original exclusions, narrowed since by plans B and C (offline,
 recurrence).

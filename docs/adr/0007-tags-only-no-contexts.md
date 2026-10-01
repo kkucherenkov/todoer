@@ -33,3 +33,13 @@ The `@` also becomes working syntax for quick entry, which is the CLI's primary
 way of creating a task: `todoer add "call the bank @phone #finance p2"`. The
 parser must require the token to stand alone, or every email address in a title
 becomes a tag.
+
+## Amendment (2026-10-01, #362)
+
+Quick-add now stores `@name` as the tag's name, so a context is a tag whose
+name starts with `@`, as this decision says. Names compare by `nameKey`
+(NFC, then lower case) from `@todoer/specs`, so `@Phone` and `@phone` are one
+tag; the stored spelling is never changed. Two offline clients can create the
+same name, so duplicates are tolerated: every client merges them after a pull,
+the lowest id winning. The decision that a rename is an ordinary `set` stands.
+Details: [the quick-add design](../specs/2026-09-28-quick-add-tags-projects-design.md).

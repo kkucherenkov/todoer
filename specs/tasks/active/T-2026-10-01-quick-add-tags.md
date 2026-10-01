@@ -96,7 +96,7 @@ rows as one, and merges them automatically after each pull.
 - [x] T004 [FR-006, FR-007] `list` shows and filters by labels — plan Task 4
 - [x] T005 [FR-008] plan the merge, pure — plan Task 5
 - [x] T006 [FR-008, FR-009] queue the merge after every pull — plan Task 6
-- [ ] T007 [FR-010] HELP, README, ADR 0007, walking skeleton — plan Task 7
+- [x] T007 [FR-010] HELP, README, ADR 0007, walking skeleton — plan Task 7
 - **Checkpoint:** scenarios 1–5 pass; the four gates green on the PR.
 
 ### Open questions
