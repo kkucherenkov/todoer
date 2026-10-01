@@ -32,6 +32,8 @@ export async function readPassword(
           continue;
         }
         if (ch === '\x1b') {
+          // Assumes a 3-byte CSI: a bare ESC eats the next two characters,
+          // a longer sequence leaks its tail into the password.
           skip = 2;
           continue;
         }

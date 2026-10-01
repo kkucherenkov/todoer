@@ -1,8 +1,11 @@
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { tokenSource, type AuthApi } from './auth.js';
+import { httpAuthApi, tokenSource, type AuthApi } from './auth.js';
+import type { Config } from './config.js';
 import { RefusalError } from './protocol.js';
 import { Store, type StoredAuth } from './store.js';
 
@@ -129,5 +132,38 @@ describe('tokenSource', () => {
     expect(await tokenSource(store, api, '', now).renew('skewed')).toBe('new');
     expect(calls).toEqual(['r-skewed']);
     expect(store.auth()).toEqual(session('new', 900));
+  });
+});
+
+describe('httpAuthApi.logout', () => {
+  let server: Server | undefined;
+  afterEach(async () => {
+    server?.closeAllConnections();
+    await new Promise((resolve) => server?.close(resolve));
+    server = undefined;
+  });
+
+  async function logoutWith(status: number) {
+    server = createServer((_req, res) => {
+      res.writeHead(status, { 'content-type': 'application/json' });
+      res.end('{}');
+    });
+    await new Promise<void>((resolve) =>
+      server?.listen(0, '127.0.0.1', resolve),
+    );
+    const { port } = server.address() as AddressInfo;
+    const config = {
+      base: `http://127.0.0.1:${port}`,
+      timeoutMs: 1000,
+    } as Config;
+    return httpAuthApi(config).logout('access', { all: true });
+  }
+
+  it('maps a 401 to unauthorized', async () => {
+    expect(await logoutWith(401)).toBe('unauthorized');
+  });
+
+  it('rejects any other failure with a RefusalError', async () => {
+    await expect(logoutWith(500)).rejects.toBeInstanceOf(RefusalError);
   });
 });
