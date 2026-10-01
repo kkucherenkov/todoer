@@ -779,6 +779,57 @@ describe('run', () => {
       ]);
     });
 
+    // #390: ADR 0015 callers retry; a repeated mark must not rewrite state.
+    it.each([
+      ['done', 'done'],
+      ['skip', 'skipped'],
+    ])(
+      'treats a repeated %s on a one-off task as a no-op',
+      async (cmd, state) => {
+        const d = hexDeps(fakeServer().send);
+        await run(['add', 'file taxes'], d);
+        const first = await run([cmd, '0002', '--json'], d);
+        const after = d.store.pending();
+
+        const again = await run([cmd, '0002'], d);
+        expect(again.exit).toBe(0);
+        expect(again.stdout.join('\n')).toMatch(new RegExp(`already ${state}`));
+        expect(d.store.pending()).toEqual(after);
+
+        const json = await run([cmd, '0002', '--json'], d);
+        expect(envelope(json.stdout)).toEqual(envelope(first.stdout));
+        expect(d.store.pending()).toEqual(after);
+      },
+    );
+
+    it.each([
+      ['done', 'skip', 'done'],
+      ['skip', 'done', 'skipped'],
+    ])('refuses %s then %s: switching needs undo', async (a, b, state) => {
+      const d = hexDeps(fakeServer().send);
+      await run(['add', 'file taxes'], d);
+      await run([a, '0002'], d);
+      const after = d.store.pending();
+      await expect(run([b, '0002'], d)).rejects.toThrow(
+        new RegExp(`already ${state} — undo it first`),
+      );
+      expect(d.store.pending()).toEqual(after);
+    });
+
+    it('applies the same rules to --on on a recurring task', async () => {
+      const d = hexDeps(fakeServer().send);
+      await run(['add', 'water the plants', '--rrule', 'FREQ=DAILY'], d);
+      await run(['done', '0002'], d);
+      const after = d.store.pending();
+      const again = await run(['done', '0002', '--on', '2026-09-26'], d);
+      expect(again.stdout.join('\n')).toMatch(/already done/);
+      expect(d.store.pending()).toEqual(after);
+      await expect(
+        run(['skip', '0002', '--on', '2026-09-26'], d),
+      ).rejects.toThrow(/already done — undo it first/);
+      expect(d.store.pending()).toEqual(after);
+    });
+
     // I3: the server settled undo's create, but kept the row's earlier
     // state — a later change from another device decided it first.
     it('notes on stderr when the server kept another state', async () => {

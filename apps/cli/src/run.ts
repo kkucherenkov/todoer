@@ -382,6 +382,15 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
       marks,
       taskId,
     );
+    // ADR 0015 callers retry: repeating a mark is a no-op, and switching
+    // done and skipped goes through undo, so completedAt is never rewritten.
+    const state =
+      command === 'undo' ? undefined : stateOf(marks, taskId)(occurrence);
+    const closed = state === 'done' || state === 'skipped' ? state : undefined;
+    if (closed !== undefined && closed !== MARK[command]) {
+      throw new UsageError(`already ${closed} — undo it first`);
+    }
+    const repeated = closed !== undefined;
     const now = deps.now().toISOString();
     const op: OpCreate = {
       opId: deps.newId(),
@@ -396,15 +405,17 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
       },
       ts: now,
     };
-    synced = await submit(
-      store,
-      deps.send,
-      () => [
-        ...statusOps(command, task, statusRows(store), deps.newId, now),
-        op,
-      ],
-      command,
-    );
+    synced = repeated
+      ? (await flush(store, deps.send)).synced
+      : await submit(
+          store,
+          deps.send,
+          () => [
+            ...statusOps(command, task, statusRows(store), deps.newId, now),
+            op,
+          ],
+          command,
+        );
     const marked = occurrences(store).find((row) => row.id === op.id) ?? null;
     data = marked;
     // I3: `submit` settled this op, but the row it settled to is not the
@@ -418,7 +429,7 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
     }
     human = [
       [
-        command,
+        repeated ? `already ${closed}` : command,
         String(task.title),
         ...(occurrence === null ? [] : [occurrence]),
       ].join('  '),
