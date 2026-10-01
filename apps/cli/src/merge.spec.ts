@@ -425,6 +425,25 @@ describe('planMerge', () => {
       expect(merged).toEqual(['Doing (2)']);
     });
 
+    it('rewrites a view that names a live losing status, after the delete', () => {
+      const SA = '00000000-0000-4000-8000-0000000000a5';
+      const SB = '00000000-0000-4000-8000-0000000000b5';
+      const { ops } = planMerge(
+        {
+          ...empty,
+          statuses: [status(SB, 'doing'), status(SA, 'Doing')],
+          views: [viewRow('v1', { status: SB })],
+        },
+        ids(),
+        'T',
+      );
+      expect(ops.map((op) => `${op.kind} ${op.table} ${op.id}`)).toEqual([
+        `delete status ${SB}`,
+        'set view v1',
+      ]);
+      expect(ops[1]).toEqual(setFilter('v1', { status: SA }));
+    });
+
     it('moves a live task of a tombstoned status to the live same-named one', () => {
       const { ops, merged } = planMerge(
         {
