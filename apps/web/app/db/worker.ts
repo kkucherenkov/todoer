@@ -5,7 +5,7 @@ import {
   httpTransport,
 } from '@todoer/client-core';
 import { openWasmStore } from '@todoer/client-core/sqlite-wasm';
-import { createEngine } from './engine';
+import { createEngine, dispatcher } from './engine';
 import { installPool } from './pool';
 import {
   CHANNEL,
@@ -51,17 +51,10 @@ self.onmessage = async ({ data }: MessageEvent<Init>) => {
       publish: (topic, value) =>
         post({ type: 'publish', topic, value } as Unstamped<FromWorker>),
     });
-    channel.onmessage = ({ data: m }: MessageEvent<ToWorker>) => {
-      if (m.build !== data.build) return void post({ type: 'ready' }); // lets the stale tab see it
-      if (m.type === 'hello') return engine.snapshot();
-      if (m.type === 'request') {
-        void engine
-          .handle(m.command)
-          .then((result) =>
-            post({ type: 'reply', tab: m.tab, id: m.id, result }),
-          );
-      }
-    };
+    const dispatch = dispatcher(data.build, engine, (tab, id, result) =>
+      post({ type: 'reply', tab, id, result }),
+    );
+    channel.onmessage = ({ data: m }: MessageEvent<ToWorker>) => dispatch(m);
     // A violation inside a worker fires here, not on any document (Review Focus 2).
     // The worker lib's event map lacks this event; the browser fires it.
     self.addEventListener('securitypolicyviolation', (event) => {

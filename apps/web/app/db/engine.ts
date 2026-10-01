@@ -14,6 +14,7 @@ import type {
   Failure,
   Result,
   SyncReason,
+  ToWorker,
   Topic,
   Topics,
 } from './protocol';
@@ -228,5 +229,37 @@ export function createEngine({
       publish('session', session);
       publishSync();
     },
+  };
+}
+
+export type Engine = ReturnType<typeof createEngine>;
+
+/**
+ * The worker's side of the channel. A request runs once per `tab:id`: a tab
+ * resends what is pending on every `ready`, so a resend attaches to the run
+ * in flight, and one arriving within `keepMs` of its end gets the same
+ * result. A message from another build is answered with the snapshot: the
+ * stale tab learns from the stamp, and same-build tabs take the topics as a
+ * no-op, where `ready` would make each of them resend.
+ */
+export function dispatcher(
+  build: string,
+  engine: Engine,
+  reply: (tab: string, id: number, result: Result) => void,
+  keepMs = 30_000,
+): (m: ToWorker) => void {
+  const runs = new Map<string, Promise<Result>>();
+  return (m) => {
+    if (m.build !== build || m.type === 'hello') return engine.snapshot();
+    // The leader's own topic posts reach this channel too.
+    if (m.type !== 'request') return;
+    const key = `${m.tab}:${m.id}`;
+    let run = runs.get(key);
+    if (run === undefined) {
+      run = engine.handle(m.command);
+      runs.set(key, run);
+      void run.then(() => setTimeout(() => runs.delete(key), keepMs));
+    }
+    void run.then((result) => reply(m.tab, m.id, result));
   };
 }

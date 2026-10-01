@@ -19,8 +19,8 @@ import {
   it,
   vi,
 } from 'vitest';
-import { createEngine } from './engine';
-import type { Topic, Topics } from './protocol';
+import { createEngine, dispatcher } from './engine';
+import type { Result, ToWorker, Topic, Topics } from './protocol';
 
 type Op = Parameters<Store['enqueue']>[0];
 
@@ -346,5 +346,81 @@ describe('sync', () => {
     e.snapshot();
     expect(last('summary')).toEqual({ tasks: 3 });
     expect(last('sync')).toMatchObject({ pending: 1 });
+  });
+});
+
+describe('dispatcher', () => {
+  const signIn = (id: number, build = 'b1'): ToWorker => ({
+    type: 'request',
+    tab: 't1',
+    id,
+    command: { kind: 'signIn', email: 'a@b.c', password: 'x' },
+    build,
+  });
+  const setup = (keepMs?: number) => {
+    const e = engine();
+    const replies: [string, number, Result][] = [];
+    const dispatch = dispatcher(
+      'b1',
+      e,
+      (tab, id, result) => replies.push([tab, id, result]),
+      keepMs,
+    );
+    return { e, replies, dispatch };
+  };
+
+  it('attaches a resent request to the run already in flight', async () => {
+    let release = () => {};
+    auth.login.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = () => resolve(grant('u1'));
+        }),
+    );
+    const { e, replies, dispatch } = setup();
+    await e.start(false);
+    dispatch(signIn(1));
+    dispatch(signIn(1)); // the tab saw a `ready` and resent it
+    await vi.waitFor(() => expect(auth.login).toHaveBeenCalled());
+    release();
+    await vi.waitFor(() => expect(replies).toHaveLength(2));
+    expect(auth.login).toHaveBeenCalledTimes(1);
+    expect(replies).toEqual([
+      ['t1', 1, { ok: true }],
+      ['t1', 1, { ok: true }],
+    ]);
+  });
+
+  it('answers a late resend from the settled run, then forgets it', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout'] });
+    try {
+      const { e, replies, dispatch } = setup(1000);
+      await e.start(false);
+      dispatch(signIn(1));
+      await vi.waitFor(() => expect(replies).toHaveLength(1));
+      dispatch(signIn(1));
+      await vi.waitFor(() => expect(replies).toHaveLength(2));
+      expect(auth.login).toHaveBeenCalledTimes(1);
+      vi.advanceTimersByTime(1000);
+      dispatch(signIn(1));
+      await vi.waitFor(() => expect(auth.login).toHaveBeenCalledTimes(2));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('answers another build with the snapshot, never a run', async () => {
+    const { e, replies, dispatch } = setup();
+    await e.start(false);
+    published = {};
+    dispatch({ type: 'hello', tab: 'stale', build: 'b0' });
+    dispatch(signIn(1, 'b0'));
+    await Promise.resolve();
+    // Topics stamped with this build tell the stale tab; same-build tabs
+    // take them as a no-op, where `ready` would make them resend.
+    expect(last('session')).toEqual({ state: 'signed-out', reason: null });
+    expect(last('engine')).toEqual({ state: 'ready', reason: null });
+    expect(auth.login).not.toHaveBeenCalled();
+    expect(replies).toEqual([]);
   });
 });
