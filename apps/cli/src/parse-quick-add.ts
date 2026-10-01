@@ -40,20 +40,16 @@ export function parseQuickAdd(input: string): QuickAdd {
 }
 
 /**
- * What `add` is actually going to send, and what it owes the caller an
- * explanation for.
- *
- * Quick-add parses `#project` and `@tag`, and plan A stores neither. Storing
- * them is not built: it needs a decision on tag-name uniqueness first (see
- * the plan-B design doc, "Deferred"). The defect was never that they are
- * unstored, it was that they were consumed
- * silently — `todoer add "#groceries"` created a task with no title at all
- * and exited 0, which is a caller's data quietly going nowhere.
+ * What `add` is going to send: the title, the priority, and the names of the
+ * project and tags the markers ask for. Refuses text that leaves no title —
+ * `todoer add "#groceries"` once created a task with no title at all.
+ * Resolving the names to rows is `labels.ts`'s job.
  */
 export function planAdd(text: string): {
   title: string;
   priority: number;
-  notice: string | null;
+  project: string | undefined;
+  tags: string[];
 } {
   const parsed = parseQuickAdd(text);
   if (parsed.title === '') {
@@ -61,16 +57,10 @@ export function planAdd(text: string): {
       `no title in ${JSON.stringify(text)} — #project and @tag markers do not make one`,
     );
   }
-  const dropped = [
-    ...(parsed.project !== undefined ? [`#${parsed.project}`] : []),
-    ...parsed.tags,
-  ];
   return {
     title: parsed.title,
     priority: parsed.priority,
-    notice:
-      dropped.length === 0
-        ? null
-        : `note: ${dropped.join(' ')} parsed but not stored — projects and tags are not in this release`,
+    project: parsed.project,
+    tags: parsed.tags,
   };
 }

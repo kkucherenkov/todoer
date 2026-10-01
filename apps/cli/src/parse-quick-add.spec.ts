@@ -36,11 +36,21 @@ describe('parseQuickAdd', () => {
 });
 
 describe('planAdd', () => {
-  it('carries the fields the op is actually built from', () => {
-    expect(planAdd('call the bank p2')).toEqual({
+  it('carries the fields the ops are built from, markers included', () => {
+    expect(planAdd('call the bank @phone #finance p2')).toEqual({
       title: 'call the bank',
       priority: 2,
-      notice: null,
+      project: 'finance',
+      tags: ['@phone'],
+    });
+  });
+
+  it('has no project and no tags when none are given', () => {
+    expect(planAdd('buy milk')).toEqual({
+      title: 'buy milk',
+      priority: 0,
+      project: undefined,
+      tags: [],
     });
   });
 
@@ -50,17 +60,5 @@ describe('planAdd', () => {
 
   it('refuses an empty invocation', () => {
     expect(() => planAdd('   ')).toThrow(UsageError);
-  });
-
-  // Dropping them silently is how "buy milk #groceries @store" became a task
-  // with neither, and exit 0.
-  it('names the project and the tags it is not going to store', () => {
-    const { notice } = planAdd('buy milk #groceries @store');
-    expect(notice).toMatch(/#groceries/);
-    expect(notice).toMatch(/@store/);
-  });
-
-  it('says nothing when there is nothing being dropped', () => {
-    expect(planAdd('buy milk').notice).toBeNull();
   });
 });

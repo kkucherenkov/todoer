@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Change, Op, SyncRequest } from '@todoer/specs';
-import { taskOccurrenceId } from '@todoer/specs';
+import { taskOccurrenceId, taskTagId } from '@todoer/specs';
 import { RefusalError, UsageError } from './protocol.js';
 import { run, type Deps } from './run.js';
 import { Store } from './store.js';
@@ -153,12 +153,61 @@ describe('run', () => {
     expect((await run(['list'], d)).stdout).toEqual(['id-2  2  call the bank']);
   });
 
-  // M4: planAdd's notice about a dropped marker is not part of the answer.
-  it("puts planAdd's notice about a dropped marker on stderr, never stdout", async () => {
-    const d = deps(fakeServer().send);
-    const out = await run(['add', 'buy milk #groceries'], d);
-    expect(out.stderr.join('\n')).toMatch(/#groceries/);
-    expect(out.stdout.join('\n')).not.toMatch(/#groceries/);
+  describe('quick-add markers', () => {
+    // Scenario 1.
+    it('queues the tag, the project, the task and its TaskTag, in order', async () => {
+      const d = deps(unreachable);
+      const out = await run(['add', 'call the bank @phone #finance'], d);
+
+      expect(d.store.pending().map((op) => `${op.kind} ${op.table}`)).toEqual([
+        'create project',
+        'create tag',
+        'create task',
+        'create task_tag',
+      ]);
+      const [project, tag, task, link] = d.store.pending();
+      expect(project).toMatchObject({ id: 'id-1', fields: { name: 'finance', rank: 'a0' } });
+      expect(tag).toMatchObject({ id: 'id-3', fields: { name: '@phone' } });
+      expect(task).toMatchObject({ id: 'id-6', fields: { title: 'call the bank', projectId: 'id-1' } });
+      expect(link).toMatchObject({ id: taskTagId('id-6', 'id-3'), fields: { taskId: 'id-6', tagId: 'id-3' } });
+      expect(out.stderr).toContain('note: created #finance @phone');
+      expect(out.stdout).toEqual(['call the bank']);
+    });
+
+    // Scenario 2 and Review Focus 2: reuse works on pending rows too.
+    it('reuses a tag by name, even one still waiting in the outbox', async () => {
+      const d = deps(unreachable);
+      await run(['add', 'call the bank @phone'], d);
+      await run(['add', 'text mum @Phone'], d);
+      const creates = d.store.pending().filter((op) => op.table === 'tag');
+      expect(creates).toHaveLength(1);
+      const links = d.store.pending().filter((op) => op.table === 'task_tag');
+      expect(links.map((op) => (op.kind === 'create' ? op.fields.tagId : null))).toEqual(['id-1', 'id-1']);
+    });
+
+    // Review Focus 5: any refused op is the command's failure.
+    it('exits 1 when the server refuses the tag create, not only the task', async () => {
+      const d = deps((request) =>
+        Promise.resolve(
+          json({
+            cursor: 0,
+            results: request.ops.map((op) => ({
+              opId: op.opId,
+              status: op.table === 'tag' ? ('rejected' as const) : ('applied' as const),
+              ...(op.table === 'tag' ? { reason: 'nope' } : {}),
+            })),
+            changes: [],
+          }),
+        ),
+      );
+      await expect(run(['add', 'x @phone'], d)).rejects.toThrow(RefusalError);
+    });
+
+    it('says nothing about markers when there are none', async () => {
+      const d = deps(fakeServer().send);
+      const out = await run(['add', 'buy milk'], d);
+      expect(out.stderr).toEqual([]);
+    });
   });
 
   it("reports the command's own rejected add by throwing, and does not keep it", async () => {

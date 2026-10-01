@@ -2,6 +2,7 @@ import {
   isIsoDate,
   parseRrule,
   taskOccurrenceId,
+  taskTagId,
   type OpCreate,
   type Rrule,
 } from '@todoer/specs';
@@ -17,6 +18,7 @@ import {
   type Recurrence,
   type StateOf,
 } from './occurrence.js';
+import { resolveLabels } from './labels.js';
 import { liveTasks, overlay } from './overlay.js';
 import { planAdd } from './parse-quick-add.js';
 import { ownOutcome, RefusalError, UsageError } from './protocol.js';
@@ -140,18 +142,41 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
     );
     const ruleNotice = emptyRuleNotice(recurrence);
     if (ruleNotice !== null) stderr.push(ruleNotice);
-    // Refuses an empty title and reports what it is not storing — see planAdd.
-    const { title, priority, notice } = planAdd(from.rest.join(' '));
-    if (notice !== null) stderr.push(notice);
+    // Refuses an empty title — see planAdd.
+    const { title, priority, project, tags } = planAdd(from.rest.join(' '));
+    const ts = deps.now().toISOString();
+    const labels = resolveLabels(
+      { project, tags },
+      { projects: projects(store), tags: tagRows(store) },
+      deps.newId,
+      ts,
+    );
+    if (labels.created.length > 0) {
+      stderr.push(`note: created ${labels.created.join(' ')}`);
+    }
     const op: OpCreate = {
       opId: deps.newId(),
       kind: 'create',
       table: 'task',
       id: deps.newId(),
-      fields: { title, priority, rank: 'a0', ...recurrence.fields },
-      ts: deps.now().toISOString(),
+      fields: {
+        title,
+        priority,
+        rank: 'a0',
+        ...(labels.projectId === null ? {} : { projectId: labels.projectId }),
+        ...recurrence.fields,
+      },
+      ts,
     };
-    synced = await submit(store, deps.send, op, 'add');
+    const linkOps: OpCreate[] = labels.tagIds.map((tagId) => ({
+      opId: deps.newId(),
+      kind: 'create',
+      table: 'task_tag',
+      id: taskTagId(op.id, tagId),
+      fields: { taskId: op.id, tagId },
+      ts,
+    }));
+    synced = await submit(store, deps.send, [...labels.creates, op, ...linkOps], 'add');
     data = tasks(store).find((row) => row.id === op.id) ?? null;
     human = [title];
   } else if (command === 'list') {
@@ -200,7 +225,7 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
       },
       ts: now,
     };
-    synced = await submit(store, deps.send, op, command);
+    synced = await submit(store, deps.send, [op], command);
     const marked = occurrences(store).find((row) => row.id === op.id) ?? null;
     data = marked;
     // I3: `submit` settled this op, but the row it settled to is not the
@@ -258,59 +283,71 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
 }
 
 /**
- * Queues one operation the running command minted and sends it: stored
- * before it is sent, so every attempt carries its id (ADR 0015 §4). Returns
- * whether the server has it; throws when the server refused it or holds a
- * newer version. The one write path for add, done, skip and undo.
+ * Queues the operations the running command minted, in one transaction and in
+ * order, and sends them: stored before they are sent, so every attempt
+ * carries their ids (ADR 0015 §4). Every one counts as the command's own, so
+ * a refusal of any of them is the command's exit 1. Returns whether the
+ * server has all of them.
  */
 async function submit(
   store: Store,
   send: Transport,
-  op: OpCreate,
+  ops: OpCreate[],
   command: string,
 ): Promise<boolean> {
-  store.enqueue(op);
-  const flushed = await flushOwn(store, send, op.opId, command);
-  // Evaluated unconditionally, never short-circuited on `flushed.synced`:
-  // a batch-refused own op is removed from the outbox (I1) even when the
-  // follow-up pull that reports it is itself unreached, and that
-  // rejection must still throw rather than be reported as "queued".
-  let own = ownOutcome(flushed.results, op.opId);
-  if (own === 'unreported' && flushed.synced) {
-    // A parallel invocation may have sent it between the enqueue and this
-    // flush's read of the outbox; its entry says what became of it.
-    const entry = store.entry(op.opId);
-    if (entry === undefined) own = 'settled';
-    else if (entry.status === 'failed') {
-      store.remove(op.opId);
-      throw new RefusalError(
-        entry.reason ?? 'the server refused this operation',
-      );
+  store.transaction(() => {
+    for (const op of ops) store.enqueue(op);
+  });
+  const opIds = ops.map((op) => op.opId);
+  const flushed = await flushOwn(store, send, opIds, command);
+  let settled = true;
+  for (const opId of opIds) {
+    // Evaluated unconditionally, never short-circuited on `flushed.synced`:
+    // a batch-refused own op is removed from the outbox (I1) even when the
+    // follow-up pull that reports it is itself unreached, and that
+    // rejection must still throw rather than be reported as "queued".
+    let own = ownOutcome(flushed.results, opId);
+    if (own === 'unreported' && flushed.synced) {
+      // A parallel invocation may have sent it between the enqueue and this
+      // flush's read of the outbox; its entry says what became of it.
+      const entry = store.entry(opId);
+      if (entry === undefined) own = 'settled';
+      else if (entry.status === 'failed') {
+        store.remove(opId);
+        throw new RefusalError(
+          entry.reason ?? 'the server refused this operation',
+        );
+      }
     }
+    if (own !== 'settled') settled = false;
   }
-  return flushed.synced && own === 'settled';
+  return flushed.synced && settled;
 }
 
 /**
- * A request-level refusal (401, 403, …) leaves the command's own operation
+ * A request-level refusal (401, 403, …) leaves the command's operations
  * queued. Said so in the error, because "refused" alone reads as "nothing
- * happened" and a caller who then repeats the add queues the task twice.
+ * happened" and a caller who then repeats the command queues it twice.
  */
 async function flushOwn(
   store: Store,
   send: Transport,
-  opId: string,
+  opIds: string[],
   command: string,
 ) {
   try {
-    return await flush(store, send, new Set([opId]));
+    return await flush(store, send, new Set(opIds));
   } catch (error) {
     if (
       error instanceof RefusalError &&
-      store.entry(opId)?.status === 'pending'
+      opIds.some((opId) => store.entry(opId)?.status === 'pending')
     ) {
+      const which =
+        opIds.length === 1
+          ? `operation ${opIds.join('')} is`
+          : `operations ${opIds.join(', ')} are`;
       throw new RefusalError(
-        `${error.message} — this command's operation ${opId} is queued and will be sent once the request is accepted — do not run ${command} again for it`,
+        `${error.message} — this command's ${which} queued and will be sent once the request is accepted — do not run ${command} again for it`,
       );
     }
     throw error;
@@ -319,6 +356,14 @@ async function flushOwn(
 
 function tasks(store: Store): Row[] {
   return overlay('task', store.rows('task'), store.pending());
+}
+
+function projects(store: Store): Row[] {
+  return overlay('project', store.rows('project'), store.pending());
+}
+
+function tagRows(store: Store): Row[] {
+  return overlay('tag', store.rows('tag'), store.pending());
 }
 
 function occurrences(store: Store): Row[] {
