@@ -1,0 +1,122 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { tokenSource, type AuthApi } from './auth.js';
+import { RefusalError } from './protocol.js';
+import { Store, type StoredAuth } from './store.js';
+
+const NOW = new Date('2026-10-01T12:00:00.000Z');
+const now = () => NOW;
+const at = (seconds: number) =>
+  new Date(NOW.getTime() + seconds * 1000).toISOString();
+const session = (access: string, seconds: number): StoredAuth => ({
+  accessToken: access,
+  accessExpiresAt: at(seconds),
+  refreshToken: `r-${access}`,
+});
+
+let dir: string;
+let stores: Store[];
+beforeEach(() => {
+  dir = mkdtempSync(join(tmpdir(), 'todoer-auth-'));
+  stores = [];
+});
+afterEach(() => {
+  for (const store of stores) store.close();
+  rmSync(dir, { recursive: true, force: true });
+});
+const storeAt = () => {
+  const store = Store.open(join(dir, 'todoer.db'));
+  stores.push(store);
+  return store;
+};
+
+function fakeApi(next: StoredAuth | 'invalid' = session('new', 900)) {
+  const calls: string[] = [];
+  const api: AuthApi = {
+    login: () => Promise.reject(new Error('unused')),
+    refresh: async (refreshToken) => {
+      calls.push(refreshToken);
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      return next;
+    },
+    logout: () => Promise.reject(new Error('unused')),
+  };
+  return { api, calls };
+}
+
+describe('tokenSource', () => {
+  it('returns the env token and never touches the API', async () => {
+    const store = storeAt();
+    store.saveAuth(session('old', 5));
+    const { api, calls } = fakeApi();
+    const tokens = tokenSource(store, api, 'env-token', now);
+    expect(await tokens.current()).toBe('env-token');
+    expect(await tokens.renew()).toBeNull();
+    expect(calls).toEqual([]);
+  });
+
+  it('returns a still-valid stored access token without refreshing', async () => {
+    const store = storeAt();
+    store.saveAuth(session('ok', 600));
+    const { api, calls } = fakeApi();
+    expect(await tokenSource(store, api, '', now).current()).toBe('ok');
+    expect(calls).toEqual([]);
+  });
+
+  it('returns an empty token when nothing is stored', async () => {
+    const { api, calls } = fakeApi();
+    expect(await tokenSource(storeAt(), api, '', now).current()).toBe('');
+    expect(calls).toEqual([]);
+  });
+
+  it('refreshes an access token that expires within a minute', async () => {
+    const store = storeAt();
+    store.saveAuth(session('old', 30));
+    const { api, calls } = fakeApi();
+    expect(await tokenSource(store, api, '', now).current()).toBe('new');
+    expect(calls).toEqual(['r-old']);
+    expect(store.auth()).toEqual(session('new', 900));
+  });
+
+  it('clears the session and says to log in when the refresh token is refused', async () => {
+    const store = storeAt();
+    store.saveAuth(session('old', 30));
+    const { api } = fakeApi('invalid');
+    const tokens = tokenSource(store, api, '', now);
+    await expect(tokens.current()).rejects.toThrow(RefusalError);
+    await expect(tokens.current()).resolves.toBe('');
+    expect(store.auth()).toBeUndefined();
+  });
+
+  it('names todoer login in the message', async () => {
+    const store = storeAt();
+    store.saveAuth(session('old', 30));
+    await expect(
+      tokenSource(store, fakeApi('invalid').api, '', now).current(),
+    ).rejects.toThrow(/run todoer login/);
+  });
+
+  // Review Focus 4: the refresh token rotates on every use, so a second
+  // process refreshing the same one would be treated as a replay.
+  it('refreshes once when two processes find the token expiring', async () => {
+    const [a, b] = [storeAt(), storeAt()];
+    a.saveAuth(session('old', 30));
+    const { api, calls } = fakeApi();
+    const [x, y] = await Promise.all([
+      tokenSource(a, api, '', now).current(),
+      tokenSource(b, api, '', now).current(),
+    ]);
+    expect(calls).toHaveLength(1);
+    expect([x, y]).toEqual(['new', 'new']);
+  });
+
+  it('renew returns the stored token when it is no longer expiring', async () => {
+    const store = storeAt();
+    store.saveAuth(session('fresh', 600));
+    const { api, calls } = fakeApi();
+    expect(await tokenSource(store, api, '', now).renew()).toBe('fresh');
+    expect(calls).toEqual([]);
+  });
+});

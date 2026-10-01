@@ -57,9 +57,9 @@ quick-add markers:
 
 environment:
   TODOER_URL         instance base URL, default http://localhost:3000/api/v1
-  TODOER_TOKEN       bearer token. It expires 15 minutes after it is issued and
-                     this CLI has no login command yet — mint one with
-                     POST $TODOER_URL/auth/login and export it.
+  TODOER_TOKEN       bearer token; when set it is used as is and never renewed.
+                     Without it the CLI uses the session it stored itself and
+                     refreshes it before it expires.
   TODOER_TIMEOUT_MS  how long to wait for the server, default 3000
 
 local state:
@@ -72,8 +72,8 @@ on 1-4 stdout is empty and the reason is on stderr.
 exit codes (ADR 0015 §2):
   0  done, and the server has it
   1  the server refused: this command's operation was rejected, or the
-     request was refused (401, 403, …). A 401 means the token is missing,
-     invalid or expired — get a new one; queued operations stay queued; if
+     request was refused (401, 403, …). A 401 means there is no
+     valid session — run todoer login (or fix TODOER_TOKEN); queued operations stay queued; if
      a write command (add, done, skip, undo) exits 1 this way, its
      operation is still queued — fix the cause and run any command (for
      example list) to send it, not the same command again

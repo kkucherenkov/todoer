@@ -60,8 +60,13 @@ async function exchange(
   }
   if (response.status >= 500) return 'unreached';
   if (!response.ok) {
+    const detail = await response.text().catch(() => '');
     throw new RefusalError(
-      `sync refused: ${response.status} ${await response.text().catch(() => '')}`,
+      `sync refused: ${response.status} ${detail}` +
+        // Also accurate with TODOER_TOKEN set: the variable is what to fix.
+        (response.status === 401
+          ? ' — run todoer login (or set a valid TODOER_TOKEN)'
+          : ''),
     );
   }
   try {

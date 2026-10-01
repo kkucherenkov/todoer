@@ -40,7 +40,24 @@ const SCHEMA = `
     reason          TEXT,
     current_version INTEGER
   );
+  CREATE TABLE IF NOT EXISTS auth (
+    id                INTEGER PRIMARY KEY CHECK (id = 1),
+    access_token      TEXT    NOT NULL,
+    access_expires_at TEXT    NOT NULL,
+    refresh_token     TEXT    NOT NULL
+  );
 `;
+
+/** The session as `POST /auth/login` and `/auth/refresh` return it. */
+export type StoredAuth = {
+  accessToken: string;
+  accessExpiresAt: string;
+  refreshToken: string;
+};
+
+/** How long `withWriteLock` waits for another holder. Longer than the HTTP
+ *  timeout, which bounds the holder's own refresh. */
+const WRITE_LOCK_WAIT_MS = 10_000;
 
 type OutboxRow = {
   op_id: string;
@@ -178,6 +195,73 @@ export class Store {
       if (this.db.isTransaction) this.db.exec('ROLLBACK');
       throw error;
     }
+  }
+
+  /**
+   * `transaction` for an async body: the write lock is held across awaits, so
+   * another process (or Store) that wants it waits. Waiting polls with the
+   * busy timeout off, because a blocking wait would freeze this event loop —
+   * and, when the holder lives in the same process, never let it finish.
+   */
+  async withWriteLock<T>(fn: () => Promise<T>): Promise<T> {
+    const deadline = Date.now() + WRITE_LOCK_WAIT_MS;
+    for (let delay = 10; ; delay = Math.min(delay * 2, 100)) {
+      this.db.exec('PRAGMA busy_timeout = 0');
+      try {
+        this.db.exec('BEGIN IMMEDIATE');
+        break;
+      } catch (error) {
+        if (!isSqliteBusy(error) || Date.now() >= deadline) throw error;
+      } finally {
+        this.db.exec('PRAGMA busy_timeout = 5000');
+      }
+      await new Promise((resolve) => setTimeout(resolve, delay));
+    }
+    try {
+      const result = await fn();
+      this.db.exec('COMMIT');
+      return result;
+    } catch (error) {
+      if (this.db.isTransaction) this.db.exec('ROLLBACK');
+      throw error;
+    }
+  }
+
+  auth(): StoredAuth | undefined {
+    const row = this.db
+      .prepare(
+        'SELECT access_token, access_expires_at, refresh_token FROM auth WHERE id = 1',
+      )
+      .get() as unknown as
+      | {
+          access_token: string;
+          access_expires_at: string;
+          refresh_token: string;
+        }
+      | undefined;
+    return row === undefined
+      ? undefined
+      : {
+          accessToken: row.access_token,
+          accessExpiresAt: row.access_expires_at,
+          refreshToken: row.refresh_token,
+        };
+  }
+
+  saveAuth(auth: StoredAuth): void {
+    this.db
+      .prepare(
+        `INSERT INTO auth (id, access_token, access_expires_at, refresh_token)
+         VALUES (1, ?, ?, ?)
+         ON CONFLICT (id) DO UPDATE SET access_token = excluded.access_token,
+           access_expires_at = excluded.access_expires_at,
+           refresh_token = excluded.refresh_token`,
+      )
+      .run(auth.accessToken, auth.accessExpiresAt, auth.refreshToken);
+  }
+
+  clearAuth(): void {
+    this.db.exec('DELETE FROM auth');
   }
 
   cursor(): number {

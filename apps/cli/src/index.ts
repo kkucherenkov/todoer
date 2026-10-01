@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { uuidv7 } from 'uuidv7';
+import { httpAuthApi, tokenSource } from './auth.js';
 import { readConfig } from './config.js';
 import { ConflictError, RefusalError, UsageError } from './protocol.js';
 import { run } from './run.js';
@@ -18,7 +19,10 @@ async function main(): Promise<number> {
   try {
     const outcome = await run(argv, {
       store,
-      send: httpTransport(config),
+      send: httpTransport(
+        config,
+        tokenSource(store, httpAuthApi(config), config.token, () => new Date()),
+      ),
       now: () => new Date(),
       newId: uuidv7,
     });

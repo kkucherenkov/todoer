@@ -317,6 +317,66 @@ describe('Store', () => {
   });
 });
 
+describe('Store auth', () => {
+  const auth = {
+    accessToken: 'a1',
+    accessExpiresAt: '2026-10-01T00:15:00.000Z',
+    refreshToken: 'r1',
+  };
+
+  it('round-trips the session and replaces it on a second save', () => {
+    const store = storeAt();
+    expect(store.auth()).toBeUndefined();
+    store.saveAuth(auth);
+    expect(store.auth()).toEqual(auth);
+    store.saveAuth({ ...auth, accessToken: 'a2' });
+    expect(store.auth()?.accessToken).toBe('a2');
+  });
+
+  it('keeps the session through a replica reset and drops it on clearAuth', () => {
+    const store = storeAt();
+    store.saveAuth(auth);
+    store.resetReplica();
+    expect(store.auth()).toEqual(auth);
+    store.clearAuth();
+    expect(store.auth()).toBeUndefined();
+  });
+
+  it('makes a second store wait for the lock until the first body resolves', async () => {
+    const first = storeAt();
+    const second = storeAt();
+    const events: string[] = [];
+    let release!: () => void;
+    const held = first.withWriteLock(async () => {
+      events.push('first start');
+      await new Promise<void>((resolve) => (release = resolve));
+      events.push('first end');
+    });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    const waiting = second.withWriteLock(() => {
+      events.push('second start');
+      return Promise.resolve();
+    });
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    expect(events).toEqual(['first start']);
+    release();
+    await Promise.all([held, waiting]);
+    expect(events).toEqual(['first start', 'first end', 'second start']);
+  });
+
+  it('rolls back and releases the lock when the body throws', async () => {
+    const store = storeAt();
+    await expect(
+      store.withWriteLock(() => {
+        store.saveAuth(auth);
+        return Promise.reject(new Error('boom'));
+      }),
+    ).rejects.toThrow('boom');
+    expect(store.auth()).toBeUndefined();
+    await store.withWriteLock(() => Promise.resolve());
+  });
+});
+
 /** A fake SQLITE_BUSY, shaped exactly like the error `node:sqlite` actually
  *  throws (verified by provoking a real one): `errcode: 5`, not the `code`
  *  string, which is the same `ERR_SQLITE_ERROR` for every SQLite error. */
