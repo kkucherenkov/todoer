@@ -764,7 +764,7 @@ describe('run', () => {
         },
       });
       expect(await lines(d)).toEqual([
-        '000002  0  water the plants  2026-09-27',
+        '000002  0  water the plants  2026-09-27  Inbox',
       ]);
 
       const undo = await run(['undo', '0002', '--json'], d);
@@ -772,7 +772,7 @@ describe('run', () => {
         data: { state: 'open', completedAt: null },
       });
       expect(await lines(d)).toEqual([
-        '000002  0  water the plants  2026-09-26',
+        '000002  0  water the plants  2026-09-26  Inbox',
       ]);
     });
 
@@ -810,7 +810,9 @@ describe('run', () => {
       const refused = run(['done', '0002'], d);
       await expect(refused).rejects.toThrow(RefusalError);
       await expect(refused).rejects.toThrow(/do not run done again/);
-      expect(d.store.entries().map((e) => e.status)).toEqual(['pending']);
+      expect(d.store.entries().map((e) => e.status)).toEqual(
+        Array(5).fill('pending'),
+      ); // 3 status creates, set statusId, occurrence
     });
 
     it('queues a create of the derived task occurrence', async () => {
@@ -837,7 +839,7 @@ describe('run', () => {
       await run(['done', '000002'], d);
       expect(await lines(d)).toEqual([]);
       await run(['undo', '000002'], d);
-      expect(await lines(d)).toEqual(['000002  0  file taxes']);
+      expect(await lines(d)).toEqual(['000002  0  file taxes  Inbox']);
     });
 
     // Scenario 4 and Review Focus 2.
@@ -847,11 +849,11 @@ describe('run', () => {
       d.send = unreachable;
       expect((await run(['done', '0002'], d)).exit).toBe(5);
       expect(await lines(d)).toEqual([
-        '000002  0  water the plants  2026-09-27',
+        '000002  0  water the plants  2026-09-27  Inbox',
       ]);
       await run(['undo', '0002'], d);
       expect(await lines(d)).toEqual([
-        '000002  0  water the plants  2026-09-26',
+        '000002  0  water the plants  2026-09-26  Inbox',
       ]);
     });
 
@@ -879,9 +881,13 @@ describe('run', () => {
         d,
       );
       await run(['done', '0002', '--on', '2026-10-05'], d);
-      expect(await lines(d)).toEqual(['000002  0  stand-up  2026-09-28']);
+      expect(await lines(d)).toEqual([
+        '000002  0  stand-up  2026-09-28  Inbox',
+      ]);
       await run(['done', '0002'], d);
-      expect(await lines(d)).toEqual(['000002  0  stand-up  2026-10-12']);
+      expect(await lines(d)).toEqual([
+        '000002  0  stand-up  2026-10-12  Inbox',
+      ]);
     });
 
     // Review Focus 5.
@@ -1594,5 +1600,193 @@ describe('login and logout', () => {
     await expect(run(['list'], deps(ended))).rejects.toThrow(
       'your session has ended — run todoer login',
     );
+  });
+
+  describe('statuses', () => {
+    const status = (
+      id: string,
+      name: string,
+      rank: string,
+      completing = false,
+    ) => ({
+      table: 'status',
+      id,
+      seq: 1,
+      row: { id, name, rank, completing, deletedAt: null },
+    });
+    const taskRow = (id: string, title: string, statusId?: string) => ({
+      table: 'task',
+      id,
+      seq: 1,
+      row: {
+        id,
+        title,
+        priority: 0,
+        rank: 'a0',
+        rrule: null,
+        dtstart: null,
+        parentId: null,
+        deletedAt: null,
+        ...(statusId === undefined ? {} : { statusId }),
+      },
+    });
+    const TASK_ID = '0192a1b2-0000-7000-8000-000000000002';
+    const SEEDED = [
+      status('s-inbox', 'Inbox', 'a0'),
+      status('s-doing', 'Doing', 'a1'),
+      status('s-done', 'Done', 'a2', true),
+    ];
+    const setStatusOps = (d: Deps) =>
+      d.store
+        .pending()
+        .filter((op) => op.kind === 'set' && op.field === 'statusId');
+
+    it('lists the old line shape and status null with no statuses', async () => {
+      const d = hexDeps(unreachable);
+      d.store.mergeChanges([taskRow('t-000001', 'plain')]);
+      expect((await run(['list'], d)).stdout).toEqual(['000001  0  plain']);
+      const out = await run(['list', '--json'], d);
+      expect(envelope(out.stdout)).toMatchObject({ data: [{ status: null }] });
+    });
+
+    it('shows the status last, falling back to the first non-completing one', async () => {
+      const d = hexDeps(unreachable);
+      d.store.mergeChanges([
+        ...SEEDED,
+        {
+          ...status('s-gone', 'Gone', 'a3'),
+          row: {
+            id: 's-gone',
+            name: 'Gone',
+            rank: 'a3',
+            completing: false,
+            deletedAt: '2026-09-01T00:00:00.000Z',
+          },
+        },
+        taskRow('t-000001', 'doing one', 's-doing'),
+        taskRow('t-000002', 'no status'),
+        taskRow('t-000003', 'deleted status', 's-gone'),
+        taskRow('t-000004', 'open at done', 's-done'),
+      ]);
+      expect((await run(['list'], d)).stdout).toEqual([
+        '000001  0  doing one  Doing',
+        '000002  0  no status  Inbox',
+        '000003  0  deleted status  Inbox',
+        '000004  0  open at done  Inbox',
+      ]);
+      const rows = (
+        envelope((await run(['list', '--json'], d)).stdout) as {
+          data: Record<string, unknown>[];
+        }
+      ).data;
+      expect(rows[0]).toMatchObject({ status: 'Doing', statusId: 's-doing' });
+    });
+
+    it('seeds Inbox, Doing, Done and sets statusId on done', async () => {
+      const d = hexDeps(unreachable);
+      await run(['add', 'once'], d);
+      await run(['done', '0002'], d);
+      const [, ...ops] = d.store.pending();
+      expect(ops.map((op) => `${op.kind} ${op.table}`)).toEqual([
+        'create status',
+        'create status',
+        'create status',
+        'set task',
+        'create task_occurrence',
+      ]);
+      expect(ops.slice(0, 3)).toMatchObject([
+        { fields: { name: 'Inbox', rank: 'a0', completing: false } },
+        { fields: { name: 'Doing', rank: 'a1', completing: false } },
+        { fields: { name: 'Done', rank: 'a2', completing: true } },
+      ]);
+      expect(ops[3]).toMatchObject({
+        id: TASK_ID,
+        field: 'statusId',
+        value: ops[2]?.id,
+      });
+    });
+
+    it('seeds once when a second done runs before any sync answers', async () => {
+      const d = hexDeps(unreachable);
+      await run(['add', 'one'], d);
+      await run(['add', 'two'], d);
+      await run(['done', '0002'], d);
+      await run(['done', '0004'], d);
+      const creates = d.store.pending().filter((op) => op.table === 'status');
+      expect(creates).toHaveLength(3);
+      const sets = setStatusOps(d);
+      expect(sets).toHaveLength(2);
+      expect(sets[1]).toMatchObject({ value: creates[2]?.id });
+      expect(sets[0]).toMatchObject({ value: creates[2]?.id });
+    });
+
+    it('sends no set when the task already sits at the completing status', async () => {
+      const d = hexDeps(unreachable);
+      d.store.mergeChanges([...SEEDED, taskRow('t-000001', 'x', 's-done')]);
+      await run(['done', '000001'], d);
+      expect(setStatusOps(d)).toEqual([]);
+      expect(d.store.pending().map((op) => op.table)).toEqual([
+        'task_occurrence',
+      ]);
+    });
+
+    it('sets statusId to the existing completing status', async () => {
+      const d = hexDeps(unreachable);
+      d.store.mergeChanges([...SEEDED, taskRow('t-000001', 'x', 's-doing')]);
+      await run(['done', '000001'], d);
+      expect(setStatusOps(d)).toMatchObject([
+        { id: 't-000001', value: 's-done' },
+      ]);
+    });
+
+    it('undo clears statusId when the task has one, and skip never writes it', async () => {
+      const d = hexDeps(unreachable);
+      d.store.mergeChanges([...SEEDED, taskRow('t-000001', 'x', 's-done')]);
+      await run(['skip', '000001'], d);
+      expect(setStatusOps(d)).toEqual([]);
+      await run(['undo', '000001'], d);
+      expect(setStatusOps(d)).toMatchObject([
+        { id: 't-000001', field: 'statusId', value: null },
+      ]);
+    });
+
+    it('undo sends no set for a task without a status', async () => {
+      const d = hexDeps(unreachable);
+      d.store.mergeChanges([
+        taskRow('t-000001', 'x'),
+        {
+          table: 'task_occurrence',
+          id: 'o-1',
+          seq: 1,
+          row: {
+            id: 'o-1',
+            taskId: 't-000001',
+            occurrence: null,
+            state: 'done',
+            deletedAt: null,
+          },
+        },
+      ]);
+      await run(['undo', '000001'], d);
+      expect(setStatusOps(d)).toEqual([]);
+    });
+
+    it('still sets statusId for a named occurrence of a recurring task', async () => {
+      const d = hexDeps(unreachable);
+      d.store.mergeChanges(SEEDED);
+      await run(
+        [
+          'add',
+          'weekly',
+          '--rrule',
+          'FREQ=WEEKLY;BYDAY=MO',
+          '--from',
+          '2026-09-28',
+        ],
+        d,
+      );
+      await run(['done', '0002', '--on', '2026-10-05'], d);
+      expect(setStatusOps(d)).toMatchObject([{ value: 's-done' }]);
+    });
   });
 });

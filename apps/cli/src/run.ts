@@ -1,11 +1,16 @@
 import {
+  completingStatus,
+  displayStatus,
   isIsoDate,
   nameKey,
   parseRrule,
   taskOccurrenceId,
   taskTagId,
+  type Op,
   type OpCreate,
+  type OpSet,
   type Rrule,
+  type StatusRow,
 } from '@todoer/specs';
 import type { AuthApi, TokenSource } from './auth.js';
 import { expand } from './expand.js';
@@ -20,7 +25,7 @@ import {
   type Recurrence,
   type StateOf,
 } from './occurrence.js';
-import { labelsOf, resolveLabels } from './labels.js';
+import { labelsOf, liveStatuses, resolveLabels } from './labels.js';
 import { planMerge } from './merge.js';
 import { liveTasks, overlay } from './overlay.js';
 import { PROJECT, TAG, planAdd } from './parse-quick-add.js';
@@ -128,6 +133,8 @@ type Due = Row & {
   occurrence: string | null;
   project: string | null;
   tags: string[];
+  /** The status's name; `null` when the user has no statuses. */
+  status: string | null;
 };
 
 /** The `sub` claim of an access token (base64url(JSON) + '.' + mac). Read, not
@@ -319,6 +326,7 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
               ].join(' '),
             ]),
         ...(row.occurrence === null ? [] : [row.occurrence]),
+        ...(row.status === null ? [] : [row.status]),
       ].join('  '),
     );
   } else if (isMark(command)) {
@@ -355,7 +363,12 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
       },
       ts: now,
     };
-    synced = await submit(store, deps.send, [op], command);
+    synced = await submit(
+      store,
+      deps.send,
+      [...statusOps(command, task, statusRows(store), deps.newId, now), op],
+      command,
+    );
     const marked = occurrences(store).find((row) => row.id === op.id) ?? null;
     data = marked;
     // I3: `submit` settled this op, but the row it settled to is not the
@@ -522,7 +535,7 @@ function listOutbox(store: Store): { data: unknown; human: string[] } {
 async function submit(
   store: Store,
   send: Transport,
-  ops: OpCreate[],
+  ops: Op[],
   command: string,
 ): Promise<boolean> {
   store.transaction(() => {
@@ -635,6 +648,80 @@ function stateOf(marks: Row[], taskId: string): StateOf {
     )?.state;
 }
 
+function setTask(
+  task: Row,
+  field: string,
+  value: unknown,
+  newId: () => string,
+  ts: string,
+): OpSet {
+  return {
+    opId: newId(),
+    kind: 'set',
+    table: 'task',
+    id: String(task.id),
+    field,
+    value,
+    ts,
+  };
+}
+
+/** The statuses as `displayStatus` and `completingStatus` read them. */
+function statusFacts(statuses: Row[]): StatusRow[] {
+  return liveStatuses(statuses).map((s) => ({
+    id: String(s.id),
+    rank: String(s.rank),
+    completing: s.completing === true,
+  }));
+}
+
+/**
+ * The statusId writes that keep a board aligned with a mark (views design,
+ * Q7): done moves the task to the completing status, seeding Inbox, Doing,
+ * Done first when the user has none (plan V1, departure 1); undo clears it
+ * (departure 2); skip leaves it (departure 3).
+ */
+function statusOps(
+  command: Mark,
+  task: Row,
+  statuses: Row[],
+  newId: () => string,
+  ts: string,
+): Op[] {
+  if (command === 'skip') return [];
+  if (command === 'undo') {
+    return task.statusId === null || task.statusId === undefined
+      ? []
+      : [setTask(task, 'statusId', null, newId, ts)];
+  }
+  const live = statusFacts(statuses);
+  const seeded: OpCreate[] =
+    live.length > 0
+      ? []
+      : [
+          { name: 'Inbox', rank: 'a0', completing: false },
+          { name: 'Doing', rank: 'a1', completing: false },
+          { name: 'Done', rank: 'a2', completing: true },
+        ].map((fields) => ({
+          opId: newId(),
+          kind: 'create',
+          table: 'status',
+          id: newId(),
+          fields,
+          ts,
+        }));
+  const target = completingStatus([
+    ...live,
+    ...seeded.map((op) => ({
+      id: op.id,
+      rank: String(op.fields.rank),
+      completing: op.fields.completing === true,
+    })),
+  ]);
+  if (target === undefined || task.statusId === target) return seeded;
+  return [...seeded, setTask(task, 'statusId', target, newId, ts)];
+}
+
 /** Each live task once, at its current occurrence (plan C design, Q11). */
 function due(store: Store, today: string): Due[] {
   const all = tasks(store);
@@ -644,6 +731,10 @@ function due(store: Store, today: string): Due[] {
     tags: tagRows(store),
     links: links(store),
   };
+  const facts = statusFacts(statusRows(store));
+  const names = new Map(
+    liveStatuses(statusRows(store)).map((s) => [String(s.id), String(s.name)]),
+  );
   return liveTasks(all).flatMap((task) => {
     const taskId = String(task.id);
     const current = currentOccurrence(
@@ -659,6 +750,14 @@ function due(store: Store, today: string): Due[] {
             ref: shortRef(taskId),
             occurrence: current.occurrence,
             ...labelsOf(task, labelRows),
+            status:
+              names.get(
+                displayStatus(
+                  typeof task.statusId === 'string' ? task.statusId : null,
+                  facts,
+                  false,
+                ) ?? '',
+              ) ?? null,
           },
         ];
   });
