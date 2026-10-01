@@ -11,6 +11,7 @@ const view = {
   tasks: [
     { id: 't1', projectId: 'pb', deletedAt: null },
     { id: 't2', projectId: 'pa', deletedAt: null },
+    { id: 't3', projectId: 'pb', deletedAt: '2026-09-01T00:00:00Z' },
   ],
   projects: [
     {
@@ -90,12 +91,14 @@ describe('planMerge', () => {
   });
 
   // Review Focus 4, departure 1: a detached link stays detached, an archived
-  // project and a row the server has not confirmed are left alone.
+  // project and a row the server has not confirmed are left alone. A deleted
+  // task is never moved, even if its project loses the merge.
   it('leaves detached links, archived projects and unconfirmed rows out', () => {
     const { ops } = planMerge(view, ids(), 'T');
     expect(ops.some((op) => op.id === 'l2')).toBe(false);
     expect(ops.some((op) => op.id === 'pz')).toBe(false);
     expect(ops.some((op) => op.id === 'gp')).toBe(false);
+    expect(ops.some((op) => op.id === 't3')).toBe(false);
   });
 
   it('plans nothing when no two live names collide', () => {
