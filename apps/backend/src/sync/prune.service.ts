@@ -33,7 +33,8 @@ type Prunable = {
  * two instances pruning at once serialise per user and the second finds
  * nothing to delete.
  *
- * Only the synchronised tables with tombstones, named one by one. Task
+ * Only the synchronised tables with tombstones (task, tag, project, status,
+ * view and the TaskTag rows), named one by one. Task
  * occurrences are never pruned on their own (ADR 0013); they go with their
  * task, by cascade, when its tombstone is pruned. A loop over every table
  * with `deletedAt` would reach them directly.
@@ -94,10 +95,11 @@ export class PruneService
    * subtask under a deleted parent) is kept and retried on the next run.
    *
    * ponytail: each deleted tombstone fires its FK action (`SET NULL` on
-   * Task.projectId/parentId, `CASCADE` on TaskTag and TaskOccurrence), all
+   * Task.projectId/parentId/statusId, `CASCADE` on TaskTag and TaskOccurrence), all
    * inside Prisma's default 5s interactive-transaction timeout. TaskTag and
-   * TaskOccurrence scan their own indexed `taskId`/`tagId` columns; only
-   * Task.projectId and Task.parentId are still unindexed, so a user with a
+   * TaskOccurrence scan their own indexed `taskId`/`tagId` columns;
+   * Task.statusId is indexed too; only Task.projectId and Task.parentId are
+   * still unindexed, so a user with a
    * very large backlog (first run after deploy) could hit P2028 there.
    * Upgrade path: indexes on Task.projectId, Task.parentId and/or a
    * `{ timeout }` on this transaction.
@@ -120,6 +122,10 @@ export class PruneService
         // A tag's TaskTag rows cascade the same way.
         [tx.tag as unknown as Prunable, old],
         [tx.project as unknown as Prunable, { ...old, tasks: { none: {} } }],
+        // A status a task still points at waits, like a project: the task
+        // steps above have already removed the tasks that aged out.
+        [tx.status as unknown as Prunable, { ...old, tasks: { none: {} } }],
+        [tx.view as unknown as Prunable, old],
       ];
 
       let deleted = 0;

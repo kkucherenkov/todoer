@@ -29,7 +29,14 @@ function daysAgo(days: number): Date {
   return new Date(Date.now() - days * DAY);
 }
 
-type Table = 'task' | 'project' | 'tag' | 'task_tag' | 'task_occurrence';
+type Table =
+  | 'task'
+  | 'project'
+  | 'tag'
+  | 'status'
+  | 'view'
+  | 'task_tag'
+  | 'task_occurrence';
 
 function create(table: Table, id: string, fields: Record<string, unknown>) {
   return {
@@ -61,6 +68,8 @@ async function age(table: Table, ids: string[], days: number) {
   else if (table === 'project')
     await prisma.project.updateMany({ where, data });
   else if (table === 'tag') await prisma.tag.updateMany({ where, data });
+  else if (table === 'status') await prisma.status.updateMany({ where, data });
+  else if (table === 'view') await prisma.view.updateMany({ where, data });
   else await prisma.taskTag.updateMany({ where, data });
 }
 
@@ -167,6 +176,74 @@ describe('PruneService', () => {
     expect(
       await prisma.task.count({ where: { id: { in: [parent, child] } } }),
     ).toBe(0);
+  });
+
+  it('prunes an old view tombstone and raises the watermark to its seq', async () => {
+    const id = uuidv7();
+    await sync.sync(USER, {
+      since: 0,
+      ops: [
+        create('view', id, {
+          name: 'v',
+          layout: 'list',
+          filter: { recurring: true },
+          sort: 'manual',
+          rank: 'a0',
+        }),
+        remove('view', id),
+      ],
+    });
+    await age('view', [id], RETENTION_DAYS + 1);
+    const { seq } = await prisma.view.findUniqueOrThrow({ where: { id } });
+
+    expect(await prune.prune(new Date())).toBe(1);
+
+    expect(await prisma.view.count({ where: { id } })).toBe(0);
+    expect(await watermark(USER)).toBe(seq);
+  });
+
+  it('keeps a status tombstone a live task references until the task is gone too', async () => {
+    const status = uuidv7();
+    const task = uuidv7();
+    await sync.sync(USER, {
+      since: 0,
+      ops: [
+        create('status', status, { name: 's', rank: 'a0' }),
+        create('task', task, { title: 't', rank: 'a0', statusId: status }),
+        remove('status', status),
+      ],
+    });
+    await age('status', [status], RETENTION_DAYS + 1);
+
+    expect(await prune.prune(new Date())).toBe(0);
+    expect(await prisma.status.count({ where: { id: status } })).toBe(1);
+
+    await sync.sync(USER, { since: 0, ops: [remove('task', task)] });
+    await age('task', [task], RETENTION_DAYS + 1);
+    const { seq } = await prisma.task.findUniqueOrThrow({
+      where: { id: task },
+    });
+
+    expect(await prune.prune(new Date())).toBe(2);
+
+    expect(await prisma.status.count({ where: { id: status } })).toBe(0);
+    expect(await prisma.task.count({ where: { id: task } })).toBe(0);
+    expect(await watermark(USER)).toBeGreaterThanOrEqual(seq);
+  });
+
+  it('keeps a status tombstone younger than the window', async () => {
+    const id = uuidv7();
+    await sync.sync(USER, {
+      since: 0,
+      ops: [
+        create('status', id, { name: 's', rank: 'a0' }),
+        remove('status', id),
+      ],
+    });
+    await age('status', [id], RETENTION_DAYS - 1);
+
+    expect(await prune.prune(new Date())).toBe(0);
+    expect(await prisma.status.count({ where: { id } })).toBe(1);
   });
 
   // ADR 0013 end to end: a client that missed pruned deletions is told, and

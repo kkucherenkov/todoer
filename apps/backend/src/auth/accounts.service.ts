@@ -202,6 +202,8 @@ export class AccountsService {
       await tx.taskOccurrence.deleteMany({ where });
       await tx.taskTag.deleteMany({ where });
       await tx.task.deleteMany({ where });
+      await tx.status.deleteMany({ where });
+      await tx.view.deleteMany({ where });
       await tx.project.deleteMany({ where });
       await tx.tag.deleteMany({ where });
       // Sessions and reset codes cascade.

@@ -218,7 +218,23 @@ describe('deleteAccount', () => {
     const task = uuidv7();
     const project = uuidv7();
     const tag = uuidv7();
+    const status = uuidv7();
     const protocol = { seq: 0n, version: 1 };
+    await prisma.status.create({
+      data: { id: status, userId: u, name: 's', rank: 'a', ...protocol },
+    });
+    await prisma.view.create({
+      data: {
+        id: uuidv7(),
+        userId: u,
+        name: 'v',
+        layout: 'list',
+        filter: {},
+        sort: 'manual',
+        rank: 'a',
+        ...protocol,
+      },
+    });
     await prisma.project.create({
       data: { id: project, userId: u, name: 'p', rank: 'a', ...protocol },
     });
@@ -232,6 +248,7 @@ describe('deleteAccount', () => {
         title: 't',
         rank: 'a',
         projectId: project,
+        statusId: status,
         ...protocol,
       },
     });
@@ -264,6 +281,8 @@ describe('deleteAccount', () => {
         prisma.task,
         prisma.project,
         prisma.tag,
+        prisma.status,
+        prisma.view,
         prisma.taskTag,
         prisma.taskOccurrence,
         prisma.appliedOp,
@@ -286,7 +305,7 @@ describe('deleteAccount', () => {
     await accounts.deleteAccount(u, PASSWORD);
 
     expect(await prisma.user.findUnique({ where: { id: u } })).toBeNull();
-    expect(await counts(u)).toEqual(Array<number>(8).fill(0));
+    expect(await counts(u)).toEqual(Array<number>(10).fill(0));
     expect(await counts(owner)).toEqual(kept);
     expect(await prisma.user.count()).toBe(1);
   });
