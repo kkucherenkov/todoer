@@ -53,3 +53,9 @@ user's password directly and revokes their sessions; no code is involved. The
 host script for the owner's own recovery prints a code valid 15 minutes. On
 instances that existed before ownership, the migration made the earliest user
 the owner.
+
+Access tokens are stateless, so a deleted account's access token still
+authenticates until it expires, up to 15 minutes. Its writes to `/sync` cannot
+land, because every synced row has a foreign key to the user, which is gone; a
+pull returns nothing. The refresh token dies at once with the account's
+sessions.
