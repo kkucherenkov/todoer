@@ -2,11 +2,12 @@
 
 - Created: 2026-10-01
 - Owner: claude
-- Status: ready
+- Status: done
 - Blockers: —
 - Spec: [docs/specs/2026-10-01-views-design.md](../../../docs/specs/2026-10-01-views-design.md)
   (Q1–Q18); tuxedo #406
 - Plan: [docs/plans/2026-10-01-plan-v2-views-server.md](../../../docs/plans/2026-10-01-plan-v2-views-server.md)
+- Completed: 2026-10-01
 
 ### Goal
 
@@ -76,11 +77,11 @@ CLI (plan V1) and the GUI clients build on one definition.
 
 - **SC-001** `sh scripts/walking-skeleton.sh` writes a status and a view and
   sees an invalid filter rejected with its reason.
-- [ ] every FR has a test that failed before the code made it pass
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] every FR has a test that failed before the code made it pass
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 

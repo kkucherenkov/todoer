@@ -21,7 +21,7 @@ dependencies.
 
 **Spec:** [`docs/specs/2026-10-01-views-design.md`](../specs/2026-10-01-views-design.md)
 — read all of it before Task 1. Task spec:
-[`specs/tasks/active/T-2026-10-01-views-server.md`](../../specs/tasks/active/T-2026-10-01-views-server.md).
+[`specs/tasks/done/T-2026-10-01-views-server.md`](../../specs/tasks/done/T-2026-10-01-views-server.md).
 Plan V1 (the CLI) follows this one and is written after it lands.
 
 ## Where this plan departs from the design doc
