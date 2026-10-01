@@ -2,11 +2,12 @@
 
 - Created: 2026-10-01
 - Owner: claude
-- Status: ready
+- Status: done
 - Blockers: —
 - Spec: [docs/specs/2026-09-28-quick-add-tags-projects-design.md](../../../docs/specs/2026-09-28-quick-add-tags-projects-design.md)
   (Q1–Q10); ADR 0005, 0007; tuxedo #362
 - Plan: [docs/plans/2026-10-01-plan-quick-add-tags.md](../../../docs/plans/2026-10-01-plan-quick-add-tags.md)
+- Completed: 2026-10-01
 
 ### Goal
 
@@ -81,11 +82,11 @@ rows as one, and merges them automatically after each pull.
   replica and `list @<tag>` in the second finds it.
 - **SC-002** Scenario 4 passes as a `run` test against the fake server: after
   two commands only one `@phone` tag is live.
-- [ ] every FR has a test that failed before the code made it pass
+- [x] every FR has a test that failed before the code made it pass
 - [ ] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 
