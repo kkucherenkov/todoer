@@ -13,6 +13,10 @@
     "./node-sqlite": {
       "types": "./dist/node-sqlite.d.ts",
       "default": "./dist/node-sqlite.js"
+    },
+    "./sqlite-wasm": {
+      "types": "./dist/sqlite-wasm.d.ts",
+      "default": "./dist/sqlite-wasm.js"
     }
   },
   "files": [
@@ -28,8 +32,17 @@
     "@todoer/specs": "workspace:^"
   },
   "devDependencies": {
+    "@sqlite.org/sqlite-wasm": "3.53.4-build1",
     "@types/node": "^24",
     "typescript": "^5.6.3",
     "vitest": "^5.0.2"
+  },
+  "peerDependencies": {
+    "@sqlite.org/sqlite-wasm": "3.53.4-build1"
+  },
+  "peerDependenciesMeta": {
+    "@sqlite.org/sqlite-wasm": {
+      "optional": true
+    }
   }
 }

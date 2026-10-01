@@ -186,7 +186,7 @@ replica count that changes when the CLI writes.
 
 - [x] T001 [FR-001, FR-002] client-core: the cookie-mode session and the
       account rule — plan Task 1
-- [ ] T002 [FR-003] client-core: the `./sqlite-wasm` adapter and the shared
+- [x] T002 [FR-003] client-core: the `./sqlite-wasm` adapter and the shared
       contract — plan Task 2
 - **Checkpoint:** the core runs in a browser worker and holds the web's
   session without seeing its refresh token. The CLI is unchanged.
