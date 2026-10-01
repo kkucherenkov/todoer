@@ -226,4 +226,110 @@ describe('planMerge', () => {
       ),
     ).toEqual({ ops: [], merged: [] });
   });
+
+  describe('late links and tasks on a merged-away row', () => {
+    const DEL = '2026-09-01T00:00:00Z';
+    const tasks = [
+      { id: 't1', projectId: 'pa', deletedAt: null },
+      { id: 't2', projectId: 'pb', deletedAt: null },
+    ];
+
+    it('moves a live link of a tombstoned tag to the live same-named tag', () => {
+      const { ops, merged } = planMerge(
+        {
+          tasks,
+          projects: [],
+          tags: [
+            { id: 'g2', name: '@phone', version: 4, deletedAt: DEL },
+            { id: 'g1', name: '@Phone', version: 2, deletedAt: null },
+          ],
+          links: [{ id: 'l1', taskId: 't1', tagId: 'g2', deletedAt: null }],
+        },
+        ids(),
+        'T',
+      );
+      expect(ops.map((op) => `${op.kind} ${op.table} ${op.id}`)).toEqual([
+        `create task_tag ${taskTagId('t1', 'g1')}`,
+        'set task_tag l1',
+      ]);
+      expect(merged).toEqual(['@Phone (late links)']);
+    });
+
+    it('plans nothing when no live tag has the name', () => {
+      const { ops, merged } = planMerge(
+        {
+          tasks,
+          projects: [],
+          tags: [{ id: 'g2', name: '@phone', version: 4, deletedAt: DEL }],
+          links: [{ id: 'l1', taskId: 't1', tagId: 'g2', deletedAt: null }],
+        },
+        ids(),
+        'T',
+      );
+      expect({ ops, merged }).toEqual({ ops: [], merged: [] });
+    });
+
+    it('moves a live task of a tombstoned project to the live same-named one', () => {
+      const { ops, merged } = planMerge(
+        {
+          tasks,
+          projects: [
+            { id: 'pb', name: 'Finance', version: 3, deletedAt: DEL },
+            {
+              id: 'pa',
+              name: 'finance',
+              version: 1,
+              deletedAt: null,
+              archivedAt: null,
+            },
+          ],
+          tags: [],
+          links: [],
+        },
+        ids(),
+        'T',
+      );
+      expect(ops).toEqual([
+        {
+          opId: 'n1',
+          kind: 'set',
+          table: 'task',
+          id: 't2',
+          field: 'projectId',
+          value: 'pa',
+          ts: 'T',
+        },
+      ]);
+      expect(merged).toEqual(['#finance (late tasks)']);
+    });
+
+    it('leaves the task of an archived (not deleted) project alone', () => {
+      const { ops } = planMerge(
+        {
+          tasks,
+          projects: [
+            {
+              id: 'pb',
+              name: 'Finance',
+              version: 3,
+              deletedAt: null,
+              archivedAt: DEL,
+            },
+            {
+              id: 'pa',
+              name: 'finance',
+              version: 1,
+              deletedAt: null,
+              archivedAt: null,
+            },
+          ],
+          tags: [],
+          links: [],
+        },
+        ids(),
+        'T',
+      );
+      expect(ops).toEqual([]);
+    });
+  });
 });

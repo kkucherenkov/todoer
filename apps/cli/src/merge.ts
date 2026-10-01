@@ -1,5 +1,11 @@
 import { nameKey, taskTagId, type Op } from '@todoer/specs';
-import { compareIds, isAttached, liveProjects, liveTags } from './labels.js';
+import {
+  compareIds,
+  isAttached,
+  liveProjects,
+  liveTags,
+  winner,
+} from './labels.js';
 import type { Row } from './store.js';
 
 export type View = { tasks: Row[]; projects: Row[]; tags: Row[]; links: Row[] };
@@ -28,6 +34,32 @@ function duplicates(rows: Row[]): Row[][] {
 }
 
 /**
+ * Each server-confirmed tombstone paired with the winner of the live,
+ * server-confirmed rows sharing its name key, in tombstone id order; a
+ * tombstone nothing live is named after is left out.
+ */
+function lateTombstones(rows: Row[], live: Row[]): [Row, Row][] {
+  const confirmed = live.filter((row) => typeof row.version === 'number');
+  return rows
+    .filter(
+      (row) =>
+        row.deletedAt !== null &&
+        typeof row.name === 'string' &&
+        typeof row.version === 'number',
+    )
+    .sort(compareIds)
+    .flatMap((tomb) => {
+      const key = nameKey(String(tomb.name));
+      const keep = winner(
+        confirmed.filter(
+          (row) => typeof row.name === 'string' && nameKey(row.name) === key,
+        ),
+      );
+      return keep === undefined ? [] : [[tomb, keep] as [Row, Row]];
+    });
+}
+
+/**
  * The operations that fold duplicate names into the lowest id (quick-add
  * design, Q7, Q10): a losing tag's attached links are re-made on the winner
  * and detached, a losing project's live tasks are moved, then the loser is
@@ -49,34 +81,57 @@ export function planMerge(
   );
   const links = [...view.links].sort(compareIds);
 
+  /** Re-makes `from`'s attached links of live tasks on `to` and detaches them. */
+  const moveLinks = (from: Row, to: Row): number => {
+    const before = ops.length;
+    for (const link of links) {
+      if (link.tagId !== from.id || !isAttached(link)) continue;
+      const taskId = String(link.taskId);
+      if (!liveTaskIds.has(taskId)) continue;
+      ops.push({
+        opId: newId(),
+        kind: 'create',
+        table: 'task_tag',
+        id: taskTagId(taskId, String(to.id)),
+        fields: { taskId, tagId: String(to.id), attached: true },
+        ts,
+      });
+      ops.push({
+        opId: newId(),
+        kind: 'set',
+        table: 'task_tag',
+        id: String(link.id),
+        field: 'attached',
+        value: false,
+        ts,
+      });
+    }
+    return ops.length - before;
+  };
+  /** Moves `from`'s live tasks to project `to`. */
+  const moveTasks = (from: Row, to: Row): number => {
+    const before = ops.length;
+    for (const task of tasks) {
+      if (task.projectId !== from.id || task.deletedAt !== null) continue;
+      ops.push({
+        opId: newId(),
+        kind: 'set',
+        table: 'task',
+        id: String(task.id),
+        field: 'projectId',
+        value: String(to.id),
+        ts,
+      });
+    }
+    return ops.length - before;
+  };
+
   for (const group of duplicates(liveTags(view.tags))) {
     const [keep] = group;
     if (keep === undefined) continue;
-    const keepId = String(keep.id);
     for (const loser of group) {
       if (loser === keep) continue;
-      for (const link of links) {
-        if (link.tagId !== loser.id || !isAttached(link)) continue;
-        const taskId = String(link.taskId);
-        if (!liveTaskIds.has(taskId)) continue;
-        ops.push({
-          opId: newId(),
-          kind: 'create',
-          table: 'task_tag',
-          id: taskTagId(taskId, keepId),
-          fields: { taskId, tagId: keepId, attached: true },
-          ts,
-        });
-        ops.push({
-          opId: newId(),
-          kind: 'set',
-          table: 'task_tag',
-          id: String(link.id),
-          field: 'attached',
-          value: false,
-          ts,
-        });
-      }
+      moveLinks(loser, keep);
       ops.push({
         opId: newId(),
         kind: 'delete',
@@ -91,21 +146,9 @@ export function planMerge(
   for (const group of duplicates(liveProjects(view.projects))) {
     const [keep] = group;
     if (keep === undefined) continue;
-    const keepId = String(keep.id);
     for (const loser of group) {
       if (loser === keep) continue;
-      for (const task of tasks) {
-        if (task.projectId !== loser.id || task.deletedAt !== null) continue;
-        ops.push({
-          opId: newId(),
-          kind: 'set',
-          table: 'task',
-          id: String(task.id),
-          field: 'projectId',
-          value: keepId,
-          ts,
-        });
-      }
+      moveTasks(loser, keep);
       ops.push({
         opId: newId(),
         kind: 'delete',
@@ -115,6 +158,22 @@ export function planMerge(
       });
     }
     merged.push(`#${String(keep.name)} (${String(group.length)})`);
+  }
+
+  // A device that was offline can attach a tag, or a project, that has been
+  // merged away since: the server accepts it, and nothing above sees it
+  // because the tombstone is in no group. Move it to the live winner.
+  for (const [tomb, keep] of lateTombstones(view.tags, liveTags(view.tags))) {
+    if (moveLinks(tomb, keep) > 0)
+      merged.push(`${String(keep.name)} (late links)`);
+  }
+  for (const [tomb, keep] of lateTombstones(
+    view.projects,
+    liveProjects(view.projects),
+  )) {
+    if (moveTasks(tomb, keep) > 0) {
+      merged.push(`#${String(keep.name)} (late tasks)`);
+    }
   }
   return { ops, merged };
 }
