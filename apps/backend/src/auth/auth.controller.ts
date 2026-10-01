@@ -36,6 +36,7 @@ export class AuthController {
   private readonly loginByAddress = new RateLimiter(5, WINDOW_MS);
   private readonly loginByIp = new RateLimiter(20, WINDOW_MS);
   private readonly refreshByIp = new RateLimiter(30, WINDOW_MS);
+  private readonly passwordByUser = new RateLimiter(5, WINDOW_MS);
   private readonly registerByIp = new RateLimiter(20, WINDOW_MS);
   private readonly resetByIp = new RateLimiter(20, WINDOW_MS);
   private readonly deleteByIp = new RateLimiter(20, WINDOW_MS);
@@ -90,10 +91,17 @@ export class AuthController {
     const ip = req.ip ?? 'unknown';
     const now = Date.now();
     AuthController.check(now, [this.refreshByIp, ip]);
-    // Reserved up front, like login; successes keep counting toward the IP
-    // budget (30 per window), which a legitimate client stays well under.
-    this.refreshByIp.fail(ip, now);
-    return this.sessions.refresh(body.refreshToken);
+    // Not reserved up front: an HMAC check and one lookup are cheap, so only
+    // invalid refreshes (401) count and a busy legitimate client is never
+    // limited.
+    try {
+      return await this.sessions.refresh(body.refreshToken);
+    } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        this.refreshByIp.fail(ip, now);
+      }
+      throw error;
+    }
   }
 
   @Post('logout')
@@ -120,9 +128,15 @@ export class AuthController {
     @CurrentUser() userId: string,
     @Body() body: { currentPassword: string; newPassword: string },
   ): Promise<SessionTokens> {
+    // A stolen token must not allow unlimited guessing of the password.
+    // Reserved before the scrypt call, like login, and released on success.
+    const now = Date.now();
+    AuthController.check(now, [this.passwordByUser, userId]);
+    this.passwordByUser.fail(userId, now);
     if (!(await this.auth.verifyPassword(userId, body.currentPassword))) {
       throw new UnauthorizedException('invalid credentials');
     }
+    this.passwordByUser.clear(userId);
     const problem = passwordProblem(body.newPassword);
     if (problem !== null) throw new BadRequestException(problem);
     await this.auth.setPassword(userId, body.newPassword);

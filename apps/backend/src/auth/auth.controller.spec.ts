@@ -4,7 +4,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import type { AppConfig } from '../config/app-config.js';
 import { AccountsService } from './accounts.service.js';
 import { AuthController } from './auth.controller.js';
-import { AuthService } from './auth.service.js';
+import { AuthService, normalizeEmail } from './auth.service.js';
 import { TooManyRequests } from './rate-limit.js';
 import { SessionService } from './session.service.js';
 
@@ -16,6 +16,16 @@ const auth = new AuthService(prisma, config);
 const sessions = new SessionService(prisma, config, auth);
 const req = { ip: '1.2.3.4' };
 const PASSWORD = 'correct horse battery!1';
+
+const createUser = async (id: string, email: string): Promise<void> => {
+  await prisma.user.create({
+    data: {
+      id,
+      email: normalizeEmail(email),
+      passwordHash: await auth.hashPassword(PASSWORD),
+    },
+  });
+};
 
 let controller: AuthController;
 let U: string;
@@ -42,7 +52,7 @@ beforeEach(async () => {
     new AccountsService(prisma, auth, sessions),
   );
   U = uuidv7();
-  await auth.register(U, 'a@b.c', PASSWORD);
+  await createUser(U, 'a@b.c');
 });
 
 describe('login and refresh', () => {
@@ -107,7 +117,7 @@ describe('rate limits', () => {
   });
 
   it('does not block another address from the same IP', async () => {
-    await auth.register(uuidv7(), 'b@b.c', PASSWORD);
+    await createUser(uuidv7(), 'b@b.c');
     for (let i = 0; i < 5; i++)
       await expect(login('a@b.c', 'wrong-pass1!')).rejects.toThrow();
     await expect(login('b@b.c')).resolves.toHaveProperty('refreshToken');
@@ -132,6 +142,21 @@ describe('rate limits', () => {
     for (let i = 0; i < 4; i++)
       await expect(login('a@b.c', 'wrong-pass1!')).rejects.toThrow();
     await expect(login()).resolves.toBeTruthy();
+  });
+
+  it('does not count successful refreshes toward the IP budget', async () => {
+    let { refreshToken } = await login();
+    for (let i = 0; i < 31; i++) {
+      ({ refreshToken } = await controller.refresh({ refreshToken }, req));
+    }
+    for (let i = 0; i < 30; i++) {
+      await expect(
+        controller.refresh({ refreshToken: 'junk' }, req),
+      ).rejects.toThrow(/invalid token/);
+    }
+    await expect(
+      controller.refresh({ refreshToken }, req),
+    ).rejects.toBeInstanceOf(TooManyRequests);
   });
 
   it('blocks an IP after thirty invalid refreshes', async () => {
@@ -168,7 +193,7 @@ describe('logout', () => {
 
   it("ignores another user's refresh token", async () => {
     const other = uuidv7();
-    await auth.register(other, 'c@b.c', PASSWORD);
+    await createUser(other, 'c@b.c');
     const theirs = await login('c@b.c');
     await controller.logout(U, { refreshToken: theirs.refreshToken });
     await expect(
@@ -187,6 +212,54 @@ describe('password change', () => {
         newPassword: NEW,
       }),
     ).rejects.toThrow(/invalid credentials/);
+  });
+
+  it('blocks the sixth wrong current password with 429, without checking it', async () => {
+    for (let i = 0; i < 5; i++) {
+      await expect(
+        controller.changePassword(U, {
+          currentPassword: 'wrong-pass1!',
+          newPassword: NEW,
+        }),
+      ).rejects.toThrow(/invalid credentials/);
+    }
+    const spy = vi.spyOn(auth, 'verifyPassword');
+    await expect(
+      controller.changePassword(U, {
+        currentPassword: PASSWORD,
+        newPassword: NEW,
+      }),
+    ).rejects.toBeInstanceOf(TooManyRequests);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('a successful change clears the counter', async () => {
+    for (let i = 0; i < 4; i++) {
+      await expect(
+        controller.changePassword(U, {
+          currentPassword: 'wrong-pass1!',
+          newPassword: NEW,
+        }),
+      ).rejects.toThrow(/invalid credentials/);
+    }
+    await controller.changePassword(U, {
+      currentPassword: PASSWORD,
+      newPassword: NEW,
+    });
+    for (let i = 0; i < 4; i++) {
+      await expect(
+        controller.changePassword(U, {
+          currentPassword: 'wrong-pass1!',
+          newPassword: PASSWORD,
+        }),
+      ).rejects.toThrow(/invalid credentials/);
+    }
+    await expect(
+      controller.changePassword(U, {
+        currentPassword: NEW,
+        newPassword: PASSWORD,
+      }),
+    ).resolves.toBeTruthy();
   });
 
   it('refuses a weak new password, naming the rule', async () => {
