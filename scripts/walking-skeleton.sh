@@ -60,6 +60,23 @@ case $LINE in
   *"$TODAY"*) echo "FAIL: the second client still shows today's date: $LINE" >&2; exit 1 ;;
 esac
 
+# Views (plan V2): a status and a view go through POST /sync, so the
+# contract's table enum and the filter check are exercised over HTTP.
+SID=$(node -e 'console.log(crypto.randomUUID())')
+VID=$(node -e 'console.log(crypto.randomUUID())')
+NOW=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+op() { printf '{"opId":"%s","kind":"create","table":"%s","id":"%s","fields":%s,"ts":"%s"}' \
+  "$(node -e 'console.log(crypto.randomUUID())')" "$1" "$2" "$3" "$NOW"; }
+STATUS_OP=$(op status "$SID" '{"name":"Doing","rank":"a1","completing":false}')
+VIEW_OP=$(op view "$VID" "{\"name\":\"Doing now\",\"layout\":\"kanban\",\"sort\":\"manual\",\"rank\":\"a0\",\"filter\":{\"status\":\"$SID\"}}")
+BAD_OP=$(op view "$(node -e 'console.log(crypto.randomUUID())')" '{"name":"bad","layout":"list","sort":"due","rank":"a1","filter":{"tag":"x"}}')
+api /sync "{\"since\":0,\"ops\":[$STATUS_OP,$VIEW_OP,$BAD_OP]}" "$TOKEN"
+[ "$STATUS" = 200 ] || { echo "FAIL: /sync with a status and a view returned $STATUS: $BODY_OUT" >&2; exit 1; }
+APPLIED=$(printf '%s' "$BODY_OUT" | grep -o '"status":"applied"' | wc -l)
+[ "$APPLIED" -eq 2 ] || { echo "FAIL: expected the status and the view applied: $BODY_OUT" >&2; exit 1; }
+printf '%s' "$BODY_OUT" | grep -qF 'filter.tag: not a uuid' ||
+  { echo "FAIL: the invalid filter was not rejected with its reason: $BODY_OUT" >&2; exit 1; }
+
 # The CLI's own sign-in: no TODOER_TOKEN, only what `login` stored.
 SIGNED=$(mktemp -d)
 unset TODOER_TOKEN
