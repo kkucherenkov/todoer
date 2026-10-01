@@ -4,7 +4,7 @@
 - Owner: claude
 - Status: done
 - Completed: 2026-10-02
-- Result: branch feat/web-backend (PR pending)
+- Result: https://github.com/kkucherenkov/todoer/pull/18
 - Blockers: —
 - Spec: [docs/specs/2026-10-01-client-shells-design.md](../../../docs/specs/2026-10-01-client-shells-design.md)
   (Q9, Q11, Q16 — plan W1);
@@ -137,7 +137,7 @@ it does: scripts and agents depend on it (ADR 0015).
 - [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
 - [x] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] dnote changelog line
 
 ### Steps
 
