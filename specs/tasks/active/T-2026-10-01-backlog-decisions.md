@@ -60,8 +60,8 @@ memory; behind a reverse proxy the per-IP rate limits were instance-wide.
 
 - [ ] T001 [FR-001] marks on closed one-off tasks — plan Task 1
 - [ ] T002 [FR-002] no deleting a task with live subtasks — plan Task 2
-- [ ] T003 [FR-003] CI guard for trap 6 — plan Task 3
-- [ ] T004 [FR-004] TRUST_PROXY — plan Task 4
+- [x] T003 [FR-003] CI guard for trap 6 — plan Task 3
+- [x] T004 [FR-004] TRUST_PROXY — plan Task 4
 - **Checkpoint:** scenarios 1–4 pass; the four gates green on the PR.
 
 ### Open questions
