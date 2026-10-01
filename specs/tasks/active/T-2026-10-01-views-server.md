@@ -84,7 +84,7 @@ CLI (plan V1) and the GUI clients build on one definition.
 
 ### Steps
 
-- [ ] T001 [FR-001, FR-002] filter check, evaluator, vectors — plan Task 1
+- [x] T001 [FR-001, FR-002] filter check, evaluator, vectors — plan Task 1
 - [ ] T002 [FR-003] the board column rule — plan Task 2
 - [ ] T003 [FR-004] the contract — plan Task 3
 - [ ] T004 [FR-005] schema, migration, shared spec reset — plan Task 4

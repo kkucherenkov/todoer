@@ -1,0 +1,246 @@
+{
+  "source": "The filter of docs/specs/2026-10-01-views-design.md (Q6, Q16-Q18) and plan V2's departures 1, 2 and 4.",
+  "today": "2026-10-01",
+  "base": {
+    "tagIds": [],
+    "projectId": null,
+    "statusId": null,
+    "priority": 0,
+    "scheduledOn": null,
+    "dueOn": null,
+    "recurring": false
+  },
+  "cases": [
+    {
+      "name": "empty and matches everything",
+      "filter": { "and": [] },
+      "task": {},
+      "matches": true
+    },
+    {
+      "name": "empty or matches nothing",
+      "filter": { "or": [] },
+      "task": {},
+      "matches": false
+    },
+    {
+      "name": "tag present",
+      "filter": { "tag": "018f0000-0000-7000-8000-00000000000a" },
+      "task": { "tagIds": ["018f0000-0000-7000-8000-00000000000a"] },
+      "matches": true
+    },
+    {
+      "name": "tag absent",
+      "filter": { "tag": "018f0000-0000-7000-8000-00000000000a" },
+      "task": { "tagIds": ["018f0000-0000-7000-8000-00000000000b"] },
+      "matches": false
+    },
+    {
+      "name": "and of two tags needs both",
+      "filter": {
+        "and": [
+          { "tag": "018f0000-0000-7000-8000-00000000000a" },
+          { "tag": "018f0000-0000-7000-8000-00000000000b" }
+        ]
+      },
+      "task": { "tagIds": ["018f0000-0000-7000-8000-00000000000a"] },
+      "matches": false
+    },
+    {
+      "name": "or of two tags needs one",
+      "filter": {
+        "or": [
+          { "tag": "018f0000-0000-7000-8000-00000000000a" },
+          { "tag": "018f0000-0000-7000-8000-00000000000b" }
+        ]
+      },
+      "task": { "tagIds": ["018f0000-0000-7000-8000-00000000000b"] },
+      "matches": true
+    },
+    {
+      "name": "not inverts",
+      "filter": { "not": { "tag": "018f0000-0000-7000-8000-00000000000a" } },
+      "task": {},
+      "matches": true
+    },
+    {
+      "name": "project by id",
+      "filter": { "project": "018f0000-0000-7000-8000-0000000000aa" },
+      "task": { "projectId": "018f0000-0000-7000-8000-0000000000aa" },
+      "matches": true
+    },
+    {
+      "name": "project null is no project",
+      "filter": { "project": null },
+      "task": {},
+      "matches": true
+    },
+    {
+      "name": "project null refuses a task in a project",
+      "filter": { "project": null },
+      "task": { "projectId": "018f0000-0000-7000-8000-0000000000aa" },
+      "matches": false
+    },
+    {
+      "name": "status by displayed id",
+      "filter": { "status": "018f0000-0000-7000-8000-0000000000cc" },
+      "task": { "statusId": "018f0000-0000-7000-8000-0000000000cc" },
+      "matches": true
+    },
+    {
+      "name": "priority in list",
+      "filter": { "priority": [3, 4] },
+      "task": { "priority": 4 },
+      "matches": true
+    },
+    {
+      "name": "priority not in list",
+      "filter": { "priority": [3, 4] },
+      "task": { "priority": 0 },
+      "matches": false
+    },
+    {
+      "name": "due today",
+      "filter": { "due": { "from": 0, "to": 0 } },
+      "task": { "dueOn": "2026-10-01" },
+      "matches": true
+    },
+    {
+      "name": "due tomorrow is not today",
+      "filter": { "due": { "from": 0, "to": 0 } },
+      "task": { "dueOn": "2026-10-02" },
+      "matches": false
+    },
+    {
+      "name": "overdue is before today",
+      "filter": { "due": { "to": -1 } },
+      "task": { "dueOn": "2026-09-30" },
+      "matches": true
+    },
+    {
+      "name": "overdue excludes today",
+      "filter": { "due": { "to": -1 } },
+      "task": { "dueOn": "2026-10-01" },
+      "matches": false
+    },
+    {
+      "name": "next 7 days includes the seventh",
+      "filter": { "scheduled": { "from": 0, "to": 6 } },
+      "task": { "scheduledOn": "2026-10-07" },
+      "matches": true
+    },
+    {
+      "name": "next 7 days excludes the eighth",
+      "filter": { "scheduled": { "from": 0, "to": 6 } },
+      "task": { "scheduledOn": "2026-10-08" },
+      "matches": false
+    },
+    {
+      "name": "offset crosses a month end",
+      "filter": { "due": { "from": 30, "to": 30 } },
+      "task": { "dueOn": "2026-10-31" },
+      "matches": true
+    },
+    {
+      "name": "offset crosses a year end",
+      "filter": { "due": { "from": 92, "to": 92 } },
+      "task": { "dueOn": "2027-01-01" },
+      "matches": true
+    },
+    {
+      "name": "absolute bounds",
+      "filter": { "due": { "from": "2026-09-01", "to": "2026-09-30" } },
+      "task": { "dueOn": "2026-09-15" },
+      "matches": true
+    },
+    {
+      "name": "mixed bounds",
+      "filter": { "due": { "from": "2026-09-01", "to": 0 } },
+      "task": { "dueOn": "2026-10-02" },
+      "matches": false
+    },
+    {
+      "name": "a date range never matches a missing date",
+      "filter": { "due": { "to": 0 } },
+      "task": {},
+      "matches": false
+    },
+    {
+      "name": "an empty range is has-a-date",
+      "filter": { "due": {} },
+      "task": { "dueOn": "1999-01-01" },
+      "matches": true
+    },
+    {
+      "name": "an empty range refuses no date",
+      "filter": { "scheduled": {} },
+      "task": {},
+      "matches": false
+    },
+    {
+      "name": "recurring",
+      "filter": { "recurring": true },
+      "task": { "recurring": true },
+      "matches": true
+    },
+    {
+      "name": "not recurring",
+      "filter": { "recurring": false },
+      "task": { "recurring": true },
+      "matches": false
+    },
+    {
+      "name": "work this week",
+      "filter": {
+        "and": [
+          { "project": "018f0000-0000-7000-8000-0000000000aa" },
+          { "scheduled": { "from": 0, "to": 6 } },
+          { "not": { "tag": "018f0000-0000-7000-8000-00000000000b" } }
+        ]
+      },
+      "task": {
+        "projectId": "018f0000-0000-7000-8000-0000000000aa",
+        "scheduledOn": "2026-10-03",
+        "tagIds": ["018f0000-0000-7000-8000-00000000000a"]
+      },
+      "matches": true
+    }
+  ],
+  "invalid": [
+    { "name": "not an object", "filter": "x" },
+    { "name": "null", "filter": null },
+    { "name": "an array", "filter": [] },
+    {
+      "name": "two keys",
+      "filter": {
+        "tag": "018f0000-0000-7000-8000-00000000000a",
+        "recurring": true
+      }
+    },
+    { "name": "no keys", "filter": {} },
+    { "name": "unknown key", "filter": { "title": "x" } },
+    { "name": "and not an array", "filter": { "and": { "recurring": true } } },
+    { "name": "not of an array", "filter": { "not": [] } },
+    { "name": "tag not a uuid", "filter": { "tag": "@phone" } },
+    { "name": "tag null", "filter": { "tag": null } },
+    { "name": "status null", "filter": { "status": null } },
+    { "name": "project a name", "filter": { "project": "work" } },
+    { "name": "priority empty", "filter": { "priority": [] } },
+    { "name": "priority out of range", "filter": { "priority": [5] } },
+    { "name": "priority not integers", "filter": { "priority": [1.5] } },
+    { "name": "priority not a list", "filter": { "priority": 2 } },
+    { "name": "range unknown key", "filter": { "due": { "before": 0 } } },
+    {
+      "name": "range bound not a date",
+      "filter": { "due": { "from": "2026-02-30" } }
+    },
+    { "name": "range bound fractional", "filter": { "due": { "to": 0.5 } } },
+    { "name": "range offset too far", "filter": { "due": { "to": 36601 } } },
+    { "name": "range not an object", "filter": { "scheduled": 0 } },
+    { "name": "recurring not boolean", "filter": { "recurring": "yes" } },
+    {
+      "name": "nested invalid leaf",
+      "filter": { "and": [{ "or": [{ "tag": "x" }] }] }
+    }
+  ]
+}
