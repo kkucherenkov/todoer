@@ -67,7 +67,7 @@ export function sqlDatabaseContract(
       expect(db.all('SELECT b FROM t')).toEqual([{ b: 'kept' }]);
     });
 
-    it.runIf(queuesInProcess)(
+    it.skipIf(!queuesInProcess)(
       'runs overlapping write locks one after the other',
       async () => {
         const db = await fresh();
@@ -92,6 +92,17 @@ export function sqlDatabaseContract(
         ]);
       },
     );
+
+    // On one connection the inner call can only wait for the outer body,
+    // which is waiting for it: refused, never a silent hang.
+    it('refuses a write lock taken from inside a lock body', async () => {
+      const db = await fresh();
+      await expect(
+        db.withWriteLock(() => db.withWriteLock(() => Promise.resolve())),
+      ).rejects.toThrow();
+      expect(db.inTransaction).toBe(false);
+      await db.withWriteLock(() => Promise.resolve());
+    });
 
     it('propagates the original error when the body ended the transaction', async () => {
       const db = await fresh();

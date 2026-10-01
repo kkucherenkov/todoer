@@ -18,6 +18,18 @@ sqlDatabaseContract(
   () => new WasmSqlite(new sqlite3.oo1.DB(':memory:', 'c'), sqlite3.capi),
 );
 
+describe('WasmSqlite', () => {
+  it('names the re-entry it refuses', async () => {
+    const db = new WasmSqlite(
+      new sqlite3.oo1.DB(':memory:', 'c'),
+      sqlite3.capi,
+    );
+    await expect(
+      db.withWriteLock(() => db.withWriteLock(() => Promise.resolve())),
+    ).rejects.toThrow('withWriteLock called while a lock body runs');
+  });
+});
+
 describe('openWasmStore', () => {
   it('applies the schema and merges a pulled page', async () => {
     const store = openWasmStore(sqlite3, new sqlite3.oo1.DB(':memory:', 'c'));

@@ -7,6 +7,10 @@ import { SCHEMA, Store, type SqlDatabase, type SqlValue } from './store.js';
 export class WasmSqlite implements SqlDatabase {
   // ponytail: one queue for the whole worker; per-table locks never needed.
   private tail: Promise<unknown> = Promise.resolve();
+  // A body is running. Without async context a call made from inside it
+  // cannot be told from one made beside it; both are refused, because the
+  // first would otherwise queue behind the body that awaits it, forever.
+  private held = false;
 
   constructor(
     private readonly db: Database,
@@ -36,11 +40,20 @@ export class WasmSqlite implements SqlDatabase {
     }) as T[];
   }
 
-  /** BEGIN IMMEDIATE held across awaits. A second caller in this worker
-   *  waits its turn; there is no other process to wait for. */
+  /** BEGIN IMMEDIATE held across awaits. Callers that arrive before a body
+   *  starts wait their turn; there is no other process to wait for. A call
+   *  while a body runs is refused (see `held`). */
   withWriteLock<T>(fn: () => Promise<T>): Promise<T> {
+    if (this.held) {
+      return Promise.reject(
+        new Error(
+          'withWriteLock called while a lock body runs: on one connection it would wait for itself',
+        ),
+      );
+    }
     const turn = async () => {
       this.db.exec('BEGIN IMMEDIATE');
+      this.held = true;
       try {
         const result = await fn();
         this.db.exec('COMMIT');
@@ -48,6 +61,8 @@ export class WasmSqlite implements SqlDatabase {
       } catch (error) {
         if (this.inTransaction) this.db.exec('ROLLBACK');
         throw error;
+      } finally {
+        this.held = false;
       }
     };
     const result = this.tail.then(turn, turn);
