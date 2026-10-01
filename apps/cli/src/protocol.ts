@@ -66,11 +66,11 @@ export function ownOutcome(
 }
 
 /**
- * Throws for a command's batch when any operation was refused. One operation
- * sent: that operation's own error. Several: one error listing every refused
- * operation and how many others landed or wait in the outbox, because the
- * server applies operations one by one and "refused" alone reads as "nothing
- * happened". Exit 1 if any was rejected, else 4.
+ * Throws for a command's batch when any operation was refused. A batch of one:
+ * that operation's own error. Several: one error listing every distinct refusal
+ * (identical lines once, with a count) and how many others landed or wait in
+ * the outbox, because the server applies operations one by one and "refused"
+ * alone reads as "nothing happened". Exit 1 if any was rejected, else 4.
  */
 export function throwRefusals(
   ops: {
@@ -85,12 +85,17 @@ export function throwRefusals(
   if (first === undefined) return;
   const queued = ops.filter((o) => o.outcome === 'queued').length;
   const sent = ops.length - queued;
-  if (sent === 1)
+  if (ops.length === 1)
     raise(first.outcome, 'the server holds a newer version of this row');
   const applied = sent - refused.length;
-  const parts = refused.map(
-    ({ op, outcome }) =>
-      `${op.kind} ${op.table}: ${outcome.kind === 'rejected' ? outcome.reason : `the server holds a newer version (version ${String(outcome.version)})`}`,
+  // A batch-level refusal gives every op the same line: list each once, with a count.
+  const counts = new Map<string, number>();
+  for (const { op, outcome } of refused) {
+    const line = `${op.kind} ${op.table}: ${outcome.kind === 'rejected' ? outcome.reason : `the server holds a newer version (version ${String(outcome.version)})`}`;
+    counts.set(line, (counts.get(line) ?? 0) + 1);
+  }
+  const parts = [...counts].map(([line, n]) =>
+    n > 1 ? `${line} (×${n})` : line,
   );
   if (applied > 0) parts.push(`${applied} other operation(s) applied`);
   if (queued > 0) parts.push(`${queued} still queued`);

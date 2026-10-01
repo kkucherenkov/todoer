@@ -113,7 +113,8 @@ exit codes (ADR 0015 §2):
   4  reserved for a conflict — the server holds a newer version of the row.
      No command sends an operation that can return one yet: add, done, skip
      and undo send creates and statusId sets, which carry no baseVersion, so
-     none of them conflicts
+     none of them conflicts. A command that sent several operations lists
+     every refused one and how many others were applied
   5  the server was not reached: the answer is local, and any operation
      this command queued will be sent by a later command. Do not run the
      command again for the same intent — that would queue it twice

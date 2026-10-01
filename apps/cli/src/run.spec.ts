@@ -854,8 +854,56 @@ describe('run', () => {
       const refused = run(['done', '000002'], d);
       await expect(refused).rejects.toThrow(RefusalError);
       await expect(refused).rejects.toThrow(
-        'create status: nope; create status: nope; create status: nope; 2 other operation(s) applied',
+        'create status: nope (×3); 2 other operation(s) applied',
       );
+    });
+
+    // The server answers only the first operation: the rest wait in the outbox.
+    it('lists the refused operation and counts those still queued', async () => {
+      const d = hexDeps(fakeServer().send);
+      await run(['add', 'file taxes'], d);
+      let sent = 0;
+      d.send = (request) => {
+        sent = request.ops.length;
+        const [first] = request.ops;
+        return Promise.resolve(
+          json({
+            cursor: 0,
+            results: [
+              { opId: first?.opId, status: 'rejected', reason: 'nope' },
+            ],
+            changes: [],
+          }),
+        );
+      };
+      const refused = run(['done', '000002'], d);
+      await expect(refused).rejects.toThrow(RefusalError);
+      await expect(refused).rejects.toThrow(
+        `create status: nope; ${sent - 1} still queued`,
+      );
+    });
+
+    // A parallel command already settled one op as failed; the rest applies.
+    it('lists an operation a parallel command saw refused, and the applied rest', async () => {
+      const d = hexDeps(fakeServer().send);
+      await run(['add', 'file taxes'], d);
+      d.send = decidingServer(() => undefined);
+      let seeded: string | undefined;
+      d.store.enqueue = (op) => {
+        Store.prototype.enqueue.call(d.store, op);
+        if (seeded !== undefined) return;
+        seeded = op.opId;
+        d.store.settle(
+          [{ opId: op.opId, status: 'rejected', reason: 'nope' }],
+          new Set(),
+        );
+      };
+      const refused = run(['done', '000002'], d);
+      await expect(refused).rejects.toThrow(RefusalError);
+      await expect(refused).rejects.toThrow(
+        /^create status: nope; \d+ other operation\(s\) applied$/,
+      );
+      expect(d.store.entry(seeded ?? '')).toBeUndefined();
     });
 
     // Scenario 2.

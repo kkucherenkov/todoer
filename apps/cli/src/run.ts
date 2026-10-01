@@ -573,7 +573,8 @@ function listOutbox(store: Store): { data: unknown; human: string[] } {
  * that depend on rows a parallel invocation may be writing. The ops are
  * stored before they are sent, so every attempt carries their ids (ADR 0015
  * §4). Every one counts as the command's own, so a refusal of any of them is
- * the command's exit 1 (4 for a conflict), reporting every operation's fate. Returns whether the server has all of them.
+ * the command's exit 1 (4 for a conflict), reporting every operation's fate.
+ * Returns whether the server has all of them.
  */
 async function submit(
   store: Store,
