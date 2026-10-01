@@ -2,9 +2,10 @@ import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Config } from './config.js';
+import { RefusalError } from './protocol.js';
 import { Store } from './store.js';
 import { flush } from './sync.js';
-import type { TokenSource } from './auth.js';
+import { tokenSource, type AuthApi, type TokenSource } from './auth.js';
 import { httpTransport } from './transport.js';
 
 let server: Server | undefined;
@@ -27,6 +28,15 @@ function tokens(current = '', renewed: string | null = null): TokenSource {
     renew: () => Promise.resolve(renewed),
   };
 }
+
+const task = {
+  opId: 'a',
+  kind: 'create',
+  table: 'task',
+  id: 't',
+  fields: { title: 'a', rank: 'a0' },
+  ts: '2026-10-01T00:00:00.000Z',
+} as const;
 
 /** Answers each request with the next status, recording its authorization. */
 async function serve(
@@ -68,17 +78,74 @@ describe('httpTransport', () => {
     expect(seen).toHaveLength(2);
   });
 
-  it('does not resend when there is nothing new to send', async () => {
+  it('does not resend when there is nothing to renew', async () => {
     const { config, seen } = await serve([401, 200]);
-    for (const renewed of [null, 'old']) {
-      seen.length = 0;
-      const response = await httpTransport(
-        config,
-        tokens('old', renewed),
-      )(request);
-      expect(response.status).toBe(seen.length === 1 ? 401 : 200);
-      expect(seen).toHaveLength(1);
-    }
+    const response = await httpTransport(config, tokens('old', null))(request);
+    expect(response.status).toBe(401);
+    expect(seen).toHaveLength(1);
+  });
+
+  // FR-011: the token source decides whether a refused token is worth a
+  // refresh; the transport always resends what it gets back.
+  it('asks to renew the token the server refused', async () => {
+    const { config, seen } = await serve([401, 200]);
+    const refused: string[] = [];
+    const source: TokenSource = {
+      current: () => Promise.resolve('old'),
+      renew: (token) => {
+        refused.push(token);
+        return Promise.resolve('new');
+      },
+    };
+    await httpTransport(config, source)(request);
+    expect(refused).toEqual(['old']);
+    expect(seen).toEqual(['Bearer old', 'Bearer new']);
+  });
+
+  it('refreshes once on a 401 for a token that looks valid', async () => {
+    const { config, seen } = await serve([401, 200]);
+    store = Store.open(':memory:');
+    const now = new Date('2026-10-01T12:00:00.000Z');
+    store.saveAuth({
+      accessToken: 'skewed',
+      accessExpiresAt: '2026-10-01T12:10:00.000Z',
+      refreshToken: 'r-skewed',
+    });
+    const refreshed: string[] = [];
+    const api: AuthApi = {
+      login: () => Promise.reject(new Error('unused')),
+      refresh: (refreshToken) => {
+        refreshed.push(refreshToken);
+        return Promise.resolve({
+          accessToken: 'new',
+          accessExpiresAt: '2026-10-01T12:15:00.000Z',
+          refreshToken: 'r-new',
+        });
+      },
+      logout: () => Promise.reject(new Error('unused')),
+    };
+    const source = tokenSource(store, api, '', () => now);
+    const response = await httpTransport(config, source)(request);
+    expect(response.status).toBe(200);
+    expect(refreshed).toEqual(['r-skewed']);
+    expect(seen).toEqual(['Bearer skewed', 'Bearer new']);
+  });
+
+  it('surfaces a refusal from the token source and keeps operations pending', async () => {
+    const { config } = await serve([200]);
+    store = Store.open(':memory:');
+    store.enqueue(task);
+    const source: TokenSource = {
+      current: () =>
+        Promise.reject(
+          new RefusalError('your session has ended — run todoer login'),
+        ),
+      renew: () => Promise.resolve(null),
+    };
+    await expect(flush(store, httpTransport(config, source))).rejects.toThrow(
+      /run todoer login/,
+    );
+    expect(store.counts()).toEqual({ pending: 1, failed: 0 });
   });
 
   it('sends no authorization header without a token', async () => {
@@ -90,14 +157,7 @@ describe('httpTransport', () => {
   it('turns a 401 into a refusal that says to log in', async () => {
     const { config } = await serve([401, 401]);
     store = Store.open(':memory:');
-    store.enqueue({
-      opId: 'a',
-      kind: 'create',
-      table: 'task',
-      id: 't',
-      fields: { title: 'a', rank: 'a0' },
-      ts: '2026-10-01T00:00:00.000Z',
-    });
+    store.enqueue(task);
     await expect(flush(store, httpTransport(config, tokens()))).rejects.toThrow(
       /run todoer login/,
     );

@@ -12,8 +12,9 @@ export type AuthApi = {
 
 export type TokenSource = {
   current(): Promise<string>;
-  /** A token to retry with, or null when there is nothing to renew. */
-  renew(): Promise<string | null>;
+  /** A token to retry with after the server refused `refused`, or null when
+   *  there is nothing to renew. */
+  renew(refused: string): Promise<string | null>;
 };
 
 /** Renew an access token this close to its expiry, so it does not lapse
@@ -36,12 +37,13 @@ export function tokenSource(
   const expiring = (auth: StoredAuth) =>
     Date.parse(auth.accessExpiresAt) - now().getTime() < RENEW_WITHIN_MS;
 
-  const renew = async (): Promise<string | null> => {
+  const renew = async (refused: string): Promise<string | null> => {
     if (envToken !== '') return null;
     const renewed = await store.withWriteLock(async () => {
       const auth = store.auth();
       if (auth === undefined) return null;
-      if (!expiring(auth)) return auth.accessToken;
+      // Another process already rotated the token the server refused.
+      if (auth.accessToken !== refused) return auth.accessToken;
       const next = await api.refresh(auth.refreshToken);
       if (next === 'invalid') store.clearAuth();
       else store.saveAuth(next);
@@ -59,7 +61,9 @@ export function tokenSource(
       if (envToken !== '') return envToken;
       const auth = store.auth();
       if (auth === undefined) return '';
-      return expiring(auth) ? ((await renew()) ?? '') : auth.accessToken;
+      return expiring(auth)
+        ? ((await renew(auth.accessToken)) ?? '')
+        : auth.accessToken;
     },
     renew,
   };

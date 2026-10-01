@@ -50,7 +50,9 @@ async function exchange(
   let response: Response;
   try {
     response = await send(request);
-  } catch {
+  } catch (error) {
+    // The session ended: not a network fault, and a resend cannot fix it.
+    if (error instanceof RefusalError) throw error;
     return 'unreached';
   }
   if (response.status === 410) return 'gone';

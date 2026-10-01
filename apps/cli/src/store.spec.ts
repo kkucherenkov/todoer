@@ -6,6 +6,7 @@ import {
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Op } from '@todoer/specs';
@@ -374,6 +375,25 @@ describe('Store auth', () => {
     ).rejects.toThrow('boom');
     expect(store.auth()).toBeUndefined();
     await store.withWriteLock(() => Promise.resolve());
+  });
+
+  // The lock polls with the busy timeout off; every other statement must get
+  // it back, on the success path and the throw path alike.
+  it('restores the busy timeout after the lock is taken', async () => {
+    const store = storeAt();
+    const busyTimeout = () =>
+      (store as unknown as { db: DatabaseSync }).db
+        .prepare('PRAGMA busy_timeout')
+        .get() as { timeout: number };
+    await store.withWriteLock(() => {
+      expect(busyTimeout().timeout).toBe(5000);
+      return Promise.resolve();
+    });
+    expect(busyTimeout().timeout).toBe(5000);
+    await expect(
+      store.withWriteLock(() => Promise.reject(new Error('boom'))),
+    ).rejects.toThrow('boom');
+    expect(busyTimeout().timeout).toBe(5000);
   });
 });
 

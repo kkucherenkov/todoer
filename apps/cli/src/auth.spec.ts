@@ -53,8 +53,9 @@ describe('tokenSource', () => {
     const { api, calls } = fakeApi();
     const tokens = tokenSource(store, api, 'env-token', now);
     expect(await tokens.current()).toBe('env-token');
-    expect(await tokens.renew()).toBeNull();
+    expect(await tokens.renew('env-token')).toBeNull();
     expect(calls).toEqual([]);
+    expect(store.auth()).toEqual(session('old', 5));
   });
 
   it('returns a still-valid stored access token without refreshing', async () => {
@@ -112,11 +113,21 @@ describe('tokenSource', () => {
     expect([x, y]).toEqual(['new', 'new']);
   });
 
-  it('renew returns the stored token when it is no longer expiring', async () => {
+  it('renew returns the stored token when another process already rotated it', async () => {
     const store = storeAt();
     store.saveAuth(session('fresh', 600));
     const { api, calls } = fakeApi();
-    expect(await tokenSource(store, api, '', now).renew()).toBe('fresh');
+    expect(await tokenSource(store, api, '', now).renew('stale')).toBe('fresh');
     expect(calls).toEqual([]);
+  });
+
+  // FR-011: a 401 for a token the client believes valid (clock skew).
+  it('renew refreshes the refused token even when it is not expiring', async () => {
+    const store = storeAt();
+    store.saveAuth(session('skewed', 600));
+    const { api, calls } = fakeApi();
+    expect(await tokenSource(store, api, '', now).renew('skewed')).toBe('new');
+    expect(calls).toEqual(['r-skewed']);
+    expect(store.auth()).toEqual(session('new', 900));
   });
 });

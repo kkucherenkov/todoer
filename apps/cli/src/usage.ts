@@ -73,7 +73,8 @@ exit codes (ADR 0015 §2):
   0  done, and the server has it
   1  the server refused: this command's operation was rejected, or the
      request was refused (401, 403, …). A 401 means there is no
-     valid session — run todoer login (or fix TODOER_TOKEN); queued operations stay queued; if
+     valid session — run todoer login (or fix TODOER_TOKEN); queued
+     operations stay queued; if
      a write command (add, done, skip, undo) exits 1 this way, its
      operation is still queued — fix the cause and run any command (for
      example list) to send it, not the same command again

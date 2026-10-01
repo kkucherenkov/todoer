@@ -22,9 +22,7 @@ export function httpTransport(config: Config, tokens: TokenSource): Transport {
     const token = await tokens.current();
     const response = await post(body, token);
     if (response.status !== 401) return response;
-    // Resending the token that was just refused cannot change the answer.
-    const renewed = await tokens.renew();
-    if (renewed === null || renewed === token) return response;
-    return post(body, renewed);
+    const renewed = await tokens.renew(token);
+    return renewed === null ? response : post(body, renewed);
   };
 }

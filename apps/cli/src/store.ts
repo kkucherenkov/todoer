@@ -55,8 +55,13 @@ export type StoredAuth = {
   refreshToken: string;
 };
 
-/** How long `withWriteLock` waits for another holder. Longer than the HTTP
- *  timeout, which bounds the holder's own refresh. */
+/** What every ordinary statement waits for a busy database. */
+const BUSY_TIMEOUT_MS = 5000;
+
+/** How long `withWriteLock` waits for another holder. Longer than the default
+ *  HTTP timeout of 3s, which bounds the holder's own refresh; a
+ *  `TODOER_TIMEOUT_MS` above this can outlast it, and the waiter then fails
+ *  with the busy error instead of waiting on. */
 const WRITE_LOCK_WAIT_MS = 10_000;
 
 type OutboxRow = {
@@ -160,7 +165,7 @@ export class Store {
     const umask = process.umask(0o077);
     let db: DatabaseSync;
     try {
-      db = new DatabaseSync(path, { timeout: 5000 });
+      db = new DatabaseSync(path, { timeout: BUSY_TIMEOUT_MS });
       // Retried as one unit: both statements are idempotent, and a busy
       // error from either one means the file did not finish this
       // initialisation.
@@ -213,7 +218,7 @@ export class Store {
       } catch (error) {
         if (!isSqliteBusy(error) || Date.now() >= deadline) throw error;
       } finally {
-        this.db.exec('PRAGMA busy_timeout = 5000');
+        this.db.exec(`PRAGMA busy_timeout = ${BUSY_TIMEOUT_MS}`);
       }
       await new Promise((resolve) => setTimeout(resolve, delay));
     }
