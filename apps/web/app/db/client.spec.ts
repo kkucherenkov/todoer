@@ -49,6 +49,29 @@ describe('connect', () => {
     expect(seen).toEqual([]); // the first post went to nobody
     post({ type: 'ready', build: BUILD });
     expect(await answer).toEqual({ ok: true });
+    // A restarted worker has no subscribers: the tab says hello again.
+    expect(seen.map((m) => m.type)).toEqual(['hello', 'request']);
+  });
+
+  it('resends what is pending on ready only, never on a publish', async () => {
+    const { seen, post } = fakeWorker();
+    db = connect(BUILD);
+    void db.request({ kind: 'signIn', email: 'a@b.c', password: 'x' });
+    await vi.waitFor(() =>
+      expect(seen.map((m) => m.type)).toEqual(['hello', 'request']),
+    );
+    // What the worker answers a stale tab's hello with: the snapshot.
+    post({
+      type: 'publish',
+      topic: 'summary',
+      value: { tasks: 1 },
+      build: BUILD,
+    });
+    await vi.waitFor(() =>
+      expect(db!.topics.summary.value).toEqual({ tasks: 1 }),
+    );
+    await pause();
+    expect(seen.map((m) => m.type)).toEqual(['hello', 'request']);
   });
 
   it("ignores a reply for another tab's id", async () => {
@@ -79,6 +102,16 @@ describe('connect', () => {
     db = connect(BUILD, { timeoutMs: 50 });
     const answer = await db.request({ kind: 'sync', reason: 'manual' });
     expect(answer).toMatchObject({
+      ok: false,
+      failure: { kind: 'unavailable' },
+    });
+  });
+
+  it("resolves what is pending as 'unavailable' on close", async () => {
+    db = connect(BUILD);
+    const answer = db.request({ kind: 'signOut' });
+    db.close();
+    expect(await answer).toMatchObject({
       ok: false,
       failure: { kind: 'unavailable' },
     });

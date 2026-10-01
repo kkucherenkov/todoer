@@ -24,6 +24,11 @@ type Pending = {
   timer: ReturnType<typeof setTimeout>;
 };
 
+const unavailable = (detail: string): Result => ({
+  ok: false,
+  failure: { kind: 'unavailable', detail },
+});
+
 type Unstamped<T> = T extends unknown ? Omit<T, 'build'> : never;
 
 /** This tab's side of the protocol, leader or follower alike. */
@@ -77,13 +82,9 @@ export function connect(
         const id = ++lastId;
         const timer = setTimeout(() => {
           pending.delete(id);
-          resolve({
-            ok: false,
-            failure: {
-              kind: 'unavailable',
-              detail: `no database worker answered within ${timeoutMs} ms`,
-            },
-          });
+          resolve(
+            unavailable(`no database worker answered within ${timeoutMs} ms`),
+          );
         }, timeoutMs);
         pending.set(id, { command, resolve, timer });
         post({ type: 'request', tab, id, command });
@@ -92,7 +93,10 @@ export function connect(
     topics,
     stale,
     close() {
-      for (const { timer } of pending.values()) clearTimeout(timer);
+      for (const { timer, resolve } of pending.values()) {
+        clearTimeout(timer);
+        resolve(unavailable('the connection to the database worker closed'));
+      }
       pending.clear();
       channel.close();
     },
