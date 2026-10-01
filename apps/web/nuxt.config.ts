@@ -52,7 +52,7 @@ export default defineNuxtConfig({
       cleanupOutdatedCaches: true,
       navigateFallback: '/index.html',
       // The API and health are never answered from the cache (Q9 "Cost").
-      navigateFallbackDenylist: [/^\/api(\/|$)/i, /^\/health(\/|$)/i],
+      navigateFallbackDenylist: [/^\/api(\/|\?|$)/i, /^\/health(\/|\?|$)/i],
     },
     client: { installPrompt: false, periodicSyncForUpdates: 3600 },
   },
