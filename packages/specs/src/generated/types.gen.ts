@@ -514,6 +514,10 @@ export type DeleteAuthAccountErrors = {
    */
   409: Problem;
   /**
+   * too many attempts; see Retry-After
+   */
+  429: Problem;
+  /**
    * unexpected error
    */
   default: Problem;

@@ -293,7 +293,7 @@ export const postAuthReset = <ThrowOnError extends boolean = false>(
 
 /**
  * Delete the caller's account
- * Needs the current password. Purges the user and everything they own, without tombstones. The owner cannot delete the account while other users exist.
+ * Needs the current password. Purges the user and everything they own, without tombstones. The owner cannot delete the account while other users exist. Attempts per address are limited: too many are answered 429 with Retry-After.
  */
 export const deleteAuthAccount = <ThrowOnError extends boolean = false>(
   options: Options<DeleteAuthAccountData, ThrowOnError>,
