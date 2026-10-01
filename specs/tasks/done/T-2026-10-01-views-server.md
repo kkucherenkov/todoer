@@ -8,6 +8,7 @@
   (Q1–Q18); tuxedo #406
 - Plan: [docs/plans/2026-10-01-plan-v2-views-server.md](../../../docs/plans/2026-10-01-plan-v2-views-server.md)
 - Completed: 2026-10-01
+- Result: https://github.com/kkucherenkov/todoer/pull/13
 
 ### Goal
 
