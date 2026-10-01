@@ -15,6 +15,30 @@ import type {
   PostAuthRegisterData,
   PostAuthRegisterResponse,
   PostAuthRegisterError,
+  PostAuthRefreshData,
+  PostAuthRefreshResponse,
+  PostAuthRefreshError,
+  PostAuthLogoutData,
+  PostAuthLogoutResponse,
+  PostAuthLogoutError,
+  PostAuthPasswordData,
+  PostAuthPasswordResponse,
+  PostAuthPasswordError,
+  PostAuthInvitesData,
+  PostAuthInvitesResponse,
+  PostAuthInvitesError,
+  PostAuthUserPasswordData,
+  PostAuthUserPasswordResponse,
+  PostAuthUserPasswordError,
+  PostAuthForgotData,
+  PostAuthForgotResponse,
+  PostAuthForgotError,
+  PostAuthResetData,
+  PostAuthResetResponse,
+  PostAuthResetError,
+  DeleteAuthAccountData,
+  DeleteAuthAccountResponse,
+  DeleteAuthAccountError,
   PostSyncData,
   PostSyncResponse,
   PostSyncError,
@@ -56,6 +80,7 @@ export const getHealth = <ThrowOnError extends boolean = false>(
 
 /**
  * Sign in
+ * Verifies the password and opens a new session. Every failure is the same 401, whether the address is unknown or the password wrong. Repeated failures from one address or IP are answered 429 with Retry-After.
  */
 export const postAuthLogin = <ThrowOnError extends boolean = false>(
   options: Options<PostAuthLoginData, ThrowOnError>,
@@ -76,6 +101,7 @@ export const postAuthLogin = <ThrowOnError extends boolean = false>(
 
 /**
  * Create an account and sign in
+ * Open only while the instance has no users; the first account becomes the owner. Afterwards an invitation is required, single-use and, when it was issued for an address, valid only for that address.
  */
 export const postAuthRegister = <ThrowOnError extends boolean = false>(
   options: Options<PostAuthRegisterData, ThrowOnError>,
@@ -86,6 +112,204 @@ export const postAuthRegister = <ThrowOnError extends boolean = false>(
     ThrowOnError
   >({
     url: '/auth/register',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
+    },
+  });
+};
+
+/**
+ * Exchange a refresh token for a new pair
+ * Spends the presented refresh token and returns a new access token and a new refresh token. A just-spent token presented again within about 30 seconds returns the same pair; a spent token past that window revokes the session. An expired, revoked or unknown token is 401.
+ */
+export const postAuthRefresh = <ThrowOnError extends boolean = false>(
+  options: Options<PostAuthRefreshData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).post<
+    PostAuthRefreshResponse,
+    PostAuthRefreshError,
+    ThrowOnError
+  >({
+    url: '/auth/refresh',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
+    },
+  });
+};
+
+/**
+ * Revoke the current session or all of them
+ * Revokes the session of the presented refresh token, or every session of the caller when `all` is true. Access tokens already issued live out their 15 minutes.
+ */
+export const postAuthLogout = <ThrowOnError extends boolean = false>(
+  options: Options<PostAuthLogoutData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).post<
+    PostAuthLogoutResponse,
+    PostAuthLogoutError,
+    ThrowOnError
+  >({
+    security: [
+      {
+        scheme: 'bearer',
+        type: 'http',
+      },
+    ],
+    url: '/auth/logout',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
+    },
+  });
+};
+
+/**
+ * Change the caller's password
+ * Needs the current password. Revokes every session of the caller and returns a fresh pair, so the client that changed it stays signed in. The new password must be strong: letters, digits and symbols.
+ */
+export const postAuthPassword = <ThrowOnError extends boolean = false>(
+  options: Options<PostAuthPasswordData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).post<
+    PostAuthPasswordResponse,
+    PostAuthPasswordError,
+    ThrowOnError
+  >({
+    security: [
+      {
+        scheme: 'bearer',
+        type: 'http',
+      },
+    ],
+    url: '/auth/password',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
+    },
+  });
+};
+
+/**
+ * Issue an invitation
+ * Owner only. Returns a random single-use token valid for 7 days; the server keeps only its hash, so this response is the only time it is visible. With `email` the token registers only that address.
+ */
+export const postAuthInvites = <ThrowOnError extends boolean = false>(
+  options: Options<PostAuthInvitesData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).post<
+    PostAuthInvitesResponse,
+    PostAuthInvitesError,
+    ThrowOnError
+  >({
+    security: [
+      {
+        scheme: 'bearer',
+        type: 'http',
+      },
+    ],
+    url: '/auth/invites',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
+    },
+  });
+};
+
+/**
+ * Set another user's password
+ * Owner only. Sets the password directly (no reset code) and revokes every session of that user. The new password must be strong.
+ */
+export const postAuthUserPassword = <ThrowOnError extends boolean = false>(
+  options: Options<PostAuthUserPasswordData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).post<
+    PostAuthUserPasswordResponse,
+    PostAuthUserPasswordError,
+    ThrowOnError
+  >({
+    security: [
+      {
+        scheme: 'bearer',
+        type: 'http',
+      },
+    ],
+    url: '/auth/users/{id}/password',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
+    },
+  });
+};
+
+/**
+ * Ask for a password-reset mail
+ * Mail is not configured in this version, so this always answers 503. Recovery is the owner setting the password, or, for the owner, the host script that prints a one-time reset code for `/auth/reset`.
+ */
+export const postAuthForgot = <ThrowOnError extends boolean = false>(
+  options: Options<PostAuthForgotData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).post<
+    PostAuthForgotResponse,
+    PostAuthForgotError,
+    ThrowOnError
+  >({
+    url: '/auth/forgot',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
+    },
+  });
+};
+
+/**
+ * Set a password with a one-time reset code
+ * The code is single-use and valid for 15 minutes. Revokes every session of the user. An invalid, spent or expired code is the same 400 as a weak password.
+ */
+export const postAuthReset = <ThrowOnError extends boolean = false>(
+  options: Options<PostAuthResetData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).post<
+    PostAuthResetResponse,
+    PostAuthResetError,
+    ThrowOnError
+  >({
+    url: '/auth/reset',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
+    },
+  });
+};
+
+/**
+ * Delete the caller's account
+ * Needs the current password. Purges the user and everything they own, without tombstones. The owner cannot delete the account while other users exist.
+ */
+export const deleteAuthAccount = <ThrowOnError extends boolean = false>(
+  options: Options<DeleteAuthAccountData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).delete<
+    DeleteAuthAccountResponse,
+    DeleteAuthAccountError,
+    ThrowOnError
+  >({
+    security: [
+      {
+        scheme: 'bearer',
+        type: 'http',
+      },
+    ],
+    url: '/auth/account',
     ...options,
     headers: {
       'Content-Type': 'application/json',

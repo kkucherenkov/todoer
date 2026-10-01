@@ -17,8 +17,56 @@ export type LoginRequest = {
   password: string;
 };
 
-export type LoginResponse = {
+export type SessionTokens = {
   accessToken: string;
+  accessExpiresAt: string;
+  refreshToken: string;
+};
+
+export type RegisterRequest = {
+  email: string;
+  password: string;
+  invitation?: string;
+};
+
+export type RefreshRequest = {
+  refreshToken: string;
+};
+
+export type LogoutRequest = {
+  refreshToken?: string;
+  all?: boolean;
+};
+
+export type PasswordChange = {
+  currentPassword: string;
+  newPassword: string;
+};
+
+export type InviteRequest = {
+  email?: string;
+};
+
+export type Invitation = {
+  token: string;
+  expiresAt: string;
+};
+
+export type PasswordSet = {
+  password: string;
+};
+
+export type ForgotRequest = {
+  email: string;
+};
+
+export type ResetRequest = {
+  code: string;
+  password: string;
+};
+
+export type AccountDelete = {
+  password: string;
 };
 
 export type Op =
@@ -143,6 +191,10 @@ export type PostAuthLoginErrors = {
    */
   401: Problem;
   /**
+   * too many failed attempts; see Retry-After
+   */
+  429: Problem;
+  /**
    * unexpected error
    */
   default: Problem;
@@ -154,14 +206,14 @@ export type PostAuthLoginResponses = {
   /**
    * signed in
    */
-  200: LoginResponse;
+  200: SessionTokens;
 };
 
 export type PostAuthLoginResponse =
   PostAuthLoginResponses[keyof PostAuthLoginResponses];
 
 export type PostAuthRegisterData = {
-  body: LoginRequest;
+  body: RegisterRequest;
   path?: never;
   query?: never;
   url: '/auth/register';
@@ -169,9 +221,17 @@ export type PostAuthRegisterData = {
 
 export type PostAuthRegisterErrors = {
   /**
+   * registration is closed, or the invitation is invalid, spent, expired or issued for another address
+   */
+  403: Problem;
+  /**
    * that address is already registered
    */
   409: Problem;
+  /**
+   * too many attempts; see Retry-After
+   */
+  429: Problem;
   /**
    * unexpected error
    */
@@ -185,11 +245,292 @@ export type PostAuthRegisterResponses = {
   /**
    * registered and signed in
    */
-  201: LoginResponse;
+  201: SessionTokens;
 };
 
 export type PostAuthRegisterResponse =
   PostAuthRegisterResponses[keyof PostAuthRegisterResponses];
+
+export type PostAuthRefreshData = {
+  body: RefreshRequest;
+  path?: never;
+  query?: never;
+  url: '/auth/refresh';
+};
+
+export type PostAuthRefreshErrors = {
+  /**
+   * invalid, expired or revoked refresh token
+   */
+  401: Problem;
+  /**
+   * too many invalid refreshes; see Retry-After
+   */
+  429: Problem;
+  /**
+   * unexpected error
+   */
+  default: Problem;
+};
+
+export type PostAuthRefreshError =
+  PostAuthRefreshErrors[keyof PostAuthRefreshErrors];
+
+export type PostAuthRefreshResponses = {
+  /**
+   * rotated
+   */
+  200: SessionTokens;
+};
+
+export type PostAuthRefreshResponse =
+  PostAuthRefreshResponses[keyof PostAuthRefreshResponses];
+
+export type PostAuthLogoutData = {
+  body: LogoutRequest;
+  path?: never;
+  query?: never;
+  url: '/auth/logout';
+};
+
+export type PostAuthLogoutErrors = {
+  /**
+   * missing or invalid bearer token
+   */
+  401: Problem;
+  /**
+   * unexpected error
+   */
+  default: Problem;
+};
+
+export type PostAuthLogoutError =
+  PostAuthLogoutErrors[keyof PostAuthLogoutErrors];
+
+export type PostAuthLogoutResponses = {
+  /**
+   * signed out
+   */
+  204: void;
+};
+
+export type PostAuthLogoutResponse =
+  PostAuthLogoutResponses[keyof PostAuthLogoutResponses];
+
+export type PostAuthPasswordData = {
+  body: PasswordChange;
+  path?: never;
+  query?: never;
+  url: '/auth/password';
+};
+
+export type PostAuthPasswordErrors = {
+  /**
+   * the new password is too weak
+   */
+  400: Problem;
+  /**
+   * missing or invalid bearer token, or wrong current password
+   */
+  401: Problem;
+  /**
+   * unexpected error
+   */
+  default: Problem;
+};
+
+export type PostAuthPasswordError =
+  PostAuthPasswordErrors[keyof PostAuthPasswordErrors];
+
+export type PostAuthPasswordResponses = {
+  /**
+   * password changed
+   */
+  200: SessionTokens;
+};
+
+export type PostAuthPasswordResponse =
+  PostAuthPasswordResponses[keyof PostAuthPasswordResponses];
+
+export type PostAuthInvitesData = {
+  body: InviteRequest;
+  path?: never;
+  query?: never;
+  url: '/auth/invites';
+};
+
+export type PostAuthInvitesErrors = {
+  /**
+   * missing or invalid bearer token
+   */
+  401: Problem;
+  /**
+   * the caller is not the owner
+   */
+  403: Problem;
+  /**
+   * unexpected error
+   */
+  default: Problem;
+};
+
+export type PostAuthInvitesError =
+  PostAuthInvitesErrors[keyof PostAuthInvitesErrors];
+
+export type PostAuthInvitesResponses = {
+  /**
+   * invitation issued
+   */
+  201: Invitation;
+};
+
+export type PostAuthInvitesResponse =
+  PostAuthInvitesResponses[keyof PostAuthInvitesResponses];
+
+export type PostAuthUserPasswordData = {
+  body: PasswordSet;
+  path: {
+    id: string;
+  };
+  query?: never;
+  url: '/auth/users/{id}/password';
+};
+
+export type PostAuthUserPasswordErrors = {
+  /**
+   * the password is too weak
+   */
+  400: Problem;
+  /**
+   * missing or invalid bearer token
+   */
+  401: Problem;
+  /**
+   * the caller is not the owner
+   */
+  403: Problem;
+  /**
+   * no such user
+   */
+  404: Problem;
+  /**
+   * unexpected error
+   */
+  default: Problem;
+};
+
+export type PostAuthUserPasswordError =
+  PostAuthUserPasswordErrors[keyof PostAuthUserPasswordErrors];
+
+export type PostAuthUserPasswordResponses = {
+  /**
+   * password set
+   */
+  204: void;
+};
+
+export type PostAuthUserPasswordResponse =
+  PostAuthUserPasswordResponses[keyof PostAuthUserPasswordResponses];
+
+export type PostAuthForgotData = {
+  body: ForgotRequest;
+  path?: never;
+  query?: never;
+  url: '/auth/forgot';
+};
+
+export type PostAuthForgotErrors = {
+  /**
+   * mail is not configured
+   */
+  503: Problem;
+  /**
+   * unexpected error
+   */
+  default: Problem;
+};
+
+export type PostAuthForgotError =
+  PostAuthForgotErrors[keyof PostAuthForgotErrors];
+
+export type PostAuthForgotResponses = {
+  /**
+   * unexpected error
+   */
+  default: Problem;
+};
+
+export type PostAuthForgotResponse =
+  PostAuthForgotResponses[keyof PostAuthForgotResponses];
+
+export type PostAuthResetData = {
+  body: ResetRequest;
+  path?: never;
+  query?: never;
+  url: '/auth/reset';
+};
+
+export type PostAuthResetErrors = {
+  /**
+   * the password is too weak, or the code is invalid
+   */
+  400: Problem;
+  /**
+   * too many attempts; see Retry-After
+   */
+  429: Problem;
+  /**
+   * unexpected error
+   */
+  default: Problem;
+};
+
+export type PostAuthResetError = PostAuthResetErrors[keyof PostAuthResetErrors];
+
+export type PostAuthResetResponses = {
+  /**
+   * password reset
+   */
+  204: void;
+};
+
+export type PostAuthResetResponse =
+  PostAuthResetResponses[keyof PostAuthResetResponses];
+
+export type DeleteAuthAccountData = {
+  body: AccountDelete;
+  path?: never;
+  query?: never;
+  url: '/auth/account';
+};
+
+export type DeleteAuthAccountErrors = {
+  /**
+   * missing or invalid bearer token, or wrong password
+   */
+  401: Problem;
+  /**
+   * the owner cannot be deleted while other users exist
+   */
+  409: Problem;
+  /**
+   * unexpected error
+   */
+  default: Problem;
+};
+
+export type DeleteAuthAccountError =
+  DeleteAuthAccountErrors[keyof DeleteAuthAccountErrors];
+
+export type DeleteAuthAccountResponses = {
+  /**
+   * account deleted
+   */
+  204: void;
+};
+
+export type DeleteAuthAccountResponse =
+  DeleteAuthAccountResponses[keyof DeleteAuthAccountResponses];
 
 export type PostSyncData = {
   body: SyncRequest;
