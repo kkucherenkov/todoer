@@ -53,11 +53,92 @@ components:
         email: { type: string, format: email, maxLength: 254 }
         password: { type: string, minLength: 8, maxLength: 256 }
 
-    LoginResponse:
+    SessionTokens:
       type: object
-      required: [accessToken]
+      required: [accessToken, accessExpiresAt, refreshToken]
       properties:
         accessToken: { type: string }
+        accessExpiresAt: { type: string, format: date-time }
+        # Sent in the body only; the web client's cookie transport (ADR 0011)
+        # lands with the web client. Rotates on every use: store the newest.
+        refreshToken: { type: string }
+
+    # Passwords below keep LoginRequest's 8..256 bounds. Strength (letters,
+    # digits and symbols) is a server rule, answered with 400, not a schema
+    # one. Tokens and codes are capped at 512 so the validator, which runs
+    # ahead of any hash or lookup, rejects a payload posing as one.
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      additionalProperties: false
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+        password: { type: string, minLength: 8, maxLength: 256 }
+        invitation: { type: string, maxLength: 512 }
+
+    RefreshRequest:
+      type: object
+      required: [refreshToken]
+      additionalProperties: false
+      properties:
+        refreshToken: { type: string, maxLength: 512 }
+
+    LogoutRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        refreshToken: { type: string, maxLength: 512 }
+        all: { type: boolean }
+
+    PasswordChange:
+      type: object
+      required: [currentPassword, newPassword]
+      additionalProperties: false
+      properties:
+        currentPassword: { type: string, minLength: 8, maxLength: 256 }
+        newPassword: { type: string, minLength: 8, maxLength: 256 }
+
+    InviteRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+
+    Invitation:
+      type: object
+      required: [token, expiresAt]
+      properties:
+        token: { type: string }
+        expiresAt: { type: string, format: date-time }
+
+    PasswordSet:
+      type: object
+      required: [password]
+      additionalProperties: false
+      properties:
+        password: { type: string, minLength: 8, maxLength: 256 }
+
+    ForgotRequest:
+      type: object
+      required: [email]
+      additionalProperties: false
+      properties:
+        email: { type: string, format: email, maxLength: 254 }
+
+    ResetRequest:
+      type: object
+      required: [code, password]
+      additionalProperties: false
+      properties:
+        code: { type: string, maxLength: 512 }
+        password: { type: string, minLength: 8, maxLength: 256 }
+
+    AccountDelete:
+      type: object
+      required: [password]
+      additionalProperties: false
+      properties:
+        password: { type: string, minLength: 8, maxLength: 256 }
 
     Op:
       oneOf:
@@ -215,6 +296,10 @@ paths:
     post:
       operationId: postAuthLogin
       summary: Sign in
+      description: >-
+        Verifies the password and opens a new session. Every failure is the same
+        401, whether the address is unknown or the password wrong. Repeated
+        failures from one address or IP are answered 429 with Retry-After.
       security: []
       requestBody:
         required: true
@@ -226,9 +311,14 @@ paths:
           description: signed in
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/LoginResponse" }
+              schema: { $ref: "#/components/schemas/SessionTokens" }
         "401":
           description: bad credentials
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "429":
+          description: too many failed attempts; see Retry-After
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
@@ -242,20 +332,315 @@ paths:
     post:
       operationId: postAuthRegister
       summary: Create an account and sign in
+      description: >-
+        Open only while the instance has no users; the first account becomes the
+        owner. Afterwards an invitation is required, single-use and, when it was
+        issued for an address, valid only for that address.
       security: []
       requestBody:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/LoginRequest" }
+            schema: { $ref: "#/components/schemas/RegisterRequest" }
       responses:
         "201":
           description: registered and signed in
           content:
             application/json:
-              schema: { $ref: "#/components/schemas/LoginResponse" }
+              schema: { $ref: "#/components/schemas/SessionTokens" }
+        "403":
+          description: registration is closed, or the invitation is invalid, spent, expired or issued for another address
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
         "409":
           description: that address is already registered
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "429":
+          description: too many attempts; see Retry-After
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        default:
+          description: unexpected error
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /auth/refresh:
+    post:
+      operationId: postAuthRefresh
+      summary: Exchange a refresh token for a new pair
+      description: >-
+        Spends the presented refresh token and returns a new access token and a
+        new refresh token. A just-spent token presented again within about 30
+        seconds returns the same pair; a spent token past that window revokes the
+        session. An expired, revoked or unknown token is 401.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RefreshRequest" }
+      responses:
+        "200":
+          description: rotated
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionTokens" }
+        "401":
+          description: invalid, expired or revoked refresh token
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "429":
+          description: too many invalid refreshes; see Retry-After
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        default:
+          description: unexpected error
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /auth/logout:
+    post:
+      operationId: postAuthLogout
+      summary: Revoke the current session or all of them
+      description: >-
+        Revokes the session of the presented refresh token, or every session of
+        the caller when `all` is true. Access tokens already issued live out their
+        15 minutes.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LogoutRequest" }
+      responses:
+        "204":
+          description: signed out
+        "401":
+          description: missing or invalid bearer token
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        default:
+          description: unexpected error
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /auth/password:
+    post:
+      operationId: postAuthPassword
+      summary: Change the caller's password
+      description: >-
+        Needs the current password. Revokes every session of the caller and
+        returns a fresh pair, so the client that changed it stays signed in. The
+        new password must be strong: letters, digits and symbols.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PasswordChange" }
+      responses:
+        "200":
+          description: password changed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SessionTokens" }
+        "400":
+          description: the new password is too weak
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "401":
+          description: missing or invalid bearer token, or wrong current password
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        default:
+          description: unexpected error
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /auth/invites:
+    post:
+      operationId: postAuthInvites
+      summary: Issue an invitation
+      description: >-
+        Owner only. Returns a random single-use token valid for 7 days; the
+        server keeps only its hash, so this response is the only time it is
+        visible. With `email` the token registers only that address.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/InviteRequest" }
+      responses:
+        "201":
+          description: invitation issued
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Invitation" }
+        "401":
+          description: missing or invalid bearer token
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          description: the caller is not the owner
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        default:
+          description: unexpected error
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /auth/users/{id}/password:
+    post:
+      operationId: postAuthUserPassword
+      summary: Set another user's password
+      description: >-
+        Owner only. Sets the password directly (no reset code) and revokes
+        every session of that user. The new password must be strong.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PasswordSet" }
+      responses:
+        "204":
+          description: password set
+        "400":
+          description: the password is too weak
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "401":
+          description: missing or invalid bearer token
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "403":
+          description: the caller is not the owner
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "404":
+          description: no such user
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        default:
+          description: unexpected error
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /auth/forgot:
+    post:
+      operationId: postAuthForgot
+      summary: Ask for a password-reset mail
+      description: >-
+        Mail is not configured in this version, so this always answers 503.
+        Recovery is the owner setting the password, or, for the owner, the host
+        script that prints a one-time reset code for `/auth/reset`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ForgotRequest" }
+      responses:
+        "503":
+          description: mail is not configured
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        default:
+          description: unexpected error
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /auth/reset:
+    post:
+      operationId: postAuthReset
+      summary: Set a password with a one-time reset code
+      description: >-
+        The code is single-use and valid for 15 minutes. Revokes every session of
+        the user. An invalid, spent or expired code is the same 400 as a weak
+        password.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ResetRequest" }
+      responses:
+        "204":
+          description: password reset
+        "400":
+          description: the password is too weak, or the code is invalid
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "429":
+          description: too many attempts; see Retry-After
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        default:
+          description: unexpected error
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /auth/account:
+    delete:
+      operationId: deleteAuthAccount
+      summary: Delete the caller's account
+      description: >-
+        Needs the current password. Purges the user and everything they own,
+        without tombstones. The owner cannot delete the account while other users
+        exist.
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AccountDelete" }
+      responses:
+        "204":
+          description: account deleted
+        "401":
+          description: missing or invalid bearer token, or wrong password
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "409":
+          description: the owner cannot be deleted while other users exist
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
