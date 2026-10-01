@@ -18,7 +18,7 @@ test('the 30 s tick syncs a visible tab', async ({ page, account, cli }) => {
   await page.goto('/');
   await signIn(page, account);
   await cli(account.token, 'add', 'from the cli');
-  await page.waitForTimeout(25_000);
+  await page.waitForTimeout(26_000);
   await page.clock.runFor(30_000);
   await expect(count(page)).toHaveText(tasks(1), { timeout: 10_000 });
 });

@@ -28,6 +28,9 @@ export default defineConfig({
     command: 'node ../backend/dist/main.js',
     url: `http://localhost:${port}/api/v1/health`,
     reuseExistingServer: !process.env.CI,
+    // The backend's log reaches the job output when a test fails.
+    stdout: 'pipe',
+    stderr: 'pipe',
     env: {
       PORT: String(port),
       WEB_ROOT: fileURLToPath(new URL('./.output/public', import.meta.url)),

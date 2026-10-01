@@ -180,11 +180,23 @@ export async function signIn(page: Page, { email, password }: Account) {
 
 /** Wait until the SW is active: a reload while it still activates leaves
  *  the page uncontrolled. */
+/** Waits for an activated service worker, failing in 10 s rather than the
+ *  whole test timeout when none ever registers. */
 export const swActivated = (page: Page) =>
   page.evaluate(async () => {
-    const sw = (await navigator.serviceWorker.ready).active!;
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(
+        () => reject(new Error('no service worker activated in 10 s')),
+        10_000,
+      ),
+    );
+    const sw = (await Promise.race([navigator.serviceWorker.ready, timeout]))
+      .active!;
     if (sw.state !== 'activated') {
-      await new Promise((r) => sw.addEventListener('statechange', r));
+      await Promise.race([
+        new Promise((r) => sw.addEventListener('statechange', r)),
+        timeout,
+      ]);
     }
   });
 
