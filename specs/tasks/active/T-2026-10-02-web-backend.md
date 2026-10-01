@@ -143,7 +143,7 @@ it does: scripts and agents depend on it (ADR 0015).
       plan Task 1
 - [x] T002 [FR-008] Contract: `TokenTransport`, optional `refreshToken`;
       codegen in its own commit — plan Task 2
-- [ ] T003 [FR-002] `createApp()` and the HTTP spec over the real chain —
+- [x] T003 [FR-002] `createApp()` and the HTTP spec over the real chain —
       plan Task 3
 - **Checkpoint:** the contract allows the cookie transport, and trap 3 is
   pinned by a test; nothing behaves differently yet.
