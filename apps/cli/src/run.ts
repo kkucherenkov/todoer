@@ -46,7 +46,7 @@ import {
   refusalOf,
   throwRefusals,
   UsageError,
-} from './protocol.js';
+} from '@todoer/client-core';
 import { resolveRef, shortRef } from './ref.js';
 import type { Row, Store } from './store.js';
 import { flush, type Transport } from './sync.js';

@@ -1,6 +1,6 @@
 import type { LogoutRequest, SessionTokens } from '@todoer/specs';
 import type { Config } from './config.js';
-import { RefusalError } from './protocol.js';
+import { RefusalError } from '@todoer/client-core';
 import type { Store, StoredAuth } from './store.js';
 
 export type AuthApi = {

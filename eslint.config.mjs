@@ -22,6 +22,30 @@ export default defineConfig(
       ],
     },
   },
+  // client-core's portable entry also runs in a browser worker (design,
+  // Q13): Node stays in node-sqlite.ts, and in specs and their fixture.
+  {
+    files: ['packages/client-core/src/**/*.ts'],
+    ignores: [
+      'packages/client-core/src/node-sqlite.ts',
+      'packages/client-core/src/test-store.ts',
+      '**/*.spec.ts',
+    ],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              group: ['node:*'],
+              message: 'Node-only code belongs in node-sqlite.ts.',
+            },
+          ],
+        },
+      ],
+      'no-restricted-globals': ['error', 'Buffer', 'process'],
+    },
+  },
   // Config files outside every tsconfig: syntax rules only.
   { files: ['**/*.{js,mjs}'], extends: [tseslint.configs.disableTypeChecked] },
 );

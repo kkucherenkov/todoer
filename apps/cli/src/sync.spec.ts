@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Change, Op, OpResult, SyncRequest } from '@todoer/specs';
-import { ownOutcome, RefusalError } from './protocol.js';
+import { ownOutcome, RefusalError } from '@todoer/client-core';
 import { Store } from './store.js';
 import { MAX_OPS, flush, type Transport } from './sync.js';
 

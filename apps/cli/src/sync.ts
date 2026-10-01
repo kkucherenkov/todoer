@@ -1,5 +1,5 @@
 import type { Op, OpResult, SyncRequest, SyncResponse } from '@todoer/specs';
-import { RefusalError } from './protocol.js';
+import { RefusalError } from '@todoer/client-core';
 import type { Store } from './store.js';
 
 /** One POST /sync. Injected, so the flush is testable without a network. */

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Change, Op, SyncRequest } from '@todoer/specs';
 import { taskOccurrenceId, taskTagId } from '@todoer/specs';
 import { tokenSource, type AuthApi } from './auth.js';
-import { ConflictError, RefusalError, UsageError } from './protocol.js';
+import { ConflictError, RefusalError, UsageError } from '@todoer/client-core';
 import { run, type Deps } from './run.js';
 import { Store } from './store.js';
 import type { Transport } from './sync.js';

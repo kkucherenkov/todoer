@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { UsageError } from './protocol.js';
+import { UsageError } from '@todoer/client-core';
 import { resolveRef, shortRef } from './ref.js';
 
 const a = { id: '0192a1b2-0000-7000-8000-000000a00111', title: 'first' };

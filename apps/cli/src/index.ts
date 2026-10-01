@@ -2,7 +2,7 @@
 import { uuidv7 } from 'uuidv7';
 import { httpAuthApi, tokenSource } from './auth.js';
 import { readConfig } from './config.js';
-import { ConflictError, RefusalError, UsageError } from './protocol.js';
+import { ConflictError, RefusalError, UsageError } from '@todoer/client-core';
 import { readPassword } from './password.js';
 import { run } from './run.js';
 import { Store } from './store.js';

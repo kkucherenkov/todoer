@@ -2,7 +2,7 @@ import { chmodSync, mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import type { Change, Op, OpResult, SyncResponse } from '@todoer/specs';
-import { UsageError } from './protocol.js';
+import { UsageError } from '@todoer/client-core';
 
 /** A row as the server sent it; the CLI never interprets more than it shows. */
 export type Row = Record<string, unknown>;

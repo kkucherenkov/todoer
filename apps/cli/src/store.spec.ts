@@ -10,7 +10,7 @@ import type { DatabaseSync } from 'node:sqlite';
 import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Op } from '@todoer/specs';
-import { UsageError } from './protocol.js';
+import { UsageError } from '@todoer/client-core';
 import { Store, retryOnBusy } from './store.js';
 
 let dir: string;
@@ -482,7 +482,8 @@ describe('retryOnBusy', () => {
 // writing at the same moment — then each attempt spawns a fresh `node`
 // process that imports the built `Store` and opens a brand-new file, matching
 // the CLI's own first run. The emitted `store.js` imports only `node:*` and
-// `./protocol.js`; `@todoer/specs` is type-only and erased.
+// `@todoer/client-core`; `@todoer/specs` is type-only and erased. The build
+// directory sits under `node_modules/` so that bare specifier resolves.
 //
 // A plain "spawn 20 processes and hope" mostly measures process-startup
 // jitter, not the lock race: by the time each child reaches `Store.open`,
@@ -497,7 +498,7 @@ describe('parallel first opens (Store.open under real concurrency)', () => {
   let outDir: string;
 
   beforeEach(() => {
-    outDir = mkdtempSync(join(tmpdir(), 'todoer-build-'));
+    outDir = mkdtempSync(join(cliDir, 'node_modules', 'todoer-build-'));
   });
 
   afterEach(() => {

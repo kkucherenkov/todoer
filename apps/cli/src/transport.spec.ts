@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { Config } from './config.js';
-import { RefusalError } from './protocol.js';
+import { RefusalError } from '@todoer/client-core';
 import { Store } from './store.js';
 import { flush } from './sync.js';
 import { tokenSource, type AuthApi, type TokenSource } from './auth.js';

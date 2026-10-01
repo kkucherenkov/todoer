@@ -1,4 +1,4 @@
-import { UsageError } from './protocol.js';
+import { UsageError } from '@todoer/client-core';
 import type { Row } from './store.js';
 
 /**

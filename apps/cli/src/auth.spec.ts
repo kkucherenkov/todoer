@@ -6,7 +6,7 @@ import { join } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { httpAuthApi, tokenSource, type AuthApi } from './auth.js';
 import type { Config } from './config.js';
-import { RefusalError } from './protocol.js';
+import { RefusalError } from '@todoer/client-core';
 import { Store, type StoredAuth } from './store.js';
 
 const NOW = new Date('2026-10-01T12:00:00.000Z');
