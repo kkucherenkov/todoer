@@ -112,7 +112,7 @@ client, and scripts and agents depend on its exact output and exit codes
       overlay, quick-add and refs — plan Task 3
 - [x] T004 [FR-004, FR-006] Move sync, transport and the token source — plan
       Task 4
-- [ ] T005 [FR-005, FR-006] Extract the domain operations from `run.ts` —
+- [x] T005 [FR-005, FR-006] Extract the domain operations from `run.ts` —
       plan Task 5
 - **Checkpoint:** `apps/cli/src` holds only `index`, `run`, `usage`,
   `config`, `password`, `store`; 171 + 160 tests; e2e green.
