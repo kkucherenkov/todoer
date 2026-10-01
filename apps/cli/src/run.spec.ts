@@ -802,6 +802,20 @@ describe('run', () => {
       },
     );
 
+    // The repeat still syncs first, so offline it exits 5 like list, and
+    // queues nothing.
+    it('exits 5 on a repeated done when the server is unreachable', async () => {
+      const d = hexDeps(fakeServer().send);
+      await run(['add', 'file taxes'], d);
+      await run(['done', '0002'], d);
+      const after = d.store.pending();
+      d.send = unreachable;
+
+      const again = await run(['done', '0002'], d);
+      expect(again.exit).toBe(5);
+      expect(d.store.pending()).toEqual(after);
+    });
+
     it.each([
       ['done', 'skip', 'done'],
       ['skip', 'done', 'skipped'],

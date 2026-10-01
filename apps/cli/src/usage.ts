@@ -68,8 +68,9 @@ recurrence:
   skip act on that date, or on --on's.
 
 marks:
-  repeating the same mark does nothing (exit 0); switching done and
-  skipped needs undo first.
+  repeating the same mark changes nothing and queues nothing, but it still
+  syncs first, so offline it exits 5 like list; switching done and skipped
+  needs undo first.
 
 quick-add markers:
   p0..p4      priority
