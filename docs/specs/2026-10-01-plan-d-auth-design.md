@@ -22,7 +22,7 @@ deletion needs the password, and login is rate-limited in memory.
 | **session** | The server row for one sign-in of one device: the current refresh token's hash, its predecessor's hash, and its time limits. Logout and revocation act on it. | login, connection |
 | **rotation** | Every refresh returns a new refresh token and spends the old one. | renewal |
 | **reuse detection** | Presenting an already-spent refresh token (outside the grace window) revokes the whole session. | replay check |
-| **grace window** | A short period after rotation during which the just-spent token still returns the same successor pair, instead of triggering reuse detection. | leeway |
+| **grace window** | A short period after rotation during which the just-spent token still returns the same successor refresh token with a freshly minted access token, instead of triggering reuse detection. | leeway |
 | **owner** | The first account on an instance; issues invitations and resets other users' passwords (ADR 0014). | admin, root |
 | **invitation** | A single-use token the owner issues for registering one new user. | invite code, signup link |
 
@@ -60,8 +60,8 @@ revoked session's access token lives until it expires (≤ 15 minutes).
 ### A grace window on the server and a lock in the client (Q4)
 
 **Decision.** For ~30 seconds after a rotation, presenting the just-spent token
-returns the same successor pair the first presentation got (idempotent), not
-a revocation. The CLI additionally serialises its refreshes in a transaction
+returns the same successor refresh token the first presentation got, with a
+freshly minted access token, not a revocation. The CLI additionally serialises its refreshes in a transaction
 on its SQLite store, so two parallel invocations do not both refresh.
 
 - A lost refresh response is ordinary for a CLI; only a server-side window lets
@@ -184,6 +184,27 @@ several instances.
 **Cost.** A restart clears the counters, and several processes would each keep
 their own; recorded as a known limit.
 
+## Departures in the plan
+
+The implementation plan ([plan D](../plans/2026-10-01-plan-d-auth.md)) departs
+from this document in five places.
+
+1. **Refresh tokens are derived, not stored.** Instead of hashes, a token is
+   `<sessionId>.<generation>.<mac>` with an HMAC under `JWT_SECRET` and a
+   per-session salt. The server stores only the generation, so it recomputes
+   the exact successor a grace-window retry must receive without keeping a
+   plaintext token for 30 s.
+2. **No refresh cookie yet.** The routes take the refresh token in the body
+   only; the cookie transport lands with the web client.
+3. **The owner's reset of another user sets the password directly**
+   (`POST /auth/users/{id}/password` with `{ password }`) and revokes that
+   user's sessions; reset codes exist only for the host script.
+4. **`POST /auth/password` returns a fresh pair** after revoking every session,
+   so the client that changed the password stays signed in.
+5. **The e2e scripts share a helper** (`scripts/lib/fresh-user.sh`) that signs
+   in as the owner, invites and registers a fresh user, because owner-first
+   registration refuses their second run.
+
 ## Routine choices
 
 - **One plan, not two (Q1).** Rejected by the maintainer: sessions and accounts
@@ -217,7 +238,7 @@ their own; recorded as a known limit.
 ## Risks
 
 - **The grace window is a window.** A thief presenting a spent token within
-  ~30 s of its rotation gets the pair. Mitigation: short window, bound to the
+  ~30 s of its rotation gets the successor refresh token. Mitigation: short window, bound to the
   session, and the next legitimate refresh then trips reuse detection.
 - **In-memory rate limits** reset on restart and do not add up across
   processes.

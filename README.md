@@ -13,10 +13,14 @@ second, independent CLI invocation through the server, over one endpoint:
 - **`POST /api/v1/sync`** — push operations, pull changes, resolved per field
   by last-write-wins with a shared cursor. This is the whole write surface;
   there is no REST CRUD and there will not be one ([ADR 0012](docs/adr/0012-no-rest-surface.md)).
-- **`POST /api/v1/auth/register`, `POST /api/v1/auth/login`** — open
-  registration and a 15-minute bearer token. Invitations, password reset,
-  refresh rotation and the device-code flow are not built yet.
-- **`todoer add` / `list` / `done` / `skip` / `undo` / `outbox`** — a network
+- **`/api/v1/auth/*`** — sessions with a 15-minute access token and a rotating
+  refresh token (reuse detection, 30-second grace window), owner-first
+  registration (the first account is the owner, later ones need a single-use
+  invitation), password change, reset without mail, account deletion, and
+  rate-limited login ([ADR 0011](docs/adr/0011-bearer-everywhere-cookie-only-for-refresh.md),
+  [ADR 0014](docs/adr/0014-owner-first-registration-and-two-path-reset.md)).
+  The device-code flow and mail for `forgot` are not built yet.
+- **`todoer login` / `logout` / `add` / `list` / `done` / `skip` / `undo` / `outbox`** — a network
   client with `--json` output and exit codes a script can branch on
   ([ADR 0015](docs/adr/0015-the-cli-is-a-client-for-automation.md)). It keeps a
   local SQLite replica and outbox: every operation is queued before it is sent
@@ -40,7 +44,7 @@ recurrence).
 | `apps/cli/` | the `todoer` command, a network client with no privileged access |
 | `packages/specs/` | the OpenAPI document and the client generated from it |
 | `docker/compose.yml` | Postgres 18 for local development, on port **5433** |
-| `scripts/walking-skeleton.sh` | the end-to-end proof, run in CI |
+| `scripts/` | the end-to-end proofs (`walking-skeleton.sh`, `outbox-e2e.sh`) run in CI, and their owner-aware helper `lib/fresh-user.sh` |
 | `docs/adr/`, `docs/specs/`, `docs/plans/` | decisions, design, plans |
 | `specs/tasks/` | the task stack — one file per task, `active/` then `done/` |
 | `.claude/CLAUDE.md` | the working agreement |
@@ -61,19 +65,26 @@ pnpm build
 PORT=3010 node apps/backend/dist/main.js
 ```
 
-Then, in another shell, mint a token and use the CLI:
+Then, in another shell, create the owner and sign in. The first account on an
+empty instance becomes the owner:
 
 ```sh
 export TODOER_URL=http://localhost:3010/api/v1
-export TODOER_TOKEN=$(curl -sf -X POST "$TODOER_URL/auth/register" \
-  -H 'content-type: application/json' \
-  -d '{"email":"you@example.test","password":"correct horse battery staple"}' \
-  | sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p')
+curl -sf -X POST "$TODOER_URL/auth/register" -H 'content-type: application/json' \
+  -d '{"email":"you@example.test","password":"correct horse 9 battery!"}' >/dev/null
 
+TODOER_PASSWORD='correct horse 9 battery!' node apps/cli/dist/index.js login you@example.test
 node apps/cli/dist/index.js add "buy milk p2"
 node apps/cli/dist/index.js list --json
 node apps/cli/dist/index.js --help
 ```
+
+A password needs at least 8 characters with a letter, a digit and another
+character. Further users need an invitation from the owner
+(`POST /auth/invites`, valid 7 days, single use) and register with it. If the
+owner forgets the password, run `pnpm --filter @todoer/backend run owner:reset-password`
+on the host: it prints a code, valid 15 minutes, for `POST /auth/reset`. The
+owner resets other users through `POST /auth/users/{id}/password`.
 
 The proof that the loop closes:
 
@@ -81,6 +92,13 @@ The proof that the loop closes:
 TODOER_URL=http://localhost:3010/api/v1 sh scripts/walking-skeleton.sh
 # walking skeleton passed
 ```
+
+The scripts sign in as the owner (registering it on an empty instance) and
+invite a fresh user for each run. On an instance whose owner uses other
+credentials, set `OWNER_EMAIL` and `OWNER_PASSWORD`. Every login and
+registration, successful or not, counts toward a per-IP budget of 20 per
+15 minutes, so many rapid runs from one address can hit `429`; wait the
+seconds in its `Retry-After` header (up to 15 minutes).
 
 ### Environment
 
@@ -91,7 +109,9 @@ TODOER_URL=http://localhost:3010/api/v1 sh scripts/walking-skeleton.sh
 | `PORT` | backend | `3000` | refuses a value that is not a whole port number |
 | `APP_VERSION` | backend | `0.0.0-dev` | reported by `GET /api/v1/health` |
 | `TODOER_URL` | CLI | `http://localhost:3000/api/v1` | instance base URL |
-| `TODOER_TOKEN` | CLI | — | bearer token; see below |
+| `TODOER_TOKEN` | CLI | — | bearer token; when set it is used as is, never refreshed, and overrides the stored session |
+| `TODOER_PASSWORD` | CLI | — | the password `todoer login` uses instead of a prompt or stdin |
+| `OWNER_EMAIL`, `OWNER_PASSWORD` | e2e scripts | `owner@example.test`, `correct horse 9 battery!` | the owner the scripts sign in as |
 | `TODOER_TIMEOUT_MS` | CLI | `3000` | how long to wait for the server before exiting 5 |
 
 The examples above use **3010** because 3000 is often already taken; the
@@ -99,11 +119,14 @@ backend's own default is 3000.
 
 ### Two things that will bite a script
 
-**The access token lives 15 minutes**, and the CLI has no `login` command yet.
-A long-running agent has to mint a new one from `POST /auth/login` when it
-expires. An expired token exits **1** (a refusal), not 5 (the server was not
-reached), precisely so a retry policy does not loop on it. `todoer --help` lists all the
-exit codes.
+**The access token lives 15 minutes, and the CLI refreshes it itself.**
+`todoer login` stores the session; later commands renew the access token
+shortly before it expires, and once more on a `401`. A session that has ended
+(revoked, idle for 30 days, or a year old) exits **1** (a refusal), not 5 (the
+server was not reached), precisely so a retry policy does not loop on it; the
+stored tokens are cleared and the fix is `todoer login` again. `TODOER_TOKEN`
+bypasses all of this: it is used as is and never renewed, so an agent that sets
+it owns the expiry. `todoer --help` lists all the exit codes.
 
 **A queued write is not on the server yet.** Every operation is stored in a
 local outbox before it is sent and keeps the same id on every retry, so a
