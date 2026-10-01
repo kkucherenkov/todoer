@@ -31,6 +31,7 @@ beforeEach(async () => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe('SessionService', () => {
@@ -80,6 +81,8 @@ describe('SessionService', () => {
     await expect(sessions.refresh(idle.refreshToken, days(31))).rejects.toThrow(
       'invalid token',
     );
+    // The expiry path revokes, it does not merely refuse.
+    expect((await prisma.session.findFirstOrThrow()).revokedAt).not.toBeNull();
     let s = await sessions.start(U, t0);
     for (let d = 25; d <= 375; d += 25) {
       if (d > 365) {
@@ -101,10 +104,50 @@ describe('SessionService', () => {
     await expect(sessions.refresh('nonsense', at(1))).rejects.toThrow(
       'invalid token',
     );
+    // Right shape for the old regex, not a UUID: must not reach the DB.
+    const malformed = `${'-'.repeat(36)}.0.AAAA`;
+    await expect(sessions.refresh(malformed, at(1))).rejects.toThrow(
+      'invalid token',
+    );
+    await expect(sessions.revoke(malformed)).resolves.toBeUndefined();
+    // Spelling variants of a valid token are not the token.
+    await expect(
+      sessions.refresh(
+        `${id?.toUpperCase()}.${gen}.${first.refreshToken.split('.')[2]}`,
+        at(1),
+      ),
+    ).rejects.toThrow('invalid token');
+    await expect(
+      sessions.refresh(
+        `${id}.0${gen}.${first.refreshToken.split('.')[2]}`,
+        at(1),
+      ),
+    ).rejects.toThrow('invalid token');
     await sessions.revoke(first.refreshToken);
     await expect(sessions.refresh(first.refreshToken, at(1))).rejects.toThrow(
       'invalid token',
     );
+  });
+
+  it('reports the access expiry as 15 minutes after start', async () => {
+    const first = await sessions.start(U, t0);
+    expect(first.accessExpiresAt).toBe(at(15 * 60).toISOString());
+  });
+
+  // The rotation writes an absolute generation, so only its `generation`
+  // condition stops a stale read from rolling the session back.
+  it('never rolls the generation back on a stale read', async () => {
+    const first = await sessions.start(U, t0);
+    const stale = await prisma.session.findFirstOrThrow();
+    const second = await sessions.refresh(first.refreshToken, at(1));
+    await sessions.refresh(second.refreshToken, at(2));
+    vi.spyOn(prisma.session, 'findUnique').mockResolvedValueOnce(stale);
+    await expect(sessions.refresh(first.refreshToken, at(100))).rejects.toThrow(
+      'invalid token',
+    );
+    const row = await prisma.session.findFirstOrThrow();
+    expect(row.generation).toBe(2);
+    expect(row.revokedAt).not.toBeNull();
   });
 
   it('revokeAll ends every session of the user', async () => {

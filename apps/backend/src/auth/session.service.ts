@@ -17,6 +17,12 @@ export type SessionTokens = {
   refreshToken: string;
 };
 
+// Strict, lowercase-only: anything looser reaches the @db.Uuid lookup and
+// throws a 500 instead of the generic refusal, and case variants would give a
+// token several spellings.
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/;
+const GENERATION = /^(0|[1-9]\d{0,8})$/;
+
 type Parsed = { id: string; generation: number; mac: string };
 
 function parse(token: string): Parsed | null {
@@ -24,14 +30,14 @@ function parse(token: string): Parsed | null {
   if (parts.length !== 3) return null;
   const [id, gen, mac] = parts;
   if (id === undefined || gen === undefined || mac === undefined) return null;
-  if (!/^[0-9a-f-]{36}$/i.test(id) || !/^\d{1,9}$/.test(gen)) return null;
+  if (!UUID.test(id) || !GENERATION.test(gen)) return null;
   return { id, generation: Number(gen), mac };
 }
 
 /**
  * Sessions with rotating refresh tokens (plan D design, Q2, Q4, Q5). A token
- * is `<id>.<generation>.<mac>`, the mac an HMAC over the id, the generation
- * and a per-session salt (plan departure 1): nothing secret is stored, and the
+ * is `<id>.<generation>.<mac>`, the mac an HMAC over a `refresh.` domain
+ * prefix, the id, the generation and a per-session salt (plan departure 1): nothing secret is stored, and the
  * successor of any generation can be recomputed, which is what lets a retry
  * inside the grace window receive the very pair the first call got.
  */
@@ -45,7 +51,7 @@ export class SessionService {
 
   private mac(id: string, generation: number, salt: string): string {
     return createHmac('sha256', this.config.jwtSecret)
-      .update(`${id}.${String(generation)}.${salt}`)
+      .update(`refresh.${id}.${String(generation)}.${salt}`)
       .digest('base64url');
   }
 
