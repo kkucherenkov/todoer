@@ -623,7 +623,8 @@ paths:
       description: >-
         Needs the current password. Purges the user and everything they own,
         without tombstones. The owner cannot delete the account while other users
-        exist.
+        exist. Attempts per address are limited: too many are answered 429 with
+        Retry-After.
       security:
         - bearerAuth: []
       requestBody:
@@ -641,6 +642,11 @@ paths:
               schema: { $ref: "#/components/schemas/Problem" }
         "409":
           description: the owner cannot be deleted while other users exist
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "429":
+          description: too many attempts; see Retry-After
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
