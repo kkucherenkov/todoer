@@ -58,7 +58,9 @@ a token the web cannot read: an `HttpOnly` cookie cannot be copied into a
 body, so with a path of `/auth/refresh` a web logout would leave its session
 alive for up to 30 days. A second cookie for logout would be two copies of one
 secret, and logout through `/auth/refresh` with a flag would give one route
-two meanings.
+two meanings. This replaces the Decision's "sent to `POST /auth/refresh` and to nothing
+else" and the Consequences' "contained to that endpoint": the asymmetry now
+spans refresh and logout.
 
 A client opts in with `transport: cookie` on login, register and password
 change. The default is the body, so the CLI and every script are unchanged.
@@ -75,7 +77,7 @@ Three properties of the cookie follow from this and are deliberate:
 - **Max-Age is fixed at the 30-day idle limit.** Near the 365-day absolute
   limit the cookie can outlive its session by up to 30 days. The server stays
   authoritative: it answers 401, and the client treats that as signed out.
-- **A duplicated `todoer_refresh` header reads as absent.** A same-site
+- **A duplicated `todoer_refresh` cookie reads as absent.** A same-site
   sibling (another app on `*.nas.local`) can plant a second cookie of the same
   name, and which copy the browser lists first is not the app's to choose.
   Refusing both is the defence against that cookie tossing.

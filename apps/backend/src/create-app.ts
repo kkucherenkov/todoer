@@ -30,11 +30,12 @@ export async function createApp(
   app.useGlobalFilters(new HttpExceptionFilter());
 
   const config = app.get(AppConfig);
-  // Order matters, as with the body parser below (trap 3). The SPA comes
-  // first and passes on everything under /api and /health, every non-GET,
-  // and every non-navigation it has no file for. The validator only ever
-  // manages /api/v1 (its base path), so static paths are never validated.
-  // create-app.spec.ts pins all of it.
+  // The SPA passes on everything under /api and /health, every non-GET, and
+  // every non-navigation it has no file for. The validator only ever manages
+  // /api/v1 (its base path), so static paths are never validated and the
+  // SPA's position relative to it does not matter; it goes first so a static
+  // request never reaches the body parser. The order that does matter is the
+  // body parser before the validator (trap 3), which create-app.spec.ts pins.
   const webRoot = overrides.webRoot ?? config.webRoot;
   if (webRoot !== undefined) app.use(spa(webRoot));
 

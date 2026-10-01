@@ -388,9 +388,11 @@ of JavaScript.
 service worker could cache it. Navigations send `text/html`.
 
 **`main.ts`'s setup moved into `createApp()`.** `main.ts` calls `bootstrap()` on
-import, so a spec cannot import it. The middleware order (the SPA, then the
-body parser, then the validator; trap 3) now lives in `create-app.ts`, and
-`create-app.spec.ts` pins it over HTTP. The "Cost" of Q9 named `main.ts`; read
+import, so a spec cannot import it. The middleware chain now lives in
+`create-app.ts`, and `create-app.spec.ts` pins the order that matters, the
+body parser before the validator (trap 3), over HTTP. The SPA goes first for
+tidiness only: the validator manages `/api/v1` alone and the SPA passes on
+`/api`, so its position is not load-bearing. The "Cost" of Q9 named `main.ts`; read
 `create-app.ts`.
 
 Two properties of the cookie are not departures but are worth knowing. Its

@@ -35,7 +35,7 @@ import {
 type Transport = { transport?: 'body' | 'cookie' };
 type Credentials = { email: string; password: string } & Transport;
 type Client = { ip?: string; headers?: { cookie?: string } };
-export type Delivered = Omit<SessionTokens, 'refreshToken'> & {
+type Delivered = Omit<SessionTokens, 'refreshToken'> & {
   refreshToken?: string;
 };
 
