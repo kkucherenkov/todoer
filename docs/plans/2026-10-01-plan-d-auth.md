@@ -20,7 +20,7 @@ write-lock, and retries once on 401.
 
 **Spec:** [`docs/specs/2026-10-01-plan-d-auth-design.md`](../specs/2026-10-01-plan-d-auth-design.md)
 — read all of it before Task 1. ADR 0011, ADR 0014, ADR 0015. Task spec:
-[`specs/tasks/active/T-2026-10-01-auth.md`](../../specs/tasks/active/T-2026-10-01-auth.md).
+[`specs/tasks/done/T-2026-10-01-auth.md`](../../specs/tasks/done/T-2026-10-01-auth.md).
 
 ## Where this plan departs from the design doc
 
