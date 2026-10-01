@@ -33,7 +33,7 @@ const DUMMY_HASH = '0'.repeat(KEY_LEN * 2);
 const INVALID_CREDENTIALS = 'invalid credentials';
 const INVALID_TOKEN = 'invalid token';
 
-function normalizeEmail(email: string): string {
+export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
@@ -44,24 +44,36 @@ export class AuthService {
     private readonly config: AppConfig,
   ) {}
 
-  async register(id: string, email: string, password: string): Promise<void> {
+  async hashPassword(password: string): Promise<string> {
     const salt = randomBytes(16).toString('hex');
     const hash = ((await scrypt(password, salt, KEY_LEN)) as Buffer).toString(
       'hex',
     );
-    await this.prisma.user.create({
-      data: {
-        id,
-        email: normalizeEmail(email),
-        passwordHash: `${salt}:${hash}`,
-      },
+    return `${salt}:${hash}`;
+  }
+
+  async setPassword(userId: string, password: string): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { passwordHash: await this.hashPassword(password) },
     });
   }
 
-  async login(
-    email: string,
-    password: string,
-  ): Promise<{ accessToken: string }> {
+  async verifyPassword(userId: string, password: string): Promise<boolean> {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (user === null) return false;
+    return this.matches(user.passwordHash, password);
+  }
+
+  private async matches(stored: string, password: string): Promise<boolean> {
+    const [salt, expected] = stored.split(':');
+    if (salt === undefined || expected === undefined) return false;
+    const actual = (await scrypt(password, salt, KEY_LEN)) as Buffer;
+    const b = Buffer.from(expected, 'hex');
+    return actual.length === b.length && timingSafeEqual(actual, b);
+  }
+
+  async login(email: string, password: string): Promise<{ userId: string }> {
     const user = await this.prisma.user.findUnique({
       where: { email: normalizeEmail(email) },
     });
@@ -70,35 +82,30 @@ export class AuthService {
     // Unknown address: still pay for one scrypt call, against a fixed dummy
     // salt, so this branch costs the same as a known address with a wrong
     // password. See DUMMY_SALT/DUMMY_HASH above.
-    const [salt, expected] =
-      user !== null ? user.passwordHash.split(':') : [DUMMY_SALT, DUMMY_HASH];
-    if (salt === undefined || expected === undefined) throw failure;
-
-    const actual = ((await scrypt(password, salt, KEY_LEN)) as Buffer).toString(
-      'hex',
-    );
-    const a = Buffer.from(actual, 'hex');
-    const b = Buffer.from(expected, 'hex');
     // hashesMatch is computed as its own statement, unconditionally, before
-    // the null check below — not folded into one `||` chain — so an unknown
-    // address still runs timingSafeEqual instead of short-circuiting past
-    // it. The gap this closes is nanoseconds against scrypt's ~80ms, but
-    // it's the same asymmetry C1 was about: user === null must not be a
-    // branch that skips work a known-but-wrong-password login always does.
-    const hashesMatch = a.length === b.length && timingSafeEqual(a, b);
+    // the null check below, so an unknown address never short-circuits past
+    // the comparison (see matches()).
+    const hashesMatch = await this.matches(
+      user?.passwordHash ?? `${DUMMY_SALT}:${DUMMY_HASH}`,
+      password,
+    );
     if (user === null || !hashesMatch) throw failure;
 
-    return { accessToken: this.sign(user.id) };
+    return { userId: user.id };
   }
 
-  sign(userId: string): string {
+  signWithExpiry(
+    userId: string,
+    now = new Date(),
+  ): { token: string; expiresAt: Date } {
+    const expiresAt = new Date(now.getTime() + TOKEN_TTL_MS);
     const payload = Buffer.from(
-      JSON.stringify({ sub: userId, exp: Date.now() + TOKEN_TTL_MS }),
+      JSON.stringify({ sub: userId, exp: expiresAt.getTime() }),
     ).toString('base64url');
     const mac = createHmac('sha256', this.config.jwtSecret)
       .update(payload)
       .digest('base64url');
-    return `${payload}.${mac}`;
+    return { token: `${payload}.${mac}`, expiresAt };
   }
 
   verify(token: string): string {

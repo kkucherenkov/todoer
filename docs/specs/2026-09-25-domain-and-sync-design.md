@@ -307,14 +307,16 @@ POST   /auth/login             email and password
 POST   /auth/forgot            request a reset; the answer never reveals whether
                                the address is known
 POST   /auth/reset             consume a reset token
-POST   /auth/device/code       CLI: begin the device flow
-POST   /auth/device/token      CLI: poll until confirmed
-POST   /auth/refresh           cookie (web) or body (Flutter, CLI)
-POST   /auth/logout            revoke the refresh token
+POST   /auth/refresh           body today; the web's cookie arrives with the web client
+POST   /auth/logout            revoke the refresh token, or every session
+POST   /auth/password          change the password; returns a fresh session
 DELETE /auth/account           purge this user and everything they own
 
 POST   /auth/invites               owner only: issue an invitation
 POST   /auth/users/{id}/password   owner only: reset another user's password
+
+Deferred, not built: POST /auth/device/code and /auth/device/token (the CLI's
+device flow, waiting for a web client to approve codes).
 
 POST   /sync                   the entire data plane; since 0 is the snapshot
 

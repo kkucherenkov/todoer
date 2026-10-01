@@ -1,8 +1,8 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { uuidv7 } from 'uuidv7';
 import { createHmac } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { AuthService } from './auth.service.js';
+import { AuthService, normalizeEmail } from './auth.service.js';
 import type { AppConfig } from '../config/app-config.js';
 
 const prisma = new PrismaService();
@@ -10,6 +10,20 @@ const config = {
   jwtSecret: 'test-secret-at-least-32-characters-long',
 } as AppConfig;
 const service = new AuthService(prisma, config);
+
+const createUser = async (
+  id: string,
+  email: string,
+  password: string,
+): Promise<void> => {
+  await prisma.user.create({
+    data: {
+      id,
+      email: normalizeEmail(email),
+      passwordHash: await service.hashPassword(password),
+    },
+  });
+};
 
 beforeEach(async () => {
   // Same order as sync.service.spec.ts's cleanup: userId is ON DELETE
@@ -24,24 +38,24 @@ beforeEach(async () => {
   await prisma.task.deleteMany({});
   await prisma.project.deleteMany({});
   await prisma.tag.deleteMany({});
+  await prisma.session.deleteMany({});
+  await prisma.invitation.deleteMany({});
+  await prisma.resetCode.deleteMany({});
   await prisma.user.deleteMany({});
 });
 
 describe('AuthService', () => {
-  it('issues a token the guard accepts, carrying the user id', async () => {
+  it('returns the id of the user who signed in', async () => {
     const id = uuidv7();
-    await service.register(id, 'a@b.c', 'correct horse battery');
+    await createUser(id, 'a@b.c', 'correct horse battery');
 
-    const { accessToken } = await service.login(
-      'a@b.c',
-      'correct horse battery',
-    );
+    const { userId } = await service.login('a@b.c', 'correct horse battery');
 
-    expect(service.verify(accessToken)).toBe(id);
+    expect(userId).toBe(id);
   });
 
   it('refuses a wrong password', async () => {
-    await service.register(uuidv7(), 'a@b.c', 'correct horse battery');
+    await createUser(uuidv7(), 'a@b.c', 'correct horse battery');
 
     await expect(service.login('a@b.c', 'wrong')).rejects.toThrow();
   });
@@ -52,17 +66,32 @@ describe('AuthService', () => {
     );
   });
 
+  // Timing equalisation: an unknown address must still pay for the password
+  // comparison, or response time enumerates accounts.
+  it('runs the password comparison even when the address is unknown', async () => {
+    const matches = vi.spyOn(
+      service as unknown as { matches(s: string, p: string): Promise<boolean> },
+      'matches',
+    );
+    await expect(service.login('nobody@b.c', 'anything')).rejects.toThrow();
+    expect(matches).toHaveBeenCalledTimes(1);
+    expect(matches).toHaveBeenCalledWith(
+      expect.stringMatching(/^0{32}:0{128}$/),
+      'anything',
+    );
+  });
+
   it('rejects a token signed with another secret', () => {
     const other = new AuthService(prisma, {
       jwtSecret: 'a-different-secret-32-chars-long!!',
     } as AppConfig);
-    const foreign = other.sign('0192-someone');
+    const foreign = other.signWithExpiry('0192-someone').token;
 
     expect(() => service.verify(foreign)).toThrow();
   });
 
   it('throws the exact same error for a wrong password and an unknown address', async () => {
-    await service.register(uuidv7(), 'a@b.c', 'correct horse battery');
+    await createUser(uuidv7(), 'a@b.c', 'correct horse battery');
 
     const wrongPassword = await service
       .login('a@b.c', 'wrong')
@@ -91,19 +120,27 @@ describe('AuthService', () => {
     expect(() => service.verify(`${payload}.${mac}`)).toThrow();
   });
 
-  it('normalizes email case, so a registration with a capital letter can still log in lower-case', async () => {
+  it('normalizes the address at login, so any casing or padding signs in', async () => {
     const id = uuidv7();
-    await service.register(
-      id,
-      'Mixed.Case@Example.com',
+    await createUser(id, 'mixed.case@example.com', 'correct horse battery');
+
+    const { userId } = await service.login(
+      ' Mixed.Case@Example.com ',
       'correct horse battery',
     );
 
-    const { accessToken } = await service.login(
-      'mixed.case@example.com',
-      'correct horse battery',
-    );
+    expect(userId).toBe(id);
+  });
 
-    expect(service.verify(accessToken)).toBe(id);
+  it("removes a deleted user's sessions with it", async () => {
+    const id = uuidv7();
+    await createUser(id, 'a@b.c', 'correct horse battery');
+    await prisma.session.create({
+      data: { id: uuidv7(), userId: id, salt: 'salt' },
+    });
+
+    await prisma.user.delete({ where: { id } });
+
+    expect(await prisma.session.count()).toBe(0);
   });
 });

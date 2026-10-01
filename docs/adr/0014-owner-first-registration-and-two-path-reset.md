@@ -44,3 +44,18 @@ endpoint cannot be used to enumerate accounts. The same rule applies to
 Account deletion purges the user's rows rather than tombstoning them. Their
 other devices simply stop authenticating; there is no one left to synchronise
 with.
+
+## Amendment (2026-10-01, plan D): the rules as built
+
+An invitation is single use, valid 7 days, optionally bound to an email
+address, and stored only as a hash. The owner's reset of another user sets that
+user's password directly and revokes their sessions; no code is involved. The
+host script for the owner's own recovery prints a code valid 15 minutes. On
+instances that existed before ownership, the migration made the earliest user
+the owner.
+
+Access tokens are stateless, so a deleted account's access token still
+authenticates until it expires, up to 15 minutes. Its writes to `/sync` cannot
+land, because every synced row has a foreign key to the user, which is gone; a
+pull returns nothing. The refresh token dies at once with the account's
+sessions.

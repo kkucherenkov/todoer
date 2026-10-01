@@ -23,6 +23,14 @@ usage:
                                           done or skipped occurrence)
   todoer outbox [--json]                  list operations the server has not accepted
   todoer outbox drop <op-id>... [--json]  forget failed operations
+  todoer login <email> [--json]           sign in; the password comes from
+                                          TODOER_PASSWORD, a pipe on stdin, or
+                                          a prompt on a terminal; refused
+                                          for another account while
+                                          operations are queued
+  todoer logout [--all] [--json]          sign out (--all: every session);
+                                          the local tokens go even when the
+                                          server cannot be reached (exit 5)
   todoer --help
 
 Every command first sends the operations waiting in the outbox and fetches
@@ -57,9 +65,11 @@ quick-add markers:
 
 environment:
   TODOER_URL         instance base URL, default http://localhost:3000/api/v1
-  TODOER_TOKEN       bearer token. It expires 15 minutes after it is issued and
-                     this CLI has no login command yet — mint one with
-                     POST $TODOER_URL/auth/login and export it.
+  TODOER_TOKEN       bearer token; when set it is used as is and never renewed.
+                     Without it the CLI uses the session it stored itself and
+                     refreshes it before it expires. login stores that
+                     session; TODOER_TOKEN still overrides it.
+  TODOER_PASSWORD    the password login uses instead of reading one
   TODOER_TIMEOUT_MS  how long to wait for the server, default 3000
 
 local state:
@@ -72,10 +82,10 @@ on 1-4 stdout is empty and the reason is on stderr.
 exit codes (ADR 0015 §2):
   0  done, and the server has it
   1  the server refused: this command's operation was rejected, or the
-     request was refused (401, 403, …). A 401 means the token is missing,
-     invalid or expired — get a new one; queued operations stay queued; if
-     a write command (add, done, skip, undo) exits 1 this way, its
-     operation is still queued — fix the cause and run any command (for
+     request was refused (401, 403, …). A 401 means there is no valid
+     session: run todoer login (or fix TODOER_TOKEN). Queued operations
+     stay queued. If a write command (add, done, skip, undo) exits 1 this way,
+     its operation is still queued: fix the cause and run any command (for
      example list) to send it, not the same command again
   2  usage error — the command did nothing (the outbox may still have been
      sent)

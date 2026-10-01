@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Change, Op, SyncRequest } from '@todoer/specs';
 import { taskOccurrenceId, taskTagId } from '@todoer/specs';
+import { tokenSource, type AuthApi } from './auth.js';
 import { RefusalError, UsageError } from './protocol.js';
 import { run, type Deps } from './run.js';
 import { Store } from './store.js';
@@ -16,12 +17,50 @@ function deps(send: Transport): Deps {
   const store = Store.open(':memory:');
   stores.push(store);
   let n = 0;
+  const now = () => new Date('2026-09-26T10:00:00.000Z');
+  const auth = fakeAuth().api;
   return {
     store,
     send,
-    now: () => new Date('2026-09-26T10:00:00.000Z'),
+    now,
     newId: () => `id-${++n}`,
+    auth,
+    tokens: tokenSource(store, auth, '', now),
+    envToken: false,
+    readPassword: () => Promise.resolve('secret'),
   };
+}
+
+/** Swaps the auth API, and the token source built on it. */
+function useAuth(d: Deps, api: AuthApi): void {
+  d.auth = api;
+  d.tokens = tokenSource(d.store, api, '', d.now);
+}
+
+const SESSION = {
+  accessToken: 'acc',
+  accessExpiresAt: '2026-09-26T10:15:00.000Z',
+  refreshToken: 'ref',
+};
+
+function fakeAuth(overrides: Partial<AuthApi> = {}) {
+  const calls: { login: string[][]; logout: unknown[] } = {
+    login: [],
+    logout: [],
+  };
+  const api: AuthApi = {
+    login: (email, password) => {
+      calls.login.push([email, password]);
+      return Promise.resolve(SESSION);
+    },
+    refresh: () => Promise.reject(new Error('unused')),
+    logout: (access, body) => {
+      calls.logout.push([access, body]);
+      return Promise.resolve(undefined);
+    },
+    ...overrides,
+  };
+  return { api, calls };
 }
 
 /** Like deps, with ids shaped like UUIDs so a suffix can name them:
@@ -1210,5 +1249,311 @@ describe('run', () => {
       expect(server.rows.get('t1')?.row.projectId).toBe('p-a');
       expect(d.store.pending()).toEqual([]);
     });
+  });
+});
+
+describe('login and logout', () => {
+  const never: Transport = () => Promise.reject(new Error('must not sync'));
+
+  it('login reads the password, stores the session and says who signed in', async () => {
+    const d = deps(never);
+    const { api, calls } = fakeAuth();
+    useAuth(d, api);
+    const out = await run(['login', 'a@b.c'], d);
+    expect(calls.login).toEqual([['a@b.c', 'secret']]);
+    expect(d.store.auth()).toEqual(SESSION);
+    expect(out).toEqual({
+      exit: 0,
+      stdout: ['signed in as a@b.c'],
+      stderr: [],
+    });
+  });
+
+  it('login --json prints the envelope', async () => {
+    const out = await run(['login', 'a@b.c', '--json'], deps(never));
+    expect(JSON.parse(out.stdout[0] ?? '')).toEqual({
+      data: { email: 'a@b.c' },
+      synced: true,
+      outbox: { pending: 0, failed: 0 },
+    });
+  });
+
+  it('a refused login is a refusal and stores nothing', async () => {
+    const d = deps(never);
+    d.auth = fakeAuth({
+      login: () => Promise.reject(new RefusalError('login refused: 401')),
+    }).api;
+    await expect(run(['login', 'a@b.c'], d)).rejects.toThrow(RefusalError);
+    expect(d.store.auth()).toBeUndefined();
+  });
+
+  it('login without exactly one email is a usage error', async () => {
+    await expect(run(['login'], deps(never))).rejects.toThrow(UsageError);
+    await expect(run(['login', 'a', 'b'], deps(never))).rejects.toThrow(
+      UsageError,
+    );
+  });
+
+  describe('switching accounts in one store', () => {
+    const tokenFor = (sub: string): typeof SESSION => ({
+      ...SESSION,
+      accessToken: `${Buffer.from(JSON.stringify({ sub, exp: 1 })).toString('base64url')}.mac`,
+    });
+    const loginAs = (d: Deps, sub: string) => {
+      useAuth(d, fakeAuth({ login: () => Promise.resolve(tokenFor(sub)) }).api);
+      return run(['login', `${sub}@b.c`], d);
+    };
+    const seedReplica = (d: Deps) =>
+      d.store.mergeChanges([
+        {
+          table: 'task',
+          id: 't1',
+          seq: 5,
+          row: {
+            id: 't1',
+            deletedAt: null,
+            title: 'owners',
+            priority: 0,
+            rrule: null,
+            dtstart: null,
+            parentId: null,
+            projectId: null,
+          },
+        },
+      ]);
+    const queue = (d: Deps) =>
+      d.store.enqueue({ opId: 'op-1', kind: 'create' } as unknown as Op);
+
+    it('refuses a different user while operations are queued, and keeps the old session', async () => {
+      const d = deps(never);
+      await loginAs(d, 'owner');
+      seedReplica(d);
+      queue(d);
+      await run(['logout'], d);
+      await expect(loginAs(d, 'b')).rejects.toThrow(
+        /1 queued operation.*previous account/,
+      );
+      expect(d.store.auth()).toBeUndefined();
+      expect(d.store.rows('task')).toHaveLength(1);
+      expect(d.store.counts()).toEqual({ pending: 1, failed: 0 });
+      await loginAs(d, 'owner');
+      expect(d.store.auth()).toEqual(tokenFor('owner'));
+    });
+
+    it('refuses a different user while a failed operation is kept', async () => {
+      const d = deps(never);
+      await loginAs(d, 'owner');
+      queue(d);
+      d.store.settle([{ opId: 'op-1', status: 'rejected' }], new Set());
+      expect(d.store.counts()).toEqual({ pending: 0, failed: 1 });
+      await run(['logout'], d);
+      await expect(loginAs(d, 'b')).rejects.toThrow(/todoer outbox drop/);
+      expect(d.store.auth()).toBeUndefined();
+    });
+
+    it('resets the replica and cursor for a different user with an empty outbox', async () => {
+      const d = deps(never);
+      await loginAs(d, 'owner');
+      seedReplica(d);
+      d.store.advanceCursor(5);
+      await run(['logout'], d);
+      await loginAs(d, 'b');
+      expect(d.store.rows('task')).toEqual([]);
+      expect(d.store.cursor()).toBe(0);
+      expect(d.store.auth()).toEqual(tokenFor('b'));
+    });
+
+    it('keeps the replica when the same user signs back in', async () => {
+      const d = deps(never);
+      await loginAs(d, 'owner');
+      seedReplica(d);
+      d.store.advanceCursor(5);
+      queue(d);
+      await run(['logout'], d);
+      await loginAs(d, 'owner');
+      expect(d.store.rows('task')).toHaveLength(1);
+      expect(d.store.cursor()).toBe(5);
+      expect(d.store.counts().pending).toBe(1);
+    });
+  });
+
+  it('logout sends the stored refresh token and clears the session', async () => {
+    const d = deps(never);
+    const { api, calls } = fakeAuth();
+    useAuth(d, api);
+    d.store.saveAuth(SESSION);
+    const out = await run(['logout'], d);
+    expect(calls.logout).toEqual([['acc', { refreshToken: 'ref' }]]);
+    expect(d.store.auth()).toBeUndefined();
+    expect(out).toEqual({ exit: 0, stdout: ['signed out'], stderr: [] });
+  });
+
+  it('logout --all sends all: true', async () => {
+    const d = deps(never);
+    const { api, calls } = fakeAuth();
+    useAuth(d, api);
+    d.store.saveAuth(SESSION);
+    await run(['logout', '--all'], d);
+    expect(calls.logout).toEqual([['acc', { all: true }]]);
+  });
+
+  it('logout with nothing stored sends nothing and exits 0', async () => {
+    const d = deps(never);
+    const { api, calls } = fakeAuth();
+    useAuth(d, api);
+    expect((await run(['logout'], d)).exit).toBe(0);
+    expect(calls.logout).toEqual([]);
+  });
+
+  it('logout --json prints data: null', async () => {
+    const out = await run(['logout', '--json'], deps(never));
+    expect(JSON.parse(out.stdout[0] ?? '')).toEqual({
+      data: null,
+      synced: true,
+      outbox: { pending: 0, failed: 0 },
+    });
+  });
+
+  it('a refused logout still clears the session, then fails with exit 1', async () => {
+    const d = deps(never);
+    useAuth(
+      d,
+      fakeAuth({
+        logout: () => Promise.reject(new RefusalError('logout refused: 500')),
+      }).api,
+    );
+    d.store.saveAuth(SESSION);
+    await expect(run(['logout'], d)).rejects.toThrow(
+      /signed out locally.*logout refused: 500/,
+    );
+    expect(d.store.auth()).toBeUndefined();
+  });
+
+  it('an unreachable server on logout still clears the session and exits 5', async () => {
+    const d = deps(never);
+    useAuth(
+      d,
+      fakeAuth({
+        logout: () => Promise.reject(new TypeError('fetch failed')),
+      }).api,
+    );
+    d.store.saveAuth(SESSION);
+    const out = await run(['logout', '--json'], d);
+    expect(out.exit).toBe(5);
+    expect(out.stderr.join()).toMatch(/signed out locally/);
+    expect(JSON.parse(out.stdout[0] ?? '')).toMatchObject({ synced: false });
+    expect(d.store.auth()).toBeUndefined();
+  });
+
+  const NEW = {
+    accessToken: 'acc2',
+    accessExpiresAt: '2026-09-26T10:30:00.000Z',
+    refreshToken: 'ref2',
+  };
+
+  it('logout refreshes an expired access token first, so the server revokes', async () => {
+    const d = deps(never);
+    const refreshed: string[] = [];
+    const { api, calls } = fakeAuth({
+      refresh: (token) => {
+        refreshed.push(token);
+        return Promise.resolve(NEW);
+      },
+    });
+    useAuth(d, api);
+    d.store.saveAuth({
+      ...SESSION,
+      accessExpiresAt: '2026-09-26T09:00:00.000Z',
+    });
+    const out = await run(['logout'], d);
+    expect(refreshed).toEqual(['ref']);
+    expect(calls.logout).toEqual([['acc2', { refreshToken: 'ref2' }]]);
+    expect(d.store.auth()).toBeUndefined();
+    expect(out).toEqual({ exit: 0, stdout: ['signed out'], stderr: [] });
+  });
+
+  it('logout after a refused refresh is signed out: the session is dead already', async () => {
+    const d = deps(never);
+    const { api, calls } = fakeAuth({
+      refresh: () => Promise.resolve('invalid'),
+    });
+    useAuth(d, api);
+    d.store.saveAuth({
+      ...SESSION,
+      accessExpiresAt: '2026-09-26T09:00:00.000Z',
+    });
+    const out = await run(['logout'], d);
+    expect(calls.logout).toEqual([]);
+    expect(d.store.auth()).toBeUndefined();
+    expect(out).toEqual({ exit: 0, stdout: ['signed out'], stderr: [] });
+  });
+
+  it('a 401 on logout renews once and retries once', async () => {
+    const d = deps(never);
+    let refreshes = 0;
+    const { api, calls } = fakeAuth({
+      refresh: () => {
+        refreshes += 1;
+        return Promise.resolve(NEW);
+      },
+      logout: (access, body) => {
+        calls.logout.push([access, body]);
+        return Promise.resolve(access === 'acc' ? 'unauthorized' : undefined);
+      },
+    });
+    useAuth(d, api);
+    d.store.saveAuth(SESSION);
+    const out = await run(['logout'], d);
+    expect(refreshes).toBe(1);
+    expect(calls.logout).toEqual([
+      ['acc', { refreshToken: 'ref' }],
+      ['acc2', { refreshToken: 'ref2' }],
+    ]);
+    expect(d.store.auth()).toBeUndefined();
+    expect(out.exit).toBe(0);
+  });
+
+  it('a 401 that survives the retry is a refusal, and the tokens still go', async () => {
+    const d = deps(never);
+    useAuth(
+      d,
+      fakeAuth({
+        refresh: () => Promise.resolve(NEW),
+        logout: () => Promise.resolve('unauthorized'),
+      }).api,
+    );
+    d.store.saveAuth(SESSION);
+    await expect(run(['logout'], d)).rejects.toThrow(/signed out locally/);
+    expect(d.store.auth()).toBeUndefined();
+  });
+
+  it('logout with nothing stored and TODOER_TOKEN set says the token is not a session', async () => {
+    const d = deps(never);
+    d.envToken = true;
+    const out = await run(['logout'], d);
+    expect(out.exit).toBe(0);
+    expect(out.stderr).toEqual([
+      'TODOER_TOKEN is not a session the CLI can sign out',
+    ]);
+  });
+
+  it('login with TODOER_TOKEN set warns that it still overrides the session', async () => {
+    const d = deps(never);
+    d.envToken = true;
+    const out = await run(['login', 'a@b.c'], d);
+    expect(out.stderr).toEqual([
+      'TODOER_TOKEN is set and still overrides the stored session',
+    ]);
+    expect(d.store.auth()).toEqual(SESSION);
+  });
+
+  it('lets a RefusalError from flush through, for index.ts to exit 1', async () => {
+    const ended: Transport = () =>
+      Promise.reject(
+        new RefusalError('your session has ended — run todoer login'),
+      );
+    await expect(run(['list'], deps(ended))).rejects.toThrow(
+      'your session has ended — run todoer login',
+    );
   });
 });

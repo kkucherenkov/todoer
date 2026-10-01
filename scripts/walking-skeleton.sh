@@ -6,22 +6,11 @@ set -eu
 
 BASE=${TODOER_URL:-http://localhost:3000/api/v1}
 EMAIL="skeleton-$(date +%s)@example.test"
-PASSWORD="correct horse battery staple"
+PASSWORD="correct horse 9 battery!"
 TITLE="walking skeleton $(date +%s)"
 
-curl -sf -X POST "$BASE/auth/register" -H 'content-type: application/json' \
-  -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}" >/dev/null
-
-# Captured, then parsed, rather than piped straight into sed: a pipe makes the
-# exit status sed's, so `set -e` would not see curl fail. `set -o pipefail`
-# fixes that in bash but is not POSIX — dash rejected it until 0.5.12 — and
-# this script's shebang is `sh`, so it would abort on the shell rather than on
-# the failure it was added to catch.
-LOGIN=$(curl -sf -X POST "$BASE/auth/login" -H 'content-type: application/json' \
-  -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}")
-TOKEN=$(printf '%s' "$LOGIN" | sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p')
-
-[ -n "$TOKEN" ] || { echo 'could not obtain a token' >&2; exit 1; }
+# Owner-aware sign-up: see the helper's header.
+. scripts/lib/fresh-user.sh
 
 # Two separate state files: writer and reader must not share local state, or
 # the test proves only that a file was written.
@@ -70,5 +59,16 @@ case $LINE in
   '') echo 'FAIL: the recurring task did not reach the second client' >&2; exit 1 ;;
   *"$TODAY"*) echo "FAIL: the second client still shows today's date: $LINE" >&2; exit 1 ;;
 esac
+
+# The CLI's own sign-in: no TODOER_TOKEN, only what `login` stored.
+SIGNED=$(mktemp -d)
+unset TODOER_TOKEN
+trap 'rm -rf "$WRITER" "$READER" "$SIGNED"' EXIT
+HOME="$SIGNED" TODOER_PASSWORD="$PASSWORD" node apps/cli/dist/index.js login "$EMAIL" >/dev/null ||
+  { echo 'FAIL: todoer login failed' >&2; exit 1; }
+HOME="$SIGNED" node apps/cli/dist/index.js list | grep -qF "$TITLE" || {
+  echo 'FAIL: a command after login, without TODOER_TOKEN, did not see the task' >&2
+  exit 1
+}
 
 echo 'walking skeleton passed'

@@ -8,7 +8,7 @@ set -eu
 BASE=${TODOER_URL:-http://localhost:3000/api/v1}
 : "${DATABASE_URL:?DATABASE_URL must name the database the backend uses}"
 EMAIL="outbox-$(date +%s)-$$@example.test"
-PASSWORD="correct horse battery staple"
+PASSWORD="correct horse 9 battery!"
 CLI="node apps/cli/dist/index.js"
 # Port 9 (discard): nothing listens there, so the connection is refused.
 UNREACHABLE=http://127.0.0.1:9/api/v1
@@ -23,12 +23,8 @@ field() {
   node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const v=JSON.parse(s);console.log(JSON.stringify($1))})"
 }
 
-curl -sf -X POST "$BASE/auth/register" -H 'content-type: application/json' \
-  -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}" >/dev/null
-LOGIN=$(curl -sf -X POST "$BASE/auth/login" -H 'content-type: application/json' \
-  -d "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}")
-TOKEN=$(printf '%s' "$LOGIN" | sed -n 's/.*"accessToken":"\([^"]*\)".*/\1/p')
-[ -n "$TOKEN" ] || fail 'could not obtain a token'
+# Owner-aware sign-up: see the helper's header.
+. scripts/lib/fresh-user.sh
 export TODOER_TOKEN="$TOKEN"
 
 WRITER=$(mktemp -d)

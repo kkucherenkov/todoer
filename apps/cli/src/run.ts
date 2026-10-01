@@ -7,6 +7,7 @@ import {
   type OpCreate,
   type Rrule,
 } from '@todoer/specs';
+import type { AuthApi, TokenSource } from './auth.js';
 import { expand } from './expand.js';
 import {
   addDays,
@@ -34,6 +35,12 @@ export type Deps = {
   send: Transport;
   now: () => Date;
   newId: () => string;
+  auth: AuthApi;
+  /** The CLI's own stored session: never `TODOER_TOKEN`, which is not one. */
+  tokens: TokenSource;
+  /** `TODOER_TOKEN` is set. */
+  envToken: boolean;
+  readPassword: () => Promise<string>;
 };
 
 export type Outcome = { exit: 0 | 5; stdout: string[]; stderr: string[] };
@@ -123,6 +130,41 @@ type Due = Row & {
   tags: string[];
 };
 
+/** The `sub` claim of an access token (base64url(JSON) + '.' + mac). Read, not
+ *  verified: the server verifies it, this only names whose replica it is. */
+function subject(token: string): string | undefined {
+  try {
+    const claims = JSON.parse(
+      Buffer.from(token.split('.')[0] ?? '', 'base64url').toString(),
+    ) as { sub?: unknown };
+    return typeof claims.sub === 'string' ? claims.sub : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The replica, cursor and outbox belong to one account: `change_seq` is
+ * global, so another account's cursor would skip its rows, and queued
+ * operations would be delivered to the wrong user. Signing in as someone else
+ * drops the replica, but never operations nobody has delivered.
+ */
+function adoptAccount(store: Store, accessToken: string): void {
+  const user = subject(accessToken);
+  if (user === undefined) return;
+  const owner = store.owner();
+  if (owner !== undefined && owner !== user) {
+    const { pending, failed } = store.counts();
+    if (pending + failed > 0) {
+      throw new RefusalError(
+        `${pending + failed} queued operation(s) belong to the previous account: sign back in as it to deliver them (todoer outbox drop forgets failed ones)`,
+      );
+    }
+    store.resetReplica();
+  }
+  store.setOwner(user);
+}
+
 /**
  * Every command: flush the outbox and pull first (design doc, Q5), then
  * answer from the replica with the outbox applied on top. Exit 5 whenever
@@ -138,6 +180,61 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
   let synced: boolean;
   let data: unknown;
   let human: string[];
+
+  // Neither command syncs: they only move the session.
+  if (command === 'login') {
+    const [email, ...extra] = rest;
+    if (email === undefined || extra.length > 0) {
+      throw new UsageError('login needs exactly one email');
+    }
+    const session = await deps.auth.login(email, await deps.readPassword());
+    await store.withWriteLock(() => {
+      adoptAccount(store, session.accessToken);
+      store.saveAuth(session);
+      return Promise.resolve();
+    });
+    return accountOutcome(
+      store,
+      json,
+      { email },
+      `signed in as ${email}`,
+      undefined,
+      deps.envToken
+        ? ['TODOER_TOKEN is set and still overrides the stored session']
+        : [],
+    );
+  }
+  if (command === 'logout') {
+    const all = rest.length === 1 && rest[0] === '--all';
+    if (rest.length > 0 && !all)
+      throw new UsageError('logout takes only --all');
+    let failure: unknown;
+    if (store.auth() !== undefined) {
+      try {
+        await revoke(deps, all);
+      } catch (error) {
+        failure = error;
+      }
+      // The caller asked to sign out: the tokens go whatever the server said.
+      await store.withWriteLock(() => Promise.resolve(store.clearAuth()));
+    } else if (deps.envToken) {
+      stderr.push('TODOER_TOKEN is not a session the CLI can sign out');
+    }
+    if (failure instanceof RefusalError) {
+      throw new RefusalError(`signed out locally, but ${failure.message}`);
+    }
+    // A server not reached is exit 5 like everywhere else; the local half is done.
+    return accountOutcome(
+      store,
+      json,
+      null,
+      'signed out',
+      failure === undefined
+        ? undefined
+        : 'signed out locally, but the server was not reached: the session stays valid there until it expires',
+      stderr,
+    );
+  }
 
   if (command === 'add') {
     const rrule = takeOption(rest, '--rrule');
@@ -350,6 +447,54 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
     exit: synced ? 0 : 5,
     stdout: json ? [JSON.stringify({ data, synced, outbox })] : human,
     stderr,
+  };
+}
+
+/**
+ * Signs the stored session out on the server. A token this close to expiry is
+ * refreshed first, and a 401 renews once and retries once: `POST /auth/logout`
+ * is behind the access guard, and an expired token would leave the session
+ * alive there. A refused refresh means the session is dead already.
+ */
+async function revoke(deps: Deps, all: boolean): Promise<void> {
+  const { store, tokens } = deps;
+  const ended = (error: unknown) => {
+    if (error instanceof RefusalError) return null;
+    throw error;
+  };
+  const send = (bearer: string) => {
+    const auth = store.auth();
+    return auth === undefined
+      ? Promise.resolve(undefined)
+      : deps.auth.logout(
+          bearer,
+          all ? { all: true } : { refreshToken: auth.refreshToken },
+        );
+  };
+  const bearer = await tokens.current().catch(ended);
+  if (bearer === null || (await send(bearer)) !== 'unauthorized') return;
+  const renewed = await tokens.renew(bearer).catch(ended);
+  if (renewed === null) return;
+  if ((await send(renewed)) === 'unauthorized') {
+    throw new RefusalError('logout refused: 401');
+  }
+}
+
+function accountOutcome(
+  store: Store,
+  json: boolean,
+  data: unknown,
+  human: string,
+  unreached?: string,
+  notes: string[] = [],
+): Outcome {
+  const synced = unreached === undefined;
+  return {
+    exit: synced ? 0 : 5,
+    stdout: [
+      json ? JSON.stringify({ data, synced, outbox: store.counts() }) : human,
+    ],
+    stderr: synced ? notes : [...notes, unreached],
   };
 }
 

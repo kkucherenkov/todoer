@@ -84,7 +84,7 @@ rows as one, and merges them automatically after each pull.
 - **SC-002** Scenario 4 passes as a `run` test against the fake server: after
   two commands only one `@phone` tag is live.
 - [x] every FR has a test that failed before the code made it pass
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
 - [x] no document still asserts the behaviour this task replaced
 - [x] dnote changelog line
