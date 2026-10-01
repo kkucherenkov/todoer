@@ -90,7 +90,7 @@ CLI (plan V1) and the GUI clients build on one definition.
 - [x] T004 [FR-005] schema, migration, shared spec reset — plan Task 4
 - [x] T005 [FR-005, FR-006] sync the new tables — plan Task 5
 - [x] T006 [FR-007] prune and purge — plan Task 6
-- [ ] T007 [FR-008] end to end and documents — plan Task 7
+- [x] T007 [FR-008] end to end and documents — plan Task 7
 - **Checkpoint:** scenarios 1–5 pass; the four gates green on the PR.
 
 ### Open questions

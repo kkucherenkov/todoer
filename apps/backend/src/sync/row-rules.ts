@@ -23,6 +23,10 @@ const isSet = (value: unknown): boolean =>
  * Covers tasks (rrule, origin), task occurrences, statuses and views; a
  * view's filter is stored only if every client can evaluate it (design Q6).
  *
+ * `originTaskId` and `originOccurrence` are set together or not at all, so a
+ * `set` cannot change one without the other: in practice they are given once,
+ * when the copy of a moved occurrence is created.
+ *
  * The server parses a rule but never expands it (plan C design, Q6, Q14): it
  * does not check that an occurrence belongs to the rule, which a concurrent
  * rule change would make a false rejection.

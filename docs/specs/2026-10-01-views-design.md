@@ -252,6 +252,39 @@ ordinary one-off task.
 - **A CLI command to move a task between statuses.**
 - **Grouping a list view** (by project, by status) beyond kanban's columns.
 
+## Departures in the plan
+
+Plan V2 (server and contract) departs from this document in six places; the
+plan lists them at its top
+([plan V2](../plans/2026-10-01-plan-v2-views-server.md#where-this-plan-departs-from-the-design-doc)).
+
+1. **`{ "project": null }` matches tasks without a project.** A project leaf
+   with an id alone cannot express an "Inbox" view except by naming every
+   project inside a `not`.
+2. **The evaluator takes facts, not rows.** `matches(filter, task, today)`
+   receives a `FilterTask` (tag ids, project id, displayed status id, priority,
+   both dates, whether the task recurs) that the caller resolves, so the
+   evaluator never needs the replica. The `labels` argument is gone.
+3. **The board rule is a shared function.** `displayStatus(statusId, statuses,
+   occurrenceClosed)` lives in `@todoer/specs` with vectors, since Q7, Q8 and
+   Q9 decide what every client shows. "The first status" means the first
+   non-completing one by `rank`, then id; only when every status is completing
+   is it the first outright, or a task with a null `statusId` would land in a
+   completing column that ranks first.
+4. **The filter has limits beyond depth.** At most 256 nodes, day offsets
+   within ±36 600, `priority` lists of 0-4 and non-empty. `{ "and": [] }`
+   matches every task and `{ "or": [] }` none; `{ "due": {} }` matches every
+   task with a due date.
+5. **`originTaskId` has no foreign key.** The link is informational: a key
+   would block pruning the original's tombstone while a copy lives, or null
+   the copy's field behind the clients' backs. The server checks ownership on
+   write. `statusId` does have a foreign key, and a status tombstone is pruned
+   only once no task references it.
+6. **`originTaskId` and `originOccurrence` are set together.** One without the
+   other names no occurrence, so the server rejects it. A single `set` cannot
+   change one without the other, which means both can only be given when the
+   copy is created; changing them later takes one `set` carrying both fields.
+
 ## Open threads
 
 None.
