@@ -24,9 +24,10 @@ export class AppConfig {
     const raw = process.env[name]?.trim();
     if (!raw) return undefined;
     if (/^\d+$/.test(raw)) return Number(raw);
-    // Anything numeric-looking that is not a whole count (-1, 1.5), and the
-    // booleans express would accept, are not an address list.
-    if (/^[-+.\d]+$/.test(raw) || /^(true|false)$/i.test(raw)) {
+    // Anything that reads as one number but not a whole count (-1, 1.5), and
+    // the booleans express would accept, are not an address list. A dotted
+    // quad is an address and has more than one dot.
+    if (/^[-+]?\d*\.?\d+$/.test(raw) || /^(true|false)$/i.test(raw)) {
       throw new Error(
         `${name} must be a hop count or a list of addresses/subnets`,
       );

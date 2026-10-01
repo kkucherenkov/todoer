@@ -60,6 +60,8 @@ describe('AppConfig', () => {
       ['loopback', 'loopback'],
       ['10.0.0.0/8', '10.0.0.0/8'],
       ['loopback, 172.16.0.0/12', 'loopback, 172.16.0.0/12'],
+      ['172.17.0.1', '172.17.0.1'],
+      ['::1', '::1'],
     ])('reads %j as %j', (raw, expected) => {
       expect(read(raw)).toBe(expected);
     });
