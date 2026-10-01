@@ -1,4 +1,10 @@
 import { defineConfig } from 'vitest/config';
 
-// Plain Node specs over data files; Nuxt's own test environment is not needed.
-export default defineConfig({ test: { include: ['i18n/**/*.spec.ts'] } });
+// Plain Node specs: data files and the db layer, which imports `vue`
+// explicitly. Nuxt's own test environment is not needed.
+export default defineConfig({
+  test: {
+    include: ['app/**/*.spec.ts', 'i18n/**/*.spec.ts'],
+    environment: 'node',
+  },
+});

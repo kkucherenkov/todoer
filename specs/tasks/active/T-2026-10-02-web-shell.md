@@ -192,7 +192,7 @@ replica count that changes when the CLI writes.
   session without seeing its refresh token. The CLI is unchanged.
 - [x] T003 [FR-004, FR-005] `apps/web` scaffold under the backend's CSP —
       plan Task 3
-- [ ] T004 [FR-006, FR-007, FR-008, FR-009] The worker, the protocol, the
+- [x] T004 [FR-006, FR-007, FR-008, FR-009] The worker, the protocol, the
       leader tab, the engine — plan Task 4
 - [ ] T005 [FR-009, FR-010] Sign-in, the sync cadence, the placeholder —
       plan Task 5
