@@ -67,3 +67,19 @@ omits every task occurrence and TaskTag row whose task or tag is tombstoned
 whose cursor is below the watermark is answered `410` and rebuilds from the
 snapshot, landing in the second case. Clients MUST hide a task occurrence or
 TaskTag row whose task or tag is tombstoned or absent from their replica.
+
+## Amendment (2026-10-01, plan V2)
+
+Three references added by the views design hold tombstones back differently:
+
+- A status tombstone is kept while **any** task references it through
+  `statusId`, a tombstoned task included — stricter than the rule above, the
+  same as a project. A task whose `statusId` names a status the client does
+  not have (pruned, or left out of a snapshot) is shown in the first
+  non-completing status (views design, Q8).
+- `originTaskId` holds nothing back: it has no foreign key, so the original
+  task's tombstone is pruned while a copy of one of its occurrences lives,
+  and the copy keeps an id that names no row (plan V2, departure 5).
+- Ids inside a view's `filter` hold nothing back either. A predicate naming a
+  pruned tag, project or status matches no task; a client that folds a
+  duplicate into another row rewrites the filters that name it.

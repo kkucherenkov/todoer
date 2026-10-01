@@ -274,7 +274,8 @@ plan lists them at its top
 4. **The filter has limits beyond depth.** At most 256 nodes, day offsets
    within ±36 600, `priority` lists of 0-4 and non-empty. `{ "and": [] }`
    matches every task and `{ "or": [] }` none; `{ "due": {} }` matches every
-   task with a due date.
+   task with a due date. Ids in a filter are lower-case, as Postgres returns
+   them.
 5. **`originTaskId` has no foreign key.** The link is informational: a key
    would block pruning the original's tombstone while a copy lives, or null
    the copy's field behind the clients' backs. The server checks ownership on
