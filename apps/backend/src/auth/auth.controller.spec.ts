@@ -483,8 +483,13 @@ describe('the refresh cookie', () => {
     const a = jar();
     const b = jar();
     await controller.refresh({}, withCookie(first.refreshToken), a);
-    await controller.refresh({}, withCookie(first.refreshToken), b);
+    const retried = await controller.refresh(
+      {},
+      withCookie(first.refreshToken),
+      b,
+    );
     expect(b.set[0]!.value).toBe(a.set[0]!.value);
+    expect(retried).not.toHaveProperty('refreshToken');
   });
 
   it('a body token wins over the cookie: body answer, jar untouched', async () => {
@@ -498,13 +503,64 @@ describe('the refresh cookie', () => {
     );
     expect(body.refreshToken).toBeTruthy();
     expect(res.set).toHaveLength(0);
-    // The body token rotated; the cookie's session did not.
-    const again = await controller.refresh(
-      {},
-      withCookie(fromCookie.refreshToken),
-      jar(),
+    // The body's session rotated; the cookie's did not. Checked at the
+    // database: a follow-up refresh would succeed either way (grace window).
+    const generation = async (token: string) =>
+      (
+        await prisma.session.findUnique({
+          where: { id: token.split('.')[0]! },
+        })
+      )?.generation;
+    expect(await generation(fromBody.refreshToken)).toBe(1);
+    expect(await generation(fromCookie.refreshToken)).toBe(0);
+    expect(body.refreshToken!.split('.')[0]).toBe(
+      fromBody.refreshToken.split('.')[0],
     );
-    expect(again.accessToken).toBeTruthy();
+  });
+
+  it('two cookies with the name are refused, not first-wins (cookie tossing)', async () => {
+    const mine = await login();
+    const theirs = await login();
+    const res = jar();
+    await expect(
+      controller.refresh(
+        {},
+        {
+          ip: '1.2.3.4',
+          headers: {
+            cookie: `todoer_refresh=${theirs.refreshToken}; todoer_refresh=${mine.refreshToken}`,
+          },
+        },
+        res,
+      ),
+    ).rejects.toThrow(/invalid token/);
+    expect(res.set).toHaveLength(0);
+  });
+
+  it('a refused cookie refresh clears the cookie so the SPA stops retrying it', async () => {
+    const pair = await login();
+    await controller.logout(U, { refreshToken: pair.refreshToken }, req, jar());
+    for (const dead of [pair.refreshToken, 'junk']) {
+      const res = jar();
+      await expect(
+        controller.refresh({}, withCookie(dead), res),
+      ).rejects.toThrow(/invalid token/);
+      expect(res.set).toHaveLength(0);
+      expect(res.cleared).toHaveLength(1);
+      expect(res.cleared[0]).toMatchObject({
+        name: 'todoer_refresh',
+        options: { path: '/api/v1/auth' },
+      });
+    }
+  });
+
+  it('a refused body refresh does not touch the jar', async () => {
+    const res = jar();
+    await expect(
+      controller.refresh({ refreshToken: 'junk' }, req, res),
+    ).rejects.toThrow(/invalid token/);
+    expect(res.set).toHaveLength(0);
+    expect(res.cleared).toHaveLength(0);
   });
 
   it('a refresh with neither token is a 401 and counts toward the IP limit', async () => {
@@ -544,6 +600,25 @@ describe('the refresh cookie', () => {
     await expect(
       controller.refresh({ refreshToken: pair.refreshToken }, req, jar()),
     ).rejects.toThrow(/invalid token/);
+  });
+
+  it('logout with a body token and another cookie revokes the body session, clears the cookie, spares the cookie session', async () => {
+    // Consistent with "body wins" on refresh.
+    const fromBody = await login();
+    const fromCookie = await login();
+    const res = jar();
+    await controller.logout(
+      U,
+      { refreshToken: fromBody.refreshToken },
+      withCookie(fromCookie.refreshToken),
+      res,
+    );
+    expect(res.cleared).toHaveLength(1);
+    const revokedAt = async (token: string) =>
+      (await prisma.session.findUnique({ where: { id: token.split('.')[0]! } }))
+        ?.revokedAt;
+    expect(await revokedAt(fromBody.refreshToken)).not.toBeNull();
+    expect(await revokedAt(fromCookie.refreshToken)).toBeNull();
   });
 
   it('logout all clears the cookie', async () => {

@@ -138,6 +138,8 @@ export class AuthController {
     } catch (error) {
       if (error instanceof UnauthorizedException) {
         this.refreshByIp.fail(ip, now);
+        // A dead cookie would otherwise be replayed on every page load.
+        if (cookie !== undefined) clearRefreshCookie(res);
       }
       throw error;
     }

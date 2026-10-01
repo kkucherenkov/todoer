@@ -21,19 +21,21 @@ const ATTRIBUTES = {
  * One cookie by name. A request's Cookie header is only `name=value` pairs
  * separated by `;`, so this is the part of cookie-parser this code would use.
  * The token's alphabet (hex, digits, `-`, `.`, base64url) needs no decoding.
- * When two cookies share the name, the first wins: browsers send the
- * longest path first.
+ * A duplicated name reads as absent: a same-site sibling can set a second
+ * cookie with a longer Path, and picking either one would let it plant its
+ * own token (login CSRF).
  */
 export function readRefreshCookie(
   header: string | undefined,
 ): string | undefined {
+  const values: string[] = [];
   for (const pair of header?.split(';') ?? []) {
     const eq = pair.indexOf('=');
     if (eq !== -1 && pair.slice(0, eq).trim() === REFRESH_COOKIE) {
-      return pair.slice(eq + 1).trim() || undefined;
+      values.push(pair.slice(eq + 1).trim());
     }
   }
-  return undefined;
+  return values.length === 1 ? values[0] || undefined : undefined;
 }
 
 export function setRefreshCookie(res: CookieJar, token: string): void {

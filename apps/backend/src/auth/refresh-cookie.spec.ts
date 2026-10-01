@@ -29,9 +29,9 @@ describe('readRefreshCookie', () => {
     expect(readRefreshCookie('a=1 ;  todoer_refresh = abc  ; b=2')).toBe('abc');
   });
 
-  it('takes the first of two cookies with the name', () => {
-    expect(readRefreshCookie('todoer_refresh=one; todoer_refresh=two')).toBe(
-      'one',
-    );
+  it('reads a duplicated name as absent: a tossed sibling cookie must not win', () => {
+    expect(
+      readRefreshCookie('todoer_refresh=one; todoer_refresh=two'),
+    ).toBeUndefined();
   });
 });
