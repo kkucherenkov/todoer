@@ -123,7 +123,8 @@ operation twice (ADR 0005, ADR 0015 §4).
 An operation the server refuses after the command that queued it has exited
 is kept as failed: todoer outbox lists it, todoer outbox drop forgets it.
 A failed delete whose row is already deleted on the server is dropped from the
-outbox automatically.
+outbox automatically, and so is the status change done and undo add for a task
+deleted meanwhile; a failed edit of a deleted row stays.
 `;
 
 /**
