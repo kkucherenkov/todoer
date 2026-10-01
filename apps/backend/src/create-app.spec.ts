@@ -67,4 +67,72 @@ describe('createApp: the real middleware chain over HTTP', () => {
       'application/problem+json',
     );
   });
+
+  describe('the refresh cookie', () => {
+    const PASSWORD = 'correct horse battery!1';
+    let cookie: string;
+    let access: string;
+
+    const attributes = (res: Response): string[] => {
+      const [header] = res.headers.getSetCookie();
+      return (header ?? '').split('; ');
+    };
+    const valueOf = (res: Response): string =>
+      attributes(res)[0]!.replace('todoer_refresh=', '');
+
+    it('register with transport cookie sets the cookie and keeps the token out of the body', async () => {
+      const res = await post('/api/v1/auth/register', {
+        email: 'owner@example.com',
+        password: PASSWORD,
+        transport: 'cookie',
+      });
+      expect(res.status).toBe(201);
+      const text = await res.text();
+      expect(text).not.toContain('refreshToken');
+      const attrs = attributes(res);
+      expect(res.headers.getSetCookie()).toHaveLength(1);
+      expect(attrs[0]).toMatch(/^todoer_refresh=[^;\s]+$/);
+      expect(attrs).toEqual(
+        expect.arrayContaining([
+          'Max-Age=2592000',
+          'Path=/api/v1/auth',
+          'HttpOnly',
+          'Secure',
+          'SameSite=Strict',
+        ]),
+      );
+      expect(attrs.some((a) => a.startsWith('Expires='))).toBe(true);
+      expect(text).not.toContain(valueOf(res));
+      cookie = `todoer_refresh=${valueOf(res)}`;
+    });
+
+    it('refreshes from the cookie alone and rotates it', async () => {
+      const res = await post('/api/v1/auth/refresh', {}, { cookie });
+      expect(res.status).toBe(200);
+      const json = (await res.json()) as Record<string, unknown>;
+      expect(json).not.toHaveProperty('refreshToken');
+      access = json.accessToken as string;
+      expect(res.headers.getSetCookie()).toHaveLength(1);
+      expect(valueOf(res)).not.toBe(cookie.split('=')[1]);
+      cookie = `todoer_refresh=${valueOf(res)}`;
+    });
+
+    it('logout clears the cookie at the same path and ends the session', async () => {
+      const res = await post(
+        '/api/v1/auth/logout',
+        {},
+        { authorization: `Bearer ${access}`, cookie },
+      );
+      expect(res.status).toBe(204);
+      const attrs = attributes(res);
+      expect(attrs[0]).toBe('todoer_refresh=');
+      expect(attrs).toContain('Path=/api/v1/auth');
+      const expires = attrs.find((a) => a.startsWith('Expires='))!;
+      expect(new Date(expires.slice('Expires='.length)).getFullYear()).toBe(
+        1970,
+      );
+      const again = await post('/api/v1/auth/refresh', {}, { cookie });
+      expect(again.status).toBe(401);
+    });
+  });
 });

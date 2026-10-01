@@ -147,7 +147,7 @@ it does: scripts and agents depend on it (ADR 0015).
       plan Task 3
 - **Checkpoint:** the contract allows the cookie transport, and trap 3 is
   pinned by a test; nothing behaves differently yet.
-- [ ] T004 [FR-005, FR-006, FR-007] The refresh cookie — plan Task 4
+- [x] T004 [FR-005, FR-006, FR-007] The refresh cookie — plan Task 4
 - [ ] T005 [FR-001, FR-002, FR-003, FR-004] Serve the SPA: static, fallback,
       CSP, cache — plan Task 5
 - **Checkpoint:** a browser can load a placeholder SPA from `WEB_ROOT` and
