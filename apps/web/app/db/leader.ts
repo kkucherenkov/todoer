@@ -32,15 +32,12 @@ function serve(build: string, hint: () => boolean): void {
 
   const spawn = () => {
     engine({ state: 'starting', reason: null });
-    const worker = new Worker(new URL('./worker.ts', import.meta.url), {
-      type: 'module',
-      name: 'todoer-db',
-    });
+    let worker: Worker | undefined;
     let dead = false;
     const fail = (reason: string) => {
       if (dead) return; // error and fatal from one worker are one failure
       dead = true;
-      worker.terminate();
+      worker?.terminate();
       const now = Date.now();
       failures = [...failures.filter((t) => now - t < WINDOW_MS), now];
       if (failures.length >= MAX_FAILURES) {
@@ -48,16 +45,26 @@ function serve(build: string, hint: () => boolean): void {
       }
       setTimeout(spawn, BACKOFF_MS * failures.length);
     };
-    worker.onerror = (event) => {
-      event.preventDefault();
-      fail(event.message || 'the database worker crashed');
-    };
-    worker.onmessageerror = () =>
-      fail('the database worker sent an unreadable message');
-    worker.onmessage = ({ data }: MessageEvent<Fatal>) => {
-      if (data.type === 'fatal') fail(data.reason);
-    };
-    worker.postMessage({ type: 'init', build, hint: hint() } satisfies Init);
+    try {
+      worker = new Worker(new URL('./worker.ts', import.meta.url), {
+        type: 'module',
+        name: 'todoer-db',
+      });
+      worker.onerror = (event) => {
+        event.preventDefault();
+        fail(event.message || 'the database worker crashed');
+      };
+      worker.onmessageerror = () =>
+        fail('the database worker sent an unreadable message');
+      worker.onmessage = ({ data }: MessageEvent<Fatal>) => {
+        if (data.type === 'fatal') fail(data.reason);
+      };
+      worker.postMessage({ type: 'init', build, hint: hint() } satisfies Init);
+    } catch (error) {
+      // A throwing constructor (CSP, a blocked script) must not leave the
+      // lock held by a leader with no worker and no word to the tabs.
+      fail(String(error));
+    }
   };
 
   spawn();

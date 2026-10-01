@@ -158,4 +158,25 @@ describe('lead', () => {
     expect(FakeWorker.all).toHaveLength(4);
     expect(engine().at(-1)).toEqual({ state: 'starting', reason: null });
   });
+
+  it('counts a Worker constructor that throws as a failure, not a dead lock', () => {
+    let tries = 0;
+    vi.stubGlobal(
+      'Worker',
+      class {
+        constructor() {
+          tries++;
+          throw new Error('SecurityError: worker blocked');
+        }
+      },
+    );
+    lead('b1', () => true);
+    grant();
+    vi.advanceTimersByTime(500 + 1000);
+    expect(tries).toBe(3);
+    expect(engine().at(-1)).toEqual({
+      state: 'failed',
+      reason: 'Error: SecurityError: worker blocked',
+    });
+  });
 });
