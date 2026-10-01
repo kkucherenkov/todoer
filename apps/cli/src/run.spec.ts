@@ -1790,3 +1790,155 @@ describe('login and logout', () => {
     });
   });
 });
+
+describe('views', () => {
+  const uuid = (n: number) =>
+    `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  const WORK = uuid(1);
+  const HOME = uuid(2);
+  const PHONE = uuid(3);
+  const INBOX = uuid(4);
+  const DOING = uuid(5);
+
+  type Fields = Record<string, unknown>;
+  let seq = 0;
+  function seed(d: Deps, table: string, id: string, fields: Fields): void {
+    d.store.mergeChanges([
+      {
+        table,
+        id,
+        seq: ++seq,
+        row: { id, version: 1, deletedAt: null, ...fields },
+      },
+    ]);
+  }
+  const addTask = (d: Deps, n: number, fields: Fields) =>
+    seed(d, 'task', uuid(100 + n), {
+      title: `t${n}`,
+      priority: 0,
+      rank: 'a0',
+      ...fields,
+    });
+  const addView = (d: Deps, name: string, fields: Fields) =>
+    seed(d, 'view', uuid(50 + seq), {
+      name,
+      layout: 'list',
+      sort: 'manual',
+      rank: 'a0',
+      filter: { priority: [0, 1, 2, 3, 4] },
+      ...fields,
+    });
+  function fixture(): Deps {
+    const d = deps(unreachable);
+    seed(d, 'project', WORK, { name: 'Work' });
+    seed(d, 'project', HOME, { name: 'Home' });
+    seed(d, 'tag', PHONE, { name: '@phone' });
+    seed(d, 'status', INBOX, { name: 'Inbox', rank: 'a0', completing: false });
+    seed(d, 'status', DOING, { name: 'Doing', rank: 'a1', completing: false });
+    return d;
+  }
+  async function titles(d: Deps, ...args: string[]): Promise<string[]> {
+    const out = await run(['list', ...args, '--json'], d);
+    return (envelope(out.stdout) as { data: { title: string }[] }).data.map(
+      (row) => row.title,
+    );
+  }
+
+  it('prints live views by rank then id, and the rows with --json', async () => {
+    const d = fixture();
+    addView(d, 'Later', { rank: 'a1', sort: 'due' });
+    addView(d, 'Work', { rank: 'a0', layout: 'board' });
+    addView(d, 'Gone', { rank: 'a0', deletedAt: '2026-09-01T00:00:00.000Z' });
+    const out = await run(['views'], d);
+    expect(out.stdout).toEqual(['Work  board  manual', 'Later  list  due']);
+    const rows = envelope((await run(['views', '--json'], d)).stdout) as {
+      data: { name: string }[];
+    };
+    expect(rows.data.map((v) => v.name)).toEqual(['Work', 'Later']);
+  });
+
+  it('prints nothing and exits 0 with no views', async () => {
+    const out = await run(['views'], deps(fakeServer().send));
+    expect(out).toMatchObject({ exit: 0, stdout: [] });
+  });
+
+  it('lists only the tasks in the view, matching the name by case, and ANDs @tag', async () => {
+    const d = fixture();
+    addView(d, 'Work', { filter: { project: WORK } });
+    addTask(d, 1, { projectId: WORK });
+    addTask(d, 2, { projectId: HOME });
+    addTask(d, 3, { projectId: WORK });
+    seed(d, 'task_tag', taskTagId(uuid(103), PHONE), {
+      taskId: uuid(103),
+      tagId: PHONE,
+      attached: true,
+    });
+    expect(await titles(d, '--view', 'work')).toEqual(['t1', 't3']);
+    expect(await titles(d, '--view', 'WORK', '@phone')).toEqual(['t3']);
+  });
+
+  it('refuses a missing or unknown view name as a usage error', async () => {
+    const d = fixture();
+    addView(d, 'Work', { filter: { project: WORK } });
+    addTask(d, 1, {});
+    await expect(run(['list', '--view'], d)).rejects.toThrow(UsageError);
+    await expect(run(['list', '--view', 'Nope'], d)).rejects.toThrow(/Nope/);
+    await expect(run(['list', '--view', 'Nope'], d)).rejects.toThrow(
+      UsageError,
+    );
+  });
+
+  it('orders by the view sort', async () => {
+    const d = fixture();
+    const p = [0, 1, 3, 4];
+    p.forEach((priority, i) =>
+      addTask(d, i + 1, {
+        priority,
+        rank: `a${3 - i}`,
+        dueOn: i === 2 ? null : `2026-10-0${4 - i}`,
+      }),
+    );
+    addView(d, 'P', { sort: 'priority' });
+    addView(d, 'D', { sort: 'due' });
+    addView(d, 'M', { sort: 'manual' });
+    expect(await titles(d, '--view', 'P')).toEqual(['t4', 't3', 't2', 't1']);
+    expect(await titles(d, '--view', 'D')).toEqual(['t4', 't2', 't1', 't3']);
+    expect(await titles(d, '--view', 'M')).toEqual(['t4', 't3', 't2', 't1']);
+  });
+
+  it('breaks ties by id', async () => {
+    const d = fixture();
+    addTask(d, 2, {});
+    addTask(d, 1, {});
+    addView(d, 'M', {});
+    expect(await titles(d, '--view', 'M')).toEqual(['t1', 't2']);
+  });
+
+  it('filters on the status a task is shown in', async () => {
+    const d = fixture();
+    addView(d, 'Doing', { filter: { status: DOING } });
+    addTask(d, 1, { statusId: DOING });
+    addTask(d, 2, {});
+    expect(await titles(d, '--view', 'Doing')).toEqual(['t1']);
+  });
+
+  it('filters on the current occurrence of a recurring task', async () => {
+    const d = fixture();
+    addView(d, 'Today', { filter: { scheduled: { from: 0, to: 0 } } });
+    addTask(d, 1, { rrule: 'FREQ=DAILY', dtstart: '2026-09-01' });
+    addTask(d, 2, { scheduledOn: '2026-09-26' });
+    addTask(d, 3, { scheduledOn: '2026-09-27' });
+    expect(await titles(d, '--view', 'Today')).toEqual(['t1', 't2']);
+  });
+
+  it('refuses a view whose stored filter is invalid', async () => {
+    const d = fixture();
+    addView(d, 'Broken', { filter: { project: 'Work' } });
+    await expect(run(['list', '--view', 'Broken'], d)).rejects.toThrow(
+      /view Broken has an invalid filter: .*project/,
+    );
+    await expect(run(['list', '--view', 'Broken'], d)).rejects.toThrow(
+      RefusalError,
+    );
+  });
+});

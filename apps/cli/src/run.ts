@@ -1,11 +1,15 @@
 import {
   completingStatus,
   displayStatus,
+  filterProblem,
   isIsoDate,
+  matches,
   nameKey,
   parseRrule,
   taskOccurrenceId,
   taskTagId,
+  type Filter,
+  type FilterTask,
   type Op,
   type OpCreate,
   type OpSet,
@@ -25,7 +29,16 @@ import {
   type Recurrence,
   type StateOf,
 } from './occurrence.js';
-import { labelsOf, liveStatuses, resolveLabels } from './labels.js';
+import {
+  compareIds,
+  isAttached,
+  labelsOf,
+  liveStatuses,
+  liveTags,
+  liveViews,
+  resolveLabels,
+  winner,
+} from './labels.js';
 import { planMerge } from './merge.js';
 import { liveTasks, overlay } from './overlay.js';
 import { PROJECT, TAG, planAdd } from './parse-quick-add.js';
@@ -296,7 +309,8 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
     data = tasks(store).find((row) => row.id === op.id) ?? null;
     human = [title];
   } else if (command === 'list') {
-    const filters = rest.map((arg) => {
+    const view = takeOption(rest, '--view');
+    const filters = view.rest.map((arg) => {
       if (TAG.test(arg)) return { tag: nameKey(arg) };
       if (PROJECT.test(arg)) return { project: nameKey(arg.slice(1)) };
       throw new UsageError(
@@ -304,13 +318,21 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
       );
     });
     ({ synced } = await flush(store, deps.send));
-    const rows = due(store, localDate(deps.now())).filter((row) =>
-      filters.every((f) =>
-        'tag' in f
-          ? row.tags.some((name) => nameKey(name) === f.tag)
-          : row.project !== null && nameKey(row.project) === f.project,
+    const today = localDate(deps.now());
+    const chosen =
+      view.value === undefined ? undefined : pickView(store, view.value);
+    const rows = sortFor(
+      chosen,
+      due(store, today).filter(
+        ({ row, facts }) =>
+          filters.every((f) =>
+            'tag' in f
+              ? row.tags.some((name) => nameKey(name) === f.tag)
+              : row.project !== null && nameKey(row.project) === f.project,
+          ) &&
+          (chosen === undefined || matches(chosen.filter, facts, today)),
       ),
-    );
+    ).map(({ row }) => row);
     data = rows;
     human = rows.map((row) =>
       [
@@ -329,6 +351,13 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
         ...(row.status === null ? [] : [row.status]),
       ].join('  '),
     );
+  } else if (command === 'views') {
+    ({ synced } = await flush(store, deps.send));
+    const rows = liveViews(viewRows(store)).sort(
+      (a, b) => compareStrings(a.rank, b.rank) || compareIds(a, b),
+    );
+    data = rows;
+    human = rows.map((v) => [v.name, v.layout, v.sort].map(String).join('  '));
   } else if (isMark(command)) {
     const on = takeOption(rest, '--on');
     const [ref, ...extra] = on.rest;
@@ -722,8 +751,11 @@ function statusOps(
   return [...seeded, setTask(task, 'statusId', target, newId, ts)];
 }
 
+/** A task with the facts a view's filter reads. */
+type Listed = { row: Due; facts: FilterTask };
+
 /** Each live task once, at its current occurrence (plan C design, Q11). */
-function due(store: Store, today: string): Due[] {
+function due(store: Store, today: string): Listed[] {
   const all = tasks(store);
   const marks = occurrences(store);
   const labelRows = {
@@ -735,31 +767,101 @@ function due(store: Store, today: string): Due[] {
   const names = new Map(
     liveStatuses(statusRows(store)).map((s) => [String(s.id), String(s.name)]),
   );
+  const liveTagIds = new Set(liveTags(labelRows.tags).map((t) => String(t.id)));
   return liveTasks(all).flatMap((task) => {
     const taskId = String(task.id);
+    const recurrence = recurrenceOf(task, parentOf(all, task));
     const current = currentOccurrence(
-      recurrenceOf(task, parentOf(all, task)),
+      recurrence,
       stateOf(marks, taskId),
       today,
     );
-    return current === null
-      ? []
-      : [
-          {
-            ...task,
-            ref: shortRef(taskId),
-            occurrence: current.occurrence,
-            ...labelsOf(task, labelRows),
-            status:
-              names.get(
-                displayStatus(
-                  typeof task.statusId === 'string' ? task.statusId : null,
-                  facts,
-                  false,
-                ) ?? '',
-              ) ?? null,
-          },
-        ];
+    if (current === null) return [];
+    const statusId =
+      displayStatus(
+        typeof task.statusId === 'string' ? task.statusId : null,
+        facts,
+        false,
+      ) ?? null;
+    return [
+      {
+        row: {
+          ...task,
+          ref: shortRef(taskId),
+          occurrence: current.occurrence,
+          ...labelsOf(task, labelRows),
+          status: names.get(statusId ?? '') ?? null,
+        },
+        facts: {
+          tagIds: labelRows.links
+            .filter(
+              (l) =>
+                l.taskId === task.id &&
+                isAttached(l) &&
+                liveTagIds.has(String(l.tagId)),
+            )
+            .map((l) => String(l.tagId)),
+          projectId: typeof task.projectId === 'string' ? task.projectId : null,
+          statusId,
+          priority: Number(task.priority),
+          scheduledOn:
+            recurrence === null
+              ? typeof task.scheduledOn === 'string'
+                ? task.scheduledOn
+                : null
+              : current.occurrence,
+          dueOn: typeof task.dueOn === 'string' ? task.dueOn : null,
+          recurring: recurrence !== null,
+        },
+      },
+    ];
+  });
+}
+
+type ChosenView = { sort: string; filter: Filter };
+
+/** The live view `--view` names: by name key, the lowest id among duplicates.
+ *  Never a silent "all tasks": an unknown name or a filter this client cannot
+ *  evaluate is an error. */
+function pickView(store: Store, name: string): ChosenView {
+  const key = nameKey(name);
+  const found = winner(
+    liveViews(viewRows(store)).filter(
+      (v) => typeof v.name === 'string' && nameKey(v.name) === key,
+    ),
+  );
+  if (found === undefined) throw new UsageError(`no view named ${name}`);
+  const problem = filterProblem(found.filter);
+  if (problem !== null) {
+    throw new RefusalError(`view ${name} has an invalid filter: ${problem}`);
+  }
+  return { sort: String(found.sort), filter: found.filter as Filter };
+}
+
+function compareStrings(a: unknown, b: unknown): number {
+  return String(a) < String(b) ? -1 : String(a) > String(b) ? 1 : 0;
+}
+
+/** The view's order (plan V1, Global Constraints); without a view, `list`
+ *  keeps its own. Every key ends in rank, then id. */
+function sortFor(view: ChosenView | undefined, rows: Listed[]): Listed[] {
+  if (view === undefined) return rows;
+  const key = (l: Listed): string | number | null =>
+    view.sort === 'priority'
+      ? -l.facts.priority
+      : view.sort === 'due'
+        ? l.facts.dueOn
+        : view.sort === 'scheduled'
+          ? l.facts.scheduledOn
+          : 0;
+  return [...rows].sort((a, b) => {
+    const [x, y] = [key(a), key(b)];
+    if (x !== y) {
+      if (x === null) return 1;
+      if (y === null) return -1;
+      return x < y ? -1 : 1;
+    }
+    return compareStrings(a.row.rank, b.row.rank) || compareIds(a.row, b.row);
   });
 }
 

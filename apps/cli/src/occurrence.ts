@@ -1,8 +1,7 @@
-import { parseRrule, type Rrule } from '@todoer/specs';
+import { addDays, parseRrule, type Rrule } from '@todoer/specs';
 import { expand } from './expand.js';
 import type { Row } from './store.js';
 
-const DAY_MS = 86_400_000;
 /** How far ahead the next open occurrence is looked for; also how far ahead
  *  `add --rrule` checks for a rule producing nothing at all (M5). */
 // ponytail: ten years; a rule sparser than that shows as ended.
@@ -18,11 +17,7 @@ export function localDate(now: Date): string {
   return `${pad(now.getFullYear(), 4)}-${pad(now.getMonth() + 1, 2)}-${pad(now.getDate(), 2)}`;
 }
 
-export function addDays(iso: string, days: number): string {
-  return new Date(Date.parse(`${iso}T00:00:00.000Z`) + days * DAY_MS)
-    .toISOString()
-    .slice(0, 10);
-}
+export { addDays };
 
 export type Recurrence = { rule: Rrule; dtstart: string };
 
