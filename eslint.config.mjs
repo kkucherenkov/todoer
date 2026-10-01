@@ -10,6 +10,8 @@ export default defineConfig(
       '**/dist/',
       '**/.nuxt/',
       '**/.output/',
+      '**/test-results/',
+      '**/playwright-report/',
       'packages/specs/src/generated/',
     ],
   },

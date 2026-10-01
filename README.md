@@ -22,8 +22,15 @@ second, independent CLI invocation through the server, over one endpoint:
   [ADR 0014](docs/adr/0014-owner-first-registration-and-two-path-reset.md)).
   The device-code flow and mail for `forgot` are not built yet.
 - **`WEB_ROOT`** — the backend serves a built web client from this directory on
-  the API's origin. The web client itself is plan W2; see
-  [Serving the web client](#serving-the-web-client).
+  the API's origin; see [Serving the web client](#serving-the-web-client).
+- **The web client** (`apps/web`) is a shell: sign-in with the refresh cookie,
+  a sync that runs in the background, and a count of the tasks in the local
+  replica. The replica lives in the browser (SQLite WASM on OPFS) and is owned
+  by one worker, which every tab of the origin shares, so a second tab shows
+  the same state without a second sync. It opens offline as an installable app
+  (a service worker caches the shell), shows an offline badge, speaks English
+  and Russian, and asks before it reloads onto a new build. The feature screens
+  (lists, views, kanban, quick-add, the task card) come in plan W3.
 - **`todoer login` / `logout` / `add` / `list` / `done` / `skip` / `undo` / `outbox`** — a network
   client with `--json` output and exit codes a script can branch on
   ([ADR 0015](docs/adr/0015-the-cli-is-a-client-for-automation.md)). It keeps a
@@ -38,8 +45,8 @@ second, independent CLI invocation through the server, over one endpoint:
   `Done` if the account has no statuses). `todoer views` lists the synced views
   and `list --view <name>` applies one's filter and sort (layout is ignored).
 
-Not built yet, and each absence is deliberate rather than forgotten: the web and
-Flutter clients.
+Not built yet, and each absence is deliberate rather than forgotten: the Flutter
+client.
 [The plan](docs/plans/2026-09-25-walking-skeleton.md#what-this-plan-does-not-do)
 lists plan A's original exclusions, narrowed since by plans B and C (offline,
 recurrence).
@@ -50,6 +57,7 @@ recurrence).
 | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `apps/backend/`                           | NestJS 11 server, Prisma 6, the sync protocol                                                                              |
 | `apps/cli/`                               | the `todoer` command, a network client with no privileged access, running on `packages/client-core`                        |
+| `apps/web/`                               | the web client, a Nuxt 4 SPA: the leader tab's worker runs `packages/client-core` on SQLite WASM; the backend serves the build |
 | `packages/client-core/`                   | the logic every client shares: replica, outbox, sync, overlay, recurrence, labels, merge, views, on a synchronous SQLite adapter |
 | `packages/specs/`                         | the OpenAPI document and the client generated from it                                                                      |
 | `docker/compose.yml`                      | Postgres 18 for local development, on port **5433**                                                                        |
@@ -57,6 +65,10 @@ recurrence).
 | `docs/adr/`, `docs/specs/`, `docs/plans/` | decisions, design, plans                                                                                                   |
 | `specs/tasks/`                            | the task stack — one file per task, `active/` then `done/`                                                                 |
 | `.claude/CLAUDE.md`                       | the working agreement                                                                                                      |
+
+`packages/client-core`'s `./sqlite-wasm` entry is the web's adapter. Its types
+import `@sqlite.org/sqlite-wasm`, an optional peer dependency: a consumer that
+imports the entry installs the peer, and the CLI, which does not, never does.
 
 ## Running it
 
@@ -97,6 +109,17 @@ owner resets other users through `POST /auth/users/{id}/password`.
 Login and registration each have their own budget of 20 attempts per IP per
 15 minutes, and login also allows 5 per address.
 
+The web client. `pnpm --filter @todoer/web dev` serves it on 3001 and proxies
+`/api` to the backend on 3000, so the refresh cookie's `Path` holds. Open
+`http://localhost:3001`, not `127.0.0.1`: only the name is a secure context for
+the `Secure` cookie. To have the backend serve it instead, build the SPA and
+point `WEB_ROOT` at the output:
+
+```sh
+pnpm -w exec turbo run build --filter=@todoer/web...
+WEB_ROOT=apps/web/.output/public PORT=3010 node apps/backend/dist/main.js
+```
+
 The proof that the loop closes:
 
 ```sh
@@ -124,6 +147,9 @@ nothing.
 - **A new build needs a restart.** `index.html` and its CSP hashes are read
   once at startup; replacing the files under a running backend serves the new
   assets with the old page and policy.
+- **A new build reaches an open tab as a prompt.** The service worker never
+  reloads a tab on its own. Accepting the prompt in one tab reloads every tab
+  that showed it, which keeps one build per origin, as the shared worker needs.
 - **`WEB_ROOT` is trusted content.** Symlinks inside it are followed, so
   point it at a directory you build, not one anyone else can write to.
 
@@ -141,6 +167,18 @@ Behind a reverse proxy, set `TRUST_PROXY` to the number of proxies in front
 (usually `1`) or to their addresses. Unset, every client behind a proxy shares
 one IP for the rate limits. To reach the instance from outside without opening
 ports, `tailscale serve` gives it an HTTPS name inside your tailnet.
+
+Browsers. Chromium and Firefox are tested in CI. Firefox skips one case, the
+return from offline to online, because Playwright's emulation fires no `online`
+event there; the app syncs on a manual "Sync now" after it. A blob worker is
+refused under the CSP in Chromium and reported to the test, but Firefox neither
+enforces nor reports it for a worker created inside a worker, so that check runs
+in Chromium only. Safari is untested: OPFS needs 16.4 or newer, and its handling
+of `Secure` cookies on `http://localhost` differs, so use HTTPS. Signing out
+keeps the local replica in the browser; signing in as another account resets
+it. A one-bit hint in `localStorage` (`todoer.session`) tells a signed-out tab
+not to try a cookie refresh, since each failed refresh counts against the
+per-IP limit. Clearing site data loses the hint, and the person signs in again.
 
 The cookie (`todoer_refresh`, `Path=/api/v1/auth`, Max-Age 30 days) can outlive
 a session near its 365-day absolute limit by up to 30 days; the server answers
@@ -205,6 +243,23 @@ docker exec todoer-dev-postgres-1 createdb -U todoer todoer_test
 DATABASE_URL=postgresql://todoer:todoer@localhost:5433/todoer_test \
   pnpm --filter @todoer/backend exec prisma migrate deploy
 ```
+
+The web client's end-to-end suite runs Playwright against the built SPA served
+by the backend under its real CSP. It needs an **empty** database (registration
+is owner-first), so give it a scratch one, never the development database:
+
+```sh
+docker exec todoer-dev-postgres-1 createdb -U todoer todoer_e2e
+export DATABASE_URL=postgresql://todoer:todoer@localhost:5433/todoer_e2e
+export JWT_SECRET=local-only-secret-at-least-32-characters-long
+pnpm --filter @todoer/backend exec prisma migrate deploy
+pnpm -w exec turbo run build --filter=@todoer/backend... --filter=@todoer/cli... --filter=@todoer/web...
+pnpm --filter @todoer/web exec playwright install chromium firefox   # once
+pnpm --filter @todoer/web e2e
+```
+
+A run spends about 16 logins and 15 registrations of the per-IP budget of 20
+each per 15 minutes, so two runs in a row from one address can hit `429`.
 
 ## Changing the API
 

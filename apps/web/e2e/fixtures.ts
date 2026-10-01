@@ -88,7 +88,7 @@ export const test = base.extend<
   owner: [
     async ({ playwright }, use, { project }) => {
       const api = await playwright.request.newContext({
-        baseURL: project.use.baseURL,
+        ...(project.use.baseURL && { baseURL: project.use.baseURL }),
       });
       await use(await ownerToken(api));
       await api.dispose();
@@ -97,7 +97,9 @@ export const test = base.extend<
   ],
 
   account: async ({ owner, playwright, baseURL }, use, { testId }) => {
-    const api = await playwright.request.newContext({ baseURL });
+    const api = await playwright.request.newContext({
+      ...(baseURL && { baseURL }),
+    });
     const invite = await post(api, '/auth/invites', {}, owner);
     expect(invite.status(), 'invitation').toBe(201);
     const { token: invitation } = (await invite.json()) as { token: string };

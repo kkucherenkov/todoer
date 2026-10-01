@@ -341,8 +341,8 @@ the refresh cookie (ADR 0011), a different flow. `tokenSource` and
 `RefusalError` and `ConflictError` live in client-core because `Store`,
 `resolveRef`, `planAdd`, `pickView`, `pickOccurrence`, `flush` and `submit`
 throw them. Messages keep flag names (`--on must be a date`, `do not run done
-again`); rewording them for a GUI is W2's call, since changing them in W0 would
-change CLI output.
+again`); rewording them for a GUI was left to W2, which kept them (W2
+departure 7), since changing them would change CLI output.
 
 ## Departures in plan W1
 
@@ -425,5 +425,97 @@ clears the cookie.
   logout needs a valid bearer to clear the cookie.
 
 **Safari and `Secure` cookies on `http://localhost` are open.** W1's tests read
-`Set-Cookie` directly. W2 decides its dev setup (Chromium and Firefox over
-`http://localhost`, or an HTTPS dev server) when it runs Playwright's WebKit.
+`Set-Cookie` directly. W2 chose Chromium and Firefox over `http://localhost`
+and did not run WebKit; see departure 8 under "Departures in plan W2".
+
+## Departures in plan W2
+
+Plan W2 (`docs/plans/2026-10-02-plan-w2-web-shell.md`) built the web shell. It
+departs from this document and from the brief in eight places.
+
+**1. `subject` and `adoptAccount` moved from the CLI into client-core.** W0
+kept them in `run.ts` because `subject` used `Buffer` and the web's sign-in is
+a different flow. The flow differs, but the account rule does not, and a second
+copy in the web would be a second implementation of a data-loss guard. In
+client-core, `subject` decodes base64url with `atob`. The CLI imports both, and
+`run.spec`'s "switching accounts in one store" tests are the proof that nothing
+changed.
+
+**2. The web's token source is a sibling, not a mode of `tokenSource`.**
+`tokenSource` is built around a stored refresh token renewed under the store's
+write lock, so that parallel processes spend it once. The cookie session has no
+stored token and one worker per origin. A flag would leave two algorithms behind
+one name. `cookieTokenSource` shares `RENEW_WITHIN_MS` and the retry-once rule,
+and `StoredAuth` becomes `AccessGrant & { refreshToken }`.
+
+**3. ESLint lints `apps/web`'s `.ts` without type information. `.vue` files are
+formatted by Prettier and typechecked by `vue-tsc`, but not linted.** Type-aware
+lint needs Nuxt's generated project references, and linting `.vue` needs
+`eslint-plugin-vue`, a dependency nobody approved. The e2e files have their own
+`apps/web/e2e/tsconfig.json`, which the web's `typecheck` runs after
+`nuxt typecheck`, since Nuxt's references do not include them.
+
+**4. A signed-out tab does not try a cookie refresh.** The tab keeps a one-bit
+hint in `localStorage` (`todoer.session`), set when the session topic says
+signed-in and cleared when it says signed-out. The leader passes the hint to the
+worker at spawn, and the worker tries the cookie only when it is set. Every 401
+refresh counts toward the server's per-IP limit, and the cookie is `HttpOnly`,
+so nothing else can tell a tab whether one exists. With the hint lost, the
+person signs in again, and the orphaned session idles out in 30 days.
+
+**5. Fonts: the system stack, not Public Sans.** `ui: { fonts: false }` switches
+off `@nuxt/fonts`, which would download a Google font at build time, make every
+CI build depend on the network, and serve the files from `/_fonts/`, outside the
+immutable cache. The visual design note allows font changes through tokens. The
+maintainer can bring Public Sans back by bundling it locally. Related choices
+the controller made under the approval of Nuxt and Nuxt UI: `vue-tsc` and
+`@iconify-json/lucide` (Nuxt UI's icons must be bundled, because `connect-src`
+is `'self'`) are dev dependencies of `apps/web`, and `vue` is an explicit
+dependency, the same package Nuxt installs.
+
+**6. No production image in W2.** Q9 has the image build the SPA. No Dockerfile
+exists yet, and building one takes a multi-stage Dockerfile with `pnpm deploy`,
+`prisma migrate deploy` on start, a health check, a compose service and an e2e
+run against the image. That is a task of its own, deferred before W3 ships.
+
+**7. Core error messages keep their CLI wording, and the UI does not show them
+as copy.** W0 departure 6 left the rewording to W2. The worker maps errors to a
+`Failure.kind`, and the UI shows an i18n string per kind. The core's message
+appears only as a detail line. Rewording it would change CLI output for no
+reader of the web.
+
+**8. Firefox runs in CI, WebKit does not.** Firefox 155 (Playwright build 1543)
+passes the suite without special handling: the `Secure` cookie on
+`http://localhost`, Web Locks with `steal`, the OPFS pool in a module worker, the
+pool retry, the service worker and the update prompt. Two gaps are in the
+browser or its emulation, not the app. `offline, then online` is skipped in
+Firefox: after `setOffline(false)` the page sees no `online` event, though
+`navigator.onLine` flips and a manual sync succeeds. And Firefox neither
+enforces nor reports CSP for a blob worker created inside the dedicated worker,
+so the forwarder that turns worker violations into test failures is proved in
+Chromium only. Safari's `Secure` cookies on `http://localhost` and its OPFS
+quirks stay a documented risk in the README, untested. The "Safari and `Secure`
+cookies" note above is therefore still open: W2 documented it and did not test
+it.
+
+### Behaviour worth knowing
+
+- **Sync cadence.** A return to a tab (`focus` and `visibilitychange` together)
+  collapses into one sync within 1 s. Ticks from several windows collapse in the
+  engine: it drops a tick when the last sync ended less than 25 s ago, measured
+  on the worker's clock. The e2e tick test therefore waits 25 s of real time,
+  because Playwright's fake clock does not reach a dedicated worker.
+- **An update reloads every prompted tab.** Accepting the prompt in one tab
+  reloads each tab that showed it (vite-pwa's prompt mode listens for
+  `controlling` in each). That keeps one build per origin, which the shared
+  worker needs. Waiting for each tab's own click needs `onNeedReload`, a product
+  decision.
+- **The CI login budget is tight.** A run spends 16 or 17 of 20 logins and 15
+  of 20 registrations per IP per 15 minutes. One CI retry fits, two hit the
+  explicit 429 message.
+- **For W3's write commands.** A command carries its operation id from the tab,
+  so a resend after a worker crash is deduplicated by the server's `opId`.
+  `withWriteLock` refuses a second concurrent caller on the same store (a
+  re-entrant call would otherwise hang), so a command must not nest.
+- **Sign-out keeps the replica** (open question 4): the data is the person's, and
+  a sign-in as another account resets it.

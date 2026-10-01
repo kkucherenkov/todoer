@@ -2,8 +2,10 @@
 
 - Created: 2026-10-02
 - Owner: claude
-- Status: ready
+- Status: done
 - Blockers: —
+- Completed: 2026-10-02
+- Result: branch feat/web-shell, pull request not opened yet
 - Spec: [docs/specs/2026-10-01-client-shells-design.md](../../../docs/specs/2026-10-01-client-shells-design.md)
   (Q2, Q3, Q9–Q14, Q16 — plan W2, Q19, Q20, visual design note, W1 notes);
   [ADR 0011](../../../docs/adr/0011-bearer-everywhere-cookie-only-for-refresh.md)
@@ -175,12 +177,12 @@ replica count that changes when the CLI writes.
   `adoptAccount`. Both shell e2e scripts pass.
 - **SC-004** The required gates are still exactly the four names, and
   `Web e2e` runs next to them.
-- [ ] every FR has a test that failed before the code made it pass (FR-011
+- [x] every FR has a test that failed before the code made it pass (FR-011
       by Playwright, shown red with the PWA module removed; FR-014 by the
       sweep, not a test)
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
+- [x] no document still asserts the behaviour this task replaced
 - [ ] dnote changelog line
 
 ### Steps
@@ -203,7 +205,7 @@ replica count that changes when the CLI writes.
 - [x] T006 [FR-011] The service worker and the update prompt — plan Task 6
 - [x] T007 [FR-005, FR-012, FR-013] Playwright and the `Web e2e` job — plan
       Task 7
-- [ ] T008 [FR-014] Docs, departures, the full proof — plan Task 8
+- [x] T008 [FR-014] Docs, departures, the full proof — plan Task 8
 
 ### Not in this task
 
