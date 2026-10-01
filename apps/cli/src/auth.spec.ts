@@ -116,6 +116,60 @@ describe('tokenSource', () => {
     expect([x, y]).toEqual(['new', 'new']);
   });
 
+  it('retries a refresh whose response was lost once, with the same token', async () => {
+    const store = storeAt();
+    store.saveAuth(session('old', 5));
+    const refreshed = session('new', 900);
+    const calls: string[] = [];
+    const api: AuthApi = {
+      ...fakeApi().api,
+      refresh: (token) => {
+        calls.push(token);
+        return calls.length === 1
+          ? Promise.reject(new TypeError('fetch failed'))
+          : Promise.resolve(refreshed);
+      },
+    };
+    expect(await tokenSource(store, api, '', now).current()).toBe('new');
+    expect(calls).toEqual(['r-old', 'r-old']);
+    expect(store.auth()).toEqual(refreshed);
+  });
+
+  it('gives up after a second network error and keeps the session', async () => {
+    const store = storeAt();
+    store.saveAuth(session('old', 5));
+    let calls = 0;
+    const api: AuthApi = {
+      ...fakeApi().api,
+      refresh: () => {
+        calls++;
+        return Promise.reject(new TypeError('fetch failed'));
+      },
+    };
+    await expect(tokenSource(store, api, '', now).current()).rejects.toThrow(
+      TypeError,
+    );
+    expect(calls).toBe(2);
+    expect(store.auth()).toEqual(session('old', 5));
+  });
+
+  it('does not retry a refusal', async () => {
+    const store = storeAt();
+    store.saveAuth(session('old', 5));
+    let calls = 0;
+    const api: AuthApi = {
+      ...fakeApi().api,
+      refresh: () => {
+        calls++;
+        return Promise.reject(new RefusalError('refresh refused: 500'));
+      },
+    };
+    await expect(tokenSource(store, api, '', now).current()).rejects.toThrow(
+      RefusalError,
+    );
+    expect(calls).toBe(1);
+  });
+
   it('renew returns the stored token when another process already rotated it', async () => {
     const store = storeAt();
     store.saveAuth(session('fresh', 600));

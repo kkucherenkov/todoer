@@ -26,6 +26,20 @@ export type TokenSource = {
 const RENEW_WITHIN_MS = 60_000;
 
 /**
+ * A refresh whose response was lost may still have rotated the token; the
+ * server answers a repeat inside its grace window with the same new one. A
+ * refusal is an answer, not a loss, and is not retried.
+ */
+async function refreshOnce(api: AuthApi, token: string) {
+  try {
+    return await api.refresh(token);
+  } catch (error) {
+    if (error instanceof RefusalError) throw error;
+    return api.refresh(token);
+  }
+}
+
+/**
  * `TODOER_TOKEN` wins when set and is never renewed. Otherwise the stored
  * session is used, refreshed under the store's write lock: the refresh token
  * rotates on every use, so two processes refreshing the same one would make
@@ -48,7 +62,7 @@ export function tokenSource(
       if (auth === undefined) return null;
       // Another process already rotated the token the server refused.
       if (auth.accessToken !== refused) return auth.accessToken;
-      const next = await api.refresh(auth.refreshToken);
+      const next = await refreshOnce(api, auth.refreshToken);
       if (next === 'invalid') store.clearAuth();
       else store.saveAuth(next);
       return next === 'invalid' ? 'invalid' : next.accessToken;
