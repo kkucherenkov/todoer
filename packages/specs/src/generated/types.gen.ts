@@ -268,7 +268,7 @@ export type PostAuthRefreshErrors = {
    */
   401: Problem;
   /**
-   * too many invalid refreshes; see Retry-After
+   * too many invalid refreshes from this IP — any refresh from it, valid or not, is refused until Retry-After
    */
   429: Problem;
   /**
