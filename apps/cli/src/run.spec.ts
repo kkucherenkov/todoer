@@ -246,6 +246,30 @@ describe('run', () => {
       expect(d.store.entries().some((e) => e.op.table === 'tag')).toBe(false);
     });
 
+    // Any of the add's ops, not just the first, decides the exit.
+    it.each(['task', 'task_tag'])(
+      'exits 1 when the server refuses only the %s create',
+      async (table) => {
+        const d = deps((request) =>
+          Promise.resolve(
+            json({
+              cursor: 0,
+              results: request.ops.map((op) => ({
+                opId: op.opId,
+                status:
+                  op.table === table
+                    ? ('rejected' as const)
+                    : ('applied' as const),
+                ...(op.table === table ? { reason: 'nope' } : {}),
+              })),
+              changes: [],
+            }),
+          ),
+        );
+        await expect(run(['add', 'x @phone'], d)).rejects.toThrow(RefusalError);
+      },
+    );
+
     // `submit` queues every op or none: a half-queued add would leave a tag
     // with no task, or a link with no task.
     it("queues nothing when one of the add's operations cannot be queued", async () => {
@@ -1051,6 +1075,40 @@ describe('run', () => {
         const out = await run(['list'], d);
         expect(d.store.entry('del-x')).toBeUndefined();
         expect(out.stderr.join('\n')).not.toMatch(/failed/);
+      });
+
+      // The cleanup is for moot deletes only: a failed set on a tombstone
+      // is evidence the user may want to see.
+      it('keeps a failed non-delete entry on a tombstoned row', async () => {
+        const d = deps(fakeServer().send);
+        d.store.mergeChanges([
+          {
+            table: 'tag',
+            id: 'tag-x',
+            seq: 1,
+            row: {
+              id: 'tag-x',
+              name: '@x',
+              version: 3,
+              deletedAt: '2026-09-26T09:00:00.000Z',
+            },
+          },
+        ]);
+        d.store.enqueue({
+          opId: 'set-x',
+          kind: 'set',
+          table: 'tag',
+          id: 'tag-x',
+          field: 'name',
+          value: '@y',
+          ts: 'T',
+        });
+        d.store.settle(
+          [{ opId: 'set-x', status: 'conflict', currentVersion: 3 }],
+          new Set(),
+        );
+        await run(['list'], d);
+        expect(d.store.entry('set-x')?.status).toBe('failed');
       });
 
       it('keeps a failed delete whose row is still live', async () => {
