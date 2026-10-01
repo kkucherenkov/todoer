@@ -38,6 +38,7 @@ export class AuthController {
   private readonly refreshByIp = new RateLimiter(30, WINDOW_MS);
   private readonly registerByIp = new RateLimiter(20, WINDOW_MS);
   private readonly resetByIp = new RateLimiter(20, WINDOW_MS);
+  private readonly deleteByIp = new RateLimiter(20, WINDOW_MS);
 
   constructor(
     private readonly auth: AuthService,
@@ -205,7 +206,13 @@ export class AuthController {
   async deleteAccount(
     @CurrentUser() userId: string,
     @Body() body: { password: string },
+    @Req() req: Client,
   ): Promise<void> {
+    const ip = req.ip ?? 'unknown';
+    const now = Date.now();
+    AuthController.check(now, [this.deleteByIp, ip]);
+    // Reserved up front: the password check costs a scrypt call.
+    this.deleteByIp.fail(ip, now);
     await this.accounts.deleteAccount(userId, body.password);
   }
 }

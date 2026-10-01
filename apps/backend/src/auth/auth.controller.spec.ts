@@ -248,4 +248,17 @@ describe('accounts routes', () => {
     ).rejects.toBeInstanceOf(TooManyRequests);
     expect(spy).toHaveBeenCalledTimes(20);
   });
+
+  it('blocks the 21st account deletion from one address with 429, before the password is checked', async () => {
+    const spy = vi.spyOn(AccountsService.prototype, 'deleteAccount');
+    for (let i = 0; i < 20; i++) {
+      await expect(
+        controller.deleteAccount(U, { password: 'wrong pass phrase!9' }, req),
+      ).rejects.toThrow('invalid credentials');
+    }
+    await expect(
+      controller.deleteAccount(U, { password: PASSWORD }, req),
+    ).rejects.toBeInstanceOf(TooManyRequests);
+    expect(spy).toHaveBeenCalledTimes(20);
+  });
 });
