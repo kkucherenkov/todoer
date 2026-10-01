@@ -401,7 +401,7 @@ paths:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
         "429":
-          description: too many invalid refreshes; see Retry-After
+          description: too many invalid refreshes from this IP — any refresh from it, valid or not, is refused until Retry-After
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
