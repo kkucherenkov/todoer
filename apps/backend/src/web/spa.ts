@@ -1,11 +1,14 @@
 import express, { type RequestHandler } from 'express';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { join, sep } from 'node:path';
+import { join, posix, sep } from 'node:path';
 
-// A <script> runs when it has no type, `module`, or a JavaScript MIME type.
-// Nuxt's __NUXT_DATA__ payload is `application/json`: data, not script.
-const EXECUTABLE = /^(?:module|(?:text|application)\/(?:java|ecma)script)?$/i;
+// A <script> needs a hash when it has no type, `module`, or a JavaScript MIME
+// type, and also when it is an `importmap` or `speculationrules` block:
+// browsers apply script-src to those too. Nuxt's __NUXT_DATA__ payload is
+// `application/json`: data, not script.
+const HASHED =
+  /^(?:module|importmap|speculationrules|(?:text|application)\/(?:java|ecma)script)?$/i;
 
 /** CSP hashes of the inline scripts the build put into index.html. The
  *  browser hashes the exact text between the tags, which is what is hashed
@@ -15,11 +18,13 @@ export function inlineScriptHashes(html: string): string[] {
   for (const [, attrs = '', body = ''] of html.matchAll(
     /<script\b([^>]*)>([\s\S]*?)<\/script\s*>/gi,
   )) {
-    if (/\bsrc\s*=/i.test(attrs) || body === '') continue;
+    if (/(^|\s)src\s*=/i.test(attrs) || body === '') continue;
     const type = /\btype\s*=\s*["']?([^"'\s>]*)/i.exec(attrs)?.[1] ?? '';
-    if (!EXECUTABLE.test(type)) continue;
+    if (!HASHED.test(type)) continue;
+    // HTML parsers turn CRLF and lone CR into LF before the script sees it.
+    const text = body.replace(/\r\n?/g, '\n');
     hashes.push(
-      `'sha256-${createHash('sha256').update(body).digest('base64')}'`,
+      `'sha256-${createHash('sha256').update(text).digest('base64')}'`,
     );
   }
   return hashes;
@@ -62,8 +67,8 @@ const IMMUTABLE = 'public, max-age=31536000, immutable';
 const REVALIDATE = 'no-cache';
 
 export function spa(root: string): RequestHandler {
-  // Read once: the policy's hashes always describe the bytes served. A new
-  // build means a new image, so a restart.
+  // Read once: the policy's hashes always describe the bytes served, and
+  // /index.html is served from this copy too. A new build requires a restart.
   const index = readFileSync(join(root, 'index.html'));
   const csp = contentSecurityPolicy(index.toString('utf8'));
   const hashed = join(root, '_nuxt') + sep;
@@ -81,20 +86,31 @@ export function spa(root: string): RequestHandler {
       );
     },
   });
+  const sendIndex = (res: Parameters<RequestHandler>[1]) =>
+    res
+      .set({ 'Content-Security-Policy': csp, 'Cache-Control': REVALIDATE })
+      .type('html')
+      .send(index);
+  /** Whether static would resolve this path to index.html on disk. */
+  const isIndex = (path: string): boolean => {
+    try {
+      return posix.normalize(decodeURIComponent(path)) === '/index.html';
+    } catch {
+      return false; // malformed escape: static answers it
+    }
+  };
   return (req, res, next) => {
     if ((req.method !== 'GET' && req.method !== 'HEAD') || reserved(req.path)) {
       return next();
     }
+    if (isIndex(req.path)) return void sendIndex(res);
     files(req, res, (error?: unknown) => {
       if (error !== undefined) return next(error);
       // Only a navigation gets the app. A missing script or image asks for
       // */*, which req.accepts('html') would also accept, and must get its 404
       // (plan departure 5).
       if (!(req.headers.accept ?? '').includes('text/html')) return next();
-      res
-        .set({ 'Content-Security-Policy': csp, 'Cache-Control': REVALIDATE })
-        .type('html')
-        .send(index);
+      sendIndex(res);
     });
   };
 }

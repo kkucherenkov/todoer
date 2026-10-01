@@ -64,6 +64,14 @@ describe('createApp: the real middleware chain over HTTP', () => {
     expect(res.status).toBe(400);
   });
 
+  it('gives an API response no SPA headers and an unknown path no app', async () => {
+    const res = await get('/api/v1/health');
+    expect(res.status).toBe(200);
+    expect(res.headers.get('content-security-policy')).toBeNull();
+    expect(res.headers.get('cache-control')).not.toBe('no-cache');
+    expect((await get('/tasks/123')).status).toBe(404);
+  });
+
   it('serves nothing at / without WEB_ROOT', async () => {
     const res = await get('/', 'text/html');
     expect(res.status).toBe(404);
@@ -177,6 +185,7 @@ describe('createApp: serving a built SPA from WEB_ROOT', () => {
     writeFileSync(join(webRoot, 'index.html'), INDEX);
     writeFileSync(join(webRoot, '_nuxt/app.abc123.js'), 'console.log(1)');
     writeFileSync(join(webRoot, 'sw.js'), 'self.skip=1');
+    writeFileSync(join(webRoot, '.env'), 'SECRET=1');
     writeFileSync(join(webRoot, 'api/secret.txt'), 'secret');
     spaApp = await createApp({ webRoot });
     await spaApp.listen(0, '127.0.0.1');
@@ -218,6 +227,25 @@ describe('createApp: serving a built SPA from WEB_ROOT', () => {
     problem(await web('/API/v1/nope'));
     problem(await web('/api'));
     problem(await web('/health'));
+  });
+
+  it('does not serve a dotfile', async () => {
+    problem(await web('/.env', {}, '*/*'));
+  });
+
+  it('serves / and /index.html from the bytes read at startup', async () => {
+    const csp = (await web('/')).headers.get('content-security-policy');
+    writeFileSync(join(webRoot, 'index.html'), '<script>evil()</script>');
+    try {
+      for (const path of ['/', '/index.html', '/%69ndex.html', '/./index.html']) {
+        const res = await web(path);
+        expect(await res.text(), path).toBe(INDEX);
+        expect(res.headers.get('content-security-policy'), path).toBe(csp);
+        expect(res.headers.get('cache-control'), path).toBe('no-cache');
+      }
+    } finally {
+      writeFileSync(join(webRoot, 'index.html'), INDEX);
+    }
   });
 
   it('does not serve a file under WEB_ROOT/api', async () => {

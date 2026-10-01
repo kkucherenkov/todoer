@@ -23,6 +23,26 @@ describe('inlineScriptHashes', () => {
     expect(inlineScriptHashes(html)).toEqual([hash('a()'), hash('b()')]);
   });
 
+  it('hashes an inline import map and speculation rules, not other data', () => {
+    const map = '{"imports":{"a":"/a.js"}}';
+    const rules = '{"prefetch":[]}';
+    const html = `<script type="importmap">${map}</script><script type="speculationrules">${rules}</script><script type="application/ld+json">{}</script>`;
+    expect(inlineScriptHashes(html)).toEqual([hash(map), hash(rules)]);
+  });
+
+  it('does not mistake data-src for src', () => {
+    expect(inlineScriptHashes('<script data-src="x">a()</script>')).toEqual([
+      hash('a()'),
+    ]);
+    expect(inlineScriptHashes('<script src="x">a()</script>')).toEqual([]);
+  });
+
+  it('hashes the body with CRLF and CR normalised to LF', () => {
+    expect(inlineScriptHashes('<script>a()\r\nb()\rc()</script>')).toEqual([
+      hash('a()\nb()\nc()'),
+    ]);
+  });
+
   it('skips an empty inline script', () => {
     expect(inlineScriptHashes('<script></script>')).toEqual([]);
   });
