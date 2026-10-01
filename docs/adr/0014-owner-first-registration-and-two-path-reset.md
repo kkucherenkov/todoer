@@ -45,7 +45,7 @@ Account deletion purges the user's rows rather than tombstoning them. Their
 other devices simply stop authenticating; there is no one left to synchronise
 with.
 
-## Amendment: the rules as built (plan D)
+## Amendment (2026-10-01, plan D): the rules as built
 
 An invitation is single use, valid 7 days, optionally bound to an email
 address, and stored only as a hash. The owner's reset of another user sets that

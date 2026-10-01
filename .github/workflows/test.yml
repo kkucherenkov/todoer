@@ -139,6 +139,19 @@ jobs:
       - name: Build, typecheck, and test the workspace
         run: pnpm -w exec turbo run build typecheck test
 
+      # Owner-first registration needs an empty instance or a known owner. The
+      # suite above leaves users in `todoer_test` (specs truncate only in
+      # `beforeEach`), so the proofs run on a database of their own. The
+      # outbox script reads DATABASE_URL too, to move the prune watermark.
+      - name: Create a fresh database for the end-to-end proofs
+        working-directory: apps/backend
+        env:
+          PGPASSWORD: todoer
+          DATABASE_URL: postgresql://todoer:todoer@localhost:5432/todoer_e2e
+        run: |
+          psql -h localhost -U todoer -d todoer_test -c 'CREATE DATABASE todoer_e2e'
+          pnpm prisma migrate deploy
+
       # Everything above calls services and pure functions directly. Nothing
       # above starts an HTTP server, so sync.controller.ts, the body-parser
       # ordering in main.ts, HttpExceptionFilter in a real pipeline and
@@ -153,6 +166,7 @@ jobs:
       - name: Start the backend
         env:
           PORT: 3010
+          DATABASE_URL: postgresql://todoer:todoer@localhost:5432/todoer_e2e
         run: |
           node apps/backend/dist/main.js > backend.log 2>&1 &
           echo $! > backend.pid
@@ -172,11 +186,12 @@ jobs:
         run: sh scripts/walking-skeleton.sh
 
       # The outbox against the same live backend: parallel offline adds, their
-      # delivery with the original ids, and 410 recovery. DATABASE_URL comes
-      # from the job's env; the script moves the prune watermark with psql.
+      # delivery with the original ids, and 410 recovery. The script moves the
+      # prune watermark with psql, on the backend's database.
       - name: Prove the outbox end to end
         env:
           TODOER_URL: http://localhost:3010/api/v1
+          DATABASE_URL: postgresql://todoer:todoer@localhost:5432/todoer_e2e
         run: sh scripts/outbox-e2e.sh
 
       # Always, so a failed proof still shows what the server logged, and so

@@ -75,8 +75,8 @@ on its SQLite store, so two parallel invocations do not both refresh.
 - *Server window only.* Every parallel run spends a request and widens the
   window a thief can use.
 
-**Cost.** During the window a stolen spent token also gets the pair; the window
-is short and tied to the session.
+**Cost.** During the window a stolen spent token also gets the successor refresh token and a
+freshly minted access token; the window is short and tied to the session.
 
 ### Lifetimes: 15 minutes, 30 days sliding, 1 year absolute (Q5)
 
@@ -187,11 +187,12 @@ their own; recorded as a known limit.
 ## Departures in the plan
 
 The implementation plan ([plan D](../plans/2026-10-01-plan-d-auth.md)) departs
-from this document in five places.
+from this document in six places.
 
 1. **Refresh tokens are derived, not stored.** Instead of hashes, a token is
    `<sessionId>.<generation>.<mac>` with an HMAC under `JWT_SECRET` and a
-   per-session salt. The server stores only the generation, so it recomputes
+   per-session salt. No refresh token or token hash is stored (the session keeps the generation,
+   salt and time fields), so the server recomputes
    the exact successor a grace-window retry must receive without keeping a
    plaintext token for 30 s.
 2. **No refresh cookie yet.** The routes take the refresh token in the body
@@ -204,6 +205,10 @@ from this document in five places.
 5. **The e2e scripts share a helper** (`scripts/lib/fresh-user.sh`) that signs
    in as the owner, invites and registers a fresh user, because owner-first
    registration refuses their second run.
+6. **Login counts every attempt, not only failures.** The controller reserves
+   an attempt per address on every login and only a success clears the address
+   key, so the Q12 decision reads "failed logins" loosely; the limit is 5 per
+   address and 20 per IP.
 
 ## Routine choices
 
@@ -223,6 +228,8 @@ from this document in five places.
   extends to invitation and reset-code checks.
 
 ## Verified facts
+
+As found before this plan:
 
 - `apps/backend/src/auth/auth.service.ts`: access tokens are
   `base64url(payload).HMAC-SHA256`, `exp` 15 minutes, no storage; passwords are

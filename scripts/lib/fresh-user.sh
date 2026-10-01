@@ -20,7 +20,7 @@ api() {
   # A harmless header stands in when there is no bearer: "$AUTH" stays one word.
   AUTH="x-e2e: 1"
   [ -z "${3:-}" ] || AUTH="authorization: Bearer $3"
-  _resp=$(curl -s -w '\n%{http_code}' -X POST "$BASE$1" \
+  _resp=$(curl -s --max-time 10 -w '\n%{http_code}' -X POST "$BASE$1" \
     -H 'content-type: application/json' -H "$AUTH" \
     -d "$2") ||
     { echo "FAIL: POST $1 could not reach $BASE" >&2; exit 1; }
@@ -35,10 +35,11 @@ json_field() {
 
 OWNER_CREDS="{\"email\":\"$OWNER_EMAIL\",\"password\":\"$OWNER_PASSWORD\"}"
 api /auth/register "$OWNER_CREDS"
+REGISTER_STATUS=$STATUS
 if [ "$STATUS" != 201 ]; then
   api /auth/login "$OWNER_CREDS"
   [ "$STATUS" = 200 ] || {
-    echo "FAIL: the instance has an owner and logging in as $OWNER_EMAIL returned $STATUS;" \
+    echo "FAIL: registering the owner returned $REGISTER_STATUS and logging in as $OWNER_EMAIL returned $STATUS;" \
       'set OWNER_EMAIL and OWNER_PASSWORD to the owner credentials' >&2
     exit 1
   }

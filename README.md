@@ -85,6 +85,8 @@ character. Further users need an invitation from the owner
 owner forgets the password, run `pnpm --filter @todoer/backend run owner:reset-password`
 on the host: it prints a code, valid 15 minutes, for `POST /auth/reset`. The
 owner resets other users through `POST /auth/users/{id}/password`.
+Login and registration each have their own budget of 20 attempts per IP per
+15 minutes, and login also allows 5 per address.
 
 The proof that the loop closes:
 

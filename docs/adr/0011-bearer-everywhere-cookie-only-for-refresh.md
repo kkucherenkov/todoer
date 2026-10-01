@@ -37,11 +37,11 @@ CSRF on it without a separate token.
 Two requirements follow and are not optional: Markdown renders without raw
 HTML, and the content security policy forbids inline script.
 
-## Amendment: refresh rotation (plan D)
+## Amendment (2026-10-01, plan D): refresh rotation
 
 A refresh token is derived per (session, generation): `<sessionId>.<generation>.<mac>`,
 with the mac an HMAC of the pair and a per-session salt under the server secret.
-The server stores only the generation. Every refresh rotates it, and presenting
+No refresh token or token hash is stored. Every refresh rotates it, and presenting
 a spent token is reuse detection: the session is revoked. A 30-second grace
 window softens that: within it the spent token returns the same successor
 refresh token, with a freshly minted access token, so a lost response is

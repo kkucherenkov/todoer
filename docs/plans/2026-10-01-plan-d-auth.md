@@ -30,7 +30,7 @@ Task 9 records them in the design doc.
    stored as hashes. Instead a refresh token is
    `<sessionId>.<generation>.<mac>` with
    `mac = HMAC-SHA256(JWT_SECRET, "<sessionId>.<generation>.<salt>")` and a
-   random per-session `salt`. The server stores only the generation, so it can
+   random per-session `salt`. No refresh token or token hash is stored, so it can
    recompute the exact successor a grace-window retry must receive — the
    design's "same new pair" — without keeping a plaintext token for 30 s.
    Forging one needs both the server secret and the database row.
