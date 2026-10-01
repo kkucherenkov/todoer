@@ -8,6 +8,7 @@
   (Q1–Q10); ADR 0005, 0007; tuxedo #362
 - Plan: [docs/plans/2026-10-01-plan-quick-add-tags.md](../../../docs/plans/2026-10-01-plan-quick-add-tags.md)
 - Completed: 2026-10-01
+- Result: https://github.com/kkucherenkov/todoer/pull/11
 
 ### Goal
 
