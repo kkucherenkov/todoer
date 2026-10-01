@@ -12,6 +12,7 @@ model User {
   email        String   @unique
   passwordHash String
   createdAt    DateTime @default(now())
+  isOwner      Boolean  @default(false)
 
   /// The prune watermark: the highest seq among this user's tombstones that
   /// have been physically deleted. A pull whose cursor is below it has missed
@@ -23,6 +24,8 @@ model User {
   projects        Project[]
   tags            Tag[]
   taskOccurrences TaskOccurrence[]
+  sessions        Session[]
+  resetCodes      ResetCode[]
 }
 
 model Task {
@@ -209,4 +212,45 @@ model AppliedOp {
 
   @@id([userId, opId])
   @@index([userId, appliedAt])
+}
+
+/// One sign-in of one device (plan D). The refresh token is derived from
+/// (id, generation, salt) with JWT_SECRET, so nothing secret is stored but
+/// the salt; `generation` moves on every refresh.
+model Session {
+  id         String    @id @db.Uuid
+  userId     String    @db.Uuid
+  salt       String
+  generation Int       @default(0)
+  rotatedAt  DateTime?
+  lastUsedAt DateTime  @default(now())
+  createdAt  DateTime  @default(now())
+  revokedAt  DateTime?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+/// A single-use registration token the owner issues (ADR 0014, plan D Q7).
+model Invitation {
+  id        String    @id @db.Uuid
+  tokenHash String    @unique
+  createdBy String    @db.Uuid
+  email     String?
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+}
+
+/// A one-time password reset code, printed by the owner's host script.
+model ResetCode {
+  id        String    @id @db.Uuid
+  userId    String    @db.Uuid
+  codeHash  String    @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime  @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }

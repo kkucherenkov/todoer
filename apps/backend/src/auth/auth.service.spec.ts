@@ -24,6 +24,9 @@ beforeEach(async () => {
   await prisma.task.deleteMany({});
   await prisma.project.deleteMany({});
   await prisma.tag.deleteMany({});
+  await prisma.session.deleteMany({});
+  await prisma.invitation.deleteMany({});
+  await prisma.resetCode.deleteMany({});
   await prisma.user.deleteMany({});
 });
 
@@ -105,5 +108,17 @@ describe('AuthService', () => {
     );
 
     expect(service.verify(accessToken)).toBe(id);
+  });
+
+  it("removes a deleted user's sessions with it", async () => {
+    const id = uuidv7();
+    await service.register(id, 'a@b.c', 'correct horse battery');
+    await prisma.session.create({
+      data: { id: uuidv7(), userId: id, salt: 'salt' },
+    });
+
+    await prisma.user.delete({ where: { id } });
+
+    expect(await prisma.session.count()).toBe(0);
   });
 });

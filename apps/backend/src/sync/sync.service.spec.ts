@@ -23,6 +23,9 @@ beforeEach(async () => {
   await prisma.task.deleteMany({});
   await prisma.project.deleteMany({});
   await prisma.tag.deleteMany({});
+  await prisma.session.deleteMany({});
+  await prisma.invitation.deleteMany({});
+  await prisma.resetCode.deleteMany({});
   await prisma.user.deleteMany({});
   await prisma.user.create({
     data: { id: USER, email: 'a@b.c', passwordHash: 'x' },
