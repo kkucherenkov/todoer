@@ -4,6 +4,7 @@ import {
   ExceptionFilter,
   HttpException,
   Logger,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { STATUS_CODES } from 'node:http';
@@ -34,7 +35,11 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const status = this.statusOf(exception);
     const message = this.messageOf(exception);
 
-    if (status >= 500) {
+    // 503 is how a feature reports it is switched off (forgot without mail):
+    // the caller needs the reason and nothing in it is internal.
+    const unavailable = exception instanceof ServiceUnavailableException;
+
+    if (status >= 500 && !unavailable) {
       // Log the original object, not a reshaped copy, so whoever is on call
       // sees exactly what was thrown, stack included — this is the only
       // place that happens, since the response below never carries it for a
@@ -59,8 +64,10 @@ export class HttpExceptionFilter implements ExceptionFilter {
       // A 4xx describes what the caller did wrong, which the caller already
       // knows. A 5xx describes what went wrong inside — a Prisma constraint
       // naming a column, a connection error naming a host — which is never
-      // the caller's business, so it never reaches the body.
-      ...(status < 500 && message !== undefined ? { detail: message } : {}),
+      // the caller's business, so it never reaches the body, except for a deliberate 503.
+      ...((status < 500 || unavailable) && message !== undefined
+        ? { detail: message }
+        : {}),
     };
 
     if (exception instanceof TooManyRequests)

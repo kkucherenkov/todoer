@@ -11,6 +11,7 @@ import {
   GoneException,
   Logger,
   NotFoundException,
+  ServiceUnavailableException,
   type ArgumentsHost,
 } from '@nestjs/common';
 import { HttpExceptionFilter } from './http-exception.filter.js';
@@ -128,6 +129,27 @@ describe('HttpExceptionFilter', () => {
     expect(warnSpy).toHaveBeenCalledWith(
       '410 cursor 5 is older than the prune watermark 10; repeat with since 0',
     );
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  // FR-006: the client must read why forgot is unavailable.
+  it('keeps the detail of a 503 and logs it as a warning without a stack', () => {
+    const filter = new HttpExceptionFilter();
+    const { host, response } = createHost();
+
+    filter.catch(
+      new ServiceUnavailableException('mail is not configured'),
+      host,
+    );
+
+    expect(response.status).toHaveBeenCalledWith(503);
+    expect(response.json).toHaveBeenCalledWith({
+      type: 'about:blank',
+      title: 'Service Unavailable',
+      status: 503,
+      detail: 'mail is not configured',
+    });
+    expect(warnSpy).toHaveBeenCalledWith('503 mail is not configured');
     expect(errorSpy).not.toHaveBeenCalled();
   });
 
