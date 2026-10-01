@@ -97,7 +97,7 @@ export type Op =
  * calendar), `filter`, `sort` (manual, priority, due, scheduled) and
  * `rank`; a filter must pass `filterProblem` from `@todoer/specs`, or
  * the operation is rejected with its reason. A task's `statusId`
- * references a status (null: the first one); `originTaskId` and
+ * references a status (null: the first non-completing status); `originTaskId` and
  * `originOccurrence` mark the copy of a moved occurrence and are set
  * together.
  *
