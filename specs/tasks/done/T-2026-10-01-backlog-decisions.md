@@ -8,6 +8,7 @@
   (Backlog decisions, Q4–Q7); tuxedo #390, #391, #361, #407
 - Plan: [docs/plans/2026-10-01-plan-backlog-fixes.md](../../../docs/plans/2026-10-01-plan-backlog-fixes.md)
 - Completed: 2026-10-01
+- Result: https://github.com/kkucherenkov/todoer/pull/16
 
 ### Goal
 
