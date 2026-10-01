@@ -157,7 +157,7 @@ function adoptAccount(store: Store, accessToken: string): void {
     const { pending, failed } = store.counts();
     if (pending + failed > 0) {
       throw new RefusalError(
-        `${pending + failed} queued operation(s) belong to the previous account: sign back in as it to deliver them`,
+        `${pending + failed} queued operation(s) belong to the previous account: sign back in as it to deliver them (todoer outbox drop forgets failed ones)`,
       );
     }
     store.resetReplica();

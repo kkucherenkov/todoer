@@ -1340,6 +1340,17 @@ describe('login and logout', () => {
       expect(d.store.auth()).toEqual(tokenFor('owner'));
     });
 
+    it('refuses a different user while a failed operation is kept', async () => {
+      const d = deps(never);
+      await loginAs(d, 'owner');
+      queue(d);
+      d.store.settle([{ opId: 'op-1', status: 'rejected' }], new Set());
+      expect(d.store.counts()).toEqual({ pending: 0, failed: 1 });
+      await run(['logout'], d);
+      await expect(loginAs(d, 'b')).rejects.toThrow(/todoer outbox drop/);
+      expect(d.store.auth()).toBeUndefined();
+    });
+
     it('resets the replica and cursor for a different user with an empty outbox', async () => {
       const d = deps(never);
       await loginAs(d, 'owner');
