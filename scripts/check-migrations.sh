@@ -16,7 +16,9 @@ fi
 status=0
 for file in "$dir"/*/migration.sql; do
   [ -e "$file" ] || continue
-  hits=$(grep -inE 'DROP SEQUENCE "change_seq"|"seq" DROP DEFAULT' "$file" || true)
+  # Any whitespace between the words, and SQL comment lines do not count.
+  hits=$(grep -inE 'DROP[[:space:]]+SEQUENCE[[:space:]]+"change_seq"|"seq"[[:space:]]+DROP[[:space:]]+DEFAULT' "$file" |
+    grep -vE '^[0-9]+:[[:space:]]*--' || true)
   if [ -n "$hits" ]; then
     printf '%s\n' "$hits" | sed "s|^|$file:|" >&2
     status=1

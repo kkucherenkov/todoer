@@ -33,6 +33,10 @@ expect 0 'clean migration' 'ALTER TABLE "Task" ADD COLUMN "note" TEXT;'
 expect 1 'drops the sequence' 'DROP SEQUENCE "change_seq";'
 expect 1 'drops a seq default' 'ALTER TABLE "Task" ALTER COLUMN "seq" DROP DEFAULT;'
 expect 1 'lower case' 'alter table "Task" alter column "seq" drop default;'
+expect 1 'double spaces' 'ALTER TABLE "Task" ALTER COLUMN "seq"  DROP   DEFAULT;'
+expect 1 'double spaces in the sequence drop' 'DROP  SEQUENCE   "change_seq";'
+expect 0 'commented out' '-- DROP SEQUENCE "change_seq";'
+expect 0 'commented out, indented' '  -- ALTER TABLE "Task" ALTER COLUMN "seq" DROP DEFAULT;'
 expect 0 'drops another default' 'ALTER TABLE "Task" ALTER COLUMN "title" DROP DEFAULT;'
 
 # The real migrations must stay clean.
