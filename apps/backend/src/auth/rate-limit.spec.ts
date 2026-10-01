@@ -28,4 +28,13 @@ describe('RateLimiter', () => {
     // (0 + 60000 - 58500) / 1000 = 1.5 → ceil(1.5) = 2
     expect(limiter.retryAfter('k', MIN - 1500)).toBe(2);
   });
+  it('never stores more than the limit of failures per key', () => {
+    const limiter = new RateLimiter(3, 15 * MIN);
+    for (let t = 0; t < 50; t++) limiter.fail('k', t);
+    const stored = (
+      limiter as unknown as { failures: Map<string, number[]> }
+    ).failures.get('k');
+    expect(stored).toEqual([47, 48, 49]);
+    expect(limiter.retryAfter('k', 49)).toBe(15 * 60);
+  });
 });

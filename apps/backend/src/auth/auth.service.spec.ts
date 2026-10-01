@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { uuidv7 } from 'uuidv7';
 import { createHmac } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -49,6 +49,21 @@ describe('AuthService', () => {
   it('refuses an unknown address without revealing that it is unknown', async () => {
     await expect(service.login('nobody@b.c', 'anything')).rejects.toThrow(
       /credentials/i,
+    );
+  });
+
+  // Timing equalisation: an unknown address must still pay for the password
+  // comparison, or response time enumerates accounts.
+  it('runs the password comparison even when the address is unknown', async () => {
+    const matches = vi.spyOn(
+      service as unknown as { matches(s: string, p: string): Promise<boolean> },
+      'matches',
+    );
+    await expect(service.login('nobody@b.c', 'anything')).rejects.toThrow();
+    expect(matches).toHaveBeenCalledTimes(1);
+    expect(matches).toHaveBeenCalledWith(
+      expect.stringMatching(/^0{32}:0{128}$/),
+      'anything',
     );
   });
 
