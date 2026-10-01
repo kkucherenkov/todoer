@@ -101,6 +101,49 @@ describe('planMerge', () => {
     expect(ops.some((op) => op.id === 't3')).toBe(false);
   });
 
+  // Two clients that see the same rows in different orders must send the
+  // same ops, or the repeated creates and deletes stop being idempotent.
+  it('plans the same ops whatever order the rows arrive in', () => {
+    const reversed = {
+      tasks: [...view.tasks].reverse(),
+      projects: [...view.projects].reverse(),
+      tags: [...view.tags].reverse(),
+      links: [...view.links].reverse(),
+    };
+    expect(planMerge(reversed, ids(), 'T')).toEqual(
+      planMerge(view, ids(), 'T'),
+    );
+    const two = {
+      ...view,
+      tags: [
+        ...view.tags,
+        { id: 'hb', name: '@b', version: 1, deletedAt: null },
+        { id: 'ha', name: '@B', version: 1, deletedAt: null },
+      ],
+    };
+    expect(
+      planMerge({ ...two, tags: [...two.tags].reverse() }, ids(), 'T'),
+    ).toEqual(planMerge(two, ids(), 'T'));
+  });
+
+  it('does not move a link whose task is deleted or unknown', () => {
+    const { ops } = planMerge(
+      {
+        ...view,
+        links: [
+          ...view.links,
+          { id: 'l3', taskId: 't3', tagId: 'gb', deletedAt: null },
+          { id: 'l4', taskId: 'gone', tagId: 'gb', deletedAt: null },
+        ],
+      },
+      ids(),
+      'T',
+    );
+    expect(ops.some((op) => op.id === 'l3' || op.id === 'l4')).toBe(false);
+    expect(ops.filter((op) => op.table === 'task_tag')).toHaveLength(2);
+    expect(ops.some((op) => op.id === 'gb' && op.kind === 'delete')).toBe(true);
+  });
+
   it('plans nothing when no two live names collide', () => {
     expect(
       planMerge(
