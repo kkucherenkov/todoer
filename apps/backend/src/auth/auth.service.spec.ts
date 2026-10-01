@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { uuidv7 } from 'uuidv7';
 import { createHmac } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { resetDatabase } from '../testing/reset-database.js';
 import { AuthService, normalizeEmail } from './auth.service.js';
 import type { AppConfig } from '../config/app-config.js';
 
@@ -26,22 +27,7 @@ const createUser = async (
 };
 
 beforeEach(async () => {
-  // Same order as sync.service.spec.ts's cleanup: userId is ON DELETE
-  // RESTRICT on Task/Project/Tag/TaskTag, so a fixture left behind by that
-  // suite — sharing this same Postgres instance, serialized into the same
-  // worker pool by vitest.config.ts's fileParallelism: false — would
-  // otherwise block deleting the user that owns it, and which spec file
-  // runs first is not guaranteed.
-  await prisma.appliedOp.deleteMany({});
-  await prisma.taskOccurrence.deleteMany({});
-  await prisma.taskTag.deleteMany({});
-  await prisma.task.deleteMany({});
-  await prisma.project.deleteMany({});
-  await prisma.tag.deleteMany({});
-  await prisma.session.deleteMany({});
-  await prisma.invitation.deleteMany({});
-  await prisma.resetCode.deleteMany({});
-  await prisma.user.deleteMany({});
+  await resetDatabase(prisma);
 });
 
 describe('AuthService', () => {

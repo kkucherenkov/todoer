@@ -10,3 +10,11 @@ export function isIsoDate(value: unknown): value is string {
   const date = new Date(`${value}T00:00:00.000Z`);
   return !Number.isNaN(date.getTime()) && date.toISOString().startsWith(value);
 }
+
+/** `date` moved by `days` calendar days. UTC arithmetic: a calendar date has
+ *  no time zone, so no daylight-saving shift can move it by an hour. */
+export function addDays(date: string, days: number): string {
+  const d = new Date(`${date}T00:00:00.000Z`);
+  d.setUTCDate(d.getUTCDate() + days);
+  return d.toISOString().slice(0, 10);
+}

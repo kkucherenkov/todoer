@@ -1,0 +1,214 @@
+{
+  "source": "Board rules of docs/specs/2026-10-01-views-design.md (Q7-Q9) and plan V2 departure 3. statuses are live rows only; the caller drops tombstones.",
+  "seed": [
+    {
+      "id": "018f0000-0000-7000-8000-000000000001",
+      "rank": "a0",
+      "completing": false
+    },
+    {
+      "id": "018f0000-0000-7000-8000-000000000002",
+      "rank": "a1",
+      "completing": false
+    },
+    {
+      "id": "018f0000-0000-7000-8000-000000000003",
+      "rank": "a2",
+      "completing": true
+    }
+  ],
+  "cases": [
+    {
+      "name": "no status shows in the first",
+      "statusId": null,
+      "closed": false,
+      "expected": "018f0000-0000-7000-8000-000000000001"
+    },
+    {
+      "name": "own status",
+      "statusId": "018f0000-0000-7000-8000-000000000002",
+      "closed": false,
+      "expected": "018f0000-0000-7000-8000-000000000002"
+    },
+    {
+      "name": "a deleted status shows in the first",
+      "statusId": "018f0000-0000-7000-8000-0000000000ff",
+      "closed": false,
+      "expected": "018f0000-0000-7000-8000-000000000001"
+    },
+    {
+      "name": "completing but open shows in the first",
+      "statusId": "018f0000-0000-7000-8000-000000000003",
+      "closed": false,
+      "expected": "018f0000-0000-7000-8000-000000000001"
+    },
+    {
+      "name": "closed shows in the completing status",
+      "statusId": "018f0000-0000-7000-8000-000000000002",
+      "closed": true,
+      "expected": "018f0000-0000-7000-8000-000000000003"
+    },
+    {
+      "name": "closed with no status",
+      "statusId": null,
+      "closed": true,
+      "expected": "018f0000-0000-7000-8000-000000000003"
+    },
+    {
+      "name": "no statuses at all",
+      "statusId": null,
+      "closed": false,
+      "statuses": [],
+      "expected": null
+    },
+    {
+      "name": "two completing: the lowest id wins",
+      "statusId": null,
+      "closed": true,
+      "statuses": [
+        {
+          "id": "018f0000-0000-7000-8000-000000000001",
+          "rank": "a0",
+          "completing": false
+        },
+        {
+          "id": "018f0000-0000-7000-8000-000000000005",
+          "rank": "a3",
+          "completing": true
+        },
+        {
+          "id": "018f0000-0000-7000-8000-000000000003",
+          "rank": "a4",
+          "completing": true
+        }
+      ],
+      "expected": "018f0000-0000-7000-8000-000000000003"
+    },
+    {
+      "name": "a completing status that ranks first is skipped for open tasks",
+      "statusId": null,
+      "closed": false,
+      "statuses": [
+        {
+          "id": "018f0000-0000-7000-8000-000000000003",
+          "rank": "a0",
+          "completing": true
+        },
+        {
+          "id": "018f0000-0000-7000-8000-000000000004",
+          "rank": "a1",
+          "completing": false
+        }
+      ],
+      "expected": "018f0000-0000-7000-8000-000000000004"
+    },
+    {
+      "name": "equal ranks order by id",
+      "statusId": null,
+      "closed": false,
+      "statuses": [
+        {
+          "id": "018f0000-0000-7000-8000-000000000004",
+          "rank": "a0",
+          "completing": false
+        },
+        {
+          "id": "018f0000-0000-7000-8000-000000000002",
+          "rank": "a0",
+          "completing": false
+        }
+      ],
+      "expected": "018f0000-0000-7000-8000-000000000002"
+    },
+    {
+      "name": "only completing statuses",
+      "statusId": null,
+      "closed": false,
+      "statuses": [
+        {
+          "id": "018f0000-0000-7000-8000-000000000003",
+          "rank": "a0",
+          "completing": true
+        }
+      ],
+      "expected": "018f0000-0000-7000-8000-000000000003"
+    },
+    {
+      "name": "closed with no completing status keeps its own",
+      "statusId": "018f0000-0000-7000-8000-000000000002",
+      "closed": true,
+      "statuses": [
+        {
+          "id": "018f0000-0000-7000-8000-000000000001",
+          "rank": "a0",
+          "completing": false
+        },
+        {
+          "id": "018f0000-0000-7000-8000-000000000002",
+          "rank": "a1",
+          "completing": false
+        }
+      ],
+      "expected": "018f0000-0000-7000-8000-000000000002"
+    },
+    {
+      "name": "open with a non-lowest completing status shows in the first",
+      "statusId": "018f0000-0000-7000-8000-000000000005",
+      "closed": false,
+      "statuses": [
+        {
+          "id": "018f0000-0000-7000-8000-000000000001",
+          "rank": "a0",
+          "completing": false
+        },
+        {
+          "id": "018f0000-0000-7000-8000-000000000005",
+          "rank": "a3",
+          "completing": true
+        },
+        {
+          "id": "018f0000-0000-7000-8000-000000000003",
+          "rank": "a4",
+          "completing": true
+        }
+      ],
+      "expected": "018f0000-0000-7000-8000-000000000001"
+    },
+    {
+      "name": "rank a sorts before a0",
+      "statusId": null,
+      "closed": false,
+      "statuses": [
+        {
+          "id": "018f0000-0000-7000-8000-000000000002",
+          "rank": "a0",
+          "completing": false
+        },
+        {
+          "id": "018f0000-0000-7000-8000-000000000004",
+          "rank": "a",
+          "completing": false
+        }
+      ],
+      "expected": "018f0000-0000-7000-8000-000000000004"
+    },
+    {
+      "name": "rank Zz sorts before a0 (code-unit order)",
+      "statusId": null,
+      "closed": false,
+      "statuses": [
+        {
+          "id": "018f0000-0000-7000-8000-000000000002",
+          "rank": "a0",
+          "completing": false
+        },
+        {
+          "id": "018f0000-0000-7000-8000-000000000004",
+          "rank": "Zz",
+          "completing": false
+        }
+      ],
+      "expected": "018f0000-0000-7000-8000-000000000004"
+    }
+  ]
+}

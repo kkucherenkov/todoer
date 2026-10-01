@@ -26,24 +26,33 @@ model User {
   taskOccurrences TaskOccurrence[]
   sessions        Session[]
   resetCodes      ResetCode[]
+  statuses        Status[]
+  views           View[]
 }
 
 model Task {
-  id          String    @id @db.Uuid
-  userId      String    @db.Uuid
-  title       String
-  notes       String?
-  projectId   String?   @db.Uuid
-  parentId    String?   @db.Uuid
-  priority    Int       @default(0)
-  scheduledOn DateTime? @db.Date
-  dueOn       DateTime? @db.Date
-  rrule       String?
-  dtstart     DateTime? @db.Date
-  rank        String
+  id               String    @id @db.Uuid
+  userId           String    @db.Uuid
+  title            String
+  notes            String?
+  projectId        String?   @db.Uuid
+  parentId         String?   @db.Uuid
+  priority         Int       @default(0)
+  scheduledOn      DateTime? @db.Date
+  dueOn            DateTime? @db.Date
+  rrule            String?
+  dtstart          DateTime? @db.Date
+  rank             String
+  /// The task's kanban column (views design, Q2). Null: the first status.
+  statusId         String?   @db.Uuid
+  /// The recurring task and occurrence this one-off copy was moved from
+  /// (views design, Q13). Informational: no foreign key, so the original's
+  /// tombstone can be pruned while the copy lives (plan V2, departure 5).
+  originTaskId     String?   @db.Uuid
+  originOccurrence DateTime? @db.Date
 
-  version   Int      @default(1)
-  fieldTs   Json     @default("{}")
+  version   Int       @default(1)
+  fieldTs   Json      @default("{}")
   /// Defaults to nextval('change_seq') — set by hand in the initial
   /// migration, invisible to this schema. One sequence is shared by every
   /// synchronised table on purpose, so a single cursor orders changes across
@@ -53,17 +62,19 @@ model Task {
   /// `.claude/CLAUDE.md`).
   seq       BigInt
   deletedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   user        User             @relation(fields: [userId], references: [id])
   project     Project?         @relation(fields: [projectId], references: [id])
+  status      Status?          @relation(fields: [statusId], references: [id])
   parent      Task?            @relation("Subtask", fields: [parentId], references: [id])
   children    Task[]           @relation("Subtask")
   tags        TaskTag[]
   occurrences TaskOccurrence[]
 
   @@index([userId, seq])
+  @@index([statusId])
 }
 
 model Project {
@@ -73,8 +84,8 @@ model Project {
   rank   String
 
   archivedAt DateTime?
-  version    Int      @default(1)
-  fieldTs    Json     @default("{}")
+  version    Int       @default(1)
+  fieldTs    Json      @default("{}")
   /// Defaults to nextval('change_seq') — set by hand in the initial
   /// migration, invisible to this schema. One sequence is shared by every
   /// synchronised table on purpose, so a single cursor orders changes across
@@ -84,8 +95,8 @@ model Project {
   /// `.claude/CLAUDE.md`).
   seq        BigInt
   deletedAt  DateTime?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   user  User   @relation(fields: [userId], references: [id])
   tasks Task[]
@@ -99,8 +110,8 @@ model Tag {
   name   String
   color  String?
 
-  version   Int      @default(1)
-  fieldTs   Json     @default("{}")
+  version   Int       @default(1)
+  fieldTs   Json      @default("{}")
   /// Defaults to nextval('change_seq') — set by hand in the initial
   /// migration, invisible to this schema. One sequence is shared by every
   /// synchronised table on purpose, so a single cursor orders changes across
@@ -110,8 +121,8 @@ model Tag {
   /// `.claude/CLAUDE.md`).
   seq       BigInt
   deletedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   user  User      @relation(fields: [userId], references: [id])
   tasks TaskTag[]
@@ -120,17 +131,17 @@ model Tag {
 }
 
 model TaskTag {
-  id     String @id @db.Uuid
-  userId String @db.Uuid
-  taskId String @db.Uuid
-  tagId  String @db.Uuid
+  id       String  @id @db.Uuid
+  userId   String  @db.Uuid
+  taskId   String  @db.Uuid
+  tagId    String  @db.Uuid
   /// Detach sets this to false; a TaskTag row is never deleted. Its id is
   /// UUIDv5 of `<taskId>:<tagId>` (plan C design, Q5 and Q7), which is also
   /// what keeps a pair to one row — no unique index needed.
   attached Boolean @default(true)
 
-  version   Int      @default(1)
-  fieldTs   Json     @default("{}")
+  version   Int       @default(1)
+  fieldTs   Json      @default("{}")
   /// Defaults to nextval('change_seq') — set by hand in the initial
   /// migration, invisible to this schema. One sequence is shared by every
   /// synchronised table on purpose, so a single cursor orders changes across
@@ -140,7 +151,7 @@ model TaskTag {
   /// `.claude/CLAUDE.md`).
   seq       BigInt
   deletedAt DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   /// Cascade: when pruning deletes a tombstoned task or tag, its TaskTag rows
   /// go with it (plan C design, Q13).
@@ -170,14 +181,14 @@ model TaskOccurrence {
   /// Reserved for v2 quantified habits.
   value       Float?
 
-  version   Int      @default(1)
-  fieldTs   Json     @default("{}")
+  version   Int       @default(1)
+  fieldTs   Json      @default("{}")
   /// Defaults to nextval('change_seq') — set by hand in this table's
   /// migration, invisible to this schema. See trap 6 in `.claude/CLAUDE.md`.
   seq       BigInt
   deletedAt DateTime?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   user User @relation(fields: [userId], references: [id])
   /// Cascade: pruning a tombstoned task takes its occurrences (Q13).
@@ -253,4 +264,53 @@ model ResetCode {
   createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+/// A kanban column of one user (views design, Q2, Q5). Synced like a tag.
+model Status {
+  id         String  @id @db.Uuid
+  userId     String  @db.Uuid
+  name       String
+  rank       String
+  color      String?
+  completing Boolean @default(false)
+
+  version   Int       @default(1)
+  fieldTs   Json      @default("{}")
+  /// Defaults to nextval('change_seq') — set by hand in the migration that
+  /// created this table (trap 6 in `.claude/CLAUDE.md`).
+  seq       BigInt
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user  User   @relation(fields: [userId], references: [id])
+  tasks Task[]
+
+  @@index([userId, seq])
+}
+
+/// A named filter, layout and sort key (views design, Q1). `filter` passed
+/// `filterProblem` from @todoer/specs when it was written.
+model View {
+  id     String @id @db.Uuid
+  userId String @db.Uuid
+  name   String
+  layout String
+  filter Json
+  sort   String
+  rank   String
+
+  version   Int       @default(1)
+  fieldTs   Json      @default("{}")
+  /// Defaults to nextval('change_seq') — set by hand in the migration that
+  /// created this table (trap 6 in `.claude/CLAUDE.md`).
+  seq       BigInt
+  deletedAt DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([userId, seq])
 }

@@ -165,6 +165,17 @@ components:
         never deleted, they are toggled with `set` (`state`, `attached`).
         Dates are `YYYY-MM-DD` strings. `@todoer/specs` exports the
         derivation (`taskOccurrenceId`, `taskTagId`) and the rrule parser.
+        `status` rows are the user's kanban columns: `name`, `rank`,
+        `color`, `completing` (one per user; with several, the lowest id
+        counts). `view` rows hold `name`, `layout` (list, kanban,
+        calendar), `filter`, `sort` (manual, priority, due, scheduled) and
+        `rank`; a filter must pass `filterProblem` from `@todoer/specs`, or
+        the operation is rejected with its reason; ids in a filter are
+        lower-case. A task's `statusId` references a status (null: the
+        first non-completing one, or the first when all are completing);
+        `originTaskId` and `originOccurrence` mark the copy of a moved
+        occurrence, are given together in its `create`, and cannot change
+        afterwards.
       required: [opId, kind, table, id, fields, ts]
       additionalProperties: false
       properties:
@@ -173,7 +184,7 @@ components:
         table:
           {
             type: string,
-            enum: [task, project, tag, task_tag, task_occurrence],
+            enum: [task, project, tag, task_tag, task_occurrence, status, view],
           }
         id: { type: string, format: uuid }
         fields: { type: object, additionalProperties: true }
@@ -189,7 +200,7 @@ components:
         table:
           {
             type: string,
-            enum: [task, project, tag, task_tag, task_occurrence],
+            enum: [task, project, tag, task_tag, task_occurrence, status, view],
           }
         id: { type: string, format: uuid }
         field: { type: string }
@@ -208,7 +219,7 @@ components:
         table:
           {
             type: string,
-            enum: [task, project, tag, task_tag, task_occurrence],
+            enum: [task, project, tag, task_tag, task_occurrence, status, view],
           }
         id: { type: string, format: uuid }
         baseVersion: { type: integer, minimum: 0 }

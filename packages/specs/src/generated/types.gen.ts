@@ -91,12 +91,30 @@ export type Op =
  * never deleted, they are toggled with `set` (`state`, `attached`).
  * Dates are `YYYY-MM-DD` strings. `@todoer/specs` exports the
  * derivation (`taskOccurrenceId`, `taskTagId`) and the rrule parser.
+ * `status` rows are the user's kanban columns: `name`, `rank`,
+ * `color`, `completing` (one per user; with several, the lowest id
+ * counts). `view` rows hold `name`, `layout` (list, kanban,
+ * calendar), `filter`, `sort` (manual, priority, due, scheduled) and
+ * `rank`; a filter must pass `filterProblem` from `@todoer/specs`, or
+ * the operation is rejected with its reason; ids in a filter are
+ * lower-case. A task's `statusId` references a status (null: the
+ * first non-completing one, or the first when all are completing);
+ * `originTaskId` and `originOccurrence` mark the copy of a moved
+ * occurrence, are given together in its `create`, and cannot change
+ * afterwards.
  *
  */
 export type OpCreate = {
   opId: string;
   kind: 'create';
-  table: 'task' | 'project' | 'tag' | 'task_tag' | 'task_occurrence';
+  table:
+    | 'task'
+    | 'project'
+    | 'tag'
+    | 'task_tag'
+    | 'task_occurrence'
+    | 'status'
+    | 'view';
   id: string;
   fields: {
     [key: string]: unknown;
@@ -107,7 +125,14 @@ export type OpCreate = {
 export type OpSet = {
   opId: string;
   kind: 'set';
-  table: 'task' | 'project' | 'tag' | 'task_tag' | 'task_occurrence';
+  table:
+    | 'task'
+    | 'project'
+    | 'tag'
+    | 'task_tag'
+    | 'task_occurrence'
+    | 'status'
+    | 'view';
   id: string;
   field: string;
   value: unknown;
@@ -118,7 +143,14 @@ export type OpSet = {
 export type OpDelete = {
   opId: string;
   kind: 'delete';
-  table: 'task' | 'project' | 'tag' | 'task_tag' | 'task_occurrence';
+  table:
+    | 'task'
+    | 'project'
+    | 'tag'
+    | 'task_tag'
+    | 'task_occurrence'
+    | 'status'
+    | 'view';
   id: string;
   baseVersion: number;
 };

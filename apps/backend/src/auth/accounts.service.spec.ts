@@ -6,6 +6,7 @@ import { AccountsService, issueResetCode } from './accounts.service.js';
 import { AuthService } from './auth.service.js';
 import { SessionService } from './session.service.js';
 import { lockUserWrites } from '../sync/user-lock.js';
+import { resetDatabase } from '../testing/reset-database.js';
 
 const prisma = new PrismaService();
 const config = {
@@ -22,23 +23,12 @@ const days = (d: number): Date => new Date(t0.getTime() + d * 86_400_000);
 
 let owner: string;
 
-const wipe = async (): Promise<void> => {
-  await prisma.appliedOp.deleteMany({});
-  await prisma.taskOccurrence.deleteMany({});
-  await prisma.taskTag.deleteMany({});
-  await prisma.task.deleteMany({});
-  await prisma.project.deleteMany({});
-  await prisma.tag.deleteMany({});
-  await prisma.invitation.deleteMany({});
-  await prisma.user.deleteMany({});
-};
-
 // Other specs delete users without clearing synced rows; leave none behind.
-afterAll(wipe);
+afterAll(() => resetDatabase(prisma));
 
 beforeEach(async () => {
   vi.restoreAllMocks();
-  await wipe();
+  await resetDatabase(prisma);
   owner = (await accounts.register('o@e.test', PASSWORD)).userId;
 });
 
@@ -228,7 +218,23 @@ describe('deleteAccount', () => {
     const task = uuidv7();
     const project = uuidv7();
     const tag = uuidv7();
+    const status = uuidv7();
     const protocol = { seq: 0n, version: 1 };
+    await prisma.status.create({
+      data: { id: status, userId: u, name: 's', rank: 'a', ...protocol },
+    });
+    await prisma.view.create({
+      data: {
+        id: uuidv7(),
+        userId: u,
+        name: 'v',
+        layout: 'list',
+        filter: {},
+        sort: 'manual',
+        rank: 'a',
+        ...protocol,
+      },
+    });
     await prisma.project.create({
       data: { id: project, userId: u, name: 'p', rank: 'a', ...protocol },
     });
@@ -242,6 +248,7 @@ describe('deleteAccount', () => {
         title: 't',
         rank: 'a',
         projectId: project,
+        statusId: status,
         ...protocol,
       },
     });
@@ -274,6 +281,8 @@ describe('deleteAccount', () => {
         prisma.task,
         prisma.project,
         prisma.tag,
+        prisma.status,
+        prisma.view,
         prisma.taskTag,
         prisma.taskOccurrence,
         prisma.appliedOp,
@@ -296,7 +305,7 @@ describe('deleteAccount', () => {
     await accounts.deleteAccount(u, PASSWORD);
 
     expect(await prisma.user.findUnique({ where: { id: u } })).toBeNull();
-    expect(await counts(u)).toEqual(Array<number>(8).fill(0));
+    expect(await counts(u)).toEqual(Array<number>(10).fill(0));
     expect(await counts(owner)).toEqual(kept);
     expect(await prisma.user.count()).toBe(1);
   });
