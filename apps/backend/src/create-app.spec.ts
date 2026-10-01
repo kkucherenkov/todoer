@@ -237,7 +237,12 @@ describe('createApp: serving a built SPA from WEB_ROOT', () => {
     const csp = (await web('/')).headers.get('content-security-policy');
     writeFileSync(join(webRoot, 'index.html'), '<script>evil()</script>');
     try {
-      for (const path of ['/', '/index.html', '/%69ndex.html', '/./index.html']) {
+      for (const path of [
+        '/',
+        '/index.html',
+        '/%69ndex.html',
+        '/./index.html',
+      ]) {
         const res = await web(path);
         expect(await res.text(), path).toBe(INDEX);
         expect(res.headers.get('content-security-policy'), path).toBe(csp);

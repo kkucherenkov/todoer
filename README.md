@@ -14,12 +14,16 @@ second, independent CLI invocation through the server, over one endpoint:
   by last-write-wins with a shared cursor. This is the whole write surface;
   there is no REST CRUD and there will not be one ([ADR 0012](docs/adr/0012-no-rest-surface.md)).
 - **`/api/v1/auth/*`** — sessions with a 15-minute access token and a rotating
-  refresh token (reuse detection, 30-second grace window), owner-first
+  refresh token (reuse detection, 30-second grace window) carried in the body,
+  or, for the web client, in an `HttpOnly` cookie (`transport: cookie`), owner-first
   registration (the first account is the owner, later ones need a single-use
   invitation), password change, reset without mail, account deletion, and
   rate-limited login ([ADR 0011](docs/adr/0011-bearer-everywhere-cookie-only-for-refresh.md),
   [ADR 0014](docs/adr/0014-owner-first-registration-and-two-path-reset.md)).
   The device-code flow and mail for `forgot` are not built yet.
+- **`WEB_ROOT`** — the backend serves a built web client from this directory on
+  the API's origin. The web client itself is plan W2; see
+  [Serving the web client](#serving-the-web-client).
 - **`todoer login` / `logout` / `add` / `list` / `done` / `skip` / `undo` / `outbox`** — a network
   client with `--json` output and exit codes a script can branch on
   ([ADR 0015](docs/adr/0015-the-cli-is-a-client-for-automation.md)). It keeps a
@@ -107,9 +111,42 @@ registration, successful or not, counts toward a per-IP budget of 20 per
 15 minutes, so many rapid runs from one address can hit `429`; wait the
 seconds in its `Retry-After` header (up to 15 minutes).
 
+### Serving the web client
+
+Set `WEB_ROOT` to a directory holding a built SPA (it must contain
+`index.html`; the backend refuses to start otherwise). The backend serves its
+files on the API's origin and answers every other `GET`/`HEAD` that accepts
+`text/html` with `index.html`, except under `/api` and `/health`. Every static
+response carries a content security policy that allows inline script only by
+the hashes of the inline scripts in `index.html`. Unset, the backend serves
+nothing.
+
+- **A new build needs a restart.** `index.html` and its CSP hashes are read
+  once at startup; replacing the files under a running backend serves the new
+  assets with the old page and policy.
+- **`WEB_ROOT` is trusted content.** Symlinks inside it are followed, so
+  point it at a directory you build, not one anyone else can write to.
+
+The web client needs HTTPS. The refresh cookie is `Secure`, and service workers
+and OPFS need a secure context. Over plain `http://nas.local` the web client
+cannot sign in; `localhost` is the exception. TLS comes from your reverse proxy:
+
+```text
+todo.example.test {
+    reverse_proxy localhost:3000
+}
+```
+
 Behind a reverse proxy, set `TRUST_PROXY` to the number of proxies in front
 (usually `1`) or to their addresses. Unset, every client behind a proxy shares
-one IP for the rate limits.
+one IP for the rate limits. To reach the instance from outside without opening
+ports, `tailscale serve` gives it an HTTPS name inside your tailnet.
+
+The cookie (`todoer_refresh`, `Path=/api/v1/auth`, Max-Age 30 days) can outlive
+a session near its 365-day absolute limit by up to 30 days; the server answers
+401 and the client signs out. A request carrying two `todoer_refresh` cookies
+is treated as carrying none, and a refused cookie refresh clears the cookie.
+See [ADR 0011](docs/adr/0011-bearer-everywhere-cookie-only-for-refresh.md).
 
 ### Environment
 
@@ -119,6 +156,7 @@ one IP for the rate limits.
 | `JWT_SECRET`                    | backend     | —                                                | required; signs the access token, at least 32 characters                                   |
 | `PORT`                          | backend     | `3000`                                           | refuses a value that is not a whole port number                                            |
 | `TRUST_PROXY`                   | backend     | unset                                            | proxy hop count (`1`) or addresses/subnets (`loopback, 10.0.0.0/8`); `true` is refused     |
+| `WEB_ROOT`                      | backend     | unset                                            | a built SPA to serve on the API's origin; must hold `index.html`; unset serves nothing     |
 | `APP_VERSION`                   | backend     | `0.0.0-dev`                                      | reported by `GET /api/v1/health`                                                           |
 | `TODOER_URL`                    | CLI         | `http://localhost:3000/api/v1`                   | instance base URL                                                                          |
 | `TODOER_TOKEN`                  | CLI         | —                                                | bearer token; when set it is used as is, never refreshed, and overrides the stored session |

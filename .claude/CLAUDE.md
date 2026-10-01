@@ -116,7 +116,7 @@ and `@todoer/client-core` is upstream of the CLI.
 | --- | --- |
 | `packages/specs` | OpenAPI document, generated TS types and SDK. The contract. |
 | `packages/client-core` | Replica, outbox, sync and the domain operations both clients run. The portable entry has no Node import; `./node-sqlite` is the CLI's adapter. |
-| `apps/backend` | NestJS 11, Prisma 6, PostgreSQL 18. `POST /sync` is the entire write surface. |
+| `apps/backend` | NestJS 11, Prisma 6, PostgreSQL 18. `POST /sync` is the entire write surface. Serves the built SPA from `WEB_ROOT`. |
 | `apps/cli` | The reference client. Its primary caller is a script or an agent — see ADR 0015. |
 | `scripts/walking-skeleton.sh` | The end-to-end proof. CI runs it against a live backend. |
 
@@ -184,7 +184,8 @@ temp directory and pass anywhere.
 3. **The body parser must be registered before `OpenApiValidator.middleware`.**
    Nest registers its own inside `listen()`, which runs after every `app.use()`,
    so the validator reads an undefined body and rejects **every** POST with 400.
-   `main.ts` does this deliberately; do not reorder it.
+   `create-app.ts` does this deliberately, and `create-app.spec.ts` pins it over
+   HTTP; the SPA middleware sits ahead of both. Do not reorder it.
 4. **`scripts/walking-skeleton.sh` has an `sh` shebang.** Nothing non-POSIX
    belongs in it — `set -o pipefail` is not POSIX and dash rejected it until
    0.5.12.

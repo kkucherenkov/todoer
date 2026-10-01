@@ -2,7 +2,9 @@
 
 - Created: 2026-10-02
 - Owner: claude
-- Status: ready
+- Status: done
+- Completed: 2026-10-02
+- Result: branch feat/web-backend (PR pending)
 - Blockers: —
 - Spec: [docs/specs/2026-10-01-client-shells-design.md](../../../docs/specs/2026-10-01-client-shells-design.md)
   (Q9, Q11, Q16 — plan W1);
@@ -130,11 +132,11 @@ it does: scripts and agents depend on it (ADR 0015).
 - **SC-003** `rg -n "nothing else|body only|cookie arrives|main\.ts does"`
   over README, `docs/` (minus plans and historical departures), `.claude`
   and the OpenAPI document finds no stale claim.
-- [ ] every FR has a test that failed before the code made it pass (FR-010
+- [x] every FR has a test that failed before the code made it pass (FR-010
       and FR-011 are checked by the diff and the sweep, not by a test)
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
+- [x] no document still asserts the behaviour this task replaced
 - [ ] dnote changelog line
 
 ### Steps
@@ -152,7 +154,7 @@ it does: scripts and agents depend on it (ADR 0015).
       CSP, cache — plan Task 5
 - **Checkpoint:** a browser can load a placeholder SPA from `WEB_ROOT` and
   hold a cookie session; the CLI and the e2e scripts are unchanged.
-- [ ] T006 [FR-010, FR-011] ADR amendment, README, design departures,
+- [x] T006 [FR-010, FR-011] ADR amendment, README, design departures,
       CLAUDE.md, gates and e2e — plan Task 6
 
 ### W2 must (handed over by this task)

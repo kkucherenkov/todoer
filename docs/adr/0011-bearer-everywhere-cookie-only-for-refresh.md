@@ -45,5 +45,39 @@ No refresh token or token hash is stored. Every refresh rotates it, and presenti
 a spent token is reuse detection: the session is revoked. A 30-second grace
 window softens that: within it the spent token returns the same successor
 refresh token, with a freshly minted access token, so a lost response is
-retryable. The cookie transport described above arrives with the web client;
-until then `POST /auth/refresh` takes the token in the body only.
+retryable. The cookie transport described above arrived with plan W1; see the
+next amendment.
+
+## Amendment (2026-10-02, plan W1): the cookie's path and opt-in
+
+The cookie is `todoer_refresh`, `HttpOnly; Secure; SameSite=Strict;
+Path=/api/v1/auth`, with a Max-Age of 30 days, renewed on every rotation. The
+browser sends it to every auth route, not to `/auth/refresh` alone, and the
+server reads it on refresh and on logout. Logout has to revoke the session of
+a token the web cannot read: an `HttpOnly` cookie cannot be copied into a
+body, so with a path of `/auth/refresh` a web logout would leave its session
+alive for up to 30 days. A second cookie for logout would be two copies of one
+secret, and logout through `/auth/refresh` with a flag would give one route
+two meanings.
+
+A client opts in with `transport: cookie` on login, register and password
+change. The default is the body, so the CLI and every script are unchanged.
+Password change takes the field too: it revokes every session and returns a
+fresh pair, and without the opt-in a web client would receive the new refresh
+token in a body its scripts can read. A refresh answers in the transport its
+token came from. A token in the body wins over the cookie and gets a body
+answer with no `Set-Cookie`. A cookie-sourced refresh rotates the cookie and
+leaves `refreshToken` out of the JSON. Every logout 204 clears the cookie with
+the same path.
+
+Three properties of the cookie follow from this and are deliberate:
+
+- **Max-Age is fixed at the 30-day idle limit.** Near the 365-day absolute
+  limit the cookie can outlive its session by up to 30 days. The server stays
+  authoritative: it answers 401, and the client treats that as signed out.
+- **A duplicated `todoer_refresh` header reads as absent.** A same-site
+  sibling (another app on `*.nas.local`) can plant a second cookie of the same
+  name, and which copy the browser lists first is not the app's to choose.
+  Refusing both is the defence against that cookie tossing.
+- **A refused cookie refresh clears the cookie**, so a dead or tossed value
+  does not come back on every request. A refused body refresh sets nothing.
