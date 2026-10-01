@@ -99,6 +99,40 @@ describe('overlay', () => {
     ]);
     expect(rows).toEqual(server);
   });
+
+  // Plan C design, Q8: a create of an existing derived-id row merges on the
+  // server, so the local view must merge too — an offline `done` of an
+  // occurrence the replica already holds would otherwise not show.
+  it('merges a pending create over an existing task occurrence', () => {
+    const stored = [
+      {
+        id: 'occ',
+        taskId: 't',
+        occurrence: '2026-09-26',
+        state: 'done',
+        deletedAt: null,
+      },
+    ];
+    const undo = op({
+      kind: 'create',
+      table: 'task_occurrence',
+      id: 'occ',
+      fields: {
+        taskId: 't',
+        occurrence: '2026-09-26',
+        state: 'open',
+        completedAt: null,
+      },
+    });
+    expect(overlay('task_occurrence', stored, [undo])).toEqual([
+      { ...stored[0], state: 'open', completedAt: null },
+    ]);
+  });
+
+  it('still ignores a pending create of an existing task', () => {
+    const again = op({ kind: 'create', fields: { title: 'replaced?' } });
+    expect(overlay('task', server, [again])).toEqual(server);
+  });
 });
 
 describe('liveTasks', () => {

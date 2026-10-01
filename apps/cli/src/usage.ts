@@ -4,20 +4,40 @@ import { UsageError } from './protocol.js';
  * Everything a caller has to know that is not in the wire contract: what the
  * quick-add markers do and do not do, where the token comes from and how long
  * it lasts, and what each exit code means. Every command sends the outbox
- * first; `add` is safe to run once because its operation id is stored with
- * it and reused on every later send.
+ * first; every write is safe to run once because its operation id is stored
+ * with it and reused on every later send.
  */
 export const HELP = `todoer — a client for a todoer instance
 
 usage:
-  todoer add "<text>" [--json]           create a task
-  todoer list [--json]                   list the tasks that are not deleted
-  todoer outbox [--json]                 list operations the server has not accepted
-  todoer outbox drop <op-id>... [--json] forget failed operations
+  todoer add "<text>" [--rrule <RRULE> [--from YYYY-MM-DD]] [--json]
+                                          create a task; with --rrule it recurs
+                                          from --from (default: today)
+  todoer list [--json]                    what is open now: each task once, a
+                                          recurring one at its current date
+  todoer done <ref> [--on YYYY-MM-DD] [--json]   mark done
+  todoer skip <ref> [--on YYYY-MM-DD] [--json]   mark skipped
+  todoer undo <ref> [--on YYYY-MM-DD] [--json]   reopen (default: the latest
+                                          done or skipped occurrence)
+  todoer outbox [--json]                  list operations the server has not accepted
+  todoer outbox drop <op-id>... [--json]  forget failed operations
   todoer --help
 
 Every command first sends the operations waiting in the outbox and fetches
 what changed. Without a server it answers from the local copy and exits 5.
+
+references:
+  list starts each line with the last 6 characters of the task's id. done,
+  skip and undo take the full id or any unique ending of it, at least 4 hex
+  digits — an ending, not a beginning: ids start with a timestamp.
+
+recurrence:
+  --rrule takes an RFC 5545 rule, restricted to FREQ (DAILY, WEEKLY,
+  MONTHLY, YEARLY), INTERVAL, BYDAY, BYMONTHDAY, BYMONTH, BYSETPOS, COUNT,
+  UNTIL (YYYYMMDD) and WKST; upper case. No times of day. A recurring task
+  is listed at the latest date on or before today that is still open, else
+  at the next open one; missed dates before it are not listed. done and
+  skip act on that date, or on --on's.
 
 quick-add markers:
   p0..p4      priority
@@ -42,22 +62,23 @@ exit codes (ADR 0015 §2):
   0  done, and the server has it
   1  the server refused: this command's operation was rejected, or the
      request was refused (401, 403, …). A 401 means the token is missing,
-     invalid or expired — get a new one; queued operations stay queued;
-     if add exits 1 this way, its operation is still queued — fix the cause
-     and run any command (for example list) to send it, not add again
+     invalid or expired — get a new one; queued operations stay queued; if
+     a write command (add, done, skip, undo) exits 1 this way, its
+     operation is still queued — fix the cause and run any command (for
+     example list) to send it, not the same command again
   2  usage error — the command did nothing (the outbox may still have been
      sent)
   3  an unexpected local failure, such as the local database staying busy
   4  reserved for a conflict — the server holds a newer version of the row.
-     No command sends an operation that can return one yet: add sends a
-     create, and a create never conflicts
+     No command sends an operation that can return one yet: add, done, skip
+     and undo each send a create, and a create never conflicts
   5  the server was not reached: the answer is local, and any operation
      this command queued will be sent by a later command. Do not run the
      command again for the same intent — that would queue it twice
 
-add is safe to run once: its operation id is stored with the operation and
-reused on every later send, so a lost response never creates the task twice
-(ADR 0005, ADR 0015 §4).
+Every write is safe to run once: its operation id is stored with the operation
+and reused on every later send, so a lost response never applies the
+operation twice (ADR 0005, ADR 0015 §4).
 
 An operation the server refuses after the command that queued it has exited
 is kept as failed: todoer outbox lists it, todoer outbox drop forgets it.

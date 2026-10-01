@@ -44,4 +44,21 @@ describe('HELP', () => {
   it('no longer tells callers that add is unsafe to retry', () => {
     expect(HELP).not.toMatch(/NOT safe to retry/);
   });
+
+  // M3: exit 1's advice named only add; done, skip and undo queue an
+  // operation the same way and are refused the same way.
+  it('says every write command stays queued after a refused request', () => {
+    expect(HELP).toMatch(
+      /a write command \(add, done, skip, undo\) exits 1 this way/,
+    );
+    expect(HELP).toMatch(/not the same command again/);
+    expect(HELP).not.toMatch(/not add again/);
+  });
+
+  it('documents references, recurrence and the marking commands', () => {
+    expect(HELP).toMatch(/todoer done <ref>/);
+    expect(HELP).toMatch(/todoer undo <ref>/);
+    expect(HELP).toMatch(/--rrule <RRULE>/);
+    expect(HELP).toMatch(/last 6 characters/);
+  });
 });
