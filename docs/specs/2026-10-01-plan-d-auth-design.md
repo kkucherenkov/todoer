@@ -93,7 +93,7 @@ hour with a refresh that never expires* makes a stolen token permanent.
 
 **Decision.** `todoer login <email>` reads the password from
 `TODOER_PASSWORD`, or from stdin (no echo when it is a terminal), calls
-`POST /auth/login`, and stores the access token, refresh token and session
+`POST /auth/login`, and stores the access token, refresh token and access-token
 expiry in a table of its SQLite store (`todoer.db`, mode 0600). Every command
 refreshes the access token itself — ahead of time when it expires within a
 minute, and once on a 401 — inside the store's transaction. `TODOER_TOKEN`
@@ -167,8 +167,9 @@ left to tell). The owner cannot delete their account while other users exist.
 away; *automatic transfer of the owner role* makes someone an administrator
 without their consent.
 
-**Cost.** Ownership transfer does not exist yet; an owner with other users must
-delete them first (Deferred).
+**Cost.** Ownership transfer does not exist yet, and neither does a route for
+the owner to delete another user, so an owner with other users cannot leave
+the instance; both are Deferred.
 
 ### Login is rate-limited in memory (Q12)
 
@@ -187,7 +188,7 @@ their own; recorded as a known limit.
 ## Departures in the plan
 
 The implementation plan ([plan D](../plans/2026-10-01-plan-d-auth.md)) departs
-from this document in six places.
+from this document in seven places.
 
 1. **Refresh tokens are derived, not stored.** Instead of hashes, a token is
    `<sessionId>.<generation>.<mac>` with an HMAC under `JWT_SECRET` and a
@@ -209,6 +210,11 @@ from this document in six places.
    an attempt per address on every login and only a success clears the address
    key, so the Q12 decision reads "failed logins" loosely; the limit is 5 per
    address and 20 per IP.
+7. **More routes are limited than Q12 names.** `POST /auth/password` allows 5
+   wrong current passwords per 15 minutes per user (reserved before the scrypt
+   call, cleared on success), because a stolen token would otherwise let its
+   holder guess the password past the login limit. Register, reset and account
+   deletion are limited per IP (20 per 15 minutes) for the same scrypt cost.
 
 ## Routine choices
 
@@ -264,6 +270,8 @@ As found before this plan:
 - **SMTP for `forgot`** — a separate task with its own dependency decision.
 - **Ownership transfer** — reopens when an instance has a second user who should
   take over.
+- **The owner deleting another user** — no route exists; reopens together with
+  ownership transfer.
 - **Session listing and per-session revocation** (`GET /auth/sessions`).
 
 ## Open threads

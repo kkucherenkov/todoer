@@ -102,6 +102,9 @@ registration, successful or not, counts toward a per-IP budget of 20 per
 15 minutes, so many rapid runs from one address can hit `429`; wait the
 seconds in its `Retry-After` header (up to 15 minutes).
 
+Behind a reverse proxy every client shares the proxy's IP, because the backend
+does not configure `trust proxy`, so the per-IP limits become instance-wide.
+
 ### Environment
 
 | Variable | Read by | Default | Notes |
