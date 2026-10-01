@@ -281,9 +281,9 @@ plan lists them at its top
    write. `statusId` does have a foreign key, and a status tombstone is pruned
    only once no task references it.
 6. **`originTaskId` and `originOccurrence` are set together.** One without the
-   other names no occurrence, so the server rejects it. A single `set` cannot
-   change one without the other, which means both can only be given when the
-   copy is created; changing them later takes one `set` carrying both fields.
+   other names no occurrence, so the server rejects it. A `set` writes one
+   field, so neither can change once the copy exists: both are given in the
+   `create` of the copy.
 
 ## Open threads
 
