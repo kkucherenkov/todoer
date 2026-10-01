@@ -221,6 +221,10 @@ export type PostAuthRegisterData = {
 
 export type PostAuthRegisterErrors = {
   /**
+   * the password is too weak
+   */
+  400: Problem;
+  /**
    * registration is closed, or the invitation is invalid, spent, expired or issued for another address
    */
   403: Problem;
@@ -334,6 +338,10 @@ export type PostAuthPasswordErrors = {
    */
   401: Problem;
   /**
+   * too many attempts; see Retry-After
+   */
+  429: Problem;
+  /**
    * unexpected error
    */
   default: Problem;
@@ -406,7 +414,7 @@ export type PostAuthUserPasswordErrors = {
    */
   401: Problem;
   /**
-   * the caller is not the owner
+   * the caller is not the owner, or targets themselves (use POST /auth/password)
    */
   403: Problem;
   /**

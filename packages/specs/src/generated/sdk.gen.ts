@@ -122,7 +122,7 @@ export const postAuthRegister = <ThrowOnError extends boolean = false>(
 
 /**
  * Exchange a refresh token for a new pair
- * Spends the presented refresh token and returns a new access token and a new refresh token. A just-spent token presented again within about 30 seconds returns the same pair; a spent token past that window revokes the session. An expired, revoked or unknown token is 401.
+ * Spends the presented refresh token and returns a new access token and a new refresh token. A just-spent token presented again within about 30 seconds returns the same refresh token with a freshly minted access token; a spent token past that window revokes the session. An expired, revoked or unknown token is 401.
  */
 export const postAuthRefresh = <ThrowOnError extends boolean = false>(
   options: Options<PostAuthRefreshData, ThrowOnError>,
@@ -170,7 +170,7 @@ export const postAuthLogout = <ThrowOnError extends boolean = false>(
 
 /**
  * Change the caller's password
- * Needs the current password. Revokes every session of the caller and returns a fresh pair, so the client that changed it stays signed in. The new password must be strong: letters, digits and symbols.
+ * Needs the current password. Revokes every session of the caller and returns a fresh pair, so the client that changed it stays signed in. The new password must be strong: letters, digits and symbols. Wrong current passwords are limited per user: too many are answered 429 with Retry-After.
  */
 export const postAuthPassword = <ThrowOnError extends boolean = false>(
   options: Options<PostAuthPasswordData, ThrowOnError>,
@@ -293,7 +293,7 @@ export const postAuthReset = <ThrowOnError extends boolean = false>(
 
 /**
  * Delete the caller's account
- * Needs the current password. Purges the user and everything they own, without tombstones. The owner cannot delete the account while other users exist. Attempts per address are limited: too many are answered 429 with Retry-After.
+ * Needs the current password. Purges the user and everything they own, without tombstones. The owner cannot delete the account while other users exist. Attempts per IP address are limited: too many are answered 429 with Retry-After.
  */
 export const deleteAuthAccount = <ThrowOnError extends boolean = false>(
   options: Options<DeleteAuthAccountData, ThrowOnError>,
