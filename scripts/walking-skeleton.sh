@@ -42,13 +42,19 @@ printf '%s' "$OUT" | grep -qF "$TITLE" || {
 # list, through the server alone.
 TAG="@skeleton$(date +%s)"
 LTITLE="tagged $(date +%s)"
-HOME="$WRITER" TODOER_TOKEN="$TOKEN" node apps/cli/dist/index.js add "$LTITLE $TAG" >/dev/null 2>&1
+HOME="$WRITER" TODOER_TOKEN="$TOKEN" node apps/cli/dist/index.js add "$LTITLE $TAG" >/dev/null
 TAGGED=$(HOME="$READER" TODOER_TOKEN="$TOKEN" node apps/cli/dist/index.js list "$TAG")
 printf '%s' "$TAGGED" | grep -qF "$LTITLE" || {
   echo "FAIL: list $TAG in the second client did not find the tagged task" >&2
   printf '%s\n' "$TAGGED" >&2
   exit 1
 }
+# ...and only that one: a list that ignored its filter would show both.
+if printf '%s' "$TAGGED" | grep -qF "$TITLE"; then
+  echo "FAIL: list $TAG showed the untagged task" >&2
+  printf '%s\n' "$TAGGED" >&2
+  exit 1
+fi
 
 # Recurrence (plan C1): a daily task marked done in one replica shows at
 # another date in the second, through the server alone. `date +%Y-%m-%d` is

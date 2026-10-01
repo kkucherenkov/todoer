@@ -233,6 +233,15 @@ departs from this document in four places, and the plan wins where they differ.
 1. **A pair of duplicates attached to one task shows once**, spelled as the
    lowest-id tag spells it.
 
+Two behaviours are narrower than the design reads, and neither is a departure
+the plan chose:
+
+- `list` still shows the name of an archived project a task belongs to.
+  Archiving only takes a project out of matching and merging.
+- Quick-add may reuse a lower-id row still waiting in the outbox, while the
+  merge picks its winner only among server-confirmed rows. The two converge
+  after the next sync.
+
 ## Open threads
 
 None.
