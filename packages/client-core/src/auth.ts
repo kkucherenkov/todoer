@@ -216,10 +216,16 @@ export function cookieTokenSource(
   // 'ended': logged out or refused; nothing to try until the next adopt.
   let held: AccessGrant | 'unknown' | 'ended' = 'unknown';
   let inflight: Promise<string> | undefined;
+  // Bumped by adopt: a refresh that started before it answers a question
+  // that has since been settled, and must not overwrite the answer.
+  let generation = 0;
 
-  const refresh = (): Promise<string> =>
-    (inflight ??= retryOnce(() => api.refresh())
+  const refresh = (): Promise<string> => {
+    if (inflight !== undefined) return inflight;
+    const started = generation;
+    const attempt: Promise<string> = retryOnce(() => api.refresh())
       .then((next) => {
+        if (started !== generation) return settled();
         if (next === 'invalid') {
           held = 'ended';
           throw new RefusalError('your session has ended — sign in again');
@@ -227,7 +233,17 @@ export function cookieTokenSource(
         held = next;
         return next.accessToken;
       })
-      .finally(() => (inflight = undefined)));
+      .finally(() => {
+        if (inflight === attempt) inflight = undefined;
+      });
+    return (inflight = attempt);
+  };
+
+  /** What an adopt that overtook a refresh left behind. */
+  const settled = (): string => {
+    if (typeof held !== 'object') throw new RefusalError('signed out');
+    return held.accessToken;
+  };
 
   const renew = async (refused: string): Promise<string | null> => {
     if (held === 'ended') throw new RefusalError('signed out');
@@ -251,6 +267,8 @@ export function cookieTokenSource(
     },
     renew,
     adopt(next) {
+      generation++;
+      inflight = undefined;
       held = next ?? 'ended';
     },
     signedIn: () => held !== 'ended',

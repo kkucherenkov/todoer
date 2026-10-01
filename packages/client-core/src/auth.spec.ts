@@ -3,7 +3,7 @@ import type { AddressInfo } from 'node:net';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   cookieTokenSource,
   httpAuthApi,
@@ -354,6 +354,40 @@ describe('cookieTokenSource', () => {
     expect(calls.refresh).toBe(0);
   });
 
+  /** A refresh that answers only when `settle` is called. */
+  function heldRefresh() {
+    let settle: (result: AccessGrant | 'invalid') => void = () => {};
+    const api: CookieAuthApi = {
+      login: () => Promise.reject(new Error('unused')),
+      refresh: () => new Promise((resolve) => (settle = resolve)),
+      logout: () => Promise.reject(new Error('unused')),
+    };
+    return { api, settle: (result: AccessGrant | 'invalid') => settle(result) };
+  }
+
+  it('a refresh in flight does not undo a logout', async () => {
+    const { api, settle } = heldRefresh();
+    const tokens = cookieTokenSource(api, now);
+    const pending = tokens.current();
+    const outcome = expect(pending).rejects.toThrow(RefusalError);
+    tokens.adopt(undefined);
+    settle(grant('late', 900));
+    await outcome;
+    expect(tokens.signedIn()).toBe(false);
+    await expect(tokens.current()).rejects.toThrow(RefusalError);
+  });
+
+  it('a late refusal does not end a session adopted meanwhile', async () => {
+    const { api, settle } = heldRefresh();
+    const tokens = cookieTokenSource(api, now);
+    const pending = tokens.current();
+    tokens.adopt(grant('fresh', 600));
+    settle('invalid');
+    expect(await pending).toBe('fresh');
+    expect(tokens.signedIn()).toBe(true);
+    expect(await tokens.current()).toBe('fresh');
+  });
+
   it('retries a network error once', async () => {
     const { api, calls } = fakeCookieApi(
       new TypeError('fetch failed'),
@@ -445,6 +479,14 @@ describe('httpCookieAuthApi', () => {
     ]);
   });
 
+  it('refresh never keeps a refresh token the server sent anyway', async () => {
+    const api = await serve(200, { ...two, refreshToken: 'secret' });
+    expect(Object.keys((await api.refresh()) as object).sort()).toEqual([
+      'accessExpiresAt',
+      'accessToken',
+    ]);
+  });
+
   it('login maps 401 to invalid and 429 to a RefusalError', async () => {
     expect(await (await serve(401, {})).login('a@b.c', 'pw')).toBe('invalid');
     await expect(
@@ -472,6 +514,57 @@ describe('httpCookieAuthApi', () => {
   });
 });
 
+describe('fetch credentials', () => {
+  const credentialsOf = async (
+    call: (base: ReturnType<typeof httpCookieAuthApi>) => Promise<unknown>,
+  ) => {
+    const spy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(() =>
+        Promise.resolve(
+          Response.json({ accessToken: 'a', accessExpiresAt: at(900) }),
+        ),
+      );
+    try {
+      await call(
+        httpCookieAuthApi({ base: 'http://unused.invalid', timeoutMs: 1000 }),
+      );
+      return spy.mock.calls.map(([, init]) => init?.credentials);
+    } finally {
+      spy.mockRestore();
+    }
+  };
+
+  it('sends the cookie same-origin on login, refresh and logout', async () => {
+    expect(await credentialsOf((api) => api.login('a@b.c', 'pw'))).toEqual([
+      'same-origin',
+    ]);
+    expect(await credentialsOf((api) => api.refresh())).toEqual([
+      'same-origin',
+    ]);
+    expect(await credentialsOf((api) => api.logout('tok'))).toEqual([
+      'same-origin',
+    ]);
+  });
+
+  it('body mode sends no credentials key', async () => {
+    const spy = vi
+      .spyOn(globalThis, 'fetch')
+      .mockImplementation(() => Promise.resolve(Response.json({})));
+    try {
+      const api = httpAuthApi({
+        base: 'http://unused.invalid',
+        timeoutMs: 1000,
+      });
+      await api.logout('tok', { all: true });
+      const init = spy.mock.calls[0]?.[1] as RequestInit;
+      expect('credentials' in init).toBe(false);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});
+
 describe('subject', () => {
   it('decodes an unpadded base64url payload holding - and _', () => {
     // '>>>???' base64 is 'Pj4+Pz8/'; in base64url it carries - and _.
@@ -479,6 +572,12 @@ describe('subject', () => {
     const segment = Buffer.from(JSON.stringify({ sub })).toString('base64url');
     expect(segment).toMatch(/[-_]/);
     expect(segment).not.toContain('=');
+    expect(subject(`${segment}.mac`)).toBe(sub);
+  });
+
+  it('decodes a non-ASCII sub as UTF-8', () => {
+    const sub = 'Ж-é';
+    const segment = Buffer.from(JSON.stringify({ sub })).toString('base64url');
     expect(subject(`${segment}.mac`)).toBe(sub);
   });
 
