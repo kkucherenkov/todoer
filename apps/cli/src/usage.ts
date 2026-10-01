@@ -104,14 +104,17 @@ exit codes (ADR 0015 §2):
      session: run todoer login (or fix TODOER_TOKEN). Queued operations
      stay queued. If a write command (add, done, skip, undo) exits 1 this way,
      its operation is still queued: fix the cause and run any command (for
-     example list) to send it, not the same command again
+     example list) to send it, not the same command again. A command that
+     sent several operations lists every refused one and how many others
+     were applied: the rest of the batch may have landed
   2  usage error — the command did nothing (the outbox may still have been
      sent)
   3  an unexpected local failure, such as the local database staying busy
   4  reserved for a conflict — the server holds a newer version of the row.
      No command sends an operation that can return one yet: add, done, skip
      and undo send creates and statusId sets, which carry no baseVersion, so
-     none of them conflicts
+     none of them conflicts. A command that sent several operations lists
+     every refused one and how many others were applied
   5  the server was not reached: the answer is local, and any operation
      this command queued will be sent by a later command. Do not run the
      command again for the same intent — that would queue it twice

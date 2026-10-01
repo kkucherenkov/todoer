@@ -41,7 +41,12 @@ import {
 import { planMerge } from './merge.js';
 import { liveTasks, overlay } from './overlay.js';
 import { PROJECT, TAG, planAdd } from './parse-quick-add.js';
-import { ownOutcome, RefusalError, UsageError } from './protocol.js';
+import {
+  RefusalError,
+  refusalOf,
+  throwRefusals,
+  UsageError,
+} from './protocol.js';
 import { resolveRef, shortRef } from './ref.js';
 import type { Row, Store } from './store.js';
 import { flush, type Transport } from './sync.js';
@@ -568,7 +573,8 @@ function listOutbox(store: Store): { data: unknown; human: string[] } {
  * that depend on rows a parallel invocation may be writing. The ops are
  * stored before they are sent, so every attempt carries their ids (ADR 0015
  * §4). Every one counts as the command's own, so a refusal of any of them is
- * the command's exit 1. Returns whether the server has all of them.
+ * the command's exit 1 (4 for a conflict), reporting every operation's fate.
+ * Returns whether the server has all of them.
  */
 async function submit(
   store: Store,
@@ -583,28 +589,34 @@ async function submit(
   });
   const opIds = ops.map((op) => op.opId);
   const flushed = await flushOwn(store, send, opIds, command);
-  let settled = true;
-  for (const opId of opIds) {
+  const outcomes = ops.map((op) => {
     // Evaluated unconditionally, never short-circuited on `flushed.synced`:
     // a batch-refused own op is removed from the outbox (I1) even when the
     // follow-up pull that reports it is itself unreached, and that
     // rejection must still throw rather than be reported as "queued".
-    let own = ownOutcome(flushed.results, opId);
-    if (own === 'unreported' && flushed.synced) {
-      // A parallel invocation may have sent it between the enqueue and this
-      // flush's read of the outbox; its entry says what became of it.
-      const entry = store.entry(opId);
-      if (entry === undefined) own = 'settled';
-      else if (entry.status === 'failed') {
-        store.remove(opId);
-        throw new RefusalError(
-          entry.reason ?? 'the server refused this operation',
-        );
-      }
+    const result = flushed.results.find((r) => r.opId === op.opId);
+    const reported = refusalOf(result);
+    if (reported !== undefined) return { op, outcome: reported };
+    if (result !== undefined) return { op, outcome: 'applied' as const };
+    if (!flushed.synced) return { op, outcome: 'queued' as const };
+    // A parallel invocation may have sent it between the enqueue and this
+    // flush's read of the outbox; its entry says what became of it.
+    const entry = store.entry(op.opId);
+    if (entry === undefined) return { op, outcome: 'applied' as const };
+    if (entry.status === 'failed') {
+      store.remove(op.opId);
+      return {
+        op,
+        outcome: {
+          kind: 'rejected' as const,
+          reason: entry.reason ?? 'the server refused this operation',
+        },
+      };
     }
-    if (own !== 'settled') settled = false;
-  }
-  return flushed.synced && settled;
+    return { op, outcome: 'queued' as const };
+  });
+  throwRefusals(outcomes);
+  return flushed.synced && outcomes.every((o) => o.outcome === 'applied');
 }
 
 /**

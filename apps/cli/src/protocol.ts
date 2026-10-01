@@ -23,6 +23,31 @@ export class UsageError extends Error {}
  *  newer version of the row. A retry needs the current row first. */
 export class ConflictError extends Error {}
 
+/** Why the server did not take an operation: it was rejected, or it lost an
+ *  optimistic-lock check. */
+export type Refusal =
+  | { kind: 'rejected'; reason: string }
+  | { kind: 'conflict'; version: number | undefined };
+
+/** The refusal an `/sync` result reports, if it reports one. */
+export function refusalOf(result: OpResult | undefined): Refusal | undefined {
+  if (result?.status === 'rejected') {
+    return {
+      kind: 'rejected',
+      reason: result.reason ?? 'the server refused this operation',
+    };
+  }
+  if (result?.status === 'conflict') {
+    return { kind: 'conflict', version: result.currentVersion };
+  }
+  return undefined;
+}
+
+function raise(refusal: Refusal, newer: string): never {
+  if (refusal.kind === 'rejected') throw new RefusalError(refusal.reason);
+  throw new ConflictError(`${newer} (version ${String(refusal.version)})`);
+}
+
 /**
  * What happened to the one operation the running command queued, in a
  * response that may carry many. Throws when the server refused it, so the
@@ -35,15 +60,47 @@ export function ownOutcome(
 ): 'settled' | 'unreported' {
   const result = results.find((r) => r.opId === opId);
   if (result === undefined) return 'unreported';
-  if (result.status === 'rejected') {
-    throw new RefusalError(
-      result.reason ?? 'the server refused this operation',
-    );
-  }
-  if (result.status === 'conflict') {
-    throw new ConflictError(
-      `the server holds a newer version of this row (version ${String(result.currentVersion)})`,
-    );
-  }
+  const refusal = refusalOf(result);
+  if (refusal) raise(refusal, 'the server holds a newer version of this row');
   return 'settled';
+}
+
+/**
+ * Throws for a command's batch when any operation was refused. A batch of one:
+ * that operation's own error. Several: one error listing every distinct refusal
+ * (identical lines once, with a count) and how many others landed or wait in
+ * the outbox, because the server applies operations one by one and "refused"
+ * alone reads as "nothing happened". Exit 1 if any was rejected, else 4.
+ */
+export function throwRefusals(
+  ops: {
+    op: { kind: string; table: string };
+    outcome: Refusal | 'applied' | 'queued';
+  }[],
+): void {
+  const refused = ops.flatMap(({ op, outcome }) =>
+    typeof outcome === 'string' ? [] : [{ op, outcome }],
+  );
+  const first = refused[0];
+  if (first === undefined) return;
+  const queued = ops.filter((o) => o.outcome === 'queued').length;
+  const sent = ops.length - queued;
+  if (ops.length === 1)
+    raise(first.outcome, 'the server holds a newer version of this row');
+  const applied = sent - refused.length;
+  // A batch-level refusal gives every op the same line: list each once, with a count.
+  const counts = new Map<string, number>();
+  for (const { op, outcome } of refused) {
+    const line = `${op.kind} ${op.table}: ${outcome.kind === 'rejected' ? outcome.reason : `the server holds a newer version (version ${String(outcome.version)})`}`;
+    counts.set(line, (counts.get(line) ?? 0) + 1);
+  }
+  const parts = [...counts].map(([line, n]) =>
+    n > 1 ? `${line} (×${n})` : line,
+  );
+  if (applied > 0) parts.push(`${applied} other operation(s) applied`);
+  if (queued > 0) parts.push(`${queued} still queued`);
+  const message = parts.join('; ');
+  throw refused.some((r) => r.outcome.kind === 'rejected')
+    ? new RefusalError(message)
+    : new ConflictError(message);
 }

@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Change, Op, SyncRequest } from '@todoer/specs';
 import { taskOccurrenceId, taskTagId } from '@todoer/specs';
 import { tokenSource, type AuthApi } from './auth.js';
-import { RefusalError, UsageError } from './protocol.js';
+import { ConflictError, RefusalError, UsageError } from './protocol.js';
 import { run, type Deps } from './run.js';
 import { Store } from './store.js';
 import type { Transport } from './sync.js';
@@ -822,6 +822,123 @@ describe('run', () => {
         ['pending', 'set', 'task'],
         ['pending', 'create', 'task_occurrence'],
       ]);
+    });
+
+    /** A server whose answer for each op is `decide`'s, applying the rest. */
+    function decidingServer(
+      decide: (op: Op) => Record<string, unknown> | undefined,
+    ): Transport {
+      return (request) =>
+        Promise.resolve(
+          json({
+            cursor: 0,
+            results: request.ops.map((op) => ({
+              opId: op.opId,
+              status: 'applied',
+              ...decide(op),
+            })),
+            changes: [],
+          }),
+        );
+    }
+
+    // Batch outcomes, scenario 1: the others' fate is reported too.
+    it('names every refused operation of done and how many others applied', async () => {
+      const d = hexDeps(fakeServer().send);
+      await run(['add', 'file taxes'], d);
+      d.send = decidingServer((op) =>
+        op.table === 'status' && op.kind === 'create'
+          ? { status: 'rejected', reason: 'nope' }
+          : undefined,
+      );
+      const refused = run(['done', '000002'], d);
+      await expect(refused).rejects.toThrow(RefusalError);
+      await expect(refused).rejects.toThrow(
+        'create status: nope (×3); 2 other operation(s) applied',
+      );
+    });
+
+    // The server answers only the first operation: the rest wait in the outbox.
+    it('lists the refused operation and counts those still queued', async () => {
+      const d = hexDeps(fakeServer().send);
+      await run(['add', 'file taxes'], d);
+      let sent = 0;
+      d.send = (request) => {
+        sent = request.ops.length;
+        const [first] = request.ops;
+        return Promise.resolve(
+          json({
+            cursor: 0,
+            results: [
+              { opId: first?.opId, status: 'rejected', reason: 'nope' },
+            ],
+            changes: [],
+          }),
+        );
+      };
+      const refused = run(['done', '000002'], d);
+      await expect(refused).rejects.toThrow(RefusalError);
+      await expect(refused).rejects.toThrow(
+        `create status: nope; ${sent - 1} still queued`,
+      );
+    });
+
+    // A parallel command already settled one op as failed; the rest applies.
+    it('lists an operation a parallel command saw refused, and the applied rest', async () => {
+      const d = hexDeps(fakeServer().send);
+      await run(['add', 'file taxes'], d);
+      d.send = decidingServer(() => undefined);
+      let seeded: string | undefined;
+      d.store.enqueue = (op) => {
+        Store.prototype.enqueue.call(d.store, op);
+        if (seeded !== undefined) return;
+        seeded = op.opId;
+        d.store.settle(
+          [{ opId: op.opId, status: 'rejected', reason: 'nope' }],
+          new Set(),
+        );
+      };
+      const refused = run(['done', '000002'], d);
+      await expect(refused).rejects.toThrow(RefusalError);
+      await expect(refused).rejects.toThrow(
+        /^create status: nope; \d+ other operation\(s\) applied$/,
+      );
+      expect(d.store.entry(seeded ?? '')).toBeUndefined();
+    });
+
+    // Scenario 2.
+    it('exits 4 and counts the applied operations when one conflicts', async () => {
+      const d = hexDeps(fakeServer().send);
+      await run(['add', 'file taxes'], d);
+      d.send = decidingServer((op) =>
+        op.table === 'task_occurrence'
+          ? { status: 'conflict', currentVersion: 7 }
+          : undefined,
+      );
+      const refused = run(['done', '000002'], d);
+      await expect(refused).rejects.toThrow(ConflictError);
+      await expect(refused).rejects.toThrow(
+        'create task_occurrence: the server holds a newer version (version 7); 4 other operation(s) applied',
+      );
+    });
+
+    // Every operation refused: no applied part.
+    it('lists each reason and no applied count when every operation is refused', async () => {
+      const d = hexDeps(fakeServer().send);
+      await run(['add', 'file taxes'], d);
+      d.send = decidingServer(() => ({ status: 'rejected', reason: 'nope' }));
+      const refused = run(['done', '000002'], d);
+      await expect(refused).rejects.toThrow(RefusalError);
+      await expect(refused).rejects.not.toThrow(/applied/);
+    });
+
+    // Scenario 3 (FR-003): the existing tests above pin RefusalError for a
+    // single op; this pins the text too.
+    it('keeps the single-operation refusal message unchanged', async () => {
+      const d = hexDeps(
+        decidingServer(() => ({ status: 'rejected', reason: 'nope' })),
+      );
+      await expect(run(['add', 'file taxes'], d)).rejects.toThrow(/^nope$/);
     });
 
     it('queues a create of the derived task occurrence', async () => {
