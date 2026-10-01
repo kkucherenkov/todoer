@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import { uuidv7 } from 'uuidv7';
-import { readConfig } from './config.js';
 import {
   ConflictError,
   httpAuthApi,
@@ -9,6 +8,7 @@ import {
   tokenSource,
   UsageError,
 } from '@todoer/client-core';
+import { readConfig } from './config.js';
 import { readPassword } from './password.js';
 import { run } from './run.js';
 import { openStore } from './store.js';

@@ -144,6 +144,10 @@ pnpm -w exec turbo run build typecheck test
 pnpm lint                        # ESLint in every package, then Prettier
 ```
 
+`pnpm --filter @todoer/cli test` alone runs against whatever
+`packages/client-core/dist` holds — after changing client-core, run through turbo:
+`pnpm -w exec turbo run build test --filter=@todoer/cli...`.
+
 Postgres is published on **5433**, remapped from the container's 5432 so it does
 not collide with a developer's own. The backend defaults to 3000.
 

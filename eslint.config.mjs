@@ -1,5 +1,6 @@
 // @ts-check
 import js from '@eslint/js';
+import { builtinModules } from 'node:module';
 import { defineConfig } from 'eslint/config';
 import tseslint from 'typescript-eslint';
 
@@ -35,9 +36,18 @@ export default defineConfig(
       'no-restricted-imports': [
         'error',
         {
+          // `node:*` covers the prefixed form; `paths` the bare builtins.
+          paths: builtinModules.flatMap((name) => [
+            { name, message: 'Node-only code belongs in node-sqlite.ts.' },
+          ]),
           patterns: [
             {
-              group: ['node:*'],
+              group: [
+                'node:*',
+                '**/node-sqlite.js',
+                './node-sqlite.js',
+                '@todoer/client-core/node-sqlite',
+              ],
               message: 'Node-only code belongs in node-sqlite.ts.',
             },
           ],

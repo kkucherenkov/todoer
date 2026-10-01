@@ -153,8 +153,8 @@ describe('retryOnBusy', () => {
 // directory of its own — not `dist/`, which turbo's `@todoer/cli#build` may be
 // writing at the same moment — then each attempt spawns a fresh `node`
 // process that imports the built `Store` and opens a brand-new file, matching
-// the CLI's own first run. The emitted `store.js` imports only `node:*` and
-// `@todoer/client-core`; `@todoer/specs` is type-only and erased. The build
+// the CLI's own first run. The emitted `store.js` imports only `node:*`,
+// `@todoer/client-core` and `@todoer/client-core/node-sqlite`; `@todoer/specs` is type-only and erased. The build
 // directory sits under `node_modules/` so that bare specifier resolves.
 //
 // A plain "spawn 20 processes and hope" mostly measures process-startup

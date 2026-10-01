@@ -29,10 +29,11 @@ client, and scripts and agents depend on its exact output and exit codes
    `scripts/walking-skeleton.sh` and `scripts/outbox-e2e.sh`, unmodified,
    **Then** both pass.
 3. **Given** the repository, **When** a developer runs the workspace tests,
-   **Then** 331 tests pass, 171 in `@todoer/client-core` and 160 in
-   `@todoer/cli`, and no assertion differs from `main`.
+   **Then** 333 tests pass, 173 in `@todoer/client-core` and 160 in
+   `@todoer/cli`. W0's move kept 331 with no assertion changed; two tests
+   were added afterwards for gaps the reviews found.
 4. **Given** client-core's portable entry, **When** lint runs, **Then** any
-   `node:*` import or `Buffer`/`process` use outside `node-sqlite.ts` fails
+   `node:*` or bare builtin import, import of `node-sqlite`, or `Buffer`/`process` use outside `node-sqlite.ts` fails
    it.
 5. **Given** a reader of the stack table or the design doc, **When** they
    look for the client core, **Then** both name `packages/client-core`.
@@ -87,8 +88,9 @@ client, and scripts and agents depend on its exact output and exit codes
 
 ### Definition of Done
 
-- **SC-001** `pnpm -w exec turbo run build typecheck test` reports 331
-  passing tests across client-core (171) and the CLI (160).
+- **SC-001** `pnpm -w exec turbo run build typecheck test` reports 333
+  passing tests across client-core (173) and the CLI (160): the move kept 331
+  with no assertion changed, then two tests were added for review gaps.
 - **SC-002** `git diff main -- scripts/` is empty, and both e2e scripts pass
   against a live backend.
 - **SC-003** The assertion audit in plan Task 6 prints only the named fixture
@@ -117,7 +119,7 @@ client, and scripts and agents depend on its exact output and exit codes
 - [x] T005 [FR-005, FR-006] Extract the domain operations from `run.ts` —
       plan Task 5
 - **Checkpoint:** `apps/cli/src` holds only `index`, `run`, `usage`,
-  `config`, `password`, `store`; 171 + 160 tests; e2e green.
+  `config`, `password`, `store`; 171 + 160 tests after the move (173 + 160 once the two review tests landed); e2e green.
 - [x] T006 [FR-006, FR-007] Docs, assertion audit, gates and e2e — plan
       Task 6
 
