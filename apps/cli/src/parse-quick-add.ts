@@ -8,9 +8,11 @@ export type QuickAdd = {
 };
 
 // A token only counts when it stands alone, which is what keeps `a@b.c` from
-// being read as a tag and `p5` from being read as a priority.
-export const TAG = /^@[\p{L}\p{N}_-]+$/u;
-export const PROJECT = /^#[\p{L}\p{N}_-]+$/u;
+// being read as a tag and `p5` from being read as a priority. `\p{M}` lets a
+// name typed in decomposed form (`cafe` + U+0301, as macOS input often
+// produces) count as a marker; `nameKey` folds it to the composed one.
+export const TAG = /^@[\p{L}\p{M}\p{N}_-]+$/u;
+export const PROJECT = /^#[\p{L}\p{M}\p{N}_-]+$/u;
 const PRIORITY = /^p([0-4])$/;
 
 export function parseQuickAdd(input: string): QuickAdd {

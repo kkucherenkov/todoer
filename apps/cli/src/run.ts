@@ -305,6 +305,18 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
   // (quick-add design, Q9). The merge is queued, not sent: the next command
   // delivers it, like any other queued operation.
   if (synced) {
+    // A failed delete of a row that is already a tombstone is moot: two
+    // clients merging the same duplicates send the same delete, and the
+    // second gets `conflict` although the row is gone. Left alone it would
+    // sit as a failed entry forever.
+    for (const entry of store.entries()) {
+      const { op } = entry;
+      if (entry.status !== 'failed' || op.kind !== 'delete') continue;
+      const gone = store
+        .rows(op.table)
+        .some((row) => row.id === op.id && row.deletedAt !== null);
+      if (gone) store.remove(entry.opId);
+    }
     const { ops, merged } = planMerge(
       {
         tasks: tasks(store),

@@ -30,6 +30,15 @@ describe('parseQuickAdd', () => {
     });
   });
 
+  it('reads a name typed in decomposed form as a marker', () => {
+    expect(parseQuickAdd('note @cafe\u0301 #re\u0301sume\u0301')).toEqual({
+      title: 'note',
+      tags: ['@cafe\u0301'],
+      project: 're\u0301sume\u0301',
+      priority: 0,
+    });
+  });
+
   it('leaves p5 in the title, since priorities stop at 4', () => {
     expect(parseQuickAdd('ship p5').title).toBe('ship p5');
   });

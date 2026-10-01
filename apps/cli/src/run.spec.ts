@@ -335,11 +335,23 @@ describe('run', () => {
       expect((await run(['list', '@caf\u00e9'], d)).stdout).toEqual([
         't1  0  seeded  @cafe\u0301',
       ]);
-      // U+1FD3 is a letter whose canonical form is U+0390; a combining accent is not a TAG character.
+      // The reverse: a decomposed filter is a marker too, not a usage error.
+      expect((await run(['list', '@cafe\u0301'], d)).stdout).toEqual([
+        't1  0  seeded  @cafe\u0301',
+      ]);
+      // U+1FD3 is a letter whose canonical form is U+0390.
       const e = deps(unreachable);
       seed(e, { tags: ['@\u0390'] });
       expect((await run(['list', '@\u1fd3'], e)).stdout).toEqual([
         't1  0  seeded  @\u0390',
+      ]);
+    });
+
+    it('matches a composed filter against a decomposed stored tag, and the reverse', async () => {
+      const d = deps(unreachable);
+      seed(d, { tags: ['@caf\u00e9'] });
+      expect((await run(['list', '@cafe\u0301'], d)).stdout).toEqual([
+        't1  0  seeded  @caf\u00e9',
       ]);
     });
 
@@ -995,6 +1007,49 @@ describe('run', () => {
       const out = await run(['list'], d);
       expect(out.stderr.join('\n')).not.toMatch(/merging/);
       expect(d.store.pending()).toEqual([]);
+    });
+
+    // Two clients merging the same duplicates both send the delete; the
+    // second one's conflicts although the row is gone.
+    describe('failed deletes', () => {
+      function failedDelete(d: Deps, deletedAt: string | null) {
+        d.store.mergeChanges([
+          {
+            table: 'tag',
+            id: 'tag-x',
+            seq: 1,
+            row: { id: 'tag-x', name: '@x', version: 3, deletedAt },
+          },
+        ]);
+        d.store.enqueue({
+          opId: 'del-x',
+          kind: 'delete',
+          table: 'tag',
+          id: 'tag-x',
+          baseVersion: 2,
+        });
+        d.store.settle(
+          [{ opId: 'del-x', status: 'conflict', currentVersion: 3 }],
+          new Set(),
+        );
+        expect(d.store.entry('del-x')?.status).toBe('failed');
+      }
+
+      it('removes a failed delete whose row is already a tombstone', async () => {
+        const d = deps(fakeServer().send);
+        failedDelete(d, '2026-09-26T09:00:00.000Z');
+        const out = await run(['list'], d);
+        expect(d.store.entry('del-x')).toBeUndefined();
+        expect(out.stderr.join('\n')).not.toMatch(/failed/);
+      });
+
+      it('keeps a failed delete whose row is still live', async () => {
+        const d = deps(fakeServer().send);
+        failedDelete(d, null);
+        const out = await run(['list'], d);
+        expect(d.store.entry('del-x')?.status).toBe('failed');
+        expect(out.stderr.join('\n')).toMatch(/1 queued operation\(s\) failed/);
+      });
     });
   });
 });
