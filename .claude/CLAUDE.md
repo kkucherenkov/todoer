@@ -192,6 +192,8 @@ DATABASE_URL=postgresql://todoer:todoer@localhost:5433/todoer_test pnpm -w exec 
    generated migration therefore contains `DROP DEFAULT` on every `seq`
    column and `DROP SEQUENCE "change_seq"`, which fails and rolls the
    migration back. Delete those statements from `migration.sql` before
-   applying it; a migration must never touch them.
+   applying it; a migration must never touch them. CI checks it:
+   `scripts/check-migrations.sh` (in Shell tests) fails a migration that
+   drops `change_seq` or a `seq` default.
 
 <!-- STACK:END -->
