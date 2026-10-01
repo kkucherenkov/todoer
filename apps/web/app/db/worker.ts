@@ -6,6 +6,7 @@ import {
 } from '@todoer/client-core';
 import { openWasmStore } from '@todoer/client-core/sqlite-wasm';
 import { createEngine } from './engine';
+import { installPool } from './pool';
 import {
   CHANNEL,
   type Fatal,
@@ -19,41 +20,15 @@ declare const self: DedicatedWorkerGlobalScope;
 
 type Unstamped<T> = T extends unknown ? Omit<T, 'build'> : never;
 
-/** Retries with doubling delays; the last error is the one thrown. */
-async function retry<T>(
-  attempt: () => Promise<T>,
-  {
-    attempts,
-    firstDelayMs,
-    maxDelayMs,
-  }: { attempts: number; firstDelayMs: number; maxDelayMs: number },
-): Promise<T> {
-  for (
-    let i = 1, delay = firstDelayMs;
-    ;
-    i++, delay = Math.min(delay * 2, maxDelayMs)
-  ) {
-    try {
-      return await attempt();
-    } catch (error) {
-      if (i >= attempts) throw error;
-      await new Promise((resolve) => setTimeout(resolve, delay));
-    }
-  }
-}
-
 self.onmessage = async ({ data }: MessageEvent<Init>) => {
   try {
     const sqlite3 = await sqlite3InitModule();
-    // The previous leader's worker may still hold the pool's handles for a
-    // moment after its tab closed (Review Focus 1).
-    const pool = await retry(
-      () => sqlite3.installOpfsSAHPoolVfs({ name: 'todoer' }),
-      {
-        attempts: 10,
-        firstDelayMs: 100,
-        maxDelayMs: 1000,
-      },
+    // sqlite-wasm caches a failed install per VFS name and rethrows it to
+    // every later call; without this option a retry never retries. Its
+    // typings omit it, hence the variable (no excess-property check).
+    const options = { name: 'todoer', forceReinitIfPreviouslyFailed: true };
+    const pool = await installPool(() =>
+      sqlite3.installOpfsSAHPoolVfs(options),
     );
     // No journal_mode change: opfs-sahpool has no WAL; the rollback journal
     // undoes a transaction a killed tab left behind.
