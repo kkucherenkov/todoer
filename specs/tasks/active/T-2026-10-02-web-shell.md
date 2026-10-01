@@ -200,7 +200,7 @@ replica count that changes when the CLI writes.
 - **Checkpoint:** a person signs in from a browser, sees a CLI write arrive,
   reloads without signing in again, and opens a second tab on the same
   worker.
-- [ ] T006 [FR-011] The service worker and the update prompt — plan Task 6
+- [x] T006 [FR-011] The service worker and the update prompt — plan Task 6
 - [ ] T007 [FR-005, FR-012, FR-013] Playwright and the `Web e2e` job — plan
       Task 7
 - [ ] T008 [FR-014] Docs, departures, the full proof — plan Task 8

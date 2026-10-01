@@ -6,5 +6,8 @@ const uiLocale = computed(() => uiLocales[locale.value as 'en' | 'ru']);
 </script>
 
 <template>
-  <UApp :locale="uiLocale"><NuxtPage /></UApp>
+  <UApp :locale="uiLocale">
+    <UpdatePrompt class="m-6 mb-0" />
+    <NuxtPage />
+  </UApp>
 </template>
