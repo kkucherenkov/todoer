@@ -170,10 +170,12 @@ components:
         counts). `view` rows hold `name`, `layout` (list, kanban,
         calendar), `filter`, `sort` (manual, priority, due, scheduled) and
         `rank`; a filter must pass `filterProblem` from `@todoer/specs`, or
-        the operation is rejected with its reason. A task's `statusId`
-        references a status (null: the first non-completing status); `originTaskId` and
-        `originOccurrence` mark the copy of a moved occurrence and are set
-        together.
+        the operation is rejected with its reason; ids in a filter are
+        lower-case. A task's `statusId` references a status (null: the
+        first non-completing one, or the first when all are completing);
+        `originTaskId` and `originOccurrence` mark the copy of a moved
+        occurrence, are given together in its `create`, and cannot change
+        afterwards.
       required: [opId, kind, table, id, fields, ts]
       additionalProperties: false
       properties:
