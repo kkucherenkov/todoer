@@ -181,7 +181,8 @@ DATABASE_URL=postgresql://todoer:todoer@localhost:5433/todoer_test pnpm -w exec 
    0.5.12.
 5. **`POST /sync` is the only write path**, so every invariant a client could
    violate is enforced there or nowhere: the protocol-field allow-list, foreign
-   keys scoped to the owner, and the two-level depth rule. The pruning job
+   keys scoped to the owner, the two-level depth rule, and no deleting a task
+   with live subtasks. The pruning job
    (`PruneService`) also deletes tombstones and raises the prune watermark,
    under the same per-user write lock; it never writes a live row.
 6. **`prisma migrate dev` wants to drop `change_seq`.** Every synced table's

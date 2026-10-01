@@ -311,6 +311,10 @@ function unpermittedField(table: TableName, op: Op): string | null {
  * query, no depth counter. Deleted subtasks do not count: a tombstone cannot
  * be resurrected, so it never becomes a live third level.
  *
+ * `deleteRejection` is the depth rule's counterpart for deletes: a task with
+ * live subtasks cannot be deleted, since the server never cascades and the
+ * subtasks would be left under a tombstone.
+ *
  * Both rules read rows another request may be changing, so they hold only
  * because `lockRows` has already locked the written row and the target
  * before this runs — see there.
@@ -356,6 +360,23 @@ async function referenceRejection(
     }
   }
   return null;
+}
+
+/** Why this op cannot delete its row, or `null` — see `referenceRejection`. */
+async function deleteRejection(
+  client: unknown,
+  table: TableName,
+  op: Op,
+  userId: string,
+): Promise<string | null> {
+  if (table !== 'task' || op.kind !== 'delete') return null;
+  const child = await delegateFor(client, 'task').findFirst({
+    where: { parentId: op.id, userId, deletedAt: null },
+    select: { id: true },
+  });
+  return child === null
+    ? null
+    : 'a task with subtasks cannot be deleted — delete its subtasks first';
 }
 
 /** The task a `parentId` write points at, if this op makes one. */
@@ -658,7 +679,9 @@ export class SyncService {
           // reads and the write below one cycle rather than two halves
           // another transaction can interleave with.
           await lockRows(tx, table, op, userId);
-          const badReference = await referenceRejection(tx, table, op, userId);
+          const badReference =
+            (await referenceRejection(tx, table, op, userId)) ??
+            (await deleteRejection(tx, table, op, userId));
           if (badReference !== null) {
             outcome = { status: 'rejected', reason: badReference };
           } else {

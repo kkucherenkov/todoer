@@ -236,6 +236,11 @@ For each operation, in the order given:
    which the op log has no way to express. Deleted subtasks do not count; a
    tombstone cannot be resurrected, so it never becomes a live third level.
 
+   Deleting is bound by the same hierarchy: a task with live subtasks cannot
+   be deleted; clients delete the subtasks first, in the same batch. The
+   server never cascades, so allowing it would leave live subtasks under a
+   tombstone. Tombstoned subtasks do not count.
+
    Both checks read rows another request may be writing, so they run only
    after the written row and the `parent_id` target are locked `FOR UPDATE`,
    **in id order**. Unlocked, two requests setting A under B and B under A
