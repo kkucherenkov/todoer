@@ -306,6 +306,60 @@ describe('SyncService', () => {
     expect(results[1]).toMatchObject({ status: 'applied' });
   });
 
+  // #391's second door: a delete of a parent with live subtasks is refused,
+  // but a subtask written *after* the parent was tombstoned would be a live
+  // row under a tombstone.
+  it('refuses a subtask under a tombstoned parent', async () => {
+    const parent = createTask('parent');
+    const live = createTask('live parent');
+    const mover = createTask('mover');
+    await service.sync(USER, { since: 0, ops: [parent, live, mover] });
+    await service.sync(USER, {
+      since: 0,
+      ops: [
+        {
+          opId: uuidv7(),
+          kind: 'delete' as const,
+          table: 'task' as const,
+          id: parent.id,
+          baseVersion: 1,
+        },
+      ],
+    });
+
+    const underTombstone = {
+      opId: uuidv7(),
+      kind: 'create' as const,
+      table: 'task' as const,
+      id: uuidv7(),
+      fields: { title: 'orphan', rank: 'a1', parentId: parent.id },
+      ts: new Date().toISOString(),
+    };
+    const underLive = {
+      opId: uuidv7(),
+      kind: 'create' as const,
+      table: 'task' as const,
+      id: uuidv7(),
+      fields: { title: 'fine', rank: 'a2', parentId: live.id },
+      ts: new Date().toISOString(),
+    };
+
+    const { results } = await service.sync(USER, {
+      since: 0,
+      ops: [underTombstone, setParent(mover.id, parent.id), underLive],
+    });
+
+    expect(results[0]).toMatchObject({ status: 'rejected' });
+    expect(results[0]?.reason).toMatch(/live task/i);
+    expect(results[1]).toMatchObject({ status: 'rejected' });
+    expect(results[1]?.reason).toMatch(/live task/i);
+    expect(results[2]).toMatchObject({ status: 'applied' });
+    expect(
+      (await prisma.task.findUniqueOrThrow({ where: { id: mover.id } }))
+        .parentId,
+    ).toBeNull();
+  });
+
   // Tuxedo 356: the single-op argument above holds only one op at a time.
   // Unlocked, both of these read the other's row while it is still
   // parentless, both pass, and a cycle is stored — or Postgres detects the

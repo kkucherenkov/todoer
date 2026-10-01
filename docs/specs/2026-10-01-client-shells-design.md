@@ -240,7 +240,9 @@ Settled in the same interview; each becomes its own small task.
   - *Rejected: a client-only rule.* The server is the only write path (trap
     5), so an invariant it does not check does not hold.
   - *Cost:* an offline parent delete raced by a new subtask on another device
-    comes back refused later.
+    comes back refused later. The same holds for a subtask written under a
+    parent another device already deleted: it is refused too, since a live
+    subtask under a tombstone is the state the rule exists to prevent.
 - **#361: `seq` default drift (Q6).** Accepted, and automated. A check in
   Shell tests fails CI when a migration contains `DROP SEQUENCE "change_seq"`
   or `DROP DEFAULT` on a `seq` column. *Rejected:* removing the defaults and
@@ -262,7 +264,7 @@ Settled in the same interview; each becomes its own small task.
 - The CLI's client logic is about 3 000 lines in `apps/cli/src` (excluding
   specs), on `node:sqlite` through `Store`, with `BEGIN IMMEDIATE` write
   transactions.
-- The auth limiters key on `req.ip`, and `main.ts` sets no `trust proxy`.
+- The auth limiters key on `req.ip`, and `main.ts` set no `trust proxy` before #407.
 - Each generated migration carries the trap-6 statements; `dbgenerated()` on
   the `seq` fields does not remove them (dnote, plan B2 follow-up).
 - The CLI has no `delete` command, so no client deletes tasks today.
