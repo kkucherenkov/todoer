@@ -1,7 +1,7 @@
 import type { LogoutRequest, SessionTokens } from '@todoer/specs';
-import type { Config } from './config.js';
-import { RefusalError } from '@todoer/client-core';
-import type { Store, StoredAuth } from '@todoer/client-core';
+import type { HttpConfig } from './transport.js';
+import { RefusalError } from './protocol.js';
+import type { Store, StoredAuth } from './store.js';
 
 export type AuthApi = {
   login(email: string, password: string): Promise<StoredAuth>;
@@ -88,7 +88,7 @@ export function tokenSource(
 }
 
 /** POST /auth/*, bounded by the configured timeout like /sync. */
-export function httpAuthApi(config: Config): AuthApi {
+export function httpAuthApi(config: HttpConfig): AuthApi {
   const post = (path: string, body: unknown, bearer?: string) =>
     fetch(`${config.base}${path}`, {
       method: 'POST',

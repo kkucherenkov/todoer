@@ -17,11 +17,11 @@ import {
   type Rrule,
   type StatusRow,
 } from '@todoer/specs';
-import type { AuthApi, TokenSource } from './auth.js';
 import {
   compareIds,
   currentOccurrence,
   expand,
+  flush,
   HORIZON_DAYS,
   isAttached,
   isOccurrence,
@@ -46,11 +46,13 @@ import {
   UsageError,
   winner,
   type Recurrence,
+  type AuthApi,
   type Row,
   type StateOf,
   type Store,
+  type TokenSource,
+  type Transport,
 } from '@todoer/client-core';
-import { flush, type Transport } from './sync.js';
 import { unknownCommand } from './usage.js';
 
 export type Deps = {

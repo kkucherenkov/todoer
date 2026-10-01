@@ -1,9 +1,9 @@
 import { readFileSync } from 'node:fs';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Change, Op, OpResult, SyncRequest } from '@todoer/specs';
-import { ownOutcome, RefusalError } from '@todoer/client-core';
-import type { Store } from '@todoer/client-core';
-import { openStore } from './store.js';
+import { ownOutcome, RefusalError } from './protocol.js';
+import type { Store } from './store.js';
+import { openStore } from './test-store.js';
 import { MAX_OPS, flush, type Transport } from './sync.js';
 
 let store: Store;

@@ -7,3 +7,6 @@ export * from './merge.js';
 export * from './overlay.js';
 export * from './parse-quick-add.js';
 export * from './ref.js';
+export * from './sync.js';
+export * from './transport.js';
+export * from './auth.js';

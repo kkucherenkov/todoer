@@ -1,12 +1,17 @@
 #!/usr/bin/env node
 import { uuidv7 } from 'uuidv7';
-import { httpAuthApi, tokenSource } from './auth.js';
 import { readConfig } from './config.js';
-import { ConflictError, RefusalError, UsageError } from '@todoer/client-core';
+import {
+  ConflictError,
+  httpAuthApi,
+  httpTransport,
+  RefusalError,
+  tokenSource,
+  UsageError,
+} from '@todoer/client-core';
 import { readPassword } from './password.js';
 import { run } from './run.js';
 import { openStore } from './store.js';
-import { httpTransport } from './transport.js';
 import { HELP, wantsHelp } from './usage.js';
 
 async function main(): Promise<number> {

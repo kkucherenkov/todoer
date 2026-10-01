@@ -110,7 +110,7 @@ client, and scripts and agents depend on its exact output and exit codes
 - **Checkpoint:** the CLI runs on client-core's `Store`; e2e green.
 - [x] T003 [FR-004, FR-006] Move the expander, occurrence, labels, merge,
       overlay, quick-add and refs — plan Task 3
-- [ ] T004 [FR-004, FR-006] Move sync, transport and the token source — plan
+- [x] T004 [FR-004, FR-006] Move sync, transport and the token source — plan
       Task 4
 - [ ] T005 [FR-005, FR-006] Extract the domain operations from `run.ts` —
       plan Task 5

@@ -1,10 +1,15 @@
 import type { TokenSource } from './auth.js';
-import type { Config } from './config.js';
 import type { Transport } from './sync.js';
+
+/** What the transport needs of a client's configuration. */
+export type HttpConfig = { base: string; timeoutMs: number };
 
 /** POST /sync over fetch, bounded by the configured timeout. A 401 renews the
  *  token once and resends with the new one. */
-export function httpTransport(config: Config, tokens: TokenSource): Transport {
+export function httpTransport(
+  config: HttpConfig,
+  tokens: TokenSource,
+): Transport {
   const post = (body: string, token: string) =>
     fetch(`${config.base}/sync`, {
       method: 'POST',

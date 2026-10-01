@@ -4,10 +4,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import type { Config } from './config.js';
-import { RefusalError } from '@todoer/client-core';
-import type { Store } from '@todoer/client-core';
-import { openStore } from './store.js';
+import type { HttpConfig } from './transport.js';
+import { RefusalError } from './protocol.js';
+import type { Store } from './store.js';
+import { openStore } from './test-store.js';
 import { flush } from './sync.js';
 import { tokenSource, type AuthApi, type TokenSource } from './auth.js';
 import { httpTransport } from './transport.js';
@@ -45,7 +45,7 @@ const task = {
 /** Answers each request with the next status, recording its authorization. */
 async function serve(
   statuses: number[],
-): Promise<{ config: Config; seen: Array<string | undefined> }> {
+): Promise<{ config: HttpConfig; seen: Array<string | undefined> }> {
   const seen: Array<string | undefined> = [];
   server = createServer((req, res) => {
     seen.push(req.headers.authorization);
@@ -59,8 +59,6 @@ async function serve(
   return {
     config: {
       base: `http://127.0.0.1:${port}`,
-      token: '',
-      dbPath: ':memory:',
       timeoutMs: 1000,
     },
     seen,
@@ -150,10 +148,8 @@ describe('httpTransport', () => {
       server?.listen(0, '127.0.0.1', resolve),
     );
     const { port } = server.address() as AddressInfo;
-    const config: Config = {
+    const config: HttpConfig = {
       base: `http://127.0.0.1:${port}`,
-      token: '',
-      dbPath: ':memory:',
       timeoutMs: 1000,
     };
     const dir = mkdtempSync(join(tmpdir(), 'todoer-transport-'));
@@ -242,8 +238,6 @@ describe('httpTransport', () => {
     const send = httpTransport(
       {
         base: `http://127.0.0.1:${port}`,
-        token: '',
-        dbPath: ':memory:',
         timeoutMs: 200,
       },
       tokens(),

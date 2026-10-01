@@ -4,16 +4,17 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Change, Op, SyncRequest } from '@todoer/specs';
 import { taskOccurrenceId, taskTagId } from '@todoer/specs';
-import { tokenSource, type AuthApi } from './auth.js';
 import {
   ConflictError,
   RefusalError,
   Store,
+  tokenSource,
   UsageError,
+  type AuthApi,
+  type Transport,
 } from '@todoer/client-core';
 import { run, type Deps } from './run.js';
 import { openStore } from './store.js';
-import type { Transport } from './sync.js';
 
 const stores: Store[] = [];
 
