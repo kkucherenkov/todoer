@@ -7,6 +7,7 @@
 - Spec: tuxedo #408; found by the plan V1 review (views CLI, Task 3)
 - Plan: none; the steps below are the whole change
 - Completed: 2026-10-01
+- Result: https://github.com/kkucherenkov/todoer/pull/15
 
 ### Goal
 
