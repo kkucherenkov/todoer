@@ -15,3 +15,8 @@ dist/
 .turbo/
 *.tsbuildinfo
 .env
+.nuxt/
+.output/
+playwright-report/
+test-results/
+apps/web/dist

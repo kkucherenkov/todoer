@@ -4,3 +4,8 @@ pnpm-lock.yaml
 # Prettier rewrites emphasis, list continuations and code inside fences —
 # churn in ADRs and plans that are records, not code.
 *.md
+.nuxt/
+.output/
+playwright-report/
+test-results/
+apps/web/dist

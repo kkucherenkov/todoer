@@ -1,0 +1,45 @@
+{
+  "app": { "title": "Todoer" },
+  "insecure": {
+    "title": "A secure connection is required",
+    "body": "This app stores your tasks in the browser and needs HTTPS. Serve it through a reverse proxy that terminates TLS, or open it on localhost."
+  },
+  "failed": {
+    "title": "The local database did not start",
+    "reload": "Reload"
+  },
+  "update": {
+    "title": "A new version is available",
+    "body": "Reload to use it. Your tasks stay on this device.",
+    "reload": "Reload"
+  },
+  "signIn": {
+    "title": "Sign in",
+    "email": "Email",
+    "password": "Password",
+    "submit": "Sign in"
+  },
+  "summary": {
+    "tasks": {
+      "one": "{n} task",
+      "few": "{n} tasks",
+      "many": "{n} tasks",
+      "other": "{n} tasks"
+    },
+    "lastSynced": "Last synced {when}",
+    "neverSynced": "Not synced yet",
+    "pending": "Pending: {n}",
+    "failed": "Failed: {n}",
+    "offline": "Offline",
+    "syncNow": "Sync now",
+    "signOut": "Sign out"
+  },
+  "errors": {
+    "invalid-credentials": "Wrong email or password.",
+    "refused": "The server refused the request.",
+    "unreachable": "The server cannot be reached.",
+    "signed-out": "Your session has ended. Sign in again.",
+    "unavailable": "The local database did not answer.",
+    "unexpected": "Something went wrong."
+  }
+}

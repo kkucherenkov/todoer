@@ -6,5 +6,9 @@
     "rootDir": "src"
   },
   "include": ["src"],
-  "exclude": ["src/**/*.spec.ts", "src/test-store.ts"]
+  "exclude": [
+    "src/**/*.spec.ts",
+    "src/test-store.ts",
+    "src/sql-database.contract.ts"
+  ]
 }

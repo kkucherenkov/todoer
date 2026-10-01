@@ -1,0 +1,72 @@
+import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
+import {
+  cookieTokenSource,
+  httpCookieAuthApi,
+  httpTransport,
+} from '@todoer/client-core';
+import { openWasmStore } from '@todoer/client-core/sqlite-wasm';
+import { createEngine, dispatcher } from './engine';
+import { installOpfsPool, installPool } from './pool';
+import {
+  CHANNEL,
+  type Fatal,
+  type FromWorker,
+  type Init,
+  type ToWorker,
+} from './protocol';
+
+// The app's lib set includes DOM, which types `self` as a Window.
+declare const self: DedicatedWorkerGlobalScope;
+
+type Unstamped<T> = T extends unknown ? Omit<T, 'build'> : never;
+
+self.onmessage = async ({ data }: MessageEvent<Init>) => {
+  try {
+    const sqlite3 = await sqlite3InitModule();
+    const pool = await installPool(() => installOpfsPool(sqlite3));
+    // No journal_mode change: opfs-sahpool has no WAL; the rollback journal
+    // undoes a transaction a killed tab left behind.
+    const store = openWasmStore(
+      sqlite3,
+      new pool.OpfsSAHPoolDb('/todoer.sqlite3'),
+    );
+    const config = { base: '/api/v1', timeoutMs: 10_000 };
+    const auth = httpCookieAuthApi(config);
+    const tokens = cookieTokenSource(auth, () => new Date());
+    const channel = new BroadcastChannel(CHANNEL);
+    const post = (m: Unstamped<FromWorker>) =>
+      channel.postMessage({ ...m, build: data.build });
+    const engine = createEngine({
+      store,
+      auth,
+      tokens,
+      send: httpTransport(config, tokens),
+      now: () => new Date(),
+      publish: (topic, value) =>
+        post({ type: 'publish', topic, value } as Unstamped<FromWorker>),
+    });
+    const dispatch = dispatcher(data.build, engine, (tab, id, result) =>
+      post({ type: 'reply', tab, id, result }),
+    );
+    channel.onmessage = ({ data: m }: MessageEvent<ToWorker>) => dispatch(m);
+    // A violation inside a worker fires here, not on any document (Review Focus 2).
+    // The worker lib's event map lacks this event; the browser fires it.
+    self.addEventListener('securitypolicyviolation', (event) => {
+      const e = event as SecurityPolicyViolationEvent;
+      post({
+        type: 'violation',
+        directive: e.effectiveDirective,
+        blocked: e.blockedURI,
+      });
+    });
+    post({ type: 'ready' });
+    post({
+      type: 'publish',
+      topic: 'engine',
+      value: { state: 'ready', reason: null },
+    });
+    await engine.start(data.hint);
+  } catch (error) {
+    self.postMessage({ type: 'fatal', reason: String(error) } satisfies Fatal);
+  }
+};

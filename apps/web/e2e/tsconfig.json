@@ -1,0 +1,14 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  // Not part of Nuxt's generated references, so `nuxt typecheck` never sees
+  // these files: the `typecheck` script runs `tsc -p e2e` after it.
+  "compilerOptions": {
+    "noEmit": true,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "declaration": false,
+    "lib": ["ES2023", "DOM"],
+    "types": ["node"]
+  },
+  "include": ["*.ts", "../playwright.config.ts"]
+}
