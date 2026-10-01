@@ -89,7 +89,7 @@ rows as one, and merges them automatically after each pull.
 
 ### Steps
 
-- [ ] T001 [FR-001] name key and its vectors — plan Task 1
+- [x] T001 [FR-001] name key and its vectors — plan Task 1
 - [ ] T002 [FR-002, FR-004] resolve and label tasks, pure — plan Task 2
 - [ ] T003 [FR-003, FR-005] `add` stores the markers; multi-op submit —
       plan Task 3
