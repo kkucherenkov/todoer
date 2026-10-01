@@ -92,13 +92,21 @@ export class AuthService {
   }
 
   sign(userId: string): string {
+    return this.signWithExpiry(userId).token;
+  }
+
+  signWithExpiry(
+    userId: string,
+    now = new Date(),
+  ): { token: string; expiresAt: Date } {
+    const expiresAt = new Date(now.getTime() + TOKEN_TTL_MS);
     const payload = Buffer.from(
-      JSON.stringify({ sub: userId, exp: Date.now() + TOKEN_TTL_MS }),
+      JSON.stringify({ sub: userId, exp: expiresAt.getTime() }),
     ).toString('base64url');
     const mac = createHmac('sha256', this.config.jwtSecret)
       .update(payload)
       .digest('base64url');
-    return `${payload}.${mac}`;
+    return { token: `${payload}.${mac}`, expiresAt };
   }
 
   verify(token: string): string {
