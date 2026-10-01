@@ -14,6 +14,7 @@ import {
   type ArgumentsHost,
 } from '@nestjs/common';
 import { HttpExceptionFilter } from './http-exception.filter.js';
+import { TooManyRequests } from './auth/rate-limit.js';
 
 function createHost() {
   const response = {
@@ -128,5 +129,23 @@ describe('HttpExceptionFilter', () => {
       '410 cursor 5 is older than the prune watermark 10; repeat with since 0',
     );
     expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  it('sets Retry-After header for TooManyRequests', () => {
+    const filter = new HttpExceptionFilter();
+    const response = {
+      status: vi.fn().mockReturnThis(),
+      type: vi.fn().mockReturnThis(),
+      json: vi.fn().mockReturnThis(),
+      setHeader: vi.fn().mockReturnThis(),
+    };
+    const host = {
+      switchToHttp: () => ({ getResponse: () => response }),
+    } as unknown as ArgumentsHost;
+
+    filter.catch(new TooManyRequests(120), host);
+
+    expect(response.status).toHaveBeenCalledWith(429);
+    expect(response.setHeader).toHaveBeenCalledWith('Retry-After', '120');
   });
 });

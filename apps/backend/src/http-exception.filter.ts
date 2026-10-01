@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { STATUS_CODES } from 'node:http';
+import { TooManyRequests } from './auth/rate-limit.js';
 
 interface Problem {
   type: string;
@@ -61,6 +62,9 @@ export class HttpExceptionFilter implements ExceptionFilter {
       // the caller's business, so it never reaches the body.
       ...(status < 500 && message !== undefined ? { detail: message } : {}),
     };
+
+    if (exception instanceof TooManyRequests)
+      response.setHeader('Retry-After', String(exception.retryAfterSeconds));
 
     response.status(status).type('application/problem+json').json(problem);
   }
