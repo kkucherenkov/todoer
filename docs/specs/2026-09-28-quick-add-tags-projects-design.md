@@ -126,7 +126,9 @@ again.
 - Two clients that pull the same duplicates queue the same merge. That is
   harmless: the winner is deterministic, TaskTag creates are idempotent by
   derived id (C2), and a second delete of an already-deleted loser is
-  rejected per operation without affecting the rest.
+  answered `conflict` (its `baseVersion` is stale) per operation, without
+  affecting the rest. That entry is failed, and the client drops it once the
+  row is a tombstone in its replica (the moot-delete rule).
 
 **Rejected.**
 
@@ -204,7 +206,7 @@ retries with the new version.
   vectors.
 - **Merge storms.** Every client that pulls a duplicate queues the same merge.
   Idempotent derived ids keep the result right; the cost is redundant
-  operations, some rejected as already applied.
+  operations, some answered `superseded` or `conflict`.
 - **Merge versus concurrent edits.** A loser renamed or recoloured elsewhere
   loses that edit; a conflicting delete leaves the loser in place until the
   next merge.
@@ -232,6 +234,20 @@ departs from this document in four places, and the plan wins where they differ.
    `--json` keep their shape apart from the new `project` and `tags` fields.
 1. **A pair of duplicates attached to one task shows once**, spelled as the
    lowest-id tag spells it.
+
+Two rules not in the design came out of review:
+
+- **Moot deletes.** A failed `delete` whose row is already a tombstone in the
+  replica is removed from the outbox after the pull. A row gone from the
+  replica (after a 410 and a prune) leaves its failed delete in place, and so
+  does any failed entry that is not a delete.
+- **Late links.** A device that was offline can link a task to a tag, or move
+  it into a project, that was merged away meanwhile; the server accepts it
+  because the tombstone is a row. The merge treats each server-confirmed
+  tombstone that has a live same-named row like a loser: its attached links
+  of live tasks move to the winner (`create` TaskTag, `set attached = false`),
+  and live tasks of a deleted project get `set projectId`. The tombstone is not
+  deleted again, and an archived project is not touched.
 
 Two behaviours are narrower than the design reads, and neither is a departure
 the plan chose:
