@@ -104,6 +104,22 @@ export function sqlDatabaseContract(
       await db.withWriteLock(() => Promise.resolve());
     });
 
+    // A call beside a running body is refused too: without async context it
+    // cannot be told from a re-entrant one (WasmSqlite), and on one
+    // connection BEGIN inside an open transaction fails (NodeSqlite).
+    it('refuses a write lock asked for while another body runs', async () => {
+      const db = await fresh();
+      let release = () => {};
+      const outer = db.withWriteLock(
+        () => new Promise<void>((resolve) => (release = resolve)),
+      );
+      await tick();
+      await expect(db.withWriteLock(() => Promise.resolve())).rejects.toThrow();
+      release();
+      await outer;
+      expect(db.inTransaction).toBe(false);
+    });
+
     it('propagates the original error when the body ended the transaction', async () => {
       const db = await fresh();
       await expect(

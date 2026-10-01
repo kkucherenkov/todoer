@@ -2,8 +2,9 @@ import type { CAPI, Database, Sqlite3Static } from '@sqlite.org/sqlite-wasm';
 import { SCHEMA, Store, type SqlDatabase, type SqlValue } from './store.js';
 
 /** SqlDatabase over sqlite-wasm's oo1 (design Q12). One connection, owned by
- *  the leader's worker: withWriteLock queues callers in this worker instead
- *  of polling across processes as NodeSqlite does. */
+ *  the leader's worker, so withWriteLock never polls across processes as
+ *  NodeSqlite does. Overlapping calls made before a body starts queue; a call
+ *  made while a body runs, re-entrant or not, is refused. */
 export class WasmSqlite implements SqlDatabase {
   // ponytail: one queue for the whole worker; per-table locks never needed.
   private tail: Promise<unknown> = Promise.resolve();
