@@ -13,8 +13,10 @@ usage:
   todoer add "<text>" [--rrule <RRULE> [--from YYYY-MM-DD]] [--json]
                                           create a task; with --rrule it recurs
                                           from --from (default: today)
-  todoer list [--json]                    what is open now: each task once, a
-                                          recurring one at its current date
+  todoer list [@tag|#project ...] [--json]   what is open now: each task once,
+                                          a recurring one at its current date;
+                                          filters keep tasks carrying every
+                                          named label
   todoer done <ref> [--on YYYY-MM-DD] [--json]   mark done
   todoer skip <ref> [--on YYYY-MM-DD] [--json]   mark skipped
   todoer undo <ref> [--on YYYY-MM-DD] [--json]   reopen (default: the latest
@@ -41,8 +43,17 @@ recurrence:
 
 quick-add markers:
   p0..p4      priority
-  #project    parsed, not stored — reported on stderr
-  @tag        parsed, not stored — reported on stderr
+  #project    the live, non-archived project of that name (any case);
+              created if there is none. An archived project is never
+              matched, so #name next to an archived project of that name
+              creates a new one
+  @tag        a tag stored with its @ (a context); matched by name in any
+              case, created if there is none
+  Created names are reported on stderr. Two devices that create the same
+  name offline end up with two rows; every client merges them after its
+  next sync (lowest id wins) and says so on stderr. A merge's operations are
+  queued, not sent: the next command sends them, so --json outbox.pending
+  can be non-zero right after a successful command.
 
 environment:
   TODOER_URL         instance base URL, default http://localhost:3000/api/v1
@@ -82,6 +93,8 @@ operation twice (ADR 0005, ADR 0015 §4).
 
 An operation the server refuses after the command that queued it has exited
 is kept as failed: todoer outbox lists it, todoer outbox drop forgets it.
+A failed delete whose row is already deleted on the server is dropped from the
+outbox automatically.
 `;
 
 /**

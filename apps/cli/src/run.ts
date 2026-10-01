@@ -1,7 +1,9 @@
 import {
   isIsoDate,
+  nameKey,
   parseRrule,
   taskOccurrenceId,
+  taskTagId,
   type OpCreate,
   type Rrule,
 } from '@todoer/specs';
@@ -17,8 +19,10 @@ import {
   type Recurrence,
   type StateOf,
 } from './occurrence.js';
+import { labelsOf, resolveLabels } from './labels.js';
+import { planMerge } from './merge.js';
 import { liveTasks, overlay } from './overlay.js';
-import { planAdd } from './parse-quick-add.js';
+import { PROJECT, TAG, planAdd } from './parse-quick-add.js';
 import { ownOutcome, RefusalError, UsageError } from './protocol.js';
 import { resolveRef, shortRef } from './ref.js';
 import type { Row, Store } from './store.js';
@@ -112,7 +116,12 @@ function isMark(command: string | undefined): command is Mark {
 
 /** A listed task: the row, its reference, and the date it is due (`null`
  *  for a one-off task). */
-type Due = Row & { ref: string; occurrence: string | null };
+type Due = Row & {
+  ref: string;
+  occurrence: string | null;
+  project: string | null;
+  tags: string[];
+};
 
 /**
  * Every command: flush the outbox and pull first (design doc, Q5), then
@@ -140,29 +149,78 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
     );
     const ruleNotice = emptyRuleNotice(recurrence);
     if (ruleNotice !== null) stderr.push(ruleNotice);
-    // Refuses an empty title and reports what it is not storing — see planAdd.
-    const { title, priority, notice } = planAdd(from.rest.join(' '));
-    if (notice !== null) stderr.push(notice);
+    // Refuses an empty title — see planAdd.
+    const { title, priority, project, tags } = planAdd(from.rest.join(' '));
+    const ts = deps.now().toISOString();
+    const labels = resolveLabels(
+      { project, tags },
+      { projects: projects(store), tags: tagRows(store) },
+      deps.newId,
+      ts,
+    );
+    if (labels.created.length > 0) {
+      stderr.push(`note: created ${labels.created.join(' ')}`);
+    }
     const op: OpCreate = {
       opId: deps.newId(),
       kind: 'create',
       table: 'task',
       id: deps.newId(),
-      fields: { title, priority, rank: 'a0', ...recurrence.fields },
-      ts: deps.now().toISOString(),
+      fields: {
+        title,
+        priority,
+        rank: 'a0',
+        ...(labels.projectId === null ? {} : { projectId: labels.projectId }),
+        ...recurrence.fields,
+      },
+      ts,
     };
-    synced = await submit(store, deps.send, op, 'add');
+    const linkOps: OpCreate[] = labels.tagIds.map((tagId) => ({
+      opId: deps.newId(),
+      kind: 'create',
+      table: 'task_tag',
+      id: taskTagId(op.id, tagId),
+      fields: { taskId: op.id, tagId },
+      ts,
+    }));
+    synced = await submit(
+      store,
+      deps.send,
+      [...labels.creates, op, ...linkOps],
+      'add',
+    );
     data = tasks(store).find((row) => row.id === op.id) ?? null;
     human = [title];
   } else if (command === 'list') {
+    const filters = rest.map((arg) => {
+      if (TAG.test(arg)) return { tag: nameKey(arg) };
+      if (PROJECT.test(arg)) return { project: nameKey(arg.slice(1)) };
+      throw new UsageError(
+        `list takes @tag and #project filters, not ${JSON.stringify(arg)}`,
+      );
+    });
     ({ synced } = await flush(store, deps.send));
-    const rows = due(store, localDate(deps.now()));
+    const rows = due(store, localDate(deps.now())).filter((row) =>
+      filters.every((f) =>
+        'tag' in f
+          ? row.tags.some((name) => nameKey(name) === f.tag)
+          : row.project !== null && nameKey(row.project) === f.project,
+      ),
+    );
     data = rows;
     human = rows.map((row) =>
       [
         row.ref,
         String(row.priority),
         String(row.title),
+        ...(row.project === null && row.tags.length === 0
+          ? []
+          : [
+              [
+                ...(row.project === null ? [] : [`#${row.project}`]),
+                ...row.tags,
+              ].join(' '),
+            ]),
         ...(row.occurrence === null ? [] : [row.occurrence]),
       ].join('  '),
     );
@@ -200,7 +258,7 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
       },
       ts: now,
     };
-    synced = await submit(store, deps.send, op, command);
+    synced = await submit(store, deps.send, [op], command);
     const marked = occurrences(store).find((row) => row.id === op.id) ?? null;
     data = marked;
     // I3: `submit` settled this op, but the row it settled to is not the
@@ -230,19 +288,57 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
     human = ids.map((id) => `dropped ${id}`);
   } else if (command === 'outbox' && rest.length === 0) {
     ({ synced } = await flush(store, deps.send));
-    const entries = store.entries();
-    data = entries;
-    human = entries.map((e) =>
-      [e.status, e.opId, `${e.op.kind} ${e.op.table}`, e.reason ?? '']
-        .join('  ')
-        .trimEnd(),
-    );
+    // Read again below: the cleanup and merge may change what it lists.
+    ({ data, human } = listOutbox(store));
   } else {
     throw unknownCommand(
       command === 'outbox' ? `outbox ${rest.join(' ')}` : command,
     );
   }
 
+  // Every pull may bring a duplicate name another device created offline
+  // (quick-add design, Q9). The merge is queued, not sent: the next command
+  // delivers it, like any other queued operation.
+  if (synced) {
+    // A failed delete of a row that is already a tombstone is moot: two
+    // clients merging the same duplicates send the same delete, and the
+    // second gets `conflict` although the row is gone. Left alone it would
+    // sit as a failed entry forever.
+    // A row gone from the replica (after a 410 and a prune) leaves its failed
+    // delete in place: there is no tombstone to prove it moot.
+    for (const entry of store.entries()) {
+      const { op } = entry;
+      if (entry.status !== 'failed' || op.kind !== 'delete') continue;
+      const gone = store
+        .rows(op.table)
+        .some((row) => row.id === op.id && row.deletedAt !== null);
+      if (gone) store.remove(entry.opId);
+    }
+    const { ops, merged } = planMerge(
+      {
+        tasks: tasks(store),
+        projects: projects(store),
+        tags: tagRows(store),
+        links: links(store),
+      },
+      deps.newId,
+      deps.now().toISOString(),
+    );
+    if (ops.length > 0) {
+      store.transaction(() => {
+        for (const op of ops) store.enqueue(op);
+      });
+      for (const name of merged) {
+        stderr.push(
+          `note: merging duplicate ${name} — sent with the next command`,
+        );
+      }
+    }
+  }
+
+  if (synced && command === 'outbox' && rest.length === 0) {
+    ({ data, human } = listOutbox(store));
+  }
   const outbox = store.counts();
   if (!synced) stderr.push(UNREACHED);
   if (outbox.failed > 0) {
@@ -257,60 +353,84 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
   };
 }
 
+function listOutbox(store: Store): { data: unknown; human: string[] } {
+  const entries = store.entries();
+  return {
+    data: entries,
+    human: entries.map((e) =>
+      [e.status, e.opId, `${e.op.kind} ${e.op.table}`, e.reason ?? '']
+        .join('  ')
+        .trimEnd(),
+    ),
+  };
+}
+
 /**
- * Queues one operation the running command minted and sends it: stored
- * before it is sent, so every attempt carries its id (ADR 0015 §4). Returns
- * whether the server has it; throws when the server refused it or holds a
- * newer version. The one write path for add, done, skip and undo.
+ * Queues the operations the running command minted, in one transaction and in
+ * order, and sends them: stored before they are sent, so every attempt
+ * carries their ids (ADR 0015 §4). Every one counts as the command's own, so
+ * a refusal of any of them is the command's exit 1. Returns whether the
+ * server has all of them.
  */
 async function submit(
   store: Store,
   send: Transport,
-  op: OpCreate,
+  ops: OpCreate[],
   command: string,
 ): Promise<boolean> {
-  store.enqueue(op);
-  const flushed = await flushOwn(store, send, op.opId, command);
-  // Evaluated unconditionally, never short-circuited on `flushed.synced`:
-  // a batch-refused own op is removed from the outbox (I1) even when the
-  // follow-up pull that reports it is itself unreached, and that
-  // rejection must still throw rather than be reported as "queued".
-  let own = ownOutcome(flushed.results, op.opId);
-  if (own === 'unreported' && flushed.synced) {
-    // A parallel invocation may have sent it between the enqueue and this
-    // flush's read of the outbox; its entry says what became of it.
-    const entry = store.entry(op.opId);
-    if (entry === undefined) own = 'settled';
-    else if (entry.status === 'failed') {
-      store.remove(op.opId);
-      throw new RefusalError(
-        entry.reason ?? 'the server refused this operation',
-      );
+  store.transaction(() => {
+    for (const op of ops) store.enqueue(op);
+  });
+  const opIds = ops.map((op) => op.opId);
+  const flushed = await flushOwn(store, send, opIds, command);
+  let settled = true;
+  for (const opId of opIds) {
+    // Evaluated unconditionally, never short-circuited on `flushed.synced`:
+    // a batch-refused own op is removed from the outbox (I1) even when the
+    // follow-up pull that reports it is itself unreached, and that
+    // rejection must still throw rather than be reported as "queued".
+    let own = ownOutcome(flushed.results, opId);
+    if (own === 'unreported' && flushed.synced) {
+      // A parallel invocation may have sent it between the enqueue and this
+      // flush's read of the outbox; its entry says what became of it.
+      const entry = store.entry(opId);
+      if (entry === undefined) own = 'settled';
+      else if (entry.status === 'failed') {
+        store.remove(opId);
+        throw new RefusalError(
+          entry.reason ?? 'the server refused this operation',
+        );
+      }
     }
+    if (own !== 'settled') settled = false;
   }
-  return flushed.synced && own === 'settled';
+  return flushed.synced && settled;
 }
 
 /**
- * A request-level refusal (401, 403, …) leaves the command's own operation
+ * A request-level refusal (401, 403, …) leaves the command's operations
  * queued. Said so in the error, because "refused" alone reads as "nothing
- * happened" and a caller who then repeats the add queues the task twice.
+ * happened" and a caller who then repeats the command queues it twice.
  */
 async function flushOwn(
   store: Store,
   send: Transport,
-  opId: string,
+  opIds: string[],
   command: string,
 ) {
   try {
-    return await flush(store, send, new Set([opId]));
+    return await flush(store, send, new Set(opIds));
   } catch (error) {
     if (
       error instanceof RefusalError &&
-      store.entry(opId)?.status === 'pending'
+      opIds.some((opId) => store.entry(opId)?.status === 'pending')
     ) {
+      const which =
+        opIds.length === 1
+          ? `operation ${opIds.join('')} is`
+          : `operations ${opIds.join(', ')} are`;
       throw new RefusalError(
-        `${error.message} — this command's operation ${opId} is queued and will be sent once the request is accepted — do not run ${command} again for it`,
+        `${error.message} — this command's ${which} queued and will be sent once the request is accepted — do not run ${command} again for ${opIds.length === 1 ? 'it' : 'them'}`,
       );
     }
     throw error;
@@ -319,6 +439,18 @@ async function flushOwn(
 
 function tasks(store: Store): Row[] {
   return overlay('task', store.rows('task'), store.pending());
+}
+
+function projects(store: Store): Row[] {
+  return overlay('project', store.rows('project'), store.pending());
+}
+
+function tagRows(store: Store): Row[] {
+  return overlay('tag', store.rows('tag'), store.pending());
+}
+
+function links(store: Store): Row[] {
+  return overlay('task_tag', store.rows('task_tag'), store.pending());
 }
 
 function occurrences(store: Store): Row[] {
@@ -352,6 +484,11 @@ function stateOf(marks: Row[], taskId: string): StateOf {
 function due(store: Store, today: string): Due[] {
   const all = tasks(store);
   const marks = occurrences(store);
+  const labelRows = {
+    projects: projects(store),
+    tags: tagRows(store),
+    links: links(store),
+  };
   return liveTasks(all).flatMap((task) => {
     const taskId = String(task.id);
     const current = currentOccurrence(
@@ -361,7 +498,14 @@ function due(store: Store, today: string): Due[] {
     );
     return current === null
       ? []
-      : [{ ...task, ref: shortRef(taskId), occurrence: current.occurrence }];
+      : [
+          {
+            ...task,
+            ref: shortRef(taskId),
+            occurrence: current.occurrence,
+            ...labelsOf(task, labelRows),
+          },
+        ];
   });
 }
 

@@ -1,6 +1,6 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Change, Op, SyncRequest } from '@todoer/specs';
-import { taskOccurrenceId } from '@todoer/specs';
+import { taskOccurrenceId, taskTagId } from '@todoer/specs';
 import { RefusalError, UsageError } from './protocol.js';
 import { run, type Deps } from './run.js';
 import { Store } from './store.js';
@@ -42,8 +42,10 @@ function json(body: unknown, status = 200): Response {
 
 /** Just enough of the server: creates rows, reports duplicates, pulls. */
 function fakeServer() {
-  let seq = 0;
   const rows = new Map<string, Change>();
+  // Above every row, including ones a test seeded with its own seq.
+  const nextSeq = () =>
+    Math.max(0, ...[...rows.values()].map((c) => c.seq)) + 1;
   const requests: SyncRequest[] = [];
   const send: Transport = (request) => {
     requests.push(structuredClone(request));
@@ -53,8 +55,8 @@ function fakeServer() {
         rows.set(op.id, {
           table: op.table,
           id: op.id,
-          seq: ++seq,
-          row: { ...op.fields, id: op.id, deletedAt: null },
+          seq: nextSeq(),
+          row: { ...op.fields, id: op.id, deletedAt: null, version: 1 },
         });
         return { opId: op.opId, status: 'applied' as const };
       }
@@ -65,8 +67,34 @@ function fakeServer() {
       ) {
         rows.set(op.id, {
           ...existing,
-          seq: ++seq,
-          row: { ...existing.row, ...op.fields },
+          seq: nextSeq(),
+          row: {
+            ...existing.row,
+            ...op.fields,
+            version: Number(existing.row.version ?? 1) + 1,
+          },
+        });
+        return { opId: op.opId, status: 'applied' as const };
+      }
+      if (op.kind === 'set' && existing !== undefined) {
+        const version = Number(existing.row.version ?? 1) + 1;
+        rows.set(op.id, {
+          ...existing,
+          seq: nextSeq(),
+          row: { ...existing.row, [op.field]: op.value, version },
+        });
+        return { opId: op.opId, status: 'applied' as const };
+      }
+      if (op.kind === 'delete' && existing !== undefined) {
+        const version = Number(existing.row.version ?? 1) + 1;
+        rows.set(op.id, {
+          ...existing,
+          seq: nextSeq(),
+          row: {
+            ...existing.row,
+            deletedAt: '2026-09-26T10:00:00.000Z',
+            version,
+          },
         });
         return { opId: op.opId, status: 'applied' as const };
       }
@@ -76,7 +104,7 @@ function fakeServer() {
     const cursor = Math.max(request.since, ...changes.map((c) => c.seq));
     return Promise.resolve(json({ cursor, results, changes }));
   };
-  return { send, requests };
+  return { send, requests, rows };
 }
 
 function envelope(stdout: string[]): unknown {
@@ -98,7 +126,7 @@ describe('run', () => {
     const out = await run(['add', 'call the bank p2', '--json'], d);
     expect(out.exit).toBe(0);
     expect(envelope(out.stdout)).toEqual({
-      data: task,
+      data: { ...task, version: 1 },
       synced: true,
       outbox: { pending: 0, failed: 0 },
     });
@@ -153,12 +181,229 @@ describe('run', () => {
     expect((await run(['list'], d)).stdout).toEqual(['id-2  2  call the bank']);
   });
 
-  // M4: planAdd's notice about a dropped marker is not part of the answer.
-  it("puts planAdd's notice about a dropped marker on stderr, never stdout", async () => {
-    const d = deps(fakeServer().send);
-    const out = await run(['add', 'buy milk #groceries'], d);
-    expect(out.stderr.join('\n')).toMatch(/#groceries/);
-    expect(out.stdout.join('\n')).not.toMatch(/#groceries/);
+  describe('quick-add markers', () => {
+    // Scenario 1.
+    it('queues the tag, the project, the task and its TaskTag, in order', async () => {
+      const d = deps(unreachable);
+      const out = await run(['add', 'call the bank @phone #finance'], d);
+
+      expect(d.store.pending().map((op) => `${op.kind} ${op.table}`)).toEqual([
+        'create project',
+        'create tag',
+        'create task',
+        'create task_tag',
+      ]);
+      const [project, tag, task, link] = d.store.pending();
+      expect(project).toMatchObject({
+        id: 'id-1',
+        fields: { name: 'finance', rank: 'a0' },
+      });
+      expect(tag).toMatchObject({ id: 'id-3', fields: { name: '@phone' } });
+      expect(task).toMatchObject({
+        id: 'id-6',
+        fields: { title: 'call the bank', projectId: 'id-1' },
+      });
+      expect(link).toMatchObject({
+        id: taskTagId('id-6', 'id-3'),
+        fields: { taskId: 'id-6', tagId: 'id-3' },
+      });
+      expect(out.stderr).toContain('note: created #finance @phone');
+      expect(out.stdout).toEqual(['call the bank']);
+    });
+
+    // Scenario 2 and Review Focus 2: reuse works on pending rows too.
+    it('reuses a tag by name, even one still waiting in the outbox', async () => {
+      const d = deps(unreachable);
+      await run(['add', 'call the bank @phone'], d);
+      await run(['add', 'text mum @Phone'], d);
+      const creates = d.store.pending().filter((op) => op.table === 'tag');
+      expect(creates).toHaveLength(1);
+      const links = d.store.pending().filter((op) => op.table === 'task_tag');
+      expect(
+        links.map((op) => (op.kind === 'create' ? op.fields.tagId : null)),
+      ).toEqual(['id-1', 'id-1']);
+    });
+
+    // Review Focus 5: any refused op is the command's failure.
+    it('exits 1 when the server refuses the tag create, not only the task', async () => {
+      const d = deps((request) =>
+        Promise.resolve(
+          json({
+            cursor: 0,
+            results: request.ops.map((op) => ({
+              opId: op.opId,
+              status:
+                op.table === 'tag'
+                  ? ('rejected' as const)
+                  : ('applied' as const),
+              ...(op.table === 'tag' ? { reason: 'nope' } : {}),
+            })),
+            changes: [],
+          }),
+        ),
+      );
+      await expect(run(['add', 'x @phone'], d)).rejects.toThrow(RefusalError);
+      expect(d.store.entries().some((e) => e.op.table === 'tag')).toBe(false);
+    });
+
+    // Any of the add's ops, not just the first, decides the exit.
+    it.each(['task', 'task_tag'])(
+      'exits 1 when the server refuses only the %s create',
+      async (table) => {
+        const d = deps((request) =>
+          Promise.resolve(
+            json({
+              cursor: 0,
+              results: request.ops.map((op) => ({
+                opId: op.opId,
+                status:
+                  op.table === table
+                    ? ('rejected' as const)
+                    : ('applied' as const),
+                ...(op.table === table ? { reason: 'nope' } : {}),
+              })),
+              changes: [],
+            }),
+          ),
+        );
+        await expect(run(['add', 'x @phone'], d)).rejects.toThrow(RefusalError);
+      },
+    );
+
+    // `submit` queues every op or none: a half-queued add would leave a tag
+    // with no task, or a link with no task.
+    it("queues nothing when one of the add's operations cannot be queued", async () => {
+      const d = deps(unreachable);
+      d.newId = () => 'same';
+      await expect(run(['add', 'x @t'], d)).rejects.toThrow();
+      expect(d.store.pending()).toEqual([]);
+    });
+
+    it('says nothing about markers when there are none', async () => {
+      const d = deps(fakeServer().send);
+      const out = await run(['add', 'buy milk'], d);
+      expect(out.stderr).toEqual([]);
+    });
+
+    // Scenario 3.
+    it('shows labels after the title and filters by all of them', async () => {
+      const d = deps(fakeServer().send);
+      await run(['add', 'call the bank @phone #finance'], d);
+      await run(['add', 'water the plants @home'], d);
+      await run(['add', 'ring the plumber @phone @home'], d);
+
+      expect((await run(['list'], d)).stdout).toEqual([
+        'id-6  0  call the bank  #finance @phone',
+        'id-11  0  water the plants  @home',
+        'id-14  0  ring the plumber  @home @phone',
+      ]);
+      expect((await run(['list', '@Phone', '@home'], d)).stdout).toEqual([
+        'id-14  0  ring the plumber  @home @phone',
+      ]);
+      expect((await run(['list', '#finance'], d)).stdout).toEqual([
+        'id-6  0  call the bank  #finance @phone',
+      ]);
+      expect(
+        envelope((await run(['list', '#finance', '--json'], d)).stdout),
+      ).toMatchObject({
+        data: [
+          { title: 'call the bank', project: 'finance', tags: ['@phone'] },
+        ],
+      });
+    });
+
+    /** Seeds one live task with an optional project and attached tags, as a server would hand them over. */
+    function seed(d: Deps, opts: { project?: string; tags?: string[] }) {
+      const row = (
+        table: string,
+        id: string,
+        fields: Record<string, unknown>,
+      ) => ({
+        table,
+        id,
+        seq: 1,
+        row: { id, deletedAt: null, ...fields },
+      });
+      d.store.mergeChanges([
+        ...(opts.project === undefined
+          ? []
+          : [row('project', 'p1', { name: opts.project })]),
+        row('task', 't1', {
+          title: 'seeded',
+          priority: 0,
+          rrule: null,
+          dtstart: null,
+          parentId: null,
+          projectId: opts.project === undefined ? null : 'p1',
+        }),
+        ...(opts.tags ?? []).flatMap((name, i) => [
+          row('tag', `g${i}`, { name }),
+          row('task_tag', `l${i}`, { taskId: 't1', tagId: `g${i}` }),
+        ]),
+      ]);
+    }
+
+    it('matches a tag by name key but prints its stored spelling', async () => {
+      const d = deps(unreachable);
+      seed(d, { tags: ['@Phone'] });
+      expect((await run(['list', '@phone'], d)).stdout).toEqual([
+        't1  0  seeded  @Phone',
+      ]);
+    });
+
+    it('matches a project by name key, case and Unicode form', async () => {
+      const d = deps(unreachable);
+      seed(d, { project: 'Fina\u0301nce' });
+      expect((await run(['list', '#finance'], d)).stdout).toEqual([]);
+      expect((await run(['list', '#fin\u00e1nce'], d)).stdout).toEqual([
+        't1  0  seeded  #Fina\u0301nce',
+      ]);
+      expect((await run(['list', '#FIN\u00c1NCE'], d)).stdout).toEqual([
+        't1  0  seeded  #Fina\u0301nce',
+      ]);
+    });
+
+    it('matches a tag across Unicode forms', async () => {
+      const d = deps(unreachable);
+      seed(d, { tags: ['@cafe\u0301'] });
+      expect((await run(['list', '@caf\u00e9'], d)).stdout).toEqual([
+        't1  0  seeded  @cafe\u0301',
+      ]);
+      // The reverse: a decomposed filter is a marker too, not a usage error.
+      expect((await run(['list', '@cafe\u0301'], d)).stdout).toEqual([
+        't1  0  seeded  @cafe\u0301',
+      ]);
+      // U+1FD3 is a letter whose canonical form is U+0390.
+      const e = deps(unreachable);
+      seed(e, { tags: ['@\u0390'] });
+      expect((await run(['list', '@\u1fd3'], e)).stdout).toEqual([
+        't1  0  seeded  @\u0390',
+      ]);
+    });
+
+    it('matches a composed filter against a decomposed stored tag, and the reverse', async () => {
+      const d = deps(unreachable);
+      seed(d, { tags: ['@caf\u00e9'] });
+      expect((await run(['list', '@cafe\u0301'], d)).stdout).toEqual([
+        't1  0  seeded  @caf\u00e9',
+      ]);
+    });
+
+    it('validates arguments before sending anything', async () => {
+      const send = vi.fn(unreachable);
+      const d = deps(send);
+      await run(['add', 'queued'], d);
+      send.mockClear();
+      await expect(run(['list', 'phone'], d)).rejects.toThrow(UsageError);
+      expect(send).not.toHaveBeenCalled();
+    });
+
+    it('refuses a list argument that is not a marker', async () => {
+      const d = deps(unreachable);
+      await expect(run(['list', 'phone'], d)).rejects.toThrow(
+        /list takes @tag and #project filters/,
+      );
+    });
   });
 
   it("reports the command's own rejected add by throwing, and does not keep it", async () => {
@@ -257,6 +502,13 @@ describe('run', () => {
       /operation id-1 is queued .* do not run add again/,
     );
     expect(d.store.entries().map((e) => e.status)).toEqual(['pending']);
+  });
+
+  it('names every queued operation of a multi-op add when the token is refused', async () => {
+    const d = deps(() => Promise.resolve(json({ title: 'Unauthorized' }, 401)));
+    await expect(run(['add', 'x @phone'], d)).rejects.toThrow(
+      /operations id-\d+, id-\d+, id-\d+ are queued .* do not run add again for them$/,
+    );
   });
 
   // Minor 4: a parallel invocation can settle this command's op between its
@@ -743,6 +995,220 @@ describe('run', () => {
         id: taskOccurrenceId('child-00000-00bbbb', '2026-09-21'),
         fields: { taskId: 'child-00000-00bbbb', occurrence: '2026-09-21' },
       });
+    });
+  });
+
+  describe('merging duplicate names', () => {
+    // Scenario 4 and Review Focus 3.
+    it('queues the merge after a pull, sends it with the next command, and stops', async () => {
+      const server = fakeServer();
+      const d = deps(server.send);
+      await run(['add', 'call the bank @phone'], d);
+      // Another device created the same name offline.
+      server.rows.set('other-tag', {
+        table: 'tag',
+        id: 'other-tag',
+        seq: 100,
+        row: { id: 'other-tag', name: '@Phone', version: 1, deletedAt: null },
+      });
+
+      const first = await run(['list'], d);
+      expect(first.stderr.join('\n')).toMatch(/merging duplicate @phone \(2\)/);
+      expect(d.store.pending().map((op) => `${op.kind} ${op.table}`)).toEqual([
+        'delete tag',
+      ]);
+
+      await run(['list'], d);
+      const liveTags = [...server.rows.values()].filter(
+        (c) => c.table === 'tag' && c.row.deletedAt === null,
+      );
+      expect(liveTags.map((c) => c.id)).toEqual(['id-1']);
+      expect(d.store.pending()).toEqual([]);
+
+      const third = await run(['list'], d);
+      expect(third.stderr.join('\n')).not.toMatch(/merging/);
+    });
+
+    it('does not merge when the server was not reached', async () => {
+      const d = deps(unreachable);
+      d.store.mergeChanges([
+        {
+          table: 'tag',
+          id: 'tag-a',
+          seq: 1,
+          row: { id: 'tag-a', name: '@phone', version: 1, deletedAt: null },
+        },
+        {
+          table: 'tag',
+          id: 'tag-b',
+          seq: 2,
+          row: { id: 'tag-b', name: '@Phone', version: 1, deletedAt: null },
+        },
+      ]);
+      const out = await run(['list'], d);
+      expect(out.stderr.join('\n')).not.toMatch(/merging/);
+      expect(d.store.pending()).toEqual([]);
+    });
+
+    // Two clients merging the same duplicates both send the delete; the
+    // second one's conflicts although the row is gone.
+    describe('failed deletes', () => {
+      function failedDelete(d: Deps, deletedAt: string | null) {
+        d.store.mergeChanges([
+          {
+            table: 'tag',
+            id: 'tag-x',
+            seq: 1,
+            row: { id: 'tag-x', name: '@x', version: 3, deletedAt },
+          },
+        ]);
+        d.store.enqueue({
+          opId: 'del-x',
+          kind: 'delete',
+          table: 'tag',
+          id: 'tag-x',
+          baseVersion: 2,
+        });
+        d.store.settle(
+          [{ opId: 'del-x', status: 'conflict', currentVersion: 3 }],
+          new Set(),
+        );
+        expect(d.store.entry('del-x')?.status).toBe('failed');
+      }
+
+      it('removes a failed delete whose row is already a tombstone', async () => {
+        const d = deps(fakeServer().send);
+        failedDelete(d, '2026-09-26T09:00:00.000Z');
+        const out = await run(['list'], d);
+        expect(d.store.entry('del-x')).toBeUndefined();
+        expect(out.stderr.join('\n')).not.toMatch(/failed/);
+      });
+
+      // The cleanup is for moot deletes only: a failed set on a tombstone
+      // is evidence the user may want to see.
+      it('keeps a failed non-delete entry on a tombstoned row', async () => {
+        const d = deps(fakeServer().send);
+        d.store.mergeChanges([
+          {
+            table: 'tag',
+            id: 'tag-x',
+            seq: 1,
+            row: {
+              id: 'tag-x',
+              name: '@x',
+              version: 3,
+              deletedAt: '2026-09-26T09:00:00.000Z',
+            },
+          },
+        ]);
+        d.store.enqueue({
+          opId: 'set-x',
+          kind: 'set',
+          table: 'tag',
+          id: 'tag-x',
+          field: 'name',
+          value: '@y',
+          ts: 'T',
+        });
+        d.store.settle(
+          [{ opId: 'set-x', status: 'conflict', currentVersion: 3 }],
+          new Set(),
+        );
+        await run(['list'], d);
+        expect(d.store.entry('set-x')?.status).toBe('failed');
+      });
+
+      it('leaves a moot failed delete out of outbox --json, data and counts alike', async () => {
+        const d = deps(fakeServer().send);
+        failedDelete(d, '2026-09-26T09:00:00.000Z');
+        const out = await run(['outbox', '--json'], d);
+        expect(envelope(out.stdout)).toMatchObject({
+          data: [],
+          outbox: { pending: 0, failed: 0 },
+        });
+      });
+
+      it('keeps a failed delete whose row is still live', async () => {
+        const d = deps(fakeServer().send);
+        failedDelete(d, null);
+        const out = await run(['list'], d);
+        expect(d.store.entry('del-x')?.status).toBe('failed');
+        expect(out.stderr.join('\n')).toMatch(/1 queued operation\(s\) failed/);
+      });
+    });
+
+    // Review: a merge op the server refuses is an ordinary failed entry; the
+    // command that reports it still succeeds.
+    it('turns a refused merge op into a failed entry without failing the command', async () => {
+      const server = fakeServer();
+      const d = deps(server.send);
+      await run(['add', 'call the bank @phone'], d);
+      server.rows.set('other-tag', {
+        table: 'tag',
+        id: 'other-tag',
+        seq: 100,
+        row: { id: 'other-tag', name: '@Phone', version: 1, deletedAt: null },
+      });
+      await run(['list'], d);
+      expect(d.store.pending().map((op) => op.kind)).toEqual(['delete']);
+
+      d.send = (request) =>
+        Promise.resolve(
+          json({
+            cursor: 0,
+            results: request.ops.map((op) => ({
+              opId: op.opId,
+              status: 'conflict',
+              currentVersion: 9,
+            })),
+            changes: [],
+          }),
+        );
+      const out = await run(['list'], d);
+      expect(out.exit).toBe(0);
+      expect(
+        d.store.entries().filter((e) => e.status === 'failed'),
+      ).toMatchObject([{ op: { kind: 'delete', table: 'tag' } }]);
+      expect(out.stderr.join('\n')).toMatch(/queued operation\(s\) failed/);
+    });
+
+    it('merges duplicate projects: the winner stays and takes the tasks', async () => {
+      const server = fakeServer();
+      const project = (id: string, name: string) =>
+        server.rows.set(id, {
+          table: 'project',
+          id,
+          seq: id === 'p-a' ? 1 : 2,
+          row: { id, name, rank: 'a0', version: 1, deletedAt: null },
+        });
+      project('p-a', 'finance');
+      project('p-b', 'Finance');
+      server.rows.set('t1', {
+        table: 'task',
+        id: 't1',
+        seq: 3,
+        row: {
+          id: 't1',
+          title: 'pay rent',
+          priority: 0,
+          rank: 'a0',
+          projectId: 'p-b',
+          version: 1,
+          deletedAt: null,
+        },
+      });
+      const d = deps(server.send);
+
+      await run(['list'], d);
+      await run(['list'], d);
+
+      const live = (table: string) =>
+        [...server.rows.values()].filter(
+          (c) => c.table === table && c.row.deletedAt === null,
+        );
+      expect(live('project').map((c) => c.id)).toEqual(['p-a']);
+      expect(server.rows.get('t1')?.row.projectId).toBe('p-a');
+      expect(d.store.pending()).toEqual([]);
     });
   });
 });

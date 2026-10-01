@@ -61,4 +61,9 @@ describe('HELP', () => {
     expect(HELP).toMatch(/--rrule <RRULE>/);
     expect(HELP).toMatch(/last 6 characters/);
   });
+
+  it('documents stored markers and list filters', () => {
+    expect(HELP).toMatch(/todoer list \[@tag\|#project \.\.\.\]/);
+    expect(HELP).not.toMatch(/parsed, not stored/);
+  });
 });

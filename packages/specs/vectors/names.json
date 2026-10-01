@@ -1,0 +1,10 @@
+{
+  "source": "The name rule of docs/specs/2026-09-28-quick-add-tags-projects-design.md (Q4): equal after NFC normalisation and lower-casing.",
+  "cases": [
+    { "a": "@phone", "b": "@Phone", "same": true },
+    { "a": "@café", "b": "@café", "same": true },
+    { "a": "@Über", "b": "@über", "same": true },
+    { "a": "@to-do", "b": "@todo", "same": false },
+    { "a": "finance", "b": "finances", "same": false }
+  ]
+}
