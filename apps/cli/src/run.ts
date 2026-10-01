@@ -1,4 +1,5 @@
 import {
+  addDays,
   completingStatus,
   displayStatus,
   filterProblem,
@@ -19,7 +20,6 @@ import {
 import type { AuthApi, TokenSource } from './auth.js';
 import { expand } from './expand.js';
 import {
-  addDays,
   currentOccurrence,
   HORIZON_DAYS,
   isOccurrence,
@@ -33,9 +33,8 @@ import {
   compareIds,
   isAttached,
   labelsOf,
-  liveStatuses,
   liveTags,
-  liveViews,
+  notDeleted,
   resolveLabels,
   winner,
 } from './labels.js';
@@ -353,7 +352,7 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
     );
   } else if (command === 'views') {
     ({ synced } = await flush(store, deps.send));
-    const rows = liveViews(viewRows(store)).sort(
+    const rows = notDeleted(viewRows(store)).sort(
       (a, b) => compareStrings(a.rank, b.rank) || compareIds(a, b),
     );
     data = rows;
@@ -442,15 +441,18 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
   // (quick-add design, Q9). The merge is queued, not sent: the next command
   // delivers it, like any other queued operation.
   if (synced) {
-    // A failed delete of a row that is already a tombstone is moot: two
-    // clients merging the same duplicates send the same delete, and the
-    // second gets `conflict` although the row is gone. Left alone it would
-    // sit as a failed entry forever.
+    // A failed delete or set on a row that is already a tombstone is moot.
+    // Two clients merging the same duplicates send the same delete, and the
+    // second gets `conflict`; a `done` queued offline on a task another
+    // device deleted has its `set statusId` refused ("row is deleted"). The
+    // row is gone either way, so left alone the entry would sit as failed
+    // forever.
     // A row gone from the replica (after a 410 and a prune) leaves its failed
-    // delete in place: there is no tombstone to prove it moot.
+    // entry in place: there is no tombstone to prove it moot.
     for (const entry of store.entries()) {
       const { op } = entry;
-      if (entry.status !== 'failed' || op.kind !== 'delete') continue;
+      if (entry.status !== 'failed') continue;
+      if (op.kind !== 'delete' && op.kind !== 'set') continue;
       const gone = store
         .rows(op.table)
         .some((row) => row.id === op.id && row.deletedAt !== null);
@@ -560,10 +562,10 @@ function listOutbox(store: Store): { data: unknown; human: string[] } {
 /**
  * Queues the operations the running command minted, in one transaction and in
  * order, and sends them. A builder is called inside that transaction, for ops
- * that depend on rows a parallel invocation may be writing: stored before they are sent, so every attempt
- * carries their ids (ADR 0015 §4). Every one counts as the command's own, so
- * a refusal of any of them is the command's exit 1. Returns whether the
- * server has all of them.
+ * that depend on rows a parallel invocation may be writing. The ops are
+ * stored before they are sent, so every attempt carries their ids (ADR 0015
+ * §4). Every one counts as the command's own, so a refusal of any of them is
+ * the command's exit 1. Returns whether the server has all of them.
  */
 async function submit(
   store: Store,
@@ -703,7 +705,7 @@ function setTask(
 
 /** The statuses as `displayStatus` and `completingStatus` read them. */
 function statusFacts(statuses: Row[]): StatusRow[] {
-  return liveStatuses(statuses).map((s) => ({
+  return notDeleted(statuses).map((s) => ({
     id: String(s.id),
     rank: String(s.rank),
     completing: s.completing === true,
@@ -769,7 +771,7 @@ function due(store: Store, today: string): Listed[] {
     tags: tagRows(store),
     links: links(store),
   };
-  const live = liveStatuses(statusRows(store));
+  const live = notDeleted(statusRows(store));
   const facts = statusFacts(live);
   const names = new Map(live.map((s) => [String(s.id), String(s.name)]));
   const liveTagIds = new Set(liveTags(labelRows.tags).map((t) => String(t.id)));
@@ -832,7 +834,7 @@ type ChosenView = { sort: string; filter: Filter };
 function pickView(store: Store, name: string): ChosenView {
   const key = nameKey(name);
   const found = winner(
-    liveViews(viewRows(store)).filter(
+    notDeleted(viewRows(store)).filter(
       (v) => typeof v.name === 'string' && nameKey(v.name) === key,
     ),
   );

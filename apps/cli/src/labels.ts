@@ -16,11 +16,10 @@ export function liveProjects(projects: Row[]): Row[] {
   );
 }
 
-/** Statuses and views in play: not deleted. */
-export function liveStatuses(rows: Row[]): Row[] {
+/** Rows of any table that are not deleted. */
+export function notDeleted(rows: Row[]): Row[] {
   return rows.filter((row) => row.deletedAt === null);
 }
-export const liveViews = liveStatuses;
 
 function idOf(row: Row): string {
   return String(row.id).toLowerCase();

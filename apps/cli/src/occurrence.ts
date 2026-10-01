@@ -17,8 +17,6 @@ export function localDate(now: Date): string {
   return `${pad(now.getFullYear(), 4)}-${pad(now.getMonth() + 1, 2)}-${pad(now.getDate(), 2)}`;
 }
 
-export { addDays };
-
 export type Recurrence = { rule: Rrule; dtstart: string };
 
 /**

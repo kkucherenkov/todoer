@@ -10,9 +10,8 @@ import {
   compareIds,
   isAttached,
   liveProjects,
-  liveStatuses,
   liveTags,
-  liveViews,
+  notDeleted,
   winner,
 } from './labels.js';
 import type { Row } from './store.js';
@@ -190,7 +189,7 @@ export function planMerge(
     merged.push(`#${String(keep.name)} (${String(group.length)})`);
   }
 
-  for (const group of duplicates(liveStatuses(replica.statuses))) {
+  for (const group of duplicates(notDeleted(replica.statuses))) {
     const [keep] = group;
     if (keep === undefined) continue;
     for (const loser of group) {
@@ -227,7 +226,7 @@ export function planMerge(
   }
   for (const [tomb, keep] of lateTombstones(
     replica.statuses,
-    liveStatuses(replica.statuses),
+    notDeleted(replica.statuses),
   )) {
     if (moveStatus(tomb, keep) > 0) {
       merged.push(`${String(keep.name)} (late tasks)`);
@@ -236,7 +235,7 @@ export function planMerge(
 
   // A view naming a row that just lost keeps pointing at the winner
   // (plan V1, departure 6). One write per view, whatever it names.
-  for (const view of [...liveViews(replica.views)].sort(compareIds)) {
+  for (const view of [...notDeleted(replica.views)].sort(compareIds)) {
     if (filterProblem(view.filter) !== null) continue;
     const next = replaceIds(view.filter as Filter, replaced);
     if (next === view.filter) continue;

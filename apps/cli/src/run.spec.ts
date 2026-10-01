@@ -1177,38 +1177,46 @@ describe('run', () => {
         expect(out.stderr.join('\n')).not.toMatch(/failed/);
       });
 
-      // The cleanup is for moot deletes only: a failed set on a tombstone
-      // is evidence the user may want to see.
-      it('keeps a failed non-delete entry on a tombstoned row', async () => {
-        const d = deps(fakeServer().send);
+      function failedSet(d: Deps, deletedAt: string | null) {
         d.store.mergeChanges([
           {
-            table: 'tag',
-            id: 'tag-x',
+            table: 'task',
+            id: 'task-x',
             seq: 1,
-            row: {
-              id: 'tag-x',
-              name: '@x',
-              version: 3,
-              deletedAt: '2026-09-26T09:00:00.000Z',
-            },
+            row: { id: 'task-x', title: 'x', version: 3, deletedAt },
           },
         ]);
         d.store.enqueue({
-          opId: 'set-x',
+          opId: 'set-t',
           kind: 'set',
-          table: 'tag',
-          id: 'tag-x',
-          field: 'name',
-          value: '@y',
+          table: 'task',
+          id: 'task-x',
+          field: 'statusId',
+          value: 's-done',
           ts: 'T',
         });
         d.store.settle(
-          [{ opId: 'set-x', status: 'conflict', currentVersion: 3 }],
+          [{ opId: 'set-t', status: 'conflict', currentVersion: 3 }],
           new Set(),
         );
+        expect(d.store.entry('set-t')?.status).toBe('failed');
+      }
+
+      // A done queued offline on a task another device deleted: the server
+      // refuses the set on the tombstone, and nothing can ever fix it.
+      it('removes a failed set whose target row is a tombstone', async () => {
+        const d = deps(fakeServer().send);
+        failedSet(d, '2026-09-26T09:00:00.000Z');
+        const out = await run(['list'], d);
+        expect(d.store.entry('set-t')).toBeUndefined();
+        expect(out.stderr.join('\n')).not.toMatch(/failed/);
+      });
+
+      it('keeps a failed set whose target row is live', async () => {
+        const d = deps(fakeServer().send);
+        failedSet(d, null);
         await run(['list'], d);
-        expect(d.store.entry('set-x')?.status).toBe('failed');
+        expect(d.store.entry('set-t')?.status).toBe('failed');
       });
 
       it('leaves a moot failed delete out of outbox --json, data and counts alike', async () => {
@@ -2063,7 +2071,10 @@ describe('views', () => {
         name: 'Dead',
         deletedAt: '2026-09-01T00:00:00.000Z',
       });
-      seed(d, 'project', ARCHIVED, { name: 'Old', archived: true });
+      seed(d, 'project', ARCHIVED, {
+        name: 'Old',
+        archivedAt: '2026-09-01T00:00:00.000Z',
+      });
       addView(d, 'Dead', { filter: { project: DEAD_PROJECT } });
       addView(d, 'None', { filter: { project: null } });
       addView(d, 'Old', { filter: { project: ARCHIVED } });
