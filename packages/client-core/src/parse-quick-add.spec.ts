@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseQuickAdd, planAdd } from './parse-quick-add.js';
-import { UsageError } from '@todoer/client-core';
+import { UsageError } from './protocol.js';
 
 describe('parseQuickAdd', () => {
   it('takes plain text as the title', () => {

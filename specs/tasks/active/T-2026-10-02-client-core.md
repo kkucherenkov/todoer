@@ -108,7 +108,7 @@ client, and scripts and agents depend on its exact output and exit codes
 - [x] T002 [FR-002, FR-003, FR-006] `Store` on `SqlDatabase`, `NodeSqlite`,
       the CLI's `openStore`; split `store.spec` — plan Task 2
 - **Checkpoint:** the CLI runs on client-core's `Store`; e2e green.
-- [ ] T003 [FR-004, FR-006] Move the expander, occurrence, labels, merge,
+- [x] T003 [FR-004, FR-006] Move the expander, occurrence, labels, merge,
       overlay, quick-add and refs — plan Task 3
 - [ ] T004 [FR-004, FR-006] Move sync, transport and the token source — plan
       Task 4

@@ -1,4 +1,4 @@
-import { UsageError } from '@todoer/client-core';
+import { UsageError } from './protocol.js';
 
 export type QuickAdd = {
   title: string;

@@ -18,37 +18,38 @@ import {
   type StatusRow,
 } from '@todoer/specs';
 import type { AuthApi, TokenSource } from './auth.js';
-import { expand } from './expand.js';
-import {
-  currentOccurrence,
-  HORIZON_DAYS,
-  isOccurrence,
-  latestClosed,
-  localDate,
-  recurrenceOf,
-  type Recurrence,
-  type StateOf,
-} from './occurrence.js';
 import {
   compareIds,
+  currentOccurrence,
+  expand,
+  HORIZON_DAYS,
   isAttached,
+  isOccurrence,
   labelsOf,
+  latestClosed,
   liveTags,
+  liveTasks,
+  localDate,
   notDeleted,
-  resolveLabels,
-  winner,
-} from './labels.js';
-import { planMerge } from './merge.js';
-import { liveTasks, overlay } from './overlay.js';
-import { PROJECT, TAG, planAdd } from './parse-quick-add.js';
-import {
+  overlay,
+  planAdd,
+  planMerge,
+  PROJECT,
   RefusalError,
+  recurrenceOf,
   refusalOf,
+  resolveLabels,
+  resolveRef,
+  shortRef,
+  TAG,
   throwRefusals,
   UsageError,
+  winner,
+  type Recurrence,
+  type Row,
+  type StateOf,
+  type Store,
 } from '@todoer/client-core';
-import { resolveRef, shortRef } from './ref.js';
-import type { Row, Store } from '@todoer/client-core';
 import { flush, type Transport } from './sync.js';
 import { unknownCommand } from './usage.js';
 

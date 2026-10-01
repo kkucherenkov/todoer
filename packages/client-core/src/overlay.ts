@@ -1,5 +1,5 @@
 import type { Op } from '@todoer/specs';
-import type { Row } from '@todoer/client-core';
+import type { Row } from './store.js';
 
 /** `deletedAt` of a row a queued delete has removed but the server has not
  *  confirmed. Any non-null value hides the row; this one says why. */
