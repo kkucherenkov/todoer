@@ -209,6 +209,11 @@ The CLI device-code flow follows v1.
 - **Board columns (Q18).** Full management in v1: add, rename, reorder, mark
   the completing status, and delete with the status's tasks moved to the first
   status in the same batch (views design, Q8).
+- **Visual design (maintainer, after the interview).** No custom design system:
+  the web client uses Nuxt UI's components and default theme as they come,
+  adjusted only through its theme tokens (colours, radius, font). The Flutter
+  client later copies that look — the same tokens and layouts — rather than
+  designing its own.
 - **Language (Q19).** i18n from the start with `@nuxtjs/i18n`, Russian and
   English. Calendar dates need locales anyway.
 - **Testing (Q20).** Vitest for the client core and components. Playwright
