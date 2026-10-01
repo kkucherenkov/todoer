@@ -7,6 +7,7 @@ import { AuthController } from './auth.controller.js';
 import { AuthService, normalizeEmail } from './auth.service.js';
 import { TooManyRequests } from './rate-limit.js';
 import { SessionService } from './session.service.js';
+import { resetDatabase } from '../testing/reset-database.js';
 
 const prisma = new PrismaService();
 const config = {
@@ -35,16 +36,7 @@ const login = (email = 'a@b.c', password = PASSWORD, r = req) =>
 
 beforeEach(async () => {
   vi.restoreAllMocks();
-  // Sync specs leave synced rows behind, which restrict deleting their user.
-  await prisma.taskOccurrence.deleteMany({});
-  await prisma.taskTag.deleteMany({});
-  await prisma.task.deleteMany({});
-  await prisma.project.deleteMany({});
-  await prisma.tag.deleteMany({});
-  await prisma.session.deleteMany({});
-  await prisma.invitation.deleteMany({});
-  await prisma.resetCode.deleteMany({});
-  await prisma.user.deleteMany({});
+  await resetDatabase(prisma);
   controller = new AuthController(
     auth,
     sessions,

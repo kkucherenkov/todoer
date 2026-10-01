@@ -6,6 +6,7 @@ import { AccountsService, issueResetCode } from './accounts.service.js';
 import { AuthService } from './auth.service.js';
 import { SessionService } from './session.service.js';
 import { lockUserWrites } from '../sync/user-lock.js';
+import { resetDatabase } from '../testing/reset-database.js';
 
 const prisma = new PrismaService();
 const config = {
@@ -22,23 +23,12 @@ const days = (d: number): Date => new Date(t0.getTime() + d * 86_400_000);
 
 let owner: string;
 
-const wipe = async (): Promise<void> => {
-  await prisma.appliedOp.deleteMany({});
-  await prisma.taskOccurrence.deleteMany({});
-  await prisma.taskTag.deleteMany({});
-  await prisma.task.deleteMany({});
-  await prisma.project.deleteMany({});
-  await prisma.tag.deleteMany({});
-  await prisma.invitation.deleteMany({});
-  await prisma.user.deleteMany({});
-};
-
 // Other specs delete users without clearing synced rows; leave none behind.
-afterAll(wipe);
+afterAll(() => resetDatabase(prisma));
 
 beforeEach(async () => {
   vi.restoreAllMocks();
-  await wipe();
+  await resetDatabase(prisma);
   owner = (await accounts.register('o@e.test', PASSWORD)).userId;
 });
 

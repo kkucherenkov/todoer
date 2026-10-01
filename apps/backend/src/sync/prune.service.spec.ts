@@ -3,6 +3,7 @@ import { GoneException, Logger } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
 import { taskOccurrenceId, taskTagId } from '@todoer/specs';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { resetDatabase } from '../testing/reset-database.js';
 import { PruneService, RETENTION_DAYS } from './prune.service.js';
 import { SyncService } from './sync.service.js';
 import { lockUserWrites } from './user-lock.js';
@@ -15,16 +16,7 @@ const OTHER = '22222222-2222-2222-2222-222222222222';
 const DAY = 24 * 60 * 60 * 1000;
 
 beforeEach(async () => {
-  await prisma.appliedOp.deleteMany({});
-  await prisma.taskOccurrence.deleteMany({});
-  await prisma.taskTag.deleteMany({});
-  await prisma.task.deleteMany({});
-  await prisma.project.deleteMany({});
-  await prisma.tag.deleteMany({});
-  await prisma.session.deleteMany({});
-  await prisma.invitation.deleteMany({});
-  await prisma.resetCode.deleteMany({});
-  await prisma.user.deleteMany({});
+  await resetDatabase(prisma);
   await prisma.user.create({
     data: { id: USER, email: 'a@b.c', passwordHash: 'x' },
   });

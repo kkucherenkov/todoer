@@ -4,6 +4,7 @@ import { uuidv7 } from 'uuidv7';
 import { Prisma } from '@prisma/client';
 import { taskOccurrenceId, taskTagId } from '@todoer/specs';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { resetDatabase } from '../testing/reset-database.js';
 import { SyncService } from './sync.service.js';
 
 const prisma = new PrismaService();
@@ -13,20 +14,7 @@ const service = new SyncService(prisma);
 const USER = '11111111-1111-1111-1111-111111111111';
 
 beforeEach(async () => {
-  // taskTag/task/project/tag before user: userId is ON DELETE RESTRICT on
-  // task, project, tag and taskOccurrence, so a leftover row from an earlier
-  // test would block deleting the user that owned it. TaskTag carries no FK
-  // on userId at all, but it is deleted first anyway, for the same reason.
-  await prisma.appliedOp.deleteMany({});
-  await prisma.taskOccurrence.deleteMany({});
-  await prisma.taskTag.deleteMany({});
-  await prisma.task.deleteMany({});
-  await prisma.project.deleteMany({});
-  await prisma.tag.deleteMany({});
-  await prisma.session.deleteMany({});
-  await prisma.invitation.deleteMany({});
-  await prisma.resetCode.deleteMany({});
-  await prisma.user.deleteMany({});
+  await resetDatabase(prisma);
   await prisma.user.create({
     data: { id: USER, email: 'a@b.c', passwordHash: 'x' },
   });
@@ -1893,5 +1881,44 @@ describe('SyncService', () => {
     expect(ids).not.toContain(goneDone.id);
     expect(ids).not.toContain(tagLink.id);
     expect(ids).not.toContain(goneTaskLiveTagLink.id);
+  });
+
+  it('stores a status, a task with a status and an origin, and reads them back', async () => {
+    const status = uuidv7();
+    const task = uuidv7();
+    const origin = uuidv7();
+    await prisma.status.create({
+      data: { id: status, userId: USER, name: 'Doing', rank: 'a0', seq: 1n },
+    });
+    await prisma.task.create({
+      data: {
+        id: task,
+        userId: USER,
+        title: 't',
+        rank: 'a0',
+        seq: 2n,
+        statusId: status,
+        originTaskId: origin,
+        originOccurrence: new Date('2026-10-05T00:00:00Z'),
+      },
+    });
+
+    expect(await prisma.task.findUnique({ where: { id: task } })).toMatchObject(
+      {
+        statusId: status,
+        originTaskId: origin,
+        originOccurrence: new Date('2026-10-05T00:00:00Z'),
+      },
+    );
+  });
+
+  it('draws seq for statuses and views from the shared change_seq', async () => {
+    const rows = await prisma.$queryRaw<{ column_default: string }[]>`
+      SELECT column_default FROM information_schema.columns
+      WHERE column_name = 'seq' AND table_name IN ('Status', 'View')`;
+
+    expect(rows).toHaveLength(2);
+    for (const r of rows)
+      expect(r.column_default).toContain("nextval('change_seq'");
   });
 });
