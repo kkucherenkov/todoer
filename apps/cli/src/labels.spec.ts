@@ -103,22 +103,51 @@ describe('resolveLabels', () => {
       ).projectId,
     ).toBe('p1');
   });
+
+  it('ignores a deleted project and creates a new one', () => {
+    const projects = [
+      {
+        id: 'p0',
+        name: 'finance',
+        archivedAt: null,
+        deletedAt: '2026-09-01T00:00:00Z',
+      },
+    ];
+    const labels = resolveLabels(
+      { project: 'finance', tags: [] },
+      { projects, tags: [] },
+      ids(),
+      'T',
+    );
+    expect(labels.projectId).toBe('n1');
+    expect(labels.creates[0]).toMatchObject({
+      table: 'project',
+      id: 'n1',
+      fields: { name: 'finance', rank: 'a0' },
+    });
+    expect(labels.created).toEqual(['#finance']);
+  });
 });
 
 describe('labelsOf', () => {
   const rows = {
-    projects: [{ id: 'p', name: 'finance', deletedAt: null }],
+    projects: [
+      { id: 'p', name: 'finance', deletedAt: null },
+      { id: 'q', name: 'old', deletedAt: '2026-09-01T00:00:00Z' },
+    ],
     tags: [
       { id: 'b', name: '@Phone', deletedAt: null },
       { id: 'a', name: '@phone', deletedAt: null },
       { id: 'c', name: '@home', deletedAt: null },
       { id: 'd', name: '@desk', deletedAt: '2026-09-01T00:00:00Z' },
+      { id: 'e', name: '@work', deletedAt: null },
     ],
     links: [
       { taskId: 't', tagId: 'b', deletedAt: null },
       { taskId: 't', tagId: 'a', deletedAt: null },
       { taskId: 't', tagId: 'c', deletedAt: null, attached: false },
       { taskId: 't', tagId: 'd', deletedAt: null },
+      { taskId: 't', tagId: 'e', deletedAt: '2026-09-01T00:00:00Z' },
       { taskId: 'u', tagId: 'c', deletedAt: null },
     ],
   };
@@ -134,6 +163,20 @@ describe('labelsOf', () => {
     expect(labelsOf({ id: 'u', projectId: null }, rows)).toEqual({
       project: null,
       tags: ['@home'],
+    });
+  });
+
+  it('has no project for a task pointing to a deleted project', () => {
+    expect(labelsOf({ id: 'u', projectId: 'q' }, rows)).toEqual({
+      project: null,
+      tags: ['@home'],
+    });
+  });
+
+  it('does not count a deleted link', () => {
+    expect(labelsOf({ id: 't', projectId: 'p' }, rows)).toEqual({
+      project: 'finance',
+      tags: ['@phone'],
     });
   });
 });
