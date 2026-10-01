@@ -37,9 +37,10 @@ export function parse(token: string): Parsed | null {
 /**
  * Sessions with rotating refresh tokens (plan D design, Q2, Q4, Q5). A token
  * is `<id>.<generation>.<mac>`, the mac an HMAC over a `refresh.` domain
- * prefix, the id, the generation and a per-session salt (plan departure 1): nothing secret is stored, and the
- * successor of any generation can be recomputed, which is what lets a retry
- * inside the grace window receive the very pair the first call got.
+ * prefix, the id, the generation and a per-session salt (plan departure 1):
+ * nothing secret is stored, and the successor of any generation can be
+ * recomputed, which is what lets a retry inside the grace window receive the
+ * very pair the first call got.
  */
 @Injectable()
 export class SessionService {
@@ -162,10 +163,14 @@ export class SessionService {
     if (parsed !== null) await this.revokeById(parsed.id, new Date());
   }
 
-  async revokeAll(userId: string): Promise<void> {
-    await this.prisma.session.updateMany({
+  async revokeAll(
+    userId: string,
+    now = new Date(),
+    db: Pick<PrismaService, 'session'> = this.prisma,
+  ): Promise<void> {
+    await db.session.updateMany({
       where: { userId, revokedAt: null },
-      data: { revokedAt: new Date() },
+      data: { revokedAt: now },
     });
   }
 }

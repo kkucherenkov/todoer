@@ -183,10 +183,7 @@ export class AccountsService {
         where: { id: row.userId },
         data: { passwordHash },
       });
-      await tx.session.updateMany({
-        where: { userId: row.userId, revokedAt: null },
-        data: { revokedAt: now },
-      });
+      await this.sessions.revokeAll(row.userId, now, tx);
     });
   }
 
