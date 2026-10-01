@@ -48,14 +48,16 @@ references:
 statuses:
   list ends each line with the task's status; --json carries it as status
   (null when the user has no statuses). A task without a status shows in the
-  first non-completing one. done moves the task to the completing status,
+  first non-completing one. done moves the task to the completing status
+  when the account has one (statuses but none completing: nothing changes),
   undo clears it. The CLI never moves a task between other statuses. The first
   done on an account with no statuses creates Inbox, Doing and Done, once.
 
 views:
   --view takes a view's name in any case (the lowest id among duplicates).
   An unknown name, or no views at all, is a usage error (exit 2): the list
-  is never printed unfiltered. Creating and editing views is for GUI clients.
+  is never printed unfiltered. A stored filter this client cannot evaluate
+  exits 1 with nothing printed. Creating and editing views is for GUI clients.
 
 recurrence:
   --rrule takes an RFC 5545 rule, restricted to FREQ (DAILY, WEEKLY,
@@ -108,7 +110,8 @@ exit codes (ADR 0015 §2):
   3  an unexpected local failure, such as the local database staying busy
   4  reserved for a conflict — the server holds a newer version of the row.
      No command sends an operation that can return one yet: add, done, skip
-     and undo each send a create, and a create never conflicts
+     and undo send creates and statusId sets, which carry no baseVersion, so
+     none of them conflicts
   5  the server was not reached: the answer is local, and any operation
      this command queued will be sent by a later command. Do not run the
      command again for the same intent — that would queue it twice

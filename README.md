@@ -29,7 +29,7 @@ second, independent CLI invocation through the server, over one endpoint:
   tasks are created with `--rrule` and listed at their current date; `done`,
   `skip` and `undo` take the short reference `list` prints. Quick-add stores
   `#project` and `@tag`, and `list @tag #project` filters by them. `list` ends
-  each line with the task's status; `done` moves a task to the completing
+  each line with the task's status when the account has statuses; `done` moves a task to the completing
   status and `undo` clears it (the first `done` seeds `Inbox`, `Doing` and
   `Done` if the account has no statuses). `todoer views` lists the synced views
   and `list --view <name>` applies one's filter and sort (layout is ignored).
@@ -42,16 +42,16 @@ recurrence).
 
 ## Layout
 
-| Path | Holds |
-| --- | --- |
-| `apps/backend/` | NestJS 11 server, Prisma 6, the sync protocol |
-| `apps/cli/` | the `todoer` command, a network client with no privileged access |
-| `packages/specs/` | the OpenAPI document and the client generated from it |
-| `docker/compose.yml` | Postgres 18 for local development, on port **5433** |
-| `scripts/` | the end-to-end proofs (`walking-skeleton.sh`, `outbox-e2e.sh`) run in CI, and their owner-aware helper `lib/fresh-user.sh` |
-| `docs/adr/`, `docs/specs/`, `docs/plans/` | decisions, design, plans |
-| `specs/tasks/` | the task stack — one file per task, `active/` then `done/` |
-| `.claude/CLAUDE.md` | the working agreement |
+| Path                                      | Holds                                                                                                                      |
+| ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| `apps/backend/`                           | NestJS 11 server, Prisma 6, the sync protocol                                                                              |
+| `apps/cli/`                               | the `todoer` command, a network client with no privileged access                                                           |
+| `packages/specs/`                         | the OpenAPI document and the client generated from it                                                                      |
+| `docker/compose.yml`                      | Postgres 18 for local development, on port **5433**                                                                        |
+| `scripts/`                                | the end-to-end proofs (`walking-skeleton.sh`, `outbox-e2e.sh`) run in CI, and their owner-aware helper `lib/fresh-user.sh` |
+| `docs/adr/`, `docs/specs/`, `docs/plans/` | decisions, design, plans                                                                                                   |
+| `specs/tasks/`                            | the task stack — one file per task, `active/` then `done/`                                                                 |
+| `.claude/CLAUDE.md`                       | the working agreement                                                                                                      |
 
 ## Running it
 
@@ -111,17 +111,17 @@ does not configure `trust proxy`, so the per-IP limits become instance-wide.
 
 ### Environment
 
-| Variable | Read by | Default | Notes |
-| --- | --- | --- | --- |
-| `DATABASE_URL` | backend | — | required; Postgres connection string |
-| `JWT_SECRET` | backend | — | required; signs the access token, at least 32 characters |
-| `PORT` | backend | `3000` | refuses a value that is not a whole port number |
-| `APP_VERSION` | backend | `0.0.0-dev` | reported by `GET /api/v1/health` |
-| `TODOER_URL` | CLI | `http://localhost:3000/api/v1` | instance base URL |
-| `TODOER_TOKEN` | CLI | — | bearer token; when set it is used as is, never refreshed, and overrides the stored session |
-| `TODOER_PASSWORD` | CLI | — | the password `todoer login` uses instead of a prompt or stdin |
-| `OWNER_EMAIL`, `OWNER_PASSWORD` | e2e scripts | `owner@example.test`, `correct horse 9 battery!` | the owner the scripts sign in as |
-| `TODOER_TIMEOUT_MS` | CLI | `3000` | how long to wait for the server before exiting 5 |
+| Variable                        | Read by     | Default                                          | Notes                                                                                      |
+| ------------------------------- | ----------- | ------------------------------------------------ | ------------------------------------------------------------------------------------------ |
+| `DATABASE_URL`                  | backend     | —                                                | required; Postgres connection string                                                       |
+| `JWT_SECRET`                    | backend     | —                                                | required; signs the access token, at least 32 characters                                   |
+| `PORT`                          | backend     | `3000`                                           | refuses a value that is not a whole port number                                            |
+| `APP_VERSION`                   | backend     | `0.0.0-dev`                                      | reported by `GET /api/v1/health`                                                           |
+| `TODOER_URL`                    | CLI         | `http://localhost:3000/api/v1`                   | instance base URL                                                                          |
+| `TODOER_TOKEN`                  | CLI         | —                                                | bearer token; when set it is used as is, never refreshed, and overrides the stored session |
+| `TODOER_PASSWORD`               | CLI         | —                                                | the password `todoer login` uses instead of a prompt or stdin                              |
+| `OWNER_EMAIL`, `OWNER_PASSWORD` | e2e scripts | `owner@example.test`, `correct horse 9 battery!` | the owner the scripts sign in as                                                           |
+| `TODOER_TIMEOUT_MS`             | CLI         | `3000`                                           | how long to wait for the server before exiting 5                                           |
 
 The examples above use **3010** because 3000 is often already taken; the
 backend's own default is 3000.
