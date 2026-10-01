@@ -36,6 +36,8 @@ const TABLES = [
   'tag',
   'task_tag',
   'task_occurrence',
+  'status',
+  'view',
 ] as const;
 type TableName = (typeof TABLES)[number];
 
@@ -45,6 +47,8 @@ const DELEGATE = {
   tag: 'tag',
   task_tag: 'taskTag',
   task_occurrence: 'taskOccurrence',
+  status: 'status',
+  view: 'view',
 } as const;
 
 /**
@@ -60,6 +64,8 @@ const RELATION = {
   tag: 'Tag',
   task_tag: 'TaskTag',
   task_occurrence: 'TaskOccurrence',
+  status: 'Status',
+  view: 'View',
 } as const;
 
 /**
@@ -72,11 +78,19 @@ const RELATION = {
  * deleting the referenced task or tag deletes a row that account does not
  * own, and the first feature to walk `parentId`/`projectId` — "complete
  * subtasks", a tree view — crosses the boundary the other way.
+ *
+ * `originTaskId` is checked for ownership like every reference but has no
+ * foreign key (plan V2, departure 5).
  */
 const REFERENCES: Partial<
   Record<TableName, Readonly<Record<string, TableName>>>
 > = {
-  task: { projectId: 'project', parentId: 'task' },
+  task: {
+    projectId: 'project',
+    parentId: 'task',
+    statusId: 'status',
+    originTaskId: 'task',
+  },
   task_tag: { taskId: 'task', tagId: 'tag' },
   task_occurrence: { taskId: 'task' },
 };
@@ -117,6 +131,9 @@ const WRITABLE_FIELDS: Record<TableName, ReadonlySet<string>> = {
     'rrule',
     'dtstart',
     'rank',
+    'statusId',
+    'originTaskId',
+    'originOccurrence',
   ]),
   project: new Set(['name', 'rank', 'archivedAt']),
   tag: new Set(['name', 'color']),
@@ -128,6 +145,8 @@ const WRITABLE_FIELDS: Record<TableName, ReadonlySet<string>> = {
     'completedAt',
     'value',
   ]),
+  status: new Set(['name', 'rank', 'color', 'completing']),
+  view: new Set(['name', 'layout', 'filter', 'sort', 'rank']),
 };
 
 /**
@@ -138,7 +157,7 @@ const WRITABLE_FIELDS: Record<TableName, ReadonlySet<string>> = {
  * directions convert here.
  */
 const DATE_FIELDS: Partial<Record<TableName, ReadonlySet<string>>> = {
-  task: new Set(['scheduledOn', 'dueOn', 'dtstart']),
+  task: new Set(['scheduledOn', 'dueOn', 'dtstart', 'originOccurrence']),
   task_occurrence: new Set(['occurrence']),
 };
 

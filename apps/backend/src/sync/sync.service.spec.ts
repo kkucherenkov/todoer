@@ -1922,3 +1922,194 @@ describe('SyncService', () => {
       expect(r.column_default).toContain("nextval('change_seq'");
   });
 });
+
+function create(table: 'status' | 'view', fields: Record<string, unknown>) {
+  return {
+    opId: uuidv7(),
+    kind: 'create' as const,
+    table,
+    id: uuidv7(),
+    fields,
+    ts: new Date().toISOString(),
+  };
+}
+
+describe('SyncService statuses, views and task origins', () => {
+  const OTHER = '22222222-2222-2222-2222-222222222222';
+  const status = { name: 'Doing', rank: 'a1', completing: false, color: null };
+  const view = {
+    name: 'Today',
+    layout: 'list',
+    sort: 'due',
+    rank: 'a0',
+    filter: { and: [{ status: uuidv7() }, { due: { to: -1 } }] },
+  };
+  const pull = async () =>
+    (await service.sync(USER, { since: 0, ops: [] })).changes;
+  const otherUser = () =>
+    prisma.user.create({
+      data: { id: OTHER, email: 'x@y.z', passwordHash: 'x' },
+    });
+
+  it('applies a status and a view and pulls them back as written', async () => {
+    const s = create('status', status);
+    const v = create('view', view);
+
+    const { results, changes } = await service.sync(USER, {
+      since: 0,
+      ops: [s, v],
+    });
+
+    expect(results.map((r) => r.status)).toEqual(['applied', 'applied']);
+    const pulled = changes.filter(
+      (c) => c.table === 'status' || c.table === 'view',
+    );
+    expect(pulled).toHaveLength(2);
+    const row = (id: string) => pulled.find((c) => c.id === id)!.row;
+    expect(Object.keys(row(s.id)).sort()).toEqual(
+      [...Object.keys(status), 'id', 'version', 'fieldTs', 'deletedAt'].sort(),
+    );
+    expect(Object.keys(row(v.id)).sort()).toEqual(
+      [...Object.keys(view), 'id', 'version', 'fieldTs', 'deletedAt'].sort(),
+    );
+    expect(row(v.id).filter).toEqual(view.filter);
+  });
+
+  it('rejects a view with a runaway filter and stores nothing', async () => {
+    const v = create('view', {
+      ...view,
+      filter: {
+        or: Array.from({ length: 10_000 }, () => ({ recurring: true })),
+      },
+    });
+
+    const { results } = await service.sync(USER, { since: 0, ops: [v] });
+
+    expect(results[0]).toMatchObject({
+      status: 'rejected',
+      reason: 'filter: more than 256 nodes',
+    });
+    expect(await prisma.view.count()).toBe(0);
+  });
+
+  it('rejects a set filter that is not valid and keeps the stored one', async () => {
+    const v = create('view', view);
+    await service.sync(USER, { since: 0, ops: [v] });
+
+    const { results } = await service.sync(USER, {
+      since: 0,
+      ops: [
+        {
+          opId: uuidv7(),
+          kind: 'set',
+          table: 'view',
+          id: v.id,
+          field: 'filter',
+          value: { tag: 'x' },
+          ts: new Date().toISOString(),
+        },
+      ],
+    });
+
+    expect(results[0]).toMatchObject({
+      status: 'rejected',
+      reason: 'filter: filter.tag: not a uuid',
+    });
+    expect(
+      (await prisma.view.findUnique({ where: { id: v.id } }))?.filter,
+    ).toEqual(view.filter);
+  });
+
+  it('rejects an unknown field on a view', async () => {
+    const { results } = await service.sync(USER, {
+      since: 0,
+      ops: [create('view', { ...view, owner: 'x' })],
+    });
+
+    expect(results[0]).toMatchObject({
+      status: 'rejected',
+      reason: 'unknown field: owner',
+    });
+  });
+
+  it('checks who owns the status a task points at', async () => {
+    await otherUser();
+    const mine = create('status', status);
+    const theirs = create('status', status);
+    await service.sync(USER, { since: 0, ops: [mine] });
+    await service.sync(OTHER, { since: 0, ops: [theirs] });
+
+    const ok = createTask('ok');
+    ok.fields.statusId = mine.id;
+    const bad = createTask('bad');
+    bad.fields.statusId = theirs.id;
+    const { results } = await service.sync(USER, { since: 0, ops: [ok, bad] });
+
+    expect(results[0]).toMatchObject({ status: 'applied' });
+    expect(results[1]).toMatchObject({
+      status: 'rejected',
+      reason: 'statusId does not reference a row you own',
+    });
+  });
+
+  it('lets a task move to a tombstoned status of the user', async () => {
+    const s = create('status', status);
+    await service.sync(USER, { since: 0, ops: [s] });
+    await service.sync(USER, {
+      since: 0,
+      ops: [
+        {
+          opId: uuidv7(),
+          kind: 'delete',
+          table: 'status',
+          id: s.id,
+          baseVersion: 1,
+        },
+      ],
+    });
+    const t = createTask('t');
+    await service.sync(USER, { since: 0, ops: [t] });
+
+    const { results } = await service.sync(USER, {
+      since: 0,
+      ops: [setTask(t.id, 'statusId', s.id)],
+    });
+
+    expect(results[0]).toMatchObject({ status: 'applied' });
+  });
+
+  it('stores and returns a task origin, checking date and owner', async () => {
+    await otherUser();
+    const source = createTask('weekly');
+    source.fields.rrule = 'FREQ=WEEKLY;BYDAY=MO';
+    source.fields.dtstart = '2026-09-28';
+    const theirs = createTask('theirs');
+    await service.sync(USER, { since: 0, ops: [source] });
+    await service.sync(OTHER, { since: 0, ops: [theirs] });
+    const origin = (taskId: string, occurrence: string) => {
+      const t = createTask('copy');
+      t.fields.originTaskId = taskId;
+      t.fields.originOccurrence = occurrence;
+      return t;
+    };
+    const good = origin(source.id, '2026-10-05');
+
+    const { results } = await service.sync(USER, {
+      since: 0,
+      ops: [good, origin(source.id, '5 Oct'), origin(theirs.id, '2026-10-05')],
+    });
+
+    expect(results[0]).toMatchObject({ status: 'applied' });
+    expect(results[1]).toMatchObject({
+      status: 'rejected',
+      reason: 'originOccurrence must be a date, YYYY-MM-DD',
+    });
+    expect(results[2]).toMatchObject({
+      status: 'rejected',
+      reason: 'originTaskId does not reference a row you own',
+    });
+    expect(
+      (await pull()).find((c) => c.id === good.id)!.row.originOccurrence,
+    ).toBe('2026-10-05');
+  });
+});
