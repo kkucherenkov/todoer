@@ -18,7 +18,7 @@ backlog items (#390, #391, #361, #407); they are at the end.
 | Term | Definition | Avoid |
 | --- | --- | --- |
 | **client shell** | The platform part of a client: UI, navigation, storage binding and app lifecycle, on top of the shared core. | frontend, app |
-| **client core** | The logic every client shares: replica, outbox, overlay, expander, current occurrence, duplicate-name merge, quick-add parsing, labels, statuses and views. Lives in `apps/cli` today. | SDK, engine |
+| **client core** | The logic every client shares: replica, outbox, overlay, expander, current occurrence, duplicate-name merge, quick-add parsing, labels, statuses and views. Lives in `packages/client-core`. | SDK, engine |
 | **replica** | The local copy of a user's rows a client reads offline and updates by pulling. | cache, local db |
 | **leader tab** | The browser tab that holds a Web Lock and owns the worker with SQLite and sync; other tabs work through it. | main tab, master |
 
@@ -261,7 +261,7 @@ Settled in the same interview; each becomes its own small task.
 - ADR 0011: bearer access tokens everywhere, the refresh token in an
   `HttpOnly` cookie on the web only; plan D shipped the body transport and
   deferred the cookie to the web client.
-- The CLI's client logic is about 3 000 lines in `apps/cli/src` (excluding
+- The CLI's client logic is about 3 000 lines in `apps/cli/src` (before W0, excluding
   specs), on `node:sqlite` through `Store`, with `BEGIN IMMEDIATE` write
   transactions.
 - The auth limiters key on `req.ip`, and `main.ts` set no `trust proxy` before #407.
@@ -296,3 +296,50 @@ Settled in the same interview; each becomes its own small task.
 ## Open threads
 
 None.
+
+## Departures in plan W0
+
+Plan W0 extracted `packages/client-core` and departed from this document in six
+places.
+
+**The `DatabaseSync` adapter lives in client-core, behind `./node-sqlite`.**
+The design kept the whole `node:sqlite` binding in the CLI. The CLI keeps the
+path, the directory and file modes, the umask and `retryOnBusy`. The adapter
+itself, with the cross-process write lock, moved to client-core's
+`@todoer/client-core/node-sqlite` entry (decided by the controller,
+2026-10-02). The specs that moved with `Store`, `tokenSource` and
+`httpTransport` assert things only the real lock makes true, and a test-only
+copy of it would be a second implementation of the most delicate code in the
+client. Q3 calls the adapter the only per-platform part of the core, and the
+web's will be a sibling entry. The portable entry never imports it, and lint
+forbids `node:*` everywhere else in the package.
+
+**The adapter has no `prepare` and no `get`.** Q3 listed `prepare`, but `Store`
+never keeps a statement handle. `SqlDatabase` has six members: `exec`, `run`,
+`all`, `inTransaction`, `withWriteLock`, `close`. `get` is `all(...)[0]`.
+`settle` and `mergeChanges` now prepare once per row instead of once per call,
+about 10 µs a statement, which does not matter at the size of a pull. W2 note:
+the oo1 adapter must pass `bind` only when the params are non-empty.
+
+**`Store.transaction` stays in the portable core; only `withWriteLock` is per
+platform.** `BEGIN IMMEDIATE`, `COMMIT` and a `ROLLBACK` guarded by
+`inTransaction` are plain SQL, the same on both engines. The asynchronous lock
+is the platform part: a cross-process poll on Node, `BEGIN IMMEDIATE` behind an
+in-worker queue in the web's leader worker.
+
+**The package is built with `tsc`, not `tsup`.** `@todoer/specs` uses tsup only
+because its generated code has extension-less imports. The moved code already
+builds with the CLI's `tsc` config, one ESM file per module, so `./node-sqlite`
+is simply `dist/node-sqlite.js`.
+
+**`login`, `logout`, `adoptAccount`, `subject` and `revoke` stay in the CLI's
+`run.ts`.** `subject` reads the token with `Buffer`, and the web signs in with
+the refresh cookie (ADR 0011), a different flow. `tokenSource` and
+`httpAuthApi` moved.
+
+**The error classes moved unchanged, with their CLI wording.** `UsageError`,
+`RefusalError` and `ConflictError` live in client-core because `Store`,
+`resolveRef`, `planAdd`, `pickView`, `pickOccurrence`, `flush` and `submit`
+throw them. Messages keep flag names (`--on must be a date`, `do not run done
+again`); rewording them for a GUI is W2's call, since changing them in W0 would
+change CLI output.

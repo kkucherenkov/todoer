@@ -45,7 +45,8 @@ recurrence).
 | Path                                      | Holds                                                                                                                      |
 | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `apps/backend/`                           | NestJS 11 server, Prisma 6, the sync protocol                                                                              |
-| `apps/cli/`                               | the `todoer` command, a network client with no privileged access                                                           |
+| `apps/cli/`                               | the `todoer` command, a network client with no privileged access, running on `packages/client-core`                        |
+| `packages/client-core/`                   | the logic every client shares: replica, outbox, sync, overlay, recurrence, labels, merge, views, on a synchronous SQLite adapter |
 | `packages/specs/`                         | the OpenAPI document and the client generated from it                                                                      |
 | `docker/compose.yml`                      | Postgres 18 for local development, on port **5433**                                                                        |
 | `scripts/`                                | the end-to-end proofs (`walking-skeleton.sh`, `outbox-e2e.sh`) run in CI, and their owner-aware helper `lib/fresh-user.sh` |

@@ -2,8 +2,10 @@
 
 - Created: 2026-10-02
 - Owner: claude
-- Status: ready
+- Status: done
 - Blockers: —
+- Completed: 2026-10-02
+- Result: branch refactor/client-core (PR pending)
 - Spec: [docs/specs/2026-10-01-client-shells-design.md](../../../docs/specs/2026-10-01-client-shells-design.md)
   (Q3, Q12, Q13, Q16 — plan W0)
 - Plan: [docs/plans/2026-10-02-plan-w0-client-core.md](../../../docs/plans/2026-10-02-plan-w0-client-core.md)
@@ -93,13 +95,13 @@ client, and scripts and agents depend on its exact output and exit codes
   edits.
 - **SC-004** `rg -l "node:" packages/client-core/dist/*.d.ts` lists only
   `node-sqlite.d.ts`.
-- [ ] every FR has a test that failed before the code made it pass. Here no
+- [x] every FR has a test that failed before the code made it pass. Here no
       behaviour is new: each task's mutation checks stand in, turning the
       moved tests red.
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 
@@ -116,7 +118,7 @@ client, and scripts and agents depend on its exact output and exit codes
       plan Task 5
 - **Checkpoint:** `apps/cli/src` holds only `index`, `run`, `usage`,
   `config`, `password`, `store`; 171 + 160 tests; e2e green.
-- [ ] T006 [FR-006, FR-007] Docs, assertion audit, gates and e2e — plan
+- [x] T006 [FR-006, FR-007] Docs, assertion audit, gates and e2e — plan
       Task 6
 
 ### Open questions
