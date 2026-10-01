@@ -395,7 +395,10 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
     synced = await submit(
       store,
       deps.send,
-      [...statusOps(command, task, statusRows(store), deps.newId, now), op],
+      () => [
+        ...statusOps(command, task, statusRows(store), deps.newId, now),
+        op,
+      ],
       command,
     );
     const marked = occurrences(store).find((row) => row.id === op.id) ?? null;
@@ -556,7 +559,8 @@ function listOutbox(store: Store): { data: unknown; human: string[] } {
 
 /**
  * Queues the operations the running command minted, in one transaction and in
- * order, and sends them: stored before they are sent, so every attempt
+ * order, and sends them. A builder is called inside that transaction, for ops
+ * that depend on rows a parallel invocation may be writing: stored before they are sent, so every attempt
  * carries their ids (ADR 0015 §4). Every one counts as the command's own, so
  * a refusal of any of them is the command's exit 1. Returns whether the
  * server has all of them.
@@ -564,11 +568,13 @@ function listOutbox(store: Store): { data: unknown; human: string[] } {
 async function submit(
   store: Store,
   send: Transport,
-  ops: Op[],
+  build: Op[] | (() => Op[]),
   command: string,
 ): Promise<boolean> {
-  store.transaction(() => {
-    for (const op of ops) store.enqueue(op);
+  const ops = store.transaction(() => {
+    const queued = typeof build === 'function' ? build() : build;
+    for (const op of queued) store.enqueue(op);
+    return queued;
   });
   const opIds = ops.map((op) => op.opId);
   const flushed = await flushOwn(store, send, opIds, command);
@@ -763,10 +769,9 @@ function due(store: Store, today: string): Listed[] {
     tags: tagRows(store),
     links: links(store),
   };
-  const facts = statusFacts(statusRows(store));
-  const names = new Map(
-    liveStatuses(statusRows(store)).map((s) => [String(s.id), String(s.name)]),
-  );
+  const live = liveStatuses(statusRows(store));
+  const facts = statusFacts(live);
+  const names = new Map(live.map((s) => [String(s.id), String(s.name)]));
   const liveTagIds = new Set(liveTags(labelRows.tags).map((t) => String(t.id)));
   return liveTasks(all).flatMap((task) => {
     const taskId = String(task.id);
@@ -788,7 +793,7 @@ function due(store: Store, today: string): Listed[] {
       ref: shortRef(taskId),
       occurrence: current.occurrence,
       ...labelsOf(task, labelRows),
-      status: names.get(statusId ?? '') ?? null,
+      status: statusId === null ? null : (names.get(statusId) ?? null),
     };
     return [
       {

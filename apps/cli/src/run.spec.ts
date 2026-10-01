@@ -1,3 +1,6 @@
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Change, Op, SyncRequest } from '@todoer/specs';
 import { taskOccurrenceId, taskTagId } from '@todoer/specs';
@@ -810,9 +813,15 @@ describe('run', () => {
       const refused = run(['done', '0002'], d);
       await expect(refused).rejects.toThrow(RefusalError);
       await expect(refused).rejects.toThrow(/do not run done again/);
-      expect(d.store.entries().map((e) => e.status)).toEqual(
-        Array(5).fill('pending'),
-      ); // 3 status creates, set statusId, occurrence
+      expect(
+        d.store.entries().map((e) => [e.status, e.op.kind, e.op.table]),
+      ).toEqual([
+        ['pending', 'create', 'status'],
+        ['pending', 'create', 'status'],
+        ['pending', 'create', 'status'],
+        ['pending', 'set', 'task'],
+        ['pending', 'create', 'task_occurrence'],
+      ]);
     });
 
     it('queues a create of the derived task occurrence', async () => {
@@ -1718,6 +1727,86 @@ describe('login and logout', () => {
       expect(sets).toHaveLength(2);
       expect(sets[1]).toMatchObject({ value: creates[2]?.id });
       expect(sets[0]).toMatchObject({ value: creates[2]?.id });
+    });
+
+    it('sends no seed and no set when no status is completing', async () => {
+      const d = hexDeps(unreachable);
+      d.store.mergeChanges([
+        status('s-inbox', 'Inbox', 'a0'),
+        status('s-doing', 'Doing', 'a1'),
+        taskRow('t-000001', 'x', 's-doing'),
+      ]);
+      await run(['done', '000001'], d);
+      expect(d.store.pending().map((op) => `${op.kind} ${op.table}`)).toEqual([
+        'create task_occurrence',
+      ]);
+    });
+
+    it('moves a task to the lowest-id completing status when there are two', async () => {
+      const d = hexDeps(unreachable);
+      d.store.mergeChanges([
+        status('s-b-done', 'Done', 'a2', true),
+        status('s-a-done', 'Done 2', 'a3', true),
+        status('s-doing', 'Doing', 'a1'),
+        taskRow('t-000001', 'x', 's-b-done'),
+      ]);
+      await run(['done', '000001'], d);
+      expect(setStatusOps(d)).toMatchObject([
+        { id: 't-000001', value: 's-a-done' },
+      ]);
+    });
+
+    // Two processes cannot interleave inside one event loop, so the race is
+    // staged: the second Store commits the seed between the first one's
+    // command starting and its write transaction opening. The seed must be
+    // read inside that transaction, or both sets of creates land.
+    it('reads the statuses inside the write transaction, so a seed that landed meanwhile is not repeated', async () => {
+      const dir = mkdtempSync(join(tmpdir(), 'todoer-run-'));
+      try {
+        const [a, b] = [
+          Store.open(join(dir, 'todoer.db')),
+          Store.open(join(dir, 'todoer.db')),
+        ];
+        stores.push(a, b);
+        const d = hexDeps(unreachable);
+        d.store = a;
+        a.mergeChanges([taskRow('t-000001', 'x'), taskRow('t-000002', 'y')]);
+        const transaction = a.transaction.bind(a);
+        let raced = false;
+        a.transaction = ((fn: () => unknown) => {
+          if (!raced) {
+            raced = true;
+            b.transaction(() => {
+              for (const id of ['seed-1', 'seed-2', 'seed-3']) {
+                b.enqueue({
+                  opId: `op-${id}`,
+                  kind: 'create',
+                  table: 'status',
+                  id,
+                  fields: {
+                    name: id,
+                    rank: id,
+                    completing: id === 'seed-1',
+                  },
+                  ts: 'T',
+                });
+              }
+            });
+          }
+          return transaction(fn);
+        }) as typeof a.transaction;
+        await Promise.all([
+          run(['done', '000001'], d),
+          run(['done', '000002'], d),
+        ]);
+        const creates = a.pending().filter((op) => op.table === 'status');
+        expect(creates).toHaveLength(3);
+        expect(
+          setStatusOps(d).map((op) => (op as { value: unknown }).value),
+        ).toEqual(['seed-1', 'seed-1']);
+      } finally {
+        rmSync(dir, { recursive: true, force: true });
+      }
     });
 
     it('sends no set when the task already sits at the completing status', async () => {
