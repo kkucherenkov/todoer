@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Change, Op, SyncRequest } from '@todoer/specs';
 import { taskOccurrenceId, taskTagId } from '@todoer/specs';
 import { RefusalError, UsageError } from './protocol.js';
@@ -248,6 +248,80 @@ describe('run', () => {
           { title: 'call the bank', project: 'finance', tags: ['@phone'] },
         ],
       });
+    });
+
+    /** Seeds one live task with an optional project and attached tags, as a server would hand them over. */
+    function seed(d: Deps, opts: { project?: string; tags?: string[] }) {
+      const row = (
+        table: string,
+        id: string,
+        fields: Record<string, unknown>,
+      ) => ({
+        table,
+        id,
+        seq: 1,
+        row: { id, deletedAt: null, ...fields },
+      });
+      d.store.mergeChanges([
+        ...(opts.project === undefined
+          ? []
+          : [row('project', 'p1', { name: opts.project })]),
+        row('task', 't1', {
+          title: 'seeded',
+          priority: 0,
+          rrule: null,
+          dtstart: null,
+          parentId: null,
+          projectId: opts.project === undefined ? null : 'p1',
+        }),
+        ...(opts.tags ?? []).flatMap((name, i) => [
+          row('tag', `g${i}`, { name }),
+          row('task_tag', `l${i}`, { taskId: 't1', tagId: `g${i}` }),
+        ]),
+      ]);
+    }
+
+    it('matches a tag by name key but prints its stored spelling', async () => {
+      const d = deps(unreachable);
+      seed(d, { tags: ['@Phone'] });
+      expect((await run(['list', '@phone'], d)).stdout).toEqual([
+        't1  0  seeded  @Phone',
+      ]);
+    });
+
+    it('matches a project by name key, case and Unicode form', async () => {
+      const d = deps(unreachable);
+      seed(d, { project: 'Fina\u0301nce' });
+      expect((await run(['list', '#finance'], d)).stdout).toEqual([]);
+      expect((await run(['list', '#fin\u00e1nce'], d)).stdout).toEqual([
+        't1  0  seeded  #Fina\u0301nce',
+      ]);
+      expect((await run(['list', '#FIN\u00c1NCE'], d)).stdout).toEqual([
+        't1  0  seeded  #Fina\u0301nce',
+      ]);
+    });
+
+    it('matches a tag across Unicode forms', async () => {
+      const d = deps(unreachable);
+      seed(d, { tags: ['@cafe\u0301'] });
+      expect((await run(['list', '@caf\u00e9'], d)).stdout).toEqual([
+        't1  0  seeded  @cafe\u0301',
+      ]);
+      // U+1FD3 is a letter whose canonical form is U+0390; a combining accent is not a TAG character.
+      const e = deps(unreachable);
+      seed(e, { tags: ['@\u0390'] });
+      expect((await run(['list', '@\u1fd3'], e)).stdout).toEqual([
+        't1  0  seeded  @\u0390',
+      ]);
+    });
+
+    it('validates arguments before sending anything', async () => {
+      const send = vi.fn(unreachable);
+      const d = deps(send);
+      await run(['add', 'queued'], d);
+      send.mockClear();
+      await expect(run(['list', 'phone'], d)).rejects.toThrow(UsageError);
+      expect(send).not.toHaveBeenCalled();
     });
 
     it('refuses a list argument that is not a marker', async () => {
