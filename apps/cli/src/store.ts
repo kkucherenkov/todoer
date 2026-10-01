@@ -40,6 +40,10 @@ const SCHEMA = `
     reason          TEXT,
     current_version INTEGER
   );
+  CREATE TABLE IF NOT EXISTS owner (
+    id      INTEGER PRIMARY KEY CHECK (id = 1),
+    user_id TEXT    NOT NULL
+  );
   CREATE TABLE IF NOT EXISTS auth (
     id                INTEGER PRIMARY KEY CHECK (id = 1),
     access_token      TEXT    NOT NULL,
@@ -269,6 +273,23 @@ export class Store {
     this.db.exec('DELETE FROM auth');
   }
 
+  /** The user the replica and cursor belong to; unset until a login records it. */
+  owner(): string | undefined {
+    const row = this.db
+      .prepare('SELECT user_id FROM owner WHERE id = 1')
+      .get() as unknown as { user_id: string } | undefined;
+    return row?.user_id;
+  }
+
+  setOwner(userId: string): void {
+    this.db
+      .prepare(
+        `INSERT INTO owner (id, user_id) VALUES (1, ?)
+         ON CONFLICT (id) DO UPDATE SET user_id = excluded.user_id`,
+      )
+      .run(userId);
+  }
+
   cursor(): number {
     const row = this.db
       .prepare("SELECT value FROM meta WHERE key = 'cursor'")
@@ -411,15 +432,18 @@ export class Store {
     return rows.map((row) => JSON.parse(row.row) as Row);
   }
 
-  /** After a 410: the replica is unrecoverable, the outbox is not (ADR 0013). */
+  /** After a 410, or a login as another user: the replica is unrecoverable
+   *  or foreign, the outbox is not (ADR 0013). Joins a surrounding write lock. */
   resetReplica(): void {
-    this.transaction(() => {
+    const reset = () => {
       this.db.exec('DELETE FROM rows');
       this.db.exec(
         `INSERT INTO meta (key, value) VALUES ('cursor', 0)
          ON CONFLICT (key) DO UPDATE SET value = 0`,
       );
-    });
+    };
+    if (this.db.isTransaction) reset();
+    else this.transaction(reset);
   }
 
   /**

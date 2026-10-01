@@ -130,6 +130,41 @@ type Due = Row & {
   tags: string[];
 };
 
+/** The `sub` claim of an access token (base64url(JSON) + '.' + mac). Read, not
+ *  verified: the server verifies it, this only names whose replica it is. */
+function subject(token: string): string | undefined {
+  try {
+    const claims = JSON.parse(
+      Buffer.from(token.split('.')[0] ?? '', 'base64url').toString(),
+    ) as { sub?: unknown };
+    return typeof claims.sub === 'string' ? claims.sub : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * The replica, cursor and outbox belong to one account: `change_seq` is
+ * global, so another account's cursor would skip its rows, and queued
+ * operations would be delivered to the wrong user. Signing in as someone else
+ * drops the replica, but never operations nobody has delivered.
+ */
+function adoptAccount(store: Store, accessToken: string): void {
+  const user = subject(accessToken);
+  if (user === undefined) return;
+  const owner = store.owner();
+  if (owner !== undefined && owner !== user) {
+    const { pending, failed } = store.counts();
+    if (pending + failed > 0) {
+      throw new RefusalError(
+        `${pending + failed} queued operation(s) belong to the previous account: sign back in as it to deliver them`,
+      );
+    }
+    store.resetReplica();
+  }
+  store.setOwner(user);
+}
+
 /**
  * Every command: flush the outbox and pull first (design doc, Q5), then
  * answer from the replica with the outbox applied on top. Exit 5 whenever
@@ -153,7 +188,11 @@ export async function run(argv: string[], deps: Deps): Promise<Outcome> {
       throw new UsageError('login needs exactly one email');
     }
     const session = await deps.auth.login(email, await deps.readPassword());
-    await store.withWriteLock(() => Promise.resolve(store.saveAuth(session)));
+    await store.withWriteLock(() => {
+      adoptAccount(store, session.accessToken);
+      store.saveAuth(session);
+      return Promise.resolve();
+    });
     return accountOutcome(
       store,
       json,

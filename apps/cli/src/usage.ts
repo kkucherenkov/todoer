@@ -25,7 +25,9 @@ usage:
   todoer outbox drop <op-id>... [--json]  forget failed operations
   todoer login <email> [--json]           sign in; the password comes from
                                           TODOER_PASSWORD, a pipe on stdin, or
-                                          a prompt on a terminal
+                                          a prompt on a terminal; refused
+                                          for another account while
+                                          operations are queued
   todoer logout [--all] [--json]          sign out (--all: every session);
                                           the local tokens go even when the
                                           server cannot be reached (exit 5)

@@ -1294,6 +1294,78 @@ describe('login and logout', () => {
     );
   });
 
+  describe('switching accounts in one store', () => {
+    const tokenFor = (sub: string): typeof SESSION => ({
+      ...SESSION,
+      accessToken: `${Buffer.from(JSON.stringify({ sub, exp: 1 })).toString('base64url')}.mac`,
+    });
+    const loginAs = (d: Deps, sub: string) => {
+      useAuth(d, fakeAuth({ login: () => Promise.resolve(tokenFor(sub)) }).api);
+      return run(['login', `${sub}@b.c`], d);
+    };
+    const seedReplica = (d: Deps) =>
+      d.store.mergeChanges([
+        {
+          table: 'task',
+          id: 't1',
+          seq: 5,
+          row: {
+            id: 't1',
+            deletedAt: null,
+            title: 'owners',
+            priority: 0,
+            rrule: null,
+            dtstart: null,
+            parentId: null,
+            projectId: null,
+          },
+        },
+      ]);
+    const queue = (d: Deps) =>
+      d.store.enqueue({ opId: 'op-1', kind: 'create' } as unknown as Op);
+
+    it('refuses a different user while operations are queued, and keeps the old session', async () => {
+      const d = deps(never);
+      await loginAs(d, 'owner');
+      seedReplica(d);
+      queue(d);
+      await run(['logout'], d);
+      await expect(loginAs(d, 'b')).rejects.toThrow(
+        /1 queued operation.*previous account/,
+      );
+      expect(d.store.auth()).toBeUndefined();
+      expect(d.store.rows('task')).toHaveLength(1);
+      expect(d.store.counts()).toEqual({ pending: 1, failed: 0 });
+      await loginAs(d, 'owner');
+      expect(d.store.auth()).toEqual(tokenFor('owner'));
+    });
+
+    it('resets the replica and cursor for a different user with an empty outbox', async () => {
+      const d = deps(never);
+      await loginAs(d, 'owner');
+      seedReplica(d);
+      d.store.advanceCursor(5);
+      await run(['logout'], d);
+      await loginAs(d, 'b');
+      expect(d.store.rows('task')).toEqual([]);
+      expect(d.store.cursor()).toBe(0);
+      expect(d.store.auth()).toEqual(tokenFor('b'));
+    });
+
+    it('keeps the replica when the same user signs back in', async () => {
+      const d = deps(never);
+      await loginAs(d, 'owner');
+      seedReplica(d);
+      d.store.advanceCursor(5);
+      queue(d);
+      await run(['logout'], d);
+      await loginAs(d, 'owner');
+      expect(d.store.rows('task')).toHaveLength(1);
+      expect(d.store.cursor()).toBe(5);
+      expect(d.store.counts().pending).toBe(1);
+    });
+  });
+
   it('logout sends the stored refresh token and clears the session', async () => {
     const d = deps(never);
     const { api, calls } = fakeAuth();
