@@ -13,7 +13,7 @@ import { Prisma } from '@prisma/client';
 import { uuidv7 } from 'uuidv7';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { AuthGuard, CurrentUser } from './auth.guard.js';
-import { AuthService } from './auth.service.js';
+import { AuthService, normalizeEmail } from './auth.service.js';
 import { passwordProblem } from './password-policy.js';
 import { RateLimiter, TooManyRequests } from './rate-limit.js';
 import {
@@ -56,24 +56,22 @@ export class AuthController {
     @Req() req: Client,
   ): Promise<SessionTokens> {
     const ip = req.ip ?? 'unknown';
-    const address = body.email.trim().toLowerCase();
+    const address = normalizeEmail(body.email);
     const now = Date.now();
     AuthController.check(
       now,
       [this.loginByAddress, address],
       [this.loginByIp, ip],
     );
-    try {
-      const { userId } = await this.auth.login(body.email, body.password);
-      this.loginByAddress.clear(address);
-      return await this.sessions.start(userId);
-    } catch (error) {
-      if (error instanceof UnauthorizedException) {
-        this.loginByAddress.fail(address, now);
-        this.loginByIp.fail(ip, now);
-      }
-      throw error;
-    }
+    // Reserved before the work: scrypt is slow, so a burst of parallel
+    // requests would otherwise all pass the check above before any failure
+    // is recorded. Only the address key is released on success; the IP key
+    // keeps counting every attempt.
+    this.loginByAddress.fail(address, now);
+    this.loginByIp.fail(ip, now);
+    const { userId } = await this.auth.login(body.email, body.password);
+    this.loginByAddress.clear(address);
+    return this.sessions.start(userId);
   }
 
   @Post('refresh')
@@ -85,13 +83,10 @@ export class AuthController {
     const ip = req.ip ?? 'unknown';
     const now = Date.now();
     AuthController.check(now, [this.refreshByIp, ip]);
-    try {
-      return await this.sessions.refresh(body.refreshToken);
-    } catch (error) {
-      if (error instanceof UnauthorizedException)
-        this.refreshByIp.fail(ip, now);
-      throw error;
-    }
+    // Reserved up front, like login; successes keep counting toward the IP
+    // budget (30 per window), which a legitimate client stays well under.
+    this.refreshByIp.fail(ip, now);
+    return this.sessions.refresh(body.refreshToken);
   }
 
   @Post('logout')

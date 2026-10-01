@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { uuidv7 } from 'uuidv7';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { AppConfig } from '../config/app-config.js';
@@ -23,6 +23,7 @@ const login = (email = 'a@b.c', password = PASSWORD, r = req) =>
   controller.login({ email, password }, r);
 
 beforeEach(async () => {
+  vi.restoreAllMocks();
   await prisma.session.deleteMany({});
   await prisma.invitation.deleteMany({});
   await prisma.resetCode.deleteMany({});
@@ -52,10 +53,45 @@ describe('login and refresh', () => {
 });
 
 describe('rate limits', () => {
-  it('blocks the sixth login for an address, even with the right password', async () => {
+  it('blocks the sixth login with 429 whatever the password, without checking it', async () => {
     for (let i = 0; i < 5; i++)
       await expect(login('a@b.c', 'wrong-pass1!')).rejects.toThrow();
+    const spy = vi.spyOn(auth, 'login');
     await expect(login()).rejects.toBeInstanceOf(TooManyRequests);
+    await expect(login('a@b.c', 'wrong-pass1!')).rejects.toBeInstanceOf(
+      TooManyRequests,
+    );
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it('holds against a burst of parallel wrong passwords', async () => {
+    const spy = vi.spyOn(auth, 'login');
+    const results = await Promise.allSettled(
+      Array.from({ length: 10 }, () => login('a@b.c', 'wrong-pass1!')),
+    );
+    expect(spy.mock.calls.length).toBeLessThanOrEqual(5);
+    const blocked = results.filter(
+      (r) => r.status === 'rejected' && r.reason instanceof TooManyRequests,
+    );
+    expect(blocked).toHaveLength(5);
+  });
+
+  it('counts an address regardless of case and padding', async () => {
+    for (let i = 0; i < 5; i++)
+      await expect(login('A@b.c', 'wrong-pass1!')).rejects.toThrow();
+    await expect(login(' a@b.c ')).rejects.toBeInstanceOf(TooManyRequests);
+  });
+
+  it('a success clears the address key but not the IP key', async () => {
+    for (let i = 0; i < 19; i++) {
+      await expect(
+        login(`n${String(i)}@b.c`, 'wrong-pass1!'),
+      ).rejects.toThrow();
+    }
+    await login();
+    await expect(login('a@b.c', 'wrong-pass1!')).rejects.toBeInstanceOf(
+      TooManyRequests,
+    );
   });
 
   it('does not block another address from the same IP', async () => {

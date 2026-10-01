@@ -33,7 +33,7 @@ const DUMMY_HASH = '0'.repeat(KEY_LEN * 2);
 const INVALID_CREDENTIALS = 'invalid credentials';
 const INVALID_TOKEN = 'invalid token';
 
-function normalizeEmail(email: string): string {
+export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();
 }
 
@@ -92,22 +92,13 @@ export class AuthService {
     // Unknown address: still pay for one scrypt call, against a fixed dummy
     // salt, so this branch costs the same as a known address with a wrong
     // password. See DUMMY_SALT/DUMMY_HASH above.
-    const [salt, expected] =
-      user !== null ? user.passwordHash.split(':') : [DUMMY_SALT, DUMMY_HASH];
-    if (salt === undefined || expected === undefined) throw failure;
-
-    const actual = ((await scrypt(password, salt, KEY_LEN)) as Buffer).toString(
-      'hex',
-    );
-    const a = Buffer.from(actual, 'hex');
-    const b = Buffer.from(expected, 'hex');
     // hashesMatch is computed as its own statement, unconditionally, before
-    // the null check below — not folded into one `||` chain — so an unknown
-    // address still runs timingSafeEqual instead of short-circuiting past
-    // it. The gap this closes is nanoseconds against scrypt's ~80ms, but
-    // it's the same asymmetry C1 was about: user === null must not be a
-    // branch that skips work a known-but-wrong-password login always does.
-    const hashesMatch = a.length === b.length && timingSafeEqual(a, b);
+    // the null check below, so an unknown address never short-circuits past
+    // the comparison (see matches()).
+    const hashesMatch = await this.matches(
+      user?.passwordHash ?? `${DUMMY_SALT}:${DUMMY_HASH}`,
+      password,
+    );
     if (user === null || !hashesMatch) throw failure;
 
     return { userId: user.id };
