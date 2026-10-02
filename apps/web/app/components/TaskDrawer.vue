@@ -23,6 +23,14 @@ const readonly = computed(
   () => !!task.value?.rrule && task.value.occurrence === null,
 );
 const recurring = computed(() => !!task.value?.rrule);
+/** The occurrence this task is a moved copy of; null for any other task. */
+const movedFrom = computed(() => {
+  const k = task.value;
+  return typeof k?.originTaskId === 'string' &&
+    typeof k.originOccurrence === 'string'
+    ? k.originOccurrence
+    : null;
+});
 
 // What the server holds, as the fields show it.
 const server = computed(() => {
@@ -73,11 +81,23 @@ const off = router.beforeEach(() => {
 onScopeDispose(off);
 
 // Deleted elsewhere while open: close, and say so.
+const returning = ref(false);
 watch(task, (now, before) => {
-  if (now !== null || !before) return;
+  if (now !== null || !before || returning.value) return;
   toast.add({ title: t('drawer.gone') });
   void close();
 });
+
+/** The copy is deleted and its occurrence reopened, so the drawer has
+ *  nothing left to show; a refusal stays here with its reason. */
+async function returnToSeries() {
+  if (id.value === null) return;
+  returning.value = true;
+  const result = await db.write({ kind: 'undoMove', taskId: id.value });
+  returning.value = false;
+  if (result.ok) void close();
+  else fail(result);
+}
 
 const same = (a: unknown, b: unknown) =>
   JSON.stringify(a) === JSON.stringify(b);
@@ -194,6 +214,23 @@ const dates = [
         <p v-if="readonly" role="status" class="text-sm text-muted">
           {{ $t('drawer.ended') }}
         </p>
+        <div
+          v-if="movedFrom"
+          class="flex flex-wrap items-center gap-2 text-sm"
+          data-testid="moved-from"
+        >
+          <span class="text-muted">
+            {{ $t('drawer.movedFrom', { date: movedFrom }) }}
+          </span>
+          <UButton
+            variant="outline"
+            color="neutral"
+            size="sm"
+            @click="returnToSeries"
+          >
+            {{ $t('drawer.returnToSeries') }}
+          </UButton>
+        </div>
         <UFormField :label="$t('drawer.titleField')">
           <UInput
             v-model="draft.title"

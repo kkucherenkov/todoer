@@ -7,9 +7,12 @@ const props = defineProps<{
   items: Item[];
   placements: Placement[];
 }>();
+const db = useDb();
 const route = useRoute();
 const router = useRouter();
-const { locale } = useI18n();
+const toast = useToast();
+const fail = useFail();
+const { t, locale } = useI18n();
 
 const state = computed(() => fromQuery(route.query, props.today));
 const want = computed(() => gridSpan(state.value.mode, state.value.at));
@@ -52,6 +55,44 @@ const byDate = computed(() => {
   }
   return map;
 });
+const short = computed(() => utc({ day: 'numeric', month: 'short' }));
+
+/** Drag, menu and dialog end here: one write, minted once; the toast's Undo
+ *  sends the inverse with a fresh `opId` (the copy's id comes from `minted`). */
+async function move(p: Placement, to: string) {
+  const item = items.value.get(p.taskId);
+  const plan = item && placeWrite(p, item, to);
+  if (!plan) return;
+  const minted = db.mint(plan.write);
+  const result = await db.write(minted);
+  if (!result.ok) return fail(result);
+  const fmt = (date: string) => short.value.format(at(date));
+  toast.add({
+    title:
+      p.occurrence === null
+        ? t('calendar.moved', { to: fmt(to) })
+        : t('calendar.movedOccurrence', {
+            from: fmt(p.occurrence),
+            to: fmt(to),
+          }),
+    description: String(item.title),
+    actions: [
+      {
+        label: t('list.undo'),
+        onClick: async () => {
+          const undone = await db.write(
+            plan.undo(minted as Parameters<typeof plan.undo>[0]),
+          );
+          if (!undone.ok) fail(undone);
+        },
+      },
+    ],
+  });
+}
+
+const { over, chipEvents, dayEvents } = useDayDrag((p, to) => void move(p, to));
+const moving = ref<Placement | null>(null);
+
 const month = computed(() => state.value.at.slice(0, 7));
 const open = (taskId: string) =>
   router.push({ query: { ...route.query, task: taskId } });
@@ -119,10 +160,19 @@ const open = (taskId: string) =>
           :limit="state.mode === 'month' ? 3 : null"
           :placements="byDate.get(d) ?? []"
           :items="items"
+          :over="over === d"
+          :chip-events="chipEvents"
+          v-bind="dayEvents(d)"
           @open="open"
+          @move="moving = $event"
           @more="go('week', d)"
         />
       </div>
     </template>
+    <MoveDateDialog
+      :placement="moving"
+      @close="moving = null"
+      @move="(p, to) => void move(p, to)"
+    />
   </div>
 </template>

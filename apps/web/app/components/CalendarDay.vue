@@ -10,8 +10,15 @@ const props = defineProps<{
   limit: number | null;
   placements: Placement[];
   items: Map<string, Item>;
+  /** A placement is being dragged over this day. */
+  over: boolean;
+  chipEvents: (p: Placement) => Record<string, unknown>;
 }>();
-const emit = defineEmits<{ open: [taskId: string]; more: [] }>();
+const emit = defineEmits<{
+  open: [taskId: string];
+  move: [p: Placement];
+  more: [];
+}>();
 
 const shown = computed(() =>
   props.limit === null
@@ -28,6 +35,7 @@ const day = computed(() => Number(props.date.slice(8)));
     class="flex min-h-24 min-w-0 flex-col gap-1 rounded-md border border-default p-1"
     :class="[
       today && 'ring-2 ring-primary',
+      over && 'bg-primary/10',
       muted && 'bg-elevated/50 text-muted',
     ]"
     :aria-label="label"
@@ -46,7 +54,9 @@ const day = computed(() => Number(props.date.slice(8)));
         v-if="items.get(p.taskId)"
         :placement="p"
         :item="items.get(p.taskId)!"
+        v-bind="chipEvents(p)"
         @open="emit('open', p.taskId)"
+        @move="emit('move', p)"
       />
     </template>
     <UButton

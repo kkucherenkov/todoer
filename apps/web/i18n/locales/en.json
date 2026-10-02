@@ -88,7 +88,9 @@
     "ended": "This series has ended; the task is read-only.",
     "invalidDate": "Use a date, YYYY-MM-DD.",
     "gone": "The task was deleted",
-    "notFound": "This task no longer exists."
+    "notFound": "This task no longer exists.",
+    "movedFrom": "Moved from {date}",
+    "returnToSeries": "Return to series"
   },
   "kanban": {
     "columns": "Columns",
@@ -153,6 +155,14 @@
     "today": "Today",
     "week": "Week",
     "month": "Month",
-    "more": "+{n} more"
+    "more": "+{n} more",
+    "open": "Open",
+    "actions": "Placement actions",
+    "moveTo": "Move to date…",
+    "moveDescription": "Pick the day to move this task to.",
+    "date": "Date",
+    "move": "Move",
+    "moved": "Moved to {to}",
+    "movedOccurrence": "{from} moved to {to}"
   }
 }

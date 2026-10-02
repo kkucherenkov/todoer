@@ -178,7 +178,7 @@ answers, and can be done from the keyboard and on a touch screen.
 - **Checkpoint:** every calendar read and write exists behind the protocol.
 - [x] T005 [P] [FR-007, FR-008] Grid date math, placement writes — plan Task 5 — `apps/web/app/utils/calendar.ts`
 - [x] T006 [FR-007, FR-012] Calendar layout and navigation — plan Task 6 — `apps/web/app/components/CalendarView.vue`
-- [ ] T007 [FR-008, FR-009, FR-012] Drag, "Move to date…", Undo, drawer — plan Task 7 — `apps/web/app/components/`, `apps/web/e2e/`
+- [x] T007 [FR-008, FR-009, FR-012] Drag, "Move to date…", Undo, drawer — plan Task 7 — `apps/web/app/components/`, `apps/web/e2e/`
 - **Checkpoint:** the calendar is proven in Chromium and Firefox under the CSP.
 - [ ] T008 [P] [FR-010] Filter tree edit helpers — plan Task 8 — `apps/web/app/utils/filterTree.ts`
 - [ ] T009 [FR-011, FR-012] Filter-tree editor in the view form — plan Task 9 — `apps/web/app/components/FilterTree.vue`
