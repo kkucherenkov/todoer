@@ -2,7 +2,7 @@
 
 - Created: 2026-10-02
 - Owner: claude
-- Status: in-progress
+- Status: done
 - Blockers: —
 - Spec: maintainer request, 2026-10-02 — an Open Design kit for the web
   client's redesign: calm, dense working tool, neutral grey with one accent,
@@ -10,6 +10,8 @@
   `docs/specs/2026-10-01-client-shells-design.md` ("Visual design": Nuxt UI
   components, theme changed through tokens only)
 - Plan: none; the steps below are the whole change
+- Completed: 2026-10-02
+- Result: https://github.com/kkucherenkov/todoer/pull/23
 
 ### Goal
 
@@ -82,27 +84,29 @@ local Open Design checkout. It changes no application code.
   `tools/open-design/design-systems/todoer/`, and the daemon's listing code
   reads them on each request
 - [x] every FR has a test that failed before the code made it pass —
-      documentation only; checked instead by the contrast script's output
-      (FR-006) and by reading the daemon's discovery code (FR-005)
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+      documentation only; checked instead by a WCAG contrast script over
+      Tailwind 4's oklch palette (FR-006) and by running the daemon's own
+      `listDesignSystems` and `listSkills` on the installed files, which
+      return `todoer` and `todoer-repo-bundle` (mode prototype) (FR-005)
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 
-- [ ] T001 [FR-001, FR-002] Record the current token surface: `nuxt.config.ts`,
+- [x] T001 [FR-001, FR-002] Record the current token surface: `nuxt.config.ts`,
       `main.css`, no `app.config.ts`, Nuxt UI 4.11.3 defaults — `apps/web`
-- [ ] T002 [FR-001, FR-002, FR-006] Write the design system and its compiled
+- [x] T002 [FR-001, FR-002, FR-006] Write the design system and its compiled
       tokens — `docs/design/DESIGN.md`, `docs/design/tokens.css`
-- [ ] T003 [FR-004] Collect the selectors, roles, labels and classes the e2e
+- [x] T003 [FR-004] Collect the selectors, roles, labels and classes the e2e
       suite reads — `apps/web/e2e/*.spec.ts`, W5's `editing.spec.ts`
-- [ ] T004 [FR-003, FR-004, FR-005] Write the Open Design README —
+- [x] T004 [FR-003, FR-004, FR-005] Write the Open Design README —
       `docs/design/open-design/README.md`
-- [ ] T005 [FR-005] Install the skill and the design system package —
+- [x] T005 [FR-005] Install the skill and the design system package —
       `tools/open-design/skills/todoer-repo-bundle/SKILL.md`,
       `tools/open-design/design-systems/todoer/`
-- [ ] T006 [FR-003] Point the README's layout table at `docs/design/` —
+- [x] T006 [FR-003] Point the README's layout table at `docs/design/` —
       `README.md`
 - **Checkpoint:** the kit is in the repository, the tool sees it, Prettier
   passes
