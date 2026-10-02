@@ -1076,7 +1076,6 @@ export function calendarTasks(
         put(item.scheduledOn, 'scheduled', null, item.closed);
       if (inSpan(item.dueOn)) put(item.dueOn, 'due', null, item.closed);
     } else {
-      const state = stateOf(marks, taskId);
       // The lower bound is a cost, not a behaviour: expand walks from
       // dtstart either way, and an earlier open occurrence is dropped below.
       for (const date of expand(
@@ -1085,12 +1084,13 @@ export function calendarTasks(
         span.from,
         span.to,
       )) {
-        const s = state(date);
-        if (s === 'skipped') continue;
-        if (s === 'done') {
+        const mark = marks.find(
+          (m) => m.taskId === taskId && (m.occurrence ?? null) === date,
+        );
+        if (mark?.state === 'skipped') continue;
+        if (mark?.state === 'done') {
           const at = (
-            marks.find((m) => m.taskId === taskId && m.occurrence === date)
-              ?.fieldTs as Record<string, string> | undefined
+            mark.fieldTs as Record<string, string> | undefined
           )?.state?.slice(0, 10);
           if (at === undefined || at >= since)
             put(date, 'scheduled', date, true);
@@ -1644,7 +1644,9 @@ export async function undoMove(
   if (liveTasks(all).some((t) => t.parentId === copyId)) {
     throw new UsageError(`task ${copyId} has subtasks`);
   }
-  liveTask(all, originTaskId);
+  if (!liveTasks(all).some((t) => t.id === originTaskId)) {
+    throw new UsageError(`the original task of ${copyId} is gone`);
+  }
   const ts = core.now().toISOString();
   const reopen: OpCreate[] =
     stateOf(occurrences(store), originTaskId)(originOccurrence) === 'skipped'

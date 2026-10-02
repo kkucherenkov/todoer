@@ -1532,6 +1532,19 @@ describe('moveOccurrence and undoMove', () => {
     expect(store.pending().map((o) => o.kind)).toEqual(['delete']);
   });
 
+  it('never reopens an occurrence that is done by the time of the undo', async () => {
+    const { store, core } = moved();
+    put(store, 'task_occurrence', {
+      id: taskOccurrenceId('d', FROM),
+      taskId: 'd',
+      occurrence: FROM,
+      state: 'done',
+      completedAt: '2026-10-08T09:00:00.000Z',
+    });
+    await undoMove(core, mint('u1'), 'c');
+    expect(store.pending().map((o) => o.kind)).toEqual(['delete']);
+  });
+
   it("still reopens after the original's rule stopped producing the date", async () => {
     const { store, core } = moved();
     put(store, 'task', daily({ rrule: 'FREQ=WEEKLY;BYDAY=MO' }));
@@ -1564,7 +1577,7 @@ describe('moveOccurrence and undoMove', () => {
 
     const gone = moved();
     put(gone.store, 'task', daily({ deletedAt: '2026-10-01' }));
-    await refusedUndo(gone.core, /no task d/);
+    await refusedUndo(gone.core, /original task of c is gone/);
   });
 
   it('replays an applied undo as ok, queuing nothing', async () => {
