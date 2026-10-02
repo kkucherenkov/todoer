@@ -412,6 +412,27 @@ describe('replay guard', () => {
     expect(store.pending().map((o) => o.opId)).toEqual(['o1']);
   });
 
+  it('writes the claim inside the enqueue transaction, so a crash after commit loses neither', async () => {
+    const store = openStore(':memory:');
+    const srv = fakeServer();
+    srv.state.offline = true;
+    const real = store.transaction.bind(store);
+    let crash = true;
+    store.transaction = ((fn) => {
+      const result = real(fn);
+      if (crash) {
+        crash = false;
+        throw new Error('crash after commit');
+      }
+      return result;
+    }) as typeof store.transaction;
+    await expect(submit(store, srv.send, [op], 'x', 'k1')).rejects.toThrow(
+      'crash after commit',
+    );
+    await submit(store, srv.send, [op], 'x', 'k1');
+    expect(store.pending().map((o) => o.opId)).toEqual(['o1']);
+  });
+
   it('writes the claim only when the ops are queued with it', () => {
     const store = openStore(':memory:');
     const srv = fakeServer();
@@ -479,6 +500,20 @@ describe('replay guard', () => {
     const again = await mark(core, 'undo', 'abcd0001', undefined, mint('u1'));
     expect(again.synced).toBe(true);
     expect(srv.sent).toHaveLength(1);
+  });
+
+  it('flushes a replayed mark whose task was deleted since, instead of "no task"', async () => {
+    const store = openStore(':memory:');
+    const srv = fakeServer();
+    srv.state.offline = true;
+    const core = coreOf(store, srv.send);
+    put(store, 'task', task('abcd0001'));
+    await mark(core, 'done', 'abcd0001', undefined, mint('d1'));
+    put(store, 'task', task('abcd0001', { deletedAt: '2026-10-02' }));
+    srv.state.offline = false;
+    const again = await mark(core, 'done', 'abcd0001', undefined, mint('d1'));
+    expect(again.synced).toBe(true);
+    expect(store.pending()).toEqual([]);
   });
 });
 
@@ -642,6 +677,24 @@ describe('moveTask', () => {
     expect(sets(store, 'statusId')).toEqual([['a', 's2']]);
   });
 
+  it('treats moving a skipped one-off into the completing column as a rank move', async () => {
+    const { store, core } = offline([
+      ['task', task('a', { statusId: DONE })],
+      [
+        'task_occurrence',
+        { id: 'a-occ', taskId: 'a', occurrence: null, state: 'skipped' },
+      ],
+    ]);
+    const result = await moveTask(core, mint('m1'), 'a', {
+      statusId: DONE,
+      ranks: [{ id: 'a', rank: 'a3' }],
+    });
+    expect(result.marked).toBeNull();
+    expect(occurrenceOps(store)).toEqual([]);
+    expect(sets(store, 'statusId')).toEqual([]);
+    expect(sets(store, 'rank')).toEqual([['a', 'a3']]);
+  });
+
   it('moves between plain statuses with one set, plus the rank writes', async () => {
     const { store, core } = offline([
       ['task', task('a')],
@@ -655,6 +708,7 @@ describe('moveTask', () => {
       ],
     });
     expect(result.marked).toBeNull();
+    expect(store.pending()[0]?.opId).toBe('m1');
     expect(sets(store, 'statusId')).toEqual([['a', 's2']]);
     expect(sets(store, 'rank')).toEqual([
       ['a', 'a1'],

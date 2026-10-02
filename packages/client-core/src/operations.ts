@@ -97,11 +97,12 @@ export async function submit(
   build: Op[] | (() => Op[]),
   command: string,
   key?: string,
+  nowMs: number = Date.now(),
 ): Promise<boolean> {
   const ops = store.transaction(() => {
     if (key !== undefined) {
       if (store.seen(key)) return [];
-      store.claim(key, Date.now());
+      store.claim(key, nowMs);
     }
     const queued = typeof build === 'function' ? build() : build;
     for (const op of queued) store.enqueue(op);
@@ -547,6 +548,7 @@ export async function add(
     [...labels.creates, op, ...linkOps],
     'add',
     minted?.opId,
+    core.now().getTime(),
   );
   const task = tasks(store).find((row) => row.id === op.id) ?? null;
   return { synced, title, created: labels.created, task };
@@ -626,10 +628,16 @@ export async function mark(
   // Resolved against what this client can see, before anything is sent:
   // like every write, a mark works offline.
   const all = tasks(store);
-  const task = resolveRef(liveTasks(all), ref);
   if (minted !== undefined && store.seen(minted.opId)) {
-    // Before pickOccurrence: an undo that already landed has nothing left to
-    // undo. What can be read back is the op if it is still queued.
+    // Before resolving the ref and pickOccurrence: the task may be deleted
+    // since, and an undo that already landed has nothing left to undo. What
+    // can be read back is the op if it is still queued.
+    let task: Row = { id: ref };
+    try {
+      task = resolveRef(all, ref);
+    } catch {
+      // pruned: the resend only flushes, the caller keeps its own ref
+    }
     const queued = store.entry(minted.opId)?.op;
     const { synced } = await flush(store, send);
     return {
@@ -646,6 +654,7 @@ export async function mark(
           : (occurrences(store).find((row) => row.id === queued.id) ?? null),
     };
   }
+  const task = resolveRef(liveTasks(all), ref);
   const plan = planMark(core, command, task, all, on, minted?.opId);
   const { occurrence, closed, op } = plan;
   const synced =
@@ -657,6 +666,7 @@ export async function mark(
           () => [...plan.statusWrites(), op],
           command,
           minted?.opId,
+          core.now().getTime(),
         );
   const marked = occurrences(store).find((row) => row.id === op.id) ?? null;
   return { synced, task, occurrence, closed, marked };
@@ -808,7 +818,16 @@ export async function editTask(
     .filter(([field, value]) => (task[field] ?? null) !== value)
     .map(([field, value]) => setTask(task, field, value, core.newId, ts));
   const ops = withFirstId([...creates, ...setOps, ...linkOps], minted.opId);
-  return { synced: await submit(store, send, ops, 'edit', minted.opId) };
+  return {
+    synced: await submit(
+      store,
+      send,
+      ops,
+      'edit',
+      minted.opId,
+      core.now().getTime(),
+    ),
+  };
 }
 
 /**
@@ -850,13 +869,13 @@ export async function moveTask(
     statusId !== undefined &&
     statusId !== null &&
     (live.length === 0 || statusId === completingStatus(live));
-  const reopen =
-    statusId !== undefined &&
-    !intoDone &&
+  // Already closed (done or skipped), the card's column is all that moves.
+  const closedOneOff =
     recurrenceOf(task, parentOf(all, task)) === null &&
     isClosed(stateOf(occurrences(store), taskId)(null));
+  const reopen = statusId !== undefined && !intoDone && closedOneOff;
   const plan =
-    intoDone || reopen
+    (intoDone && !closedOneOff) || reopen
       ? planMark(
           core,
           intoDone ? 'done' : 'undo',
@@ -870,8 +889,7 @@ export async function moveTask(
   const build = (): Op[] => {
     const ops: Op[] = [];
     if (intoDone) {
-      if (plan?.closed === undefined)
-        ops.push(...plan!.statusWrites(), plan!.op);
+      if (plan !== undefined) ops.push(...plan.statusWrites(), plan.op);
     } else if (statusId !== undefined) {
       if (plan !== undefined) ops.push(plan.op);
       if ((task.statusId ?? null) !== statusId) {
@@ -883,7 +901,14 @@ export async function moveTask(
     }
     return plan === undefined ? withFirstId(ops, minted.opId) : ops;
   };
-  const synced = await submit(store, send, build, 'move', minted.opId);
+  const synced = await submit(
+    store,
+    send,
+    build,
+    'move',
+    minted.opId,
+    core.now().getTime(),
+  );
   return {
     synced,
     marked:
