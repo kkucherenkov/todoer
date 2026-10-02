@@ -52,6 +52,7 @@ test('list: quick-add, done, undo, reorder, recurring', async ({
   const milk = rows(page).filter({ hasText: 'Buy milk' });
   await expect(milk).toContainText('#home');
   await expect(milk).toContainText('@errand');
+  await expect(milk, 'the stored tag, as is (F8)').not.toContainText('@@');
   await expect(milk).toContainText('p2');
   await expect(input).toHaveValue('');
   await expect

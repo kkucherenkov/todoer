@@ -69,9 +69,9 @@ const actions = computed<DropdownMenuItem[]>(() => [
       <span v-if="item.project" class="text-sm text-muted"
         >#{{ item.project }}</span
       >
-      <span v-for="tag in item.tags" :key="tag" class="text-sm text-muted"
-        >@{{ tag }}</span
-      >
+      <span v-for="tag in item.tags" :key="tag" class="text-sm text-muted">{{
+        tag
+      }}</span>
       <UBadge
         v-if="Number(item.priority) > 0"
         color="neutral"
