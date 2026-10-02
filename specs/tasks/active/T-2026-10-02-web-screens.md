@@ -193,7 +193,7 @@ to before W3 ships.
 
 ### Steps
 
-- [ ] T001 [FR-001] Browser-safe `uuidv5` — plan Task 1 — `packages/specs/src/ids.ts`
+- [x] T001 [FR-001] Browser-safe `uuidv5` — plan Task 1 — `packages/specs/src/ids.ts`
 - [ ] T002 [FR-002] Fractional ranks with tie repair — plan Task 2 — `packages/client-core/src/rank.ts`
 - [ ] T003 [FR-003, FR-004] View, board, task and catalog reads — plan Task 3 — `packages/client-core/src/operations.ts`
 - [ ] T004 [FR-005, FR-006, FR-007] Replay guard, `editTask`, `moveTask` — plan Task 4 — `packages/client-core/src/{store,operations}.ts`
