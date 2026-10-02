@@ -76,6 +76,12 @@ export class AccountsService {
     if (user?.isOwner !== true) throw new ForbiddenException('owner only');
   }
 
+  /** Whether `register` takes an account without an invitation: the
+   *  instance has no users yet. GET /auth/registration answers with it. */
+  async registrationOpen(): Promise<boolean> {
+    return (await this.prisma.user.count()) === 0;
+  }
+
   async register(
     email: string,
     password: string,
@@ -85,7 +91,7 @@ export class AccountsService {
     requireStrong(password);
     // Refused before scrypt: an anonymous call on a closed instance must not
     // cost a hash. Checked again under the lock below.
-    if (invitation === undefined && (await this.prisma.user.count()) > 0) {
+    if (invitation === undefined && !(await this.registrationOpen())) {
       throw new ForbiddenException(REGISTRATION_CLOSED);
     }
     const address = normalizeEmail(email);
