@@ -1,4 +1,5 @@
 import type { Ref } from 'vue';
+import type { Placement } from '@todoer/client-core';
 
 export const DRAG_TYPE = 'application/x-todoer-task';
 /** `line` when the insertion line sits below the last row. */
@@ -74,5 +75,55 @@ export function useDrag(
         drop(id, after);
       },
     },
+  };
+}
+
+export const PLACEMENT_TYPE = 'application/x-todoer-placement';
+
+// As `dragging`: dragover cannot read the data, so the tab remembers its own.
+let placing: Placement | null = null;
+
+/**
+ * Drag a placement onto a day cell (`dayEvents` on the cell, `chipEvents` on
+ * the chip). `drop` gets the placement and the cell's `data-date` as is; a
+ * closed placement is not draggable.
+ */
+export function useDayDrag(drop: (p: Placement, to: string) => void) {
+  /** The date under the pointer, for the highlight. */
+  const over = ref<string | null>(null);
+  const clear = () => {
+    over.value = null;
+    placing = null;
+  };
+
+  return {
+    over,
+    chipEvents: (p: Placement) => ({
+      draggable: !p.closed,
+      onDragstart: (e: DragEvent) => {
+        placing = p;
+        e.dataTransfer?.setData(PLACEMENT_TYPE, p.taskId);
+        if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move';
+      },
+      onDragend: clear,
+    }),
+    dayEvents: (date: string) => ({
+      onDragover: (e: DragEvent) => {
+        if (placing === null) return;
+        e.preventDefault();
+        over.value = date;
+      },
+      onDragleave: (e: DragEvent) => {
+        const cell = e.currentTarget as HTMLElement;
+        if (!cell.contains(e.relatedTarget as Node | null)) over.value = null;
+      },
+      onDrop: (e: DragEvent) => {
+        if (placing === null) return;
+        e.preventDefault();
+        const p = placing;
+        clear();
+        drop(p, date);
+      },
+    }),
   };
 }

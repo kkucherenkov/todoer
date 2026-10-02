@@ -190,7 +190,7 @@ The CLI device-code flow follows v1.
 
 - **v1 scope (Q8).** v1 has sign-in, list with views, kanban, quick-add and a
   task card. The calendar layout (two placements, range expansion, moving an
-  occurrence) and the filter-tree editor come in the next plan.
+  occurrence) and the filter-tree editor come in the next plan. *Shipped in plan W4.*
 - **Sync cadence (Q14).** The leader syncs at start, right after every write,
   every 30 s while the tab is visible, on regained focus and on the `online`
   event. No server push now; an SSE "changes after seq N" signal can be added
@@ -205,7 +205,8 @@ The CLI device-code flow follows v1.
 - **Creating views in v1 (Q17).** A form built from templates: Today, Overdue,
   Next 7 days, Project…, Tag…, Status…, plus layout and sort. It writes an
   ordinary synced view with a filter tree. A raw-JSON mode checked with
-  `filterProblem` may sit behind the same form.
+  `filterProblem` may sit behind the same form. *In W4 the tree replaces the
+  templates as the editor.*
 - **Board columns (Q18).** Full management in v1: add, rename, reorder, mark
   the completing status, and delete with the status's tasks moved to the first
   status in the same batch (views design, Q8).
@@ -288,7 +289,6 @@ Settled in the same interview; each becomes its own small task.
 
 ## Deferred
 
-- **Calendar layout and the filter-tree editor.** The plan after W3.
 - **CLI device-code flow approved from the web.** After v1.
 - **Server push (SSE).** Reopens if 30 s polling proves too slow.
 - **Flutter.** Its own interview and design after the web client ships.
@@ -580,14 +580,15 @@ view to manual"); switching silently would rewrite a view the person chose.
 layout, manual sort, key `all`; it cannot be edited or deleted. A synced default
 would be seeded by every device, the same duplicate problem as Q9.
 
-**9. The template form has fixed filter shapes.** A view whose filter is not
+**9. The template form has fixed filter shapes.** *(Replaced in W4, departure
+8: the tree is the editor.)* A view whose filter is not
 exactly one of them opens in raw-JSON mode. The design names the templates, not
 their trees.
 
 **10. A recurring task's scheduled date is read-only in the drawer.** It is the
 current occurrence (V1 departure 5). Changing it means editing `dtstart` or
-`rrule`, which needs `baseVersion` and belongs with the calendar's "move an
-occurrence" (deferred).
+`rrule`, which needs `baseVersion`. Moving one occurrence is the calendar's
+(W4); editing `dtstart` or `rrule` is still not built.
 
 **11. The production image ships in W3** (W2 departure 6). `prisma` moves from
 the backend's dev dependencies to its dependencies so that the image can run
@@ -614,3 +615,40 @@ secret itself. The host port is `${APP_PORT:-3000}`.
   queue several.
 - **Firefox flake.** The guard fixture's teardown `waitForLoadState` can hang in
   Firefox now and then; CI retries once. It is not an app failure.
+
+## Departures in plan W4
+
+Plan W4 (the web calendar and the filter-tree editor) has nine departures, listed
+at the top of the
+[plan](../plans/2026-10-02-plan-w4-web-calendar.md#where-this-plan-departs-from-the-design-docs-and-the-brief).
+Eight touch the views design and are recorded there under
+["Departures in the plan"](2026-10-01-views-design.md#departures-in-the-plan).
+This one is about the shell.
+
+**7. The calendar's week starts on Monday in both locales.** It is the order
+of `WEEKDAYS` and of ISO weeks. A span is at most 42 days, the worker refuses a
+wider one, and the mode and anchor date live in the URL
+(`?mode=month&at=2026-10-01`).
+
+### Behaviour worth knowing in W4
+
+- **A stale-version conflict on Undo.** A copy edited on another device and not
+  yet pulled sends a stale `baseVersion`: the delete comes back `conflict`
+  while the reopen lands, so the original occurrence and the copy both show,
+  and the badge counts one refused entry.
+- **Dragging a copy back to its original day leaves it a copy.** Nothing merges
+  it into the series; Undo does.
+- **The filter tree.** A new group defaults to "All of". Nested Nots collapse
+  to one switch, and each toggle unwraps one level. The Not toggle is disabled
+  where it would exceed the node or depth limit. One problem alert serves both
+  the tree and raw mode.
+
+### Known follow-ups in W4
+
+- **F1.** The engine has no span tests for `from > to` or non-ISO input.
+- **F2.** The identity of a span is defined in more than one place.
+
+### Fixed in W4
+
+- **F3.** A layout switched in place with a stale span hung the tab; the span
+  callback now returns null unless the layout is calendar, with an e2e test.

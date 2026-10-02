@@ -53,11 +53,13 @@ recurrence).
 ## Using the web client
 
 - **Views.** The sidebar lists "All open" (built in) and the synced views,
-  the same ones `todoer views` shows. A view has a layout (list or kanban) and
-  a sort. The view form offers templates (Today, Overdue, Next 7 days,
-  Project, Tag, Status) or a raw-JSON filter, and refuses an invalid filter
-  with the reason. A view with a broken filter shows its problem, not every
-  task. Calendar and a filter-tree editor are not built.
+  the same ones `todoer views` shows. A view has a layout (list, kanban or
+  calendar) and a sort. The view form's filter is a tree of All of / Any of
+  groups, Not switches and leaves (tag, project, status, priority, scheduled,
+  due, recurring), with the node and depth limits shown. "Start from" fills
+  the tree with a template (Today, Overdue, Next 7 days, Project, Tag,
+  Status); raw JSON stays as a toggle. An invalid filter is refused with the
+  reason, and a view with a broken filter shows its problem, not every task.
 - **List.** Marks done, skips and undoes a task, and in a view sorted
   `manual`, reorders by dragging or from the keyboard. In any other sort a
   reorder writes nothing.
@@ -70,9 +72,19 @@ recurrence).
   reorders, marks completing and deletes columns; a deleted column's tasks go
   to the first one. A column added in this session cannot be deleted until the
   first sync has reached the server.
+- **Calendar.** Week and month, set in the URL. A task shows on its scheduled
+  and on its due day; a recurring task shows on each occurrence from the
+  current one on. Closed placements stay for 7 days. Drag a chip to another
+  day, or use "Move to date…", which is the touch path. Moving one occurrence
+  of a recurring task makes a linked one-off copy on the new day and skips the
+  occurrence. Undo, from the toast or from the copy's drawer ("Return to
+  series"), deletes the copy and reopens the occurrence; it needs the copy
+  synced, so it is refused offline until the first sync has reached the
+  server.
 - **Quick-add.** The same grammar as `todoer add`: `p2`, `#project`, `@tag`.
 - **Task drawer.** Title, notes, project, tags, priority, dates and status,
-  each saved on change. A recurring task's scheduled date is read-only.
+  each saved on change. A recurring task's scheduled date is read-only. A copy made by moving an
+  occurrence has "Return to series".
 - **Offline.** Every write shows at once, survives a reload and is sent on the
   next sync. The badge shows queued operations and, when the server refuses a
   sync, the reason. Undo of a recurring task from the list acts on its current

@@ -1,6 +1,7 @@
 import type { Locator, Page } from '@playwright/test';
 import {
   count,
+  day,
   expect,
   projectId,
   seedView,
@@ -177,4 +178,66 @@ test('two tabs: a mark shows in the other, each tab keeps to its own view', asyn
     .click();
   await expect(b.getByTestId('task-row')).toHaveCount(0);
   await expect(titles(page)()).resolves.toEqual(['Mop', 'Weed']);
+});
+
+test('offline: a moved occurrence shows at once, Undo waits for the sync', async ({
+  page,
+  context,
+  account,
+  cli,
+  browserName,
+}) => {
+  const view = await seedView(
+    page.request,
+    account.token,
+    'Week',
+    'a0',
+    'calendar',
+  );
+  const from = day(7 - ((new Date().getDay() + 6) % 7));
+  const to = day(9 - ((new Date().getDay() + 6) % 7));
+  await cli(
+    account.token,
+    'add',
+    'Water plants',
+    '--rrule',
+    'FREQ=DAILY',
+    '--from',
+    day(),
+  );
+  await page.goto(`/views/${view}`);
+  const cell = (date: string) =>
+    page.locator(`[data-testid="calendar-day"][data-date="${date}"]`);
+  const chip = (date: string) =>
+    cell(date).getByTestId('placement').filter({ hasText: 'Water plants' });
+  await page.getByRole('button', { name: 'Next' }).click();
+  await expect(chip(from)).toBeVisible();
+  await swActivated(page);
+
+  await context.setOffline(true);
+  await page.getByTestId('sync-now').click();
+  await expect(page.getByTestId('offline')).toBeVisible({ timeout: 15_000 });
+
+  await chip(from).dragTo(cell(to), { sourcePosition: { x: 3, y: 3 } });
+  await expect(chip(from)).toHaveCount(0);
+  await expect(chip(to)).toHaveCount(2);
+
+  // The copy is not on the server yet, so the core refuses to undo it.
+  await page.getByRole('button', { name: 'Undo' }).last().click();
+  await expect(
+    page.locator('[data-slot="description"]', { hasText: 'not synced yet' }),
+  ).toBeVisible();
+  await page.reload();
+  await expect(chip(to)).toHaveCount(2);
+
+  // Firefox: no `online` event (see the first test); it ends here.
+  if (browserName === 'firefox') return;
+  await context.setOffline(false);
+  await expect(page.getByTestId('pending')).toHaveCount(0, { timeout: 15_000 });
+  const listed = JSON.parse(await cli(account.token, 'list', '--json')) as {
+    data: { title: string; scheduledOn: string | null; rrule: string | null }[];
+  };
+  expect(
+    listed.data.some((t) => t.rrule === null && t.scheduledOn === to),
+  ).toBe(true);
 });

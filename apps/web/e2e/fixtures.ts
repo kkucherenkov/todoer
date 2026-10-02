@@ -341,3 +341,31 @@ export async function arrowTo(page: Page, item: Locator) {
     await page.keyboard.press('ArrowDown');
   }
 }
+
+/** A task the CLI cannot make (it has no `scheduledOn` or `dueOn` flag): one
+ *  `create task` op. Returns its id. */
+export async function seedTask(
+  request: APIRequestContext,
+  token: string,
+  fields: { title: string; scheduledOn?: string; dueOn?: string },
+): Promise<string> {
+  const id = crypto.randomUUID();
+  const response = await request.post('/api/v1/sync', {
+    headers: { authorization: `Bearer ${token}` },
+    data: {
+      since: 0,
+      ops: [
+        {
+          opId: crypto.randomUUID(),
+          kind: 'create',
+          table: 'task',
+          id,
+          fields: { priority: 0, rank: 'a0', ...fields },
+          ts: new Date().toISOString(),
+        },
+      ],
+    },
+  });
+  expect(response.status(), `create task ${fields.title}`).toBe(200);
+  return id;
+}

@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { connect, type Db } from './client';
+import type { Span } from '@todoer/client-core';
 import { CHANNEL, type FromWorker, type ToWorker } from './protocol';
 
 const BUILD = 'b1';
@@ -167,17 +168,86 @@ describe('connect', () => {
 });
 
 describe('watches and writes', () => {
-  const view = (key: string, title: string): FromWorker => ({
+  const view = (
+    key: string,
+    title: string,
+    span: Span | null = null,
+  ): FromWorker => ({
     type: 'publish',
     topic: 'view',
     value: {
       key,
-      layout: 'list',
+      layout: span === null ? 'list' : 'calendar',
       sort: 'manual',
       problem: null,
+      today: '2026-10-02',
+      span,
       items: [{ title } as never],
+      placements: [],
     },
     build: BUILD,
+  });
+  const WEEK = { from: '2026-10-05', to: '2026-10-11' };
+  const NEXT = { from: '2026-10-12', to: '2026-10-18' };
+  const requests = (seen: ToWorker[]) =>
+    seen.flatMap((m) => (m.type === 'request' ? [m.command] : []));
+
+  it('keeps a publish for its own span only', async () => {
+    const { post } = fakeWorker();
+    db = connect(BUILD);
+    db.watch('v1', null, WEEK);
+    post(view('v1', 'mine', WEEK));
+    await vi.waitFor(() => expect(db!.topics.view.value?.span).toEqual(WEEK));
+    post(view('v1', 'other span', NEXT));
+    post(view('v1', 'no span'));
+    post({
+      type: 'publish',
+      topic: 'summary',
+      value: { tasks: 9 },
+      build: BUILD,
+    });
+    await vi.waitFor(() =>
+      expect(db!.topics.summary.value).toEqual({ tasks: 9 }),
+    );
+    expect(db.topics.view.value?.items).toEqual([{ title: 'mine' }]);
+    // Another span: the grid never draws the old one's data.
+    db.watch('v1', null, NEXT);
+    expect(db.topics.view.value).toBeUndefined();
+  });
+
+  it('on ready: the last watch is resent with its span', async () => {
+    const { seen, post } = fakeWorker();
+    db = connect(BUILD);
+    db.watch('v1', null, WEEK);
+    await vi.waitFor(() => expect(requests(seen)).toHaveLength(1));
+    seen.length = 0;
+    post({ type: 'ready', build: BUILD });
+    await vi.waitFor(() => expect(requests(seen)).toHaveLength(1));
+    expect(requests(seen)).toEqual([
+      { kind: 'watch', view: 'v1', task: null, span: WEEK },
+    ]);
+  });
+
+  it('mints the copy id of a move once, and a resend reuses it', async () => {
+    const { seen } = fakeWorker();
+    db = connect(BUILD, { timeoutMs: 30 });
+    const w = db.mint({
+      kind: 'moveOccurrence',
+      taskId: 't1',
+      occurrence: '2026-10-05',
+      to: '2026-10-06',
+    });
+    expect(w).toMatchObject({
+      id: expect.any(String),
+      opId: expect.any(String),
+    });
+    await db.write(w);
+    void db.write(w);
+    const moves = () =>
+      requests(seen).filter((c) => c.kind === 'moveOccurrence');
+    await vi.waitFor(() => expect(moves()).toHaveLength(2));
+    expect(moves()[1]).toEqual(moves()[0]);
+    expect(moves()[0]).toMatchObject({ id: (w as { id: string }).id });
   });
 
   it("keeps its own view key and drops another tab's", async () => {
@@ -222,7 +292,7 @@ describe('watches and writes', () => {
     post({ type: 'ready', build: BUILD });
     await vi.waitFor(() => expect(requests()).toHaveLength(2));
     expect(requests()).toEqual([
-      { kind: 'watch', view: 'v1', task: 't1' },
+      { kind: 'watch', view: 'v1', task: 't1', span: null },
       sent,
     ]);
   });

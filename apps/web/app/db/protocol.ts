@@ -2,6 +2,8 @@ import type {
   Catalog,
   Item,
   Mark,
+  Placement,
+  Span,
   TaskChanges,
   taskDetails,
   ViewFields,
@@ -39,7 +41,18 @@ export type Write =
       after?: string | null;
     }
   | { kind: 'setCompleting'; opId: string; id: string }
-  | { kind: 'deleteStatus'; opId: string; id: string };
+  | { kind: 'deleteStatus'; opId: string; id: string }
+  /** `id`: the copy's, minted in the tab so a resend makes no second one. */
+  | {
+      kind: 'moveOccurrence';
+      opId: string;
+      id: string;
+      taskId: string;
+      occurrence: string;
+      to: string;
+    }
+  /** `taskId`: the copy. */
+  | { kind: 'undoMove'; opId: string; taskId: string };
 
 /** The view key of the built-in "All open" (departure 8). */
 export const ALL = 'all';
@@ -49,7 +62,13 @@ export type Command =
   | { kind: 'signOut' }
   | { kind: 'sync'; reason: SyncReason }
   /** What this tab shows; null: nothing (the tab is hidden or gone). */
-  | { kind: 'watch'; view: string | null; task: string | null }
+  /** `span`: the days a calendar shows; null for other layouts. */
+  | {
+      kind: 'watch';
+      view: string | null;
+      task: string | null;
+      span?: Span | null;
+    }
   | Write;
 
 /** One i18n key per kind (`errors.<kind>`); locales.spec.ts checks both files. */
@@ -101,9 +120,15 @@ export type Topics = {
     key: string;
     layout: string;
     sort: string;
-    /** filterProblem's text, or `deleted`; then `items` is empty. */
+    /** filterProblem's text, `deleted` or `span`; then `items` is empty. */
     problem: string | null;
+    /** The worker's local date: the calendar's today marker. */
+    today: string;
+    /** The span this publish answers; null for list and kanban. */
+    span: Span | null;
     items: Item[];
+    /** Calendar layout only; [] otherwise. */
+    placements: Placement[];
   };
   task: { id: string; task: ReturnType<typeof taskDetails> };
 };

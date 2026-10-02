@@ -1260,3 +1260,162 @@ describe('resends', () => {
     expect(creates(srv)).toHaveLength(1);
   });
 });
+
+// ── calendar spans and occurrence moves (W4 Task 4) ─────────────────────
+
+describe('calendar views and occurrence moves', () => {
+  const V = uuid(0x71);
+  const T = uuid(1);
+  const COPY = uuid(0xc0);
+  const today = localDate(NOW);
+  /** `today` plus `n` days, by UTC arithmetic on the date string. */
+  const day = (n: number) =>
+    new Date(Date.parse(today) + n * 86_400_000).toISOString().slice(0, 10);
+  const WEEK = { from: day(0), to: day(6) };
+  const NEXT = { from: day(7), to: day(13) };
+  const CALENDAR = viewRow(V, { layout: 'calendar' });
+  const DAILY = taskRow(1, { rrule: 'FREQ=DAILY', dtstart: today });
+  const spanOf = (span: { from: string; to: string } | null) =>
+    views(V).filter((v) => JSON.stringify(v.span) === JSON.stringify(span));
+  const placed = (span: { from: string; to: string }) =>
+    spanOf(span)
+      .at(-1)
+      ?.placements.map((p) => `${p.taskId}@${p.date}`);
+  const move = (opId = uuid(0xe1)): Parameters<Engine['handle']>[0] => ({
+    kind: 'moveOccurrence',
+    opId,
+    id: COPY,
+    taskId: T,
+    occurrence: day(0),
+    to: day(1),
+  });
+
+  it('two tabs on one calendar view with two spans each get theirs, both after a write', async () => {
+    const srv = server(TODO, CALENDAR, DAILY);
+    const e = await signedIn(srv);
+    await e.handle({ kind: 'watch', view: V, task: null, span: WEEK }, 'A');
+    await e.handle({ kind: 'watch', view: V, task: null, span: NEXT }, 'B');
+    expect(spanOf(WEEK).at(-1)).toMatchObject({
+      key: V,
+      layout: 'calendar',
+      today,
+      problem: null,
+    });
+    expect(placed(WEEK)).toEqual(
+      [0, 1, 2, 3, 4, 5, 6].map((n) => `${T}@${day(n)}`),
+    );
+    expect(placed(NEXT)).toEqual(
+      [7, 8, 9, 10, 11, 12, 13].map((n) => `${T}@${day(n)}`),
+    );
+    published = {};
+    await e.handle(
+      { kind: 'add', opId: uuid(0xa1), id: uuid(0xa2), text: 'x' },
+      'A',
+    );
+    expect(spanOf(WEEK)).not.toEqual([]);
+    expect(spanOf(NEXT)).not.toEqual([]);
+  });
+
+  it('a calendar view watched without a span publishes no items', async () => {
+    const e = await signedIn(server(TODO, CALENDAR, DAILY));
+    await e.handle({ kind: 'watch', view: V, task: null }, 'A');
+    expect(lastView(V)).toMatchObject({
+      today,
+      span: null,
+      problem: null,
+      items: [],
+      placements: [],
+    });
+  });
+
+  it("a 43-day span is problem 'span', with no items", async () => {
+    const e = await signedIn(server(TODO, CALENDAR, DAILY));
+    const span = { from: day(0), to: day(42) };
+    await e.handle({ kind: 'watch', view: V, task: null, span }, 'A');
+    expect(lastView(V)).toMatchObject({
+      span,
+      problem: 'span',
+      items: [],
+      placements: [],
+    });
+  });
+
+  it('list and kanban publishes carry no span and no placements', async () => {
+    const K = uuid(0x72);
+    const e = await signedIn(
+      server(TODO, viewRow(K, { layout: 'kanban' }), DAILY),
+    );
+    await e.handle({ kind: 'watch', view: 'all', task: null }, 'A');
+    await e.handle({ kind: 'watch', view: K, task: null }, 'B');
+    for (const key of ['all', K]) {
+      expect(lastView(key)).toMatchObject({
+        today,
+        span: null,
+        placements: [],
+      });
+      expect(lastView(key)?.items).not.toEqual([]);
+    }
+  });
+
+  it('a move shows the copy in the calendar while the transport is still pending', async () => {
+    const e = await signedIn(server(TODO, CALENDAR, DAILY));
+    await e.handle({ kind: 'watch', view: V, task: null, span: WEEK }, 'A');
+    send.mockImplementation(() => new Promise<Response>(() => {}));
+    void e.handle(move(), 'A');
+    await vi.waitFor(() => expect(placed(WEEK)).toContain(`${COPY}@${day(1)}`));
+    expect(placed(WEEK)).not.toContain(`${T}@${day(0)}`);
+  });
+
+  it('a move resent after a worker restart creates no second copy', async () => {
+    const srv = server(TODO, CALENDAR, DAILY);
+    const first = await signedIn(srv);
+    expect(await first.handle(move(), 'A')).toEqual({ ok: true });
+    expect(store.pending()).toEqual([]); // applied and settled
+    const second = await signedIn(srv); // a new worker over the same store
+    expect(await second.handle(move(), 'A')).toEqual({ ok: true });
+    await second.handle(
+      { kind: 'watch', view: V, task: null, span: WEEK },
+      'A',
+    );
+    expect(placed(WEEK)?.filter((p) => p.startsWith(COPY))).toEqual([
+      `${COPY}@${day(1)}`,
+    ]);
+    expect(
+      sentOps(srv, 'task').filter(
+        (op) => op.kind === 'create' && op.id === COPY,
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('undo of a copy created offline is invalid', async () => {
+    const e = await signedIn(server(TODO, CALENDAR, DAILY));
+    send.mockImplementation(offline);
+    expect(await e.handle(move(), 'A')).toEqual({ ok: true });
+    expect(
+      await e.handle({ kind: 'undoMove', opId: uuid(0xe2), taskId: COPY }, 'A'),
+    ).toMatchObject({ ok: false, failure: { kind: 'invalid' } });
+  });
+
+  it('undo of a synced copy deletes it and reopens the occurrence', async () => {
+    const srv = server(TODO, CALENDAR, DAILY);
+    const e = await signedIn(srv);
+    await e.handle({ kind: 'watch', view: V, task: null, span: WEEK }, 'A');
+    await e.handle(move(), 'A');
+    expect(
+      await e.handle({ kind: 'undoMove', opId: uuid(0xe2), taskId: COPY }, 'A'),
+    ).toEqual({ ok: true });
+    expect(placed(WEEK)).toEqual(
+      [0, 1, 2, 3, 4, 5, 6].map((n) => `${T}@${day(n)}`),
+    );
+  });
+
+  it('a move while signed out is signed-out', async () => {
+    const e = engine();
+    await e.start(false);
+    expect(await e.handle(move(), 'A')).toMatchObject({
+      ok: false,
+      failure: { kind: 'signed-out' },
+    });
+    expect(store.pending()).toEqual([]);
+  });
+});

@@ -34,6 +34,7 @@ import {
   winner,
   resolveLabels,
 } from './labels.js';
+import { expand } from './expand.js';
 import { planMerge } from './merge.js';
 import { rankBetween, rankWrites, type Ranked } from './rank.js';
 import { liveTasks, overlay } from './overlay.js';
@@ -1014,6 +1015,102 @@ export function boardTasks(
   return selected(store, today, view, addDays(today, -closedDays));
 }
 
+/** A span of calendar days, both inclusive. */
+export type Span = { from: string; to: string };
+/** The widest span a calendar asks for: six weeks. */
+export const MAX_SPAN_DAYS = 42;
+
+/** One day a task stands on (views Q11). */
+export type Placement = {
+  taskId: string;
+  date: string;
+  kind: 'scheduled' | 'due';
+  /** The occurrence a recurring task's scheduled placement stands for;
+   *  null for a one-off task and for every due placement. */
+  occurrence: string | null;
+  /** Closed within `closedDays` (departure 2): shown, not movable. */
+  closed: boolean;
+};
+export type Calendar = { items: Item[]; placements: Placement[] };
+
+/**
+ * The view's tasks placed on the days of `span`: the filter and sort of
+ * boardTasks (departure 1), then each task's placements. Placements are
+ * ordered by date, then by the view's order, then scheduled before due.
+ * `items` holds only tasks with a placement in the span. Throws UsageError
+ * for a span that is not two dates in order, or wider than MAX_SPAN_DAYS.
+ */
+export function calendarTasks(
+  store: Store,
+  today: string,
+  view: ViewSpec,
+  span: Span,
+  closedDays = 7,
+): Calendar {
+  const days = (Date.parse(span.to) - Date.parse(span.from)) / 86_400_000 + 1;
+  if (!isIsoDate(span.from) || !isIsoDate(span.to) || days < 1) {
+    throw new UsageError('span must be two dates, from on or before to');
+  }
+  if (days > MAX_SPAN_DAYS) {
+    throw new UsageError(`span is wider than ${MAX_SPAN_DAYS} days`);
+  }
+  const since = addDays(today, -closedDays);
+  const all = tasks(store);
+  const marks = new Map(
+    occurrences(store).map((m) => [
+      JSON.stringify([m.taskId, m.occurrence ?? null]),
+      m,
+    ]),
+  );
+  const inSpan = (d: unknown): d is string =>
+    typeof d === 'string' && d >= span.from && d <= span.to;
+  const items = selected(store, today, view, since);
+  const placed = new Set<string>();
+  const placements = items.flatMap((item) => {
+    const taskId = String(item.id);
+    const found: Placement[] = [];
+    const put = (
+      date: string,
+      kind: Placement['kind'],
+      occurrence: string | null,
+      closed: boolean,
+    ) => found.push({ taskId, date, kind, occurrence, closed });
+    const recurrence = recurrenceOf(item, parentOf(all, item));
+    if (recurrence === null) {
+      if (inSpan(item.scheduledOn))
+        put(item.scheduledOn, 'scheduled', null, item.closed);
+      if (inSpan(item.dueOn)) put(item.dueOn, 'due', null, item.closed);
+    } else {
+      // The lower bound is a cost, not a behaviour: expand walks from
+      // dtstart either way, and an earlier open occurrence is dropped below.
+      for (const date of expand(
+        recurrence.rule,
+        recurrence.dtstart,
+        span.from,
+        span.to,
+      )) {
+        const mark = marks.get(JSON.stringify([taskId, date]));
+        if (mark?.state === 'skipped') continue;
+        if (mark?.state === 'done') {
+          const at = (
+            mark.fieldTs as Record<string, string> | undefined
+          )?.state?.slice(0, 10);
+          if (at === undefined || at >= since)
+            put(date, 'scheduled', date, true);
+        } else if (item.occurrence !== null && date >= item.occurrence) {
+          put(date, 'scheduled', date, false);
+        }
+      }
+      if (inSpan(item.dueOn)) put(item.dueOn, 'due', null, false);
+    }
+    if (found.length > 0) placed.add(taskId);
+    return found;
+  });
+  // Stable: ties keep the view's order, then scheduled before due.
+  placements.sort((a, b) => a.date.localeCompare(b.date));
+  return { items: items.filter((i) => placed.has(String(i.id))), placements };
+}
+
 /** One task for the drawer: the row, labels, current occurrence, column,
  *  closed state; null when it is deleted or unknown. A recurring task whose
  *  series ended is live: `closed`, with no occurrence. */
@@ -1283,7 +1380,7 @@ function syncedRow(
 }
 
 const deleteOp = (
-  table: 'view' | 'status',
+  table: 'task' | 'view' | 'status',
   row: Row & { version: number },
   newId: () => string,
 ): Op => ({
@@ -1438,4 +1535,146 @@ export function seedStatuses(core: Core): boolean {
     }
     return true;
   });
+}
+
+/**
+ * Moves one occurrence of a recurring task to `to` (views Q13): a one-off
+ * copy with id `minted.id` on `to`, carrying title, notes, projectId, the
+ * attached tags, priority, statusId and the original's rank, plus
+ * originTaskId and originOccurrence; then `skip` of the occurrence. One
+ * batch, the copy first (departure 4). Replay-safe.
+ */
+export async function moveOccurrence(
+  core: Core,
+  minted: Minted & { id: string },
+  taskId: string,
+  occurrence: string,
+  to: string,
+): Promise<{ synced: boolean }> {
+  const done = await replayed(core, minted.opId);
+  if (done !== undefined) return done;
+  const { store } = core;
+  const all = tasks(store);
+  const task = liveTask(all, taskId);
+  if (recurrenceOf(task, parentOf(all, task)) === null) {
+    throw new UsageError('only a recurring task has occurrences to move');
+  }
+  if (!isIsoDate(to)) throw new UsageError('to must be a date, YYYY-MM-DD');
+  if (to === occurrence)
+    throw new UsageError('the occurrence is already there');
+  const plan = planMark(core, 'skip', task, all, occurrence, undefined);
+  if (plan.closed !== undefined) {
+    throw new UsageError(`already ${plan.closed} — undo it first`);
+  }
+  const ts = core.now().toISOString();
+  const optional = Object.fromEntries(
+    (['notes', 'projectId', 'statusId'] as const)
+      .filter((field) => task[field] !== null && task[field] !== undefined)
+      .map((field) => [field, task[field]]),
+  );
+  const copy: OpCreate = {
+    opId: minted.opId,
+    kind: 'create',
+    table: 'task',
+    id: minted.id,
+    fields: {
+      title: task.title,
+      priority: task.priority,
+      rank: task.rank,
+      ...optional,
+      scheduledOn: to,
+      originTaskId: taskId,
+      originOccurrence: occurrence,
+    },
+    ts,
+  };
+  const live = new Set(liveTags(tagRows(store)).map((tag) => String(tag.id)));
+  const tagOps: OpCreate[] = links(store)
+    .filter(
+      (link) =>
+        link.taskId === taskId &&
+        isAttached(link) &&
+        live.has(String(link.tagId)),
+    )
+    .map((link) => String(link.tagId))
+    .sort()
+    .map((tagId) => ({
+      opId: core.newId(),
+      kind: 'create',
+      table: 'task_tag',
+      id: taskTagId(minted.id, tagId),
+      fields: { taskId: minted.id, tagId },
+      ts,
+    }));
+  return {
+    synced: await submitOwn(
+      core,
+      [copy, ...tagOps, plan.op],
+      'move',
+      minted.opId,
+    ),
+  };
+}
+
+/**
+ * Undoes a move (views Q13): deletes the copy, then reopens its origin
+ * occurrence if it is still skipped. One batch. Refuses (UsageError) a task
+ * without origin fields, a copy with no `version` or with queued ops, a copy
+ * with live subtasks, and a copy whose original is not live (departure 5).
+ * Replay-safe.
+ */
+export async function undoMove(
+  core: Core,
+  minted: Minted,
+  copyId: string,
+): Promise<{ synced: boolean }> {
+  const done = await replayed(core, minted.opId);
+  if (done !== undefined) return done;
+  const { store } = core;
+  const all = tasks(store);
+  const copy = liveTask(all, copyId);
+  const { originTaskId, originOccurrence } = copy;
+  if (
+    typeof originTaskId !== 'string' ||
+    typeof originOccurrence !== 'string'
+  ) {
+    throw new UsageError(`task ${copyId} is not a moved occurrence`);
+  }
+  if (store.pending().some((op) => op.table === 'task' && op.id === copyId)) {
+    throw new UsageError(`task ${copyId} is not synced yet`);
+  }
+  const row = syncedRow(all, copyId, 'task');
+  if (liveTasks(all).some((t) => t.parentId === copyId)) {
+    throw new UsageError(`task ${copyId} has subtasks`);
+  }
+  if (!liveTasks(all).some((t) => t.id === originTaskId)) {
+    throw new UsageError(`the original task of ${copyId} is gone`);
+  }
+  const ts = core.now().toISOString();
+  const reopen: OpCreate[] =
+    stateOf(occurrences(store), originTaskId)(originOccurrence) === 'skipped'
+      ? [
+          {
+            opId: core.newId(),
+            kind: 'create',
+            table: 'task_occurrence',
+            id: taskOccurrenceId(originTaskId, originOccurrence),
+            fields: {
+              taskId: originTaskId,
+              occurrence: originOccurrence,
+              state: 'open',
+              completedAt: null,
+            },
+            ts,
+          },
+        ]
+      : [];
+  return {
+    synced: await submitOwn(
+      core,
+      [deleteOp('task', row, core.newId), ...reopen],
+      'move',
+      minted.opId,
+    ),
+  };
 }
