@@ -59,6 +59,8 @@ export const ALL = 'all';
 
 export type Command =
   | { kind: 'signIn'; email: string; password: string }
+  /** Signs in as the new account on success, like signIn. */
+  | { kind: 'register'; email: string; password: string }
   | { kind: 'signOut' }
   | { kind: 'sync'; reason: SyncReason }
   /** What this tab shows; null: nothing (the tab is hidden or gone). */

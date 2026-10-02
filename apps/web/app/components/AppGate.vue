@@ -5,6 +5,19 @@ const { $db: db } = useNuxtApp();
 const engine = computed(() => db?.topics.engine.value);
 const session = computed(() => db?.topics.session.value);
 const reload = () => location.reload();
+
+// Asked again on every sign-out: an owner who registered and signed out
+// must get the sign-in form back. null while asking.
+const open = ref<boolean | null>(null);
+watch(
+  () => session.value?.state === 'signed-out',
+  async (out) => {
+    if (!out) return;
+    open.value = null;
+    open.value = await registrationOpen();
+  },
+  { immediate: true },
+);
 </script>
 
 <template>
@@ -38,7 +51,8 @@ const reload = () => location.reload();
       v-else-if="
         engine?.state === 'starting' ||
         !session ||
-        session.state === 'restoring'
+        session.state === 'restoring' ||
+        open === null
       "
       class="flex max-w-sm flex-col gap-3"
       data-testid="loading"
@@ -46,6 +60,7 @@ const reload = () => location.reload();
       <USkeleton class="h-8 w-40" />
       <USkeleton class="h-4 w-56" />
     </div>
+    <RegisterForm v-else-if="open" :db="db" />
     <SignInForm v-else :db="db" />
   </main>
 </template>

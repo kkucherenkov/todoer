@@ -47,6 +47,12 @@ describe('createApp: the real middleware chain over HTTP', () => {
     expect(await res.json()).toMatchObject({ status: 'ok' });
   });
 
+  it('says registration is open on an empty instance, without a token', async () => {
+    const res = await get('/api/v1/auth/registration');
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ open: true });
+  });
+
   it('lets a well-formed login body reach the controller (401, not 400)', async () => {
     // Trap 3: a 400 here means the body parser runs after the validator.
     const res = await post('/api/v1/auth/login', {
@@ -116,6 +122,12 @@ describe('createApp: the real middleware chain over HTTP', () => {
       expect(attrs.some((a) => a.startsWith('Expires='))).toBe(true);
       expect(text).not.toContain(valueOf(res));
       cookie = `todoer_refresh=${valueOf(res)}`;
+    });
+
+    it('says registration is closed once the owner exists', async () => {
+      const res = await get('/api/v1/auth/registration');
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ open: false });
     });
 
     it('refreshes from the cookie alone and rotates it', async () => {

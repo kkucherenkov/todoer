@@ -282,6 +282,7 @@ function fakeCookieApi(...results: (AccessGrant | 'invalid' | Error)[]) {
   const calls = { refresh: 0 };
   const api: CookieAuthApi = {
     login: () => Promise.reject(new Error('unused')),
+    register: () => Promise.reject(new Error('unused')),
     refresh: async () => {
       const result = results[Math.min(calls.refresh++, results.length - 1)];
       await new Promise((resolve) => setTimeout(resolve, 30));
@@ -359,6 +360,7 @@ describe('cookieTokenSource', () => {
     let settle: (result: AccessGrant | 'invalid') => void = () => {};
     const api: CookieAuthApi = {
       login: () => Promise.reject(new Error('unused')),
+      register: () => Promise.reject(new Error('unused')),
       refresh: () => new Promise((resolve) => (settle = resolve)),
       logout: () => Promise.reject(new Error('unused')),
     };
@@ -492,6 +494,32 @@ describe('httpCookieAuthApi', () => {
     await expect(
       (await serve(429, {})).login('a@b.c', 'pw'),
     ).rejects.toBeInstanceOf(RefusalError);
+  });
+
+  it('register sends exactly email, password and the cookie transport', async () => {
+    const seen: Got[] = [];
+    const api = await serve(201, { ...two, refreshToken: 'secret' }, seen);
+    expect(await api.register('a@b.c', 'pw')).toStrictEqual(two);
+    expect(seen[0]?.path).toBe('/auth/register');
+    expect(seen[0]?.body).toEqual({
+      email: 'a@b.c',
+      password: 'pw',
+      transport: 'cookie',
+    });
+  });
+
+  it("register refuses with the problem's detail, or the status without one", async () => {
+    await expect(
+      (
+        await serve(400, {
+          title: 'Bad Request',
+          detail: 'a password needs a digit',
+        })
+      ).register('a@b.c', 'pw'),
+    ).rejects.toThrow(new RefusalError('a password needs a digit'));
+    await expect(
+      (await serve(502, 'gateway')).register('a@b.c', 'pw'),
+    ).rejects.toThrow(new RefusalError('register refused: 502'));
   });
 
   it('refresh sends an empty object; 401 is invalid', async () => {
