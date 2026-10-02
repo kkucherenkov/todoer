@@ -11,12 +11,7 @@ export const CHANNEL = 'todoer';
 export const LEADER_LOCK = 'todoer:leader';
 
 export type SyncReason =
-  | 'start'
-  | 'write'
-  | 'tick'
-  | 'focus'
-  | 'online'
-  | 'manual';
+  'start' | 'write' | 'tick' | 'focus' | 'online' | 'manual';
 
 /** Every write carries its ids from the tab, so a resend is the same write
  *  (departure 2); a create also carries the new row's `id`. */
@@ -81,8 +76,7 @@ export type Note = {
   next: string | null;
 };
 export type Result =
-  | { ok: true; note?: Note }
-  | { ok: false; failure: Failure };
+  { ok: true; note?: Note } | { ok: false; failure: Failure };
 
 export type Topics = {
   engine: { state: 'starting' | 'ready' | 'failed'; reason: string | null };
