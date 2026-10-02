@@ -316,6 +316,34 @@ describe('taskDetails of an ended series', () => {
   });
 });
 
+describe('taskDetails subtask checklist of an ended series', () => {
+  it('ignores one-off marks left from when the parent was one-off', () => {
+    const store = boardStore();
+    put(
+      store,
+      'task',
+      task('p', { rrule: 'FREQ=DAILY;COUNT=1', dtstart: '2026-01-01' }),
+    );
+    put(store, 'task', task('s', { parentId: 'p' }));
+    put(store, 'task_occurrence', {
+      id: 'p-occ',
+      taskId: 'p',
+      occurrence: '2026-01-01',
+      state: 'done',
+    });
+    // Left from when the parent was one-off: no occurrence, so no axis.
+    put(store, 'task_occurrence', {
+      id: 's-occ',
+      taskId: 's',
+      occurrence: null,
+      state: 'done',
+    });
+    const details = taskDetails(store, TODAY, 'p');
+    expect(details).toMatchObject({ occurrence: null });
+    expect(details?.subtasks).toEqual([{ id: 's', title: 's', closed: false }]);
+  });
+});
+
 describe('catalog', () => {
   it('flags a view with an invalid filter and orders views by rank then id', () => {
     const store = boardStore();

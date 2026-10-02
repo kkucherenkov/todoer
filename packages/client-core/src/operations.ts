@@ -1170,13 +1170,16 @@ export function taskDetails(
   if (found === undefined) return null;
   const { notes, rrule, dtstart, occurrence } = found.row;
   const marks = occurrences(store);
+  // A series that ended has no axis to tick on; one-off marks left from when
+  // the parent was one-off no longer apply (departure 8).
+  const ended = typeof rrule === 'string' && occurrence === null;
   const subtasks = liveTasks(tasks(store))
     .filter((t) => t.parentId === id)
     .sort((a, b) => compareStrings(a.rank, b.rank) || compareIds(a, b))
     .map((t) => ({
       id: String(t.id),
       title: String(t.title),
-      closed: isClosed(stateOf(marks, String(t.id))(occurrence)),
+      closed: !ended && isClosed(stateOf(marks, String(t.id))(occurrence)),
     }));
   return {
     ...itemOf(titlesOf(store))(found),
