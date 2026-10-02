@@ -3,6 +3,7 @@ import type { TaskChanges } from '@todoer/client-core';
 import { ALL } from '~/db/protocol';
 
 const db = useDb();
+const open = useOpenTask();
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
@@ -80,10 +81,12 @@ const off = router.beforeEach(() => {
 });
 onScopeDispose(off);
 
-// Deleted elsewhere while open: close, and say so.
+// Deleted elsewhere while open: close, and say so. Our own delete and
+// return-to-series close it themselves.
 const returning = ref(false);
+const deleting = ref(false);
 watch(task, (now, before) => {
-  if (now !== null || !before || returning.value) return;
+  if (now !== null || !before || returning.value || deleting.value) return;
   toast.add({ title: t('drawer.gone') });
   void close();
 });
@@ -97,6 +100,22 @@ async function returnToSeries() {
   returning.value = false;
   if (result.ok) void close();
   else fail(result);
+}
+
+const confirmingDelete = ref(false);
+const editingRule = ref(false);
+
+/** The task and its live subtasks go in one batch; a refusal (a subtask
+ *  another device added) stays here with its reason. */
+async function deleteTask() {
+  if (id.value === null) return;
+  confirmingDelete.value = false;
+  deleting.value = true;
+  const result = await db.write({ kind: 'deleteTask', taskId: id.value });
+  deleting.value = false;
+  if (!result.ok) return void fail(result);
+  toast.add({ title: t('deleteTask.done') });
+  void close();
 }
 
 const same = (a: unknown, b: unknown) =>
@@ -232,6 +251,17 @@ const dates = [
             {{ $t('drawer.returnToSeries') }}
           </UButton>
         </div>
+        <UButton
+          v-if="task.parentId && task.parentTitle"
+          variant="link"
+          color="neutral"
+          icon="i-lucide-corner-up-left"
+          class="self-start p-0"
+          data-testid="subtask-of"
+          @click="open(String(task.parentId))"
+        >
+          {{ $t('drawer.subtaskOf', { title: task.parentTitle }) }}
+        </UButton>
         <UFormField :label="$t('drawer.titleField')">
           <UInput
             v-model="draft.title"
@@ -312,6 +342,17 @@ const dates = [
               @click="clearDate(key)"
             />
           </div>
+          <UButton
+            v-if="key === 'scheduledOn' && !task.parentId && movedFrom === null"
+            variant="outline"
+            color="neutral"
+            size="sm"
+            icon="i-lucide-repeat"
+            class="mt-2"
+            @click="editingRule = true"
+          >
+            {{ recurring ? $t('drawer.editRepeat') : $t('drawer.repeat') }}
+          </UButton>
         </UFormField>
         <UFormField v-if="statuses.length > 0" :label="$t('drawer.status')">
           <USelectMenu
@@ -324,7 +365,31 @@ const dates = [
             @update:model-value="saveStatus"
           />
         </UFormField>
+        <SubtaskList v-if="!task.parentId" :task="task" :readonly="readonly" />
+        <UButton
+          color="error"
+          variant="outline"
+          icon="i-lucide-trash-2"
+          class="self-start"
+          data-testid="delete-task"
+          @click="confirmingDelete = true"
+        >
+          {{ $t('deleteTask.delete') }}
+        </UButton>
       </form>
     </template>
   </USlideover>
+  <RecurrenceDialog
+    v-if="task"
+    :open="editingRule"
+    :task="task"
+    @close="editingRule = false"
+  />
+  <DeleteTaskDialog
+    :open="confirmingDelete"
+    :title="String(task?.title ?? '')"
+    :subtasks="task?.subtasks.length ?? 0"
+    @confirm="deleteTask"
+    @close="confirmingDelete = false"
+  />
 </template>

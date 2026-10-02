@@ -21,6 +21,7 @@ import {
   latestClosed,
   localDate,
   recurrenceOf,
+  ruleProblem,
   type Recurrence,
   type StateOf,
 } from './occurrence.js';
@@ -502,12 +503,15 @@ function pickOccurrence(
  *  create the new row's id. */
 export type Minted = { opId: string; id?: string };
 
-/** `add`: quick-add text plus already-validated recurrence fields. */
+/** `add`: quick-add text plus already-validated recurrence fields; with
+ *  `parentId`, a subtask of that task (no rule; the parent's project unless
+ *  the text names one). */
 export async function add(
   core: Core,
   text: string,
   recurrence: Record<string, string>,
   minted?: Minted,
+  parentId?: string,
 ): Promise<{
   synced: boolean;
   title: string;
@@ -525,6 +529,16 @@ export async function add(
       task,
     };
   }
+  let parent: Row | undefined;
+  if (parentId !== undefined) {
+    if (Object.keys(recurrence).length > 0) {
+      throw new UsageError('a subtask repeats with its parent');
+    }
+    parent = liveTask(tasks(store), parentId);
+    if (typeof parent.parentId === 'string') {
+      throw new UsageError('a subtask cannot have subtasks');
+    }
+  }
   // Refuses an empty title — see planAdd.
   const { title, priority, project, tags } = planAdd(text);
   const ts = core.now().toISOString();
@@ -534,6 +548,9 @@ export async function add(
     core.newId,
     ts,
   );
+  const projectId =
+    labels.projectId ??
+    (typeof parent?.projectId === 'string' ? parent.projectId : null);
   const op: OpCreate = {
     opId: minted?.opId ?? core.newId(),
     kind: 'create',
@@ -543,7 +560,8 @@ export async function add(
       title,
       priority,
       rank: 'a0',
-      ...(labels.projectId === null ? {} : { projectId: labels.projectId }),
+      ...(parentId === undefined ? {} : { parentId }),
+      ...(projectId === null || projectId === undefined ? {} : { projectId }),
       ...recurrence,
     },
     ts,
@@ -975,11 +993,28 @@ export const ALL_OPEN: ViewSpec = {
 
 /** A listed task with what a screen shows: its column (`displayStatus`) and
  *  whether its occurrence is closed (only ever true on a board). */
-export type Item = Due & { column: string | null; closed: boolean };
+export type Item = Due & {
+  column: string | null;
+  closed: boolean;
+  /** The parent's title for a subtask; null for a top-level task. */
+  parentTitle: string | null;
+};
 
-function itemOf({ row, facts, closed }: Listed): Item {
-  return { ...row, column: facts.statusId, closed };
+/** `titles`: the live tasks' titles by id. */
+function itemOf(titles: Map<string, string>) {
+  return ({ row, facts, closed }: Listed): Item => ({
+    ...row,
+    column: facts.statusId,
+    closed,
+    parentTitle:
+      typeof row.parentId === 'string'
+        ? (titles.get(row.parentId) ?? null)
+        : null,
+  });
 }
+
+const titlesOf = (store: Store) =>
+  new Map(liveTasks(tasks(store)).map((t) => [String(t.id), String(t.title)]));
 
 function selected(
   store: Store,
@@ -996,7 +1031,7 @@ function selected(
     due(store, today, closedSince).filter(({ facts }) =>
       matches(view.filter as Filter, facts, today),
     ),
-  ).map(itemOf);
+  ).map(itemOf(titlesOf(store)));
 }
 
 /** The open tasks a list view shows, filtered and sorted (the CLI's facts). */
@@ -1111,6 +1146,18 @@ export function calendarTasks(
   return { items: items.filter((i) => placed.has(String(i.id))), placements };
 }
 
+/** One row of a drawer's checklist: closed at the parent's current
+ *  occurrence (ADR 0009), or by its own mark under a one-off parent. */
+export type Subtask = { id: string; title: string; closed: boolean };
+
+export type TaskDetails = Item & {
+  notes: string | null;
+  rrule: string | null;
+  dtstart: string | null;
+  /** Live subtasks by rank, then id. */
+  subtasks: Subtask[];
+};
+
 /** One task for the drawer: the row, labels, current occurrence, column,
  *  closed state; null when it is deleted or unknown. A recurring task whose
  *  series ended is live: `closed`, with no occurrence. */
@@ -1118,14 +1165,28 @@ export function taskDetails(
   store: Store,
   today: string,
   id: string,
-): (Item & { notes: string | null; rrule: string | null }) | null {
+): TaskDetails | null {
   const found = due(store, today, null).find(({ row }) => row.id === id);
   if (found === undefined) return null;
-  const { notes, rrule } = found.row;
+  const { notes, rrule, dtstart, occurrence } = found.row;
+  const marks = occurrences(store);
+  // A series that ended has no axis to tick on; one-off marks left from when
+  // the parent was one-off no longer apply (departure 8).
+  const ended = typeof rrule === 'string' && occurrence === null;
+  const subtasks = liveTasks(tasks(store))
+    .filter((t) => t.parentId === id)
+    .sort((a, b) => compareStrings(a.rank, b.rank) || compareIds(a, b))
+    .map((t) => ({
+      id: String(t.id),
+      title: String(t.title),
+      closed: !ended && isClosed(stateOf(marks, String(t.id))(occurrence)),
+    }));
   return {
-    ...itemOf(found),
+    ...itemOf(titlesOf(store))(found),
     notes: typeof notes === 'string' ? notes : null,
     rrule: typeof rrule === 'string' ? rrule : null,
+    dtstart: typeof dtstart === 'string' ? dtstart : null,
+    subtasks,
   };
 }
 
@@ -1391,6 +1452,25 @@ const deleteOp = (
   baseVersion: row.version,
 });
 
+/**
+ * A task a destructive op may cite by `version`: live, synced, and with no
+ * task op still queued for it, since a queued op would raise the server's
+ * version past the one sent (departure 3). Throws UsageError `no task <id>`
+ * or `<what> <id> is not synced yet`.
+ */
+function settledTask(
+  store: Store,
+  all: Row[],
+  id: string,
+  what: 'task' | 'subtask',
+): Row & { version: number } {
+  liveTask(all, id);
+  if (store.pending().some((op) => op.table === 'task' && op.id === id)) {
+    throw new UsageError(`${what} ${id} is not synced yet`);
+  }
+  return syncedRow(all, id, what);
+}
+
 /** Refuses a view without a `version` ("not synced yet"). Replay-safe. */
 export async function deleteView(
   core: Core,
@@ -1640,10 +1720,7 @@ export async function undoMove(
   ) {
     throw new UsageError(`task ${copyId} is not a moved occurrence`);
   }
-  if (store.pending().some((op) => op.table === 'task' && op.id === copyId)) {
-    throw new UsageError(`task ${copyId} is not synced yet`);
-  }
-  const row = syncedRow(all, copyId, 'task');
+  const row = settledTask(store, all, copyId, 'task');
   if (liveTasks(all).some((t) => t.parentId === copyId)) {
     throw new UsageError(`task ${copyId} has subtasks`);
   }
@@ -1677,4 +1754,112 @@ export async function undoMove(
       minted.opId,
     ),
   };
+}
+
+/**
+ * Deletes a task and its live subtasks (#391): one batch, each live
+ * subtask's `delete` (by id) before the parent's, each with the row's
+ * `version` as `baseVersion`. Every row must be settled. No undo.
+ * Replay-safe.
+ */
+export async function deleteTask(
+  core: Core,
+  minted: Minted,
+  taskId: string,
+): Promise<{ synced: boolean }> {
+  const done = await replayed(core, minted.opId);
+  if (done !== undefined) return done;
+  const { store } = core;
+  const all = tasks(store);
+  const parent = settledTask(store, all, taskId, 'task');
+  const subtasks = liveTasks(all)
+    .filter((t) => t.parentId === taskId)
+    .sort(compareIds)
+    .map((t) => settledTask(store, all, String(t.id), 'subtask'));
+  const ops = [...subtasks, parent].map((row) =>
+    deleteOp('task', row, core.newId),
+  );
+  return { synced: await submitOwn(core, ops, 'delete', minted.opId) };
+}
+
+export type Rule = { rrule: string; dtstart: string };
+
+/**
+ * Sets, changes or clears (null) a task's rule (#414 decision 1), one batch.
+ * Op i carries baseVersion `version + i` (departure 2): the server bumps the
+ * row's version per op, so each op cites the version its predecessor leaves.
+ * A batch the server applies only in part leaves some fields written and
+ * others not, and not only the earlier ones: if another device's single write
+ * moves the version to v+1, `set rrule` (base v) conflicts while `set dtstart`
+ * (base v+1) applies, leaving a new dtstart with the old rrule. The next pull
+ * shows what stuck.
+ * Recurring → one-off: rrule null, dtstart null, scheduledOn = the current
+ * occurrence. One-off → recurring: dtstart (when it differs), rrule,
+ * scheduledOn null. Recurring → recurring: rrule, then dtstart, each when it
+ * differs. Fields equal to the stored value are left out; an unchanged rule
+ * queues nothing. Refuses a subtask, a moved copy (a one-off by design), a
+ * rule ruleProblem refuses, and (when anything would be written) a task that
+ * is not settled. Replay-safe.
+ */
+export async function setRecurrence(
+  core: Core,
+  minted: Minted,
+  taskId: string,
+  rule: Rule | null,
+): Promise<{ synced: boolean }> {
+  const done = await replayed(core, minted.opId);
+  if (done !== undefined) return done;
+  const { store } = core;
+  const all = tasks(store);
+  const task = liveTask(all, taskId);
+  if (task.parentId !== null && task.parentId !== undefined) {
+    throw new UsageError('a subtask repeats with its parent');
+  }
+  if (rule !== null && task.originTaskId != null) {
+    throw new UsageError(
+      'a moved occurrence cannot repeat — return it to its series first',
+    );
+  }
+  if (rule !== null) {
+    const problem = ruleProblem(rule.rrule, rule.dtstart);
+    if (problem !== null) throw new UsageError(problem);
+  }
+  const current = recurrenceOf(task, undefined);
+  const wanted: [string, unknown][] =
+    rule === null
+      ? current === null
+        ? []
+        : [
+            ['rrule', null],
+            ['dtstart', null],
+            [
+              'scheduledOn',
+              currentOccurrence(
+                current,
+                stateOf(occurrences(store), taskId),
+                localDate(core.now()),
+              )?.occurrence ?? null,
+            ],
+          ]
+      : current === null
+        ? [
+            ['dtstart', rule.dtstart],
+            ['rrule', rule.rrule],
+            ['scheduledOn', null],
+          ]
+        : [
+            ['rrule', rule.rrule],
+            ['dtstart', rule.dtstart],
+          ];
+  const fields = wanted.filter(([k, v]) => !sameJson(task[k] ?? null, v));
+  if (fields.length === 0) {
+    return { synced: await submitOwn(core, [], 'rule', minted.opId) };
+  }
+  const { version } = settledTask(store, all, taskId, 'task');
+  const ts = core.now().toISOString();
+  const ops = fields.map(([k, v], i) => ({
+    ...setTask(task, k, v, core.newId, ts),
+    baseVersion: version + i,
+  }));
+  return { synced: await submitOwn(core, ops, 'rule', minted.opId) };
 }

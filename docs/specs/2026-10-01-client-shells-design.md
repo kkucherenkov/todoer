@@ -258,6 +258,49 @@ Settled in the same interview; each becomes its own small task.
   always (any client could spoof its IP past the limits); keeping only the
   README warning.
 
+## Decisions for #414 (task editing)
+
+Settled by the maintainer on 2026-10-02, for plan W5
+(`docs/plans/2026-10-02-plan-w5-web-task-editing.md`).
+
+- **Recurrence editing.** A preset form (Daily, Weekly with weekdays,
+  Monthly, Yearly, an interval, a start date that is `dtstart`) plus a raw
+  RRULE field for the rest of the supported subset, checked live, as the
+  filter tree pairs with raw JSON. Marks on past occurrences stay as history;
+  future occurrences follow the new rule. A task can be made recurring, and a
+  recurring task one-off by clearing `rrule`. A rule write carries
+  `baseVersion` (ADR 0004) and is refused with a reason while the row has no
+  `version`. The form previews the next dates with the shared expander. A
+  subtask carries no rule (ADR 0009), nor does a moved copy: it is a one-off,
+  and "Return to series" would delete it with its new series.
+  - *Rejected: presets only.* The subset has rules no preset writes ("last
+    working day of the month"), and a task carrying one could not be edited.
+  - *Rejected: raw RRULE only.* Correct, and unusable for most people.
+  - *Cost:* stranded occurrences become routine (plan C design, "Risks"),
+    and a rule edit fails offline for a task that has not synced yet.
+- **Subtasks.** Shown in the parent's drawer, where they are added, marked
+  and opened. In list, kanban and calendar a subtask is an ordinary row with
+  a link to its parent. Two levels only. A subtask of a recurring parent is
+  marked on the parent's current occurrence (ADR 0009).
+  - *Rejected: nesting subtasks under their parent in every layout.* A
+    kanban column or a calendar day has no room for a tree, and a filter
+    selects a subtask on its own facts, not its parent's.
+  - *Cost:* a subtask appears in a view apart from its parent; the link is
+    the only connection there.
+- **Delete.** A confirmation dialog, "Delete task and N subtasks?", then one
+  batch that deletes the live subtasks first and the parent last (#391). No
+  undo. Every `delete` carries the row's `baseVersion`, like the other
+  deletes.
+  The dialog focuses Cancel, so a stray Enter deletes nothing (WAI-ARIA
+  alertdialog). Closing it, like the rule dialog, returns focus to the button
+  that opened it (Reka's focus scope does this; the e2e pins it).
+  - *Rejected: undo.* A tombstone cannot be resurrected (ADR 0013), so undo
+    would mean recreating rows under new ids, losing their marks and links.
+  - *Rejected: refusing to delete a task with subtasks.* It makes the person
+    delete each subtask by hand for what #391 already allows in one batch.
+  - *Cost:* a subtask added on another device and not yet pulled gets the
+    parent's delete refused by the server; the badge shows it.
+
 ## Verified facts
 
 - The domain design names the three clients: web, CLI, Flutter
@@ -271,7 +314,7 @@ Settled in the same interview; each becomes its own small task.
 - The auth limiters key on `req.ip`, and `main.ts` set no `trust proxy` before #407.
 - Each generated migration carries the trap-6 statements; `dbgenerated()` on
   the `seq` fields does not remove them (dnote, plan B2 follow-up).
-- The CLI has no `delete` command, so no client deletes tasks today.
+- The CLI has no `delete` command, so no client deletes tasks today. *(The web deletes tasks since W5.)*
 
 ## Risks
 
@@ -591,7 +634,7 @@ their trees.
 **10. A recurring task's scheduled date is read-only in the drawer.** It is the
 current occurrence (V1 departure 5). Changing it means editing `dtstart` or
 `rrule`, which needs `baseVersion`. Moving one occurrence is the calendar's
-(W4); editing `dtstart` or `rrule` is still not built.
+(W4); editing `dtstart` and `rrule` shipped in W5.
 
 **11. The production image ships in W3** (W2 departure 6). `prisma` moves from
 the backend's dev dependencies to its dependencies so that the image can run
@@ -655,3 +698,69 @@ wider one, and the mode and anchor date live in the URL
 
 - **F3.** A layout switched in place with a stale span hung the tab; the span
   callback now returns null unless the layout is calendar, with an e2e test.
+
+## Departures in plan W5
+
+Plan W5 (task delete, subtasks and recurrence editing in the web,
+[`docs/plans/2026-10-02-plan-w5-web-task-editing.md`](../plans/2026-10-02-plan-w5-web-task-editing.md))
+fills in "Decisions for #414" in twelve places. No backend, CLI or contract
+change.
+
+1. **One-off and recurring switch tidy the date fields.** Recurring to one-off
+   writes `rrule` and `dtstart` null and `scheduledOn` = the current occurrence;
+   the reverse writes `dtstart` and `rrule` and clears `scheduledOn`. The start
+   date defaults to `scheduledOn`, else today. Fills in decision 1.
+2. **Every op of a rule batch carries `baseVersion` = `version + i`**, though
+   the server requires it on `rrule` only, so a stale batch is refused at its
+   first op. `dtstart` goes first only when the row has none. Fills in decision
+   1's `baseVersion`.
+3. **Delete and rule writes refuse an unsettled task**: no `version`, or a
+   queued op for it. One helper, `settledTask`, serves `undoMove`, `deleteTask`
+   and `setRecurrence`. Fills in decisions 1 and 3.
+4. **A rule with no date within 10 years of its start is refused**
+   (`ruleProblem`); the CLI only warns. A rule whose dates all lie in the past
+   is accepted and ends the series. Fills in decision 1's live check.
+5. **A rule change has no undo.** Past marks stay, so re-entering the old rule
+   restores the old series.
+6. **A subtask takes its parent's project** when its text names none; it is
+   rank `a0` and listed by id. Fills in decision 2.
+7. **The drawer reads and ticks a subtask at the parent's current
+   occurrence**; the list shows it at its own. They differ when the parent was
+   done before the subtask. Fills in decision 2 and ADR 0009.
+8. **Switching a parent between one-off and recurring moves its subtasks to
+   the other axis.** Old marks no longer apply and they show open; marks are
+   not migrated.
+9. **Presets write canonical text only** (`FREQ=…`, `INTERVAL` above 1, `BYDAY`
+   in `WEEKDAYS` order); any other rule, including `FREQ=WEEKLY` with no
+   `BYDAY`, opens in the raw field unchanged. Monthly and Yearly repeat on the
+   start date's day, so a rule from the 31st skips short months.
+    An empty or non-integer interval is a problem shown in the form, never
+    written as 1. Known parser reasons show translated (`recurrence.problem.*`),
+    the rest as the raw English text.
+10. **The parent link** is a link on a row and a card and an "Open parent" menu
+    item on a calendar chip, which already holds a button.
+11. **Delete lives in the drawer only.** An ended series keeps its rule editor
+    enabled; its other fields stay read-only.
+12. **A moved copy cannot repeat.** The drawer hides "Repeat…" for a task with
+    `originTaskId` and `setRecurrence` refuses it ("a moved occurrence cannot
+    repeat — return it to its series first"). Clearing a rule stays allowed.
+    Fills in decision 1.
+
+### Behaviour worth knowing in W5
+
+- **A partial rule batch.** Each op of a batch is its own server transaction,
+  so another device's write can land between two. Part of the change applies and
+  the badge shows the refused rest. It is not only the earlier fields that stick:
+  if the version moves to v+1, `set rrule` (base v) conflicts and `set dtstart`
+  (base v+1) applies, leaving a new start date under the old rule.
+- **A superseded `rrule` loses the whole change.** If another device with a
+  clock ahead wrote `rrule` last (the server clamps timestamps only to +5
+  minutes), the op comes back `superseded` and the row's version does not
+  bump. The next op of the batch then conflicts, so the rule change is lost and
+  shows as a conflict on the second field.
+- **A parent delete refused for an unpulled subtask** (the cost of #391). The
+  known subtasks are gone from view, the server refuses the parent, and the
+  "N refused" badge shows it. Nothing hides it; a pull brings the subtask back.
+- **A subtask can read open in the drawer and be listed at another date**
+  (departure 7).
+- **Marks stop applying when a parent switches axis** (departure 8).

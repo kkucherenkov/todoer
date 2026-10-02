@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { describe, expect, it } from 'vitest';
 import {
   currentOccurrence,
@@ -5,6 +7,8 @@ import {
   latestClosed,
   localDate,
   recurrenceOf,
+  ruleProblem,
+  upcoming,
   type Recurrence,
   type StateOf,
 } from './occurrence.js';
@@ -179,5 +183,45 @@ describe('latestClosed', () => {
         't',
       ),
     ).toBeNull();
+  });
+});
+
+describe('ruleProblem and upcoming', () => {
+  const vectors = JSON.parse(
+    readFileSync(
+      createRequire(import.meta.url).resolve(
+        '@todoer/specs/vectors/rrule.json',
+      ),
+      'utf8',
+    ),
+  ) as { cases: { name: string; rrule: string; dtstart: string }[] };
+
+  it.each(vectors.cases)('accepts the vector "$name"', (v) => {
+    expect(ruleProblem(v.rrule, v.dtstart)).toBeNull();
+  });
+
+  it('names why a rule cannot be a task’s', () => {
+    expect(ruleProblem('FREQ=HOURLY', '2026-10-02')).toMatch(/FREQ/);
+    expect(ruleProblem('FREQ=DAILY', '2026-02-30')).toBe(
+      'the start must be a date, YYYY-MM-DD',
+    );
+    expect(
+      ruleProblem('FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=30', '2026-10-02'),
+    ).toBe('this rule produces no date from 2026-10-02');
+    expect(ruleProblem('FREQ=DAILY;UNTIL=20200101', '2019-12-30')).toBeNull();
+  });
+
+  it('lists the first n dates from the later of from and dtstart', () => {
+    expect(upcoming('FREQ=MONTHLY', '2026-01-31', '2026-02-01', 3)).toEqual([
+      '2026-03-31',
+      '2026-05-31',
+      '2026-07-31',
+    ]);
+    expect(upcoming('FREQ=DAILY', '2026-10-05', '2026-10-01', 2)).toEqual([
+      '2026-10-05',
+      '2026-10-06',
+    ]);
+    expect(upcoming('FREQ=DAILY', '2026-10-01', '2026-10-01')).toHaveLength(5);
+    expect(upcoming('FREQ=HOURLY', '2026-10-01', '2026-10-01')).toEqual([]);
   });
 });

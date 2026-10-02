@@ -77,7 +77,8 @@
     "skipped": "Skipped",
     "doneRecurring": "Done for {occurrence}, next {next}",
     "undo": "Undo",
-    "empty": "No open tasks."
+    "empty": "No open tasks.",
+    "openParent": "Open parent: {title}"
   },
   "drawer": {
     "title": "Task",
@@ -93,12 +94,78 @@
     "clear": "Clear {field}",
     "status": "Status",
     "rule": "Repeats: {rule}",
-    "ended": "This series has ended; the task is read-only.",
+    "ended": "This series has ended; only its rule can be changed.",
+    "repeat": "Repeat…",
+    "editRepeat": "Edit repeat…",
     "invalidDate": "Use a date, YYYY-MM-DD.",
     "gone": "The task was deleted",
     "notFound": "This task no longer exists.",
     "movedFrom": "Moved from {date}",
-    "returnToSeries": "Return to series"
+    "returnToSeries": "Return to series",
+    "subtasks": {
+      "one": "{n} subtask",
+      "few": "{n} subtasks",
+      "many": "{n} subtasks",
+      "other": "{n} subtasks"
+    },
+    "subtasksTitle": "Subtasks",
+    "progress": "{done} of {total} done",
+    "doneLabel": "Done: {title}",
+    "addSubtask": "Add subtask",
+    "subtaskOf": "Subtask of {title}"
+  },
+  "recurrence": {
+    "title": "Repeat",
+    "description": "Choose how the task repeats, or write the rule.",
+    "repeat": "Repeat",
+    "none": "Does not repeat",
+    "DAILY": "Daily",
+    "WEEKLY": "Weekly",
+    "MONTHLY": "Monthly",
+    "YEARLY": "Yearly",
+    "custom": "Custom (RRULE)",
+    "every": "Every",
+    "unit": {
+      "DAILY": "day(s)",
+      "WEEKLY": "week(s)",
+      "MONTHLY": "month(s)",
+      "YEARLY": "year(s)"
+    },
+    "on": "On",
+    "starts": "Starts",
+    "rrule": "RRULE",
+    "pickDay": "Pick at least one day",
+    "pickInterval": "Enter a whole number of 1 or more",
+    "problem": {
+      "malformed": "Malformed part: “{part}”",
+      "time": "{key} is not supported: only dates, never times",
+      "unsupported": "{key} is not supported",
+      "twice": "{key} appears twice",
+      "freqRequired": "FREQ is required",
+      "freqUnsupported": "FREQ={value} is not supported",
+      "positive": "{key} must be a positive whole number",
+      "outOfRange": "{key}: “{item}” is out of range",
+      "notWeekday": "BYDAY: “{item}” is not a weekday",
+      "ordinal": "BYDAY: “{item}” has a number, which needs FREQ=MONTHLY or YEARLY",
+      "untilDate": "UNTIL must be a date, YYYYMMDD",
+      "wkst": "WKST: “{value}” is not a weekday",
+      "countUntil": "COUNT and UNTIL cannot both be set",
+      "monthdayWeekly": "BYMONTHDAY cannot be used with FREQ=WEEKLY",
+      "setpos": "BYSETPOS needs another BY part to select from",
+      "startDate": "The start must be a date, YYYY-MM-DD",
+      "noDate": "This rule produces no date from {date}"
+    },
+    "cancel": "Cancel",
+    "save": "Save"
+  },
+  "deleteTask": {
+    "title": "Delete task",
+    "confirm": "Delete “{title}”?",
+    "confirmWith": "Delete “{title}” and {subtasks}?",
+    "irreversible": "This cannot be undone.",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "done": "Task deleted"
   },
   "kanban": {
     "columns": "Columns",
@@ -201,6 +268,7 @@
     "date": "Date",
     "move": "Move",
     "moved": "Moved to {to}",
-    "movedOccurrence": "{from} moved to {to}"
+    "movedOccurrence": "{from} moved to {to}",
+    "openParent": "Open parent"
   }
 }

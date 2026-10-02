@@ -77,7 +77,8 @@
     "skipped": "Пропущено",
     "doneRecurring": "Выполнено за {occurrence}, дальше {next}",
     "undo": "Отменить",
-    "empty": "Открытых задач нет."
+    "empty": "Открытых задач нет.",
+    "openParent": "Открыть родителя: {title}"
   },
   "drawer": {
     "title": "Задача",
@@ -93,12 +94,78 @@
     "clear": "Очистить: {field}",
     "status": "Статус",
     "rule": "Повторяется: {rule}",
-    "ended": "Серия закончилась; задача только для чтения.",
+    "ended": "Серия закончилась; можно изменить только её правило.",
+    "repeat": "Повторять…",
+    "editRepeat": "Изменить повтор…",
     "invalidDate": "Нужна дата в формате ГГГГ-ММ-ДД.",
     "gone": "Задача удалена",
     "notFound": "Этой задачи больше нет.",
     "movedFrom": "Перенесено с {date}",
-    "returnToSeries": "Вернуть в серию"
+    "returnToSeries": "Вернуть в серию",
+    "subtasks": {
+      "one": "{n} подзадачу",
+      "few": "{n} подзадачи",
+      "many": "{n} подзадач",
+      "other": "{n} подзадачи"
+    },
+    "subtasksTitle": "Подзадачи",
+    "progress": "{done} из {total} выполнено",
+    "doneLabel": "Выполнено: {title}",
+    "addSubtask": "Добавить подзадачу",
+    "subtaskOf": "Подзадача: {title}"
+  },
+  "recurrence": {
+    "title": "Повтор",
+    "description": "Выберите, как повторяется задача, или напишите правило.",
+    "repeat": "Повторять",
+    "none": "Не повторяется",
+    "DAILY": "Каждый день",
+    "WEEKLY": "Каждую неделю",
+    "MONTHLY": "Каждый месяц",
+    "YEARLY": "Каждый год",
+    "custom": "Своё (RRULE)",
+    "every": "Каждые",
+    "unit": {
+      "DAILY": "дн.",
+      "WEEKLY": "нед.",
+      "MONTHLY": "мес.",
+      "YEARLY": "г."
+    },
+    "on": "По дням",
+    "starts": "Начало",
+    "rrule": "RRULE",
+    "pickDay": "Выберите хотя бы один день",
+    "pickInterval": "Введите целое число от 1",
+    "problem": {
+      "malformed": "Неверная часть: «{part}»",
+      "time": "{key} не поддерживается: только даты, без времени",
+      "unsupported": "{key} не поддерживается",
+      "twice": "{key} указан дважды",
+      "freqRequired": "Нужен FREQ",
+      "freqUnsupported": "FREQ={value} не поддерживается",
+      "positive": "{key} должен быть целым числом от 1",
+      "outOfRange": "{key}: «{item}» вне допустимого диапазона",
+      "notWeekday": "BYDAY: «{item}» не день недели",
+      "ordinal": "BYDAY: «{item}» с номером требует FREQ=MONTHLY или YEARLY",
+      "untilDate": "UNTIL должен быть датой, ГГГГММДД",
+      "wkst": "WKST: «{value}» не день недели",
+      "countUntil": "COUNT и UNTIL нельзя задавать вместе",
+      "monthdayWeekly": "BYMONTHDAY нельзя использовать с FREQ=WEEKLY",
+      "setpos": "BYSETPOS требует ещё одну часть BY, из которой выбирать",
+      "startDate": "Начало должно быть датой, ГГГГ-ММ-ДД",
+      "noDate": "Это правило не даёт ни одной даты, начиная с {date}"
+    },
+    "cancel": "Отмена",
+    "save": "Сохранить"
+  },
+  "deleteTask": {
+    "title": "Удалить задачу",
+    "confirm": "Удалить «{title}»?",
+    "confirmWith": "Удалить «{title}» и {subtasks}?",
+    "irreversible": "Это нельзя отменить.",
+    "cancel": "Отмена",
+    "delete": "Удалить",
+    "done": "Задача удалена"
   },
   "kanban": {
     "columns": "Колонки",
@@ -201,6 +268,7 @@
     "date": "Дата",
     "move": "Перенести",
     "moved": "Перенесено на {to}",
-    "movedOccurrence": "{from} перенесено на {to}"
+    "movedOccurrence": "{from} перенесено на {to}",
+    "openParent": "Открыть родителя"
   }
 }

@@ -5,6 +5,7 @@ import type { Item, Placement } from '@todoer/client-core';
 const props = defineProps<{ placement: Placement; item: Item }>();
 const emit = defineEmits<{ open: []; move: [] }>();
 const { t } = useI18n();
+const open = useOpenTask();
 
 // Every drop has a keyboard and touch path: native DnD needs a pointer.
 const actions = computed<DropdownMenuItem[]>(() => [
@@ -13,6 +14,15 @@ const actions = computed<DropdownMenuItem[]>(() => [
     icon: 'i-lucide-panel-right-open',
     onSelect: () => emit('open'),
   },
+  ...(props.item.parentId
+    ? [
+        {
+          label: t('calendar.openParent'),
+          icon: 'i-lucide-corner-up-left',
+          onSelect: () => open(String(props.item.parentId)),
+        },
+      ]
+    : []),
   ...(props.placement.closed
     ? []
     : [

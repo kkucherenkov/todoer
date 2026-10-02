@@ -12,6 +12,7 @@ import {
   calendarTasks,
   catalog,
   deleteStatus,
+  deleteTask,
   deleteView,
   editTask,
   listTasks,
@@ -22,6 +23,7 @@ import {
   saveView,
   seedStatuses,
   setCompleting,
+  setRecurrence,
   submit,
   taskDetails,
   undoMove,
@@ -311,6 +313,34 @@ describe('taskDetails of an ended series', () => {
       occurrence: null,
       closed: true,
     });
+  });
+});
+
+describe('taskDetails subtask checklist of an ended series', () => {
+  it('ignores one-off marks left from when the parent was one-off', () => {
+    const store = boardStore();
+    put(
+      store,
+      'task',
+      task('p', { rrule: 'FREQ=DAILY;COUNT=1', dtstart: '2026-01-01' }),
+    );
+    put(store, 'task', task('s', { parentId: 'p' }));
+    put(store, 'task_occurrence', {
+      id: 'p-occ',
+      taskId: 'p',
+      occurrence: '2026-01-01',
+      state: 'done',
+    });
+    // Left from when the parent was one-off: no occurrence, so no axis.
+    put(store, 'task_occurrence', {
+      id: 's-occ',
+      taskId: 's',
+      occurrence: null,
+      state: 'done',
+    });
+    const details = taskDetails(store, TODAY, 'p');
+    expect(details).toMatchObject({ occurrence: null });
+    expect(details?.subtasks).toEqual([{ id: 's', title: 's', closed: false }]);
   });
 });
 
@@ -1605,5 +1635,503 @@ describe('moveOccurrence and undoMove', () => {
     expect((await undoMove(core, mint('u1'), 'c')).synced).toBe(true);
     expect(srv.sent).toHaveLength(sent);
     expect(store.pending()).toEqual([]);
+  });
+});
+
+describe('deleteTask', () => {
+  /** Offline, so the queue stays inspectable; `p` has live subtasks s1, s2. */
+  function family() {
+    const store = openStore(':memory:');
+    const srv = fakeServer();
+    srv.state.offline = true;
+    put(store, 'task', task('p', { version: 4 }));
+    put(store, 'task', task('s2', { parentId: 'p', version: 3 }));
+    put(store, 'task', task('s1', { parentId: 'p', version: 2 }));
+    put(
+      store,
+      'task',
+      task('s0', { parentId: 'p', version: 1, deletedAt: '2026-10-01' }),
+    );
+    return { store, srv, core: coreOf(store, srv.send) };
+  }
+  const pendingDeletes = (store: Store) =>
+    store
+      .pending()
+      .map((o) => [o.kind, o.id, 'baseVersion' in o && o.baseVersion]);
+
+  it('deletes live subtasks first, then the parent, at their versions', async () => {
+    const { store, core } = family();
+    expect((await deleteTask(core, mint('d1'), 'p')).synced).toBe(false);
+    expect(pendingDeletes(store)).toEqual([
+      ['delete', 's1', 2],
+      ['delete', 's2', 3],
+      ['delete', 'p', 4],
+    ]);
+    expect(store.pending()[0]?.opId).toBe('d1');
+    expect(ids(viewTasks(store, TODAY, ALL_OPEN))).toEqual([]);
+    for (const id of ['p', 's1', 's2']) {
+      expect(taskDetails(store, TODAY, id)).toBeNull();
+    }
+  });
+
+  it('deletes a subtask alone', async () => {
+    const { store, core } = family();
+    await deleteTask(core, mint('d1'), 's1');
+    expect(pendingDeletes(store)).toEqual([['delete', 's1', 2]]);
+    expect(taskDetails(store, TODAY, 'p')).not.toBeNull();
+  });
+
+  it('refuses what is not settled, queuing nothing', async () => {
+    const cases: [
+      string,
+      (c: ReturnType<typeof family>) => Promise<unknown> | void,
+      RegExp,
+    ][] = [
+      [
+        'p',
+        ({ store }) => put(store, 'task', task('p', { version: null })),
+        /task p is not synced yet/,
+      ],
+      [
+        'p',
+        ({ store }) =>
+          put(store, 'task', task('s2', { parentId: 'p', version: null })),
+        /subtask s2 is not synced yet/,
+      ],
+      [
+        'p',
+        ({ core }) => editTask(core, mint('e1'), 'p', { title: 'x' }),
+        /task p is not synced yet/,
+      ],
+      [
+        'p',
+        ({ core }) => editTask(core, mint('e1'), 's1', { priority: 2 }),
+        /subtask s1 is not synced yet/,
+      ],
+      ['nope', () => undefined, /no task nope/],
+      ['s0', () => undefined, /no task s0/],
+    ];
+    for (const [id, arrange, pattern] of cases) {
+      const ctx = family();
+      await arrange(ctx);
+      const queued = ctx.store.pending().length;
+      await expect(deleteTask(ctx.core, mint('d1'), id)).rejects.toThrow(
+        pattern,
+      );
+      expect(ctx.store.pending()).toHaveLength(queued);
+    }
+  });
+
+  it('syncs when online and replays without a second batch or "no task"', async () => {
+    const { store, srv, core } = family();
+    srv.state.offline = false;
+    expect((await deleteTask(core, mint('d1'), 'p')).synced).toBe(true);
+    const sent = srv.sent.length;
+    expect((await deleteTask(core, mint('d1'), 'p')).synced).toBe(true);
+    expect(srv.sent).toHaveLength(sent);
+    expect(store.pending()).toEqual([]);
+  });
+
+  it('leaves a moved copy alive, and refuses its undo', async () => {
+    const { store, core } = family();
+    put(store, 'task', {
+      ...task('c', { scheduledOn: '2026-10-10' }),
+      originTaskId: 'p',
+      originOccurrence: '2026-10-08',
+      version: 5,
+    });
+    await deleteTask(core, mint('d1'), 'p');
+    expect(ids(viewTasks(store, TODAY, ALL_OPEN))).toEqual(['c']);
+    await expect(undoMove(core, mint('u1'), 'c')).rejects.toThrow(
+      /original task of c is gone/,
+    );
+  });
+});
+
+describe('subtasks', () => {
+  /** Offline, so the queue stays inspectable. */
+  function homeStore() {
+    const store = openStore(':memory:');
+    const srv = fakeServer();
+    srv.state.offline = true;
+    put(store, 'project', { id: 'home-id', name: 'home' });
+    put(store, 'task', task('p', { projectId: 'home-id', version: 1 }));
+    return { store, core: coreOf(store, srv.send) };
+  }
+  const creates = (store: Store) =>
+    store.pending().flatMap((op) => (op.kind === 'create' ? [op] : []));
+
+  it('adds a subtask in the parent project with no rule', async () => {
+    const { store, core } = homeStore();
+    await add(core, 'Dishes', {}, mint('a1', 's1'), 'p');
+    const [create] = creates(store);
+    expect(create).toMatchObject({
+      table: 'task',
+      id: 's1',
+      fields: { title: 'Dishes', parentId: 'p', projectId: 'home-id' },
+    });
+    expect(create?.fields).not.toHaveProperty('rrule');
+    expect(create?.fields).not.toHaveProperty('dtstart');
+  });
+
+  it('takes the project the text names over the parent’s', async () => {
+    const { store, core } = homeStore();
+    await add(core, 'Floor #garage', {}, mint('a1', 's1'), 'p');
+    const all = creates(store);
+    const project = all.find((op) => op.table === 'project');
+    expect(project?.fields).toMatchObject({ name: 'garage' });
+    expect(all.find((op) => op.table === 'task')?.fields).toMatchObject({
+      parentId: 'p',
+      projectId: project?.id,
+    });
+  });
+
+  it('refuses a bad parent or a rule, queuing nothing', async () => {
+    const { store, core } = homeStore();
+    put(store, 'task', task('c', { parentId: 'p' }));
+    const rule = { rrule: 'FREQ=DAILY', dtstart: TODAY };
+    const cases: [string, Record<string, string>, RegExp][] = [
+      ['c', {}, /a subtask cannot have subtasks/],
+      ['nope', {}, /no task nope/],
+      ['p', rule, /a subtask repeats with its parent/],
+    ];
+    for (const [parent, recurrence, pattern] of cases) {
+      await expect(
+        add(core, 'X', recurrence, mint('a1', 's1'), parent),
+      ).rejects.toThrow(pattern);
+      expect(store.pending()).toEqual([]);
+    }
+  });
+
+  it('lists live subtasks by rank then id, closed by their own one-off mark', () => {
+    const store = boardStore();
+    put(store, 'task', task('p', { dtstart: null }));
+    put(store, 'task', task('b', { parentId: 'p', rank: 'a1' }));
+    put(store, 'task', task('z', { parentId: 'p', rank: 'a0' }));
+    put(store, 'task', task('a', { parentId: 'p', rank: 'a1' }));
+    put(
+      store,
+      'task',
+      task('gone', { parentId: 'p', deletedAt: '2026-10-01' }),
+    );
+    closeAt(store, 'z', '2026-10-01');
+    const details = taskDetails(store, TODAY, 'p');
+    expect(details?.subtasks).toEqual([
+      { id: 'z', title: 'z', closed: true },
+      { id: 'a', title: 'a', closed: false },
+      { id: 'b', title: 'b', closed: false },
+    ]);
+    expect(details?.parentTitle).toBeNull();
+    expect(details?.dtstart).toBeNull();
+    const child = taskDetails(store, TODAY, 'a');
+    expect(child).toMatchObject({ parentTitle: 'p', subtasks: [] });
+    const items = viewTasks(store, TODAY, ALL_OPEN);
+    expect(items.map((i) => [i.id, i.parentTitle])).toEqual([
+      ['p', null],
+      ['a', 'p'],
+      ['b', 'p'],
+    ]);
+  });
+
+  describe('of a weekly parent', () => {
+    const weekly = () => {
+      const store = boardStore();
+      put(
+        store,
+        'task',
+        task('w', {
+          rrule: 'FREQ=WEEKLY;BYDAY=MO',
+          dtstart: '2026-09-07',
+          version: 1,
+        }),
+      );
+      put(store, 'task', task('cafe', { parentId: 'w', version: 1 }));
+      return store;
+    };
+    const doneAt = (store: Store, id: string, occurrence: string) =>
+      put(store, 'task_occurrence', {
+        id: `${id}-${occurrence}`,
+        taskId: id,
+        occurrence,
+        state: 'done',
+      });
+    const closedOf = (store: Store) =>
+      taskDetails(store, TODAY, 'w')?.subtasks.find((s) => s.id === 'cafe')
+        ?.closed;
+
+    it('reads a subtask at the parent’s current occurrence', () => {
+      const store = weekly();
+      expect(taskDetails(store, TODAY, 'w')?.dtstart).toBe('2026-09-07');
+      expect(taskDetails(store, TODAY, 'w')?.occurrence).toBe('2026-09-28');
+      doneAt(store, 'cafe', '2026-09-28');
+      expect(closedOf(store)).toBe(true);
+      doneAt(store, 'w', '2026-09-28');
+      expect(taskDetails(store, TODAY, 'w')?.occurrence).toBe('2026-10-05');
+      expect(closedOf(store)).toBe(false);
+    });
+
+    it('closes by the parent’s axis while the list shows its own', () => {
+      const store = weekly();
+      doneAt(store, 'w', '2026-09-28');
+      doneAt(store, 'cafe', '2026-10-05');
+      expect(closedOf(store)).toBe(true);
+      const listed = viewTasks(store, TODAY, ALL_OPEN).find(
+        (i) => i.id === 'cafe',
+      );
+      expect(listed?.occurrence).toBe('2026-09-28');
+    });
+
+    it('marks a subtask at an occurrence of the parent', async () => {
+      const store = weekly();
+      const srv = fakeServer();
+      srv.state.offline = true;
+      doneAt(store, 'w', '2026-09-28');
+      await mark(
+        coreOf(store, srv.send),
+        'done',
+        'cafe',
+        '2026-10-05',
+        mint('m1'),
+      );
+      const op = store.pending().find((o) => o.kind === 'create');
+      expect(op).toMatchObject({
+        id: taskOccurrenceId('cafe', '2026-10-05'),
+        fields: { taskId: 'cafe', occurrence: '2026-10-05' },
+      });
+      expect(closedOf(store)).toBe(true);
+    });
+  });
+});
+
+describe('setRecurrence', () => {
+  const WEEKLY = { rrule: 'FREQ=WEEKLY;BYDAY=MO', dtstart: '2026-10-05' };
+
+  /** Offline, so the queue stays inspectable; every row has version 5 unless
+   *  it says otherwise. */
+  function world(rows: Record<string, unknown>[]) {
+    const store = openStore(':memory:');
+    const srv = fakeServer();
+    srv.state.offline = true;
+    for (const row of rows) put(store, 'task', row);
+    return { store, srv, core: coreOf(store, srv.send) };
+  }
+  const queued = (store: Store) =>
+    store
+      .pending()
+      .map((op) => [
+        op.kind,
+        op.kind === 'set' ? op.field : null,
+        op.kind === 'set' ? op.value : null,
+        'baseVersion' in op ? op.baseVersion : null,
+      ]);
+  const recurring = (extra: Record<string, unknown> = {}) =>
+    task('r', {
+      rrule: 'FREQ=DAILY',
+      dtstart: '2026-09-01',
+      version: 2,
+      ...extra,
+    });
+
+  it('sets a rule on a one-off with a leftover dtstart: rrule alone', async () => {
+    const { store, core } = world([
+      task('o2', { version: 5, dtstart: '2026-10-05' }),
+    ]);
+    await setRecurrence(core, mint('s1'), 'o2', WEEKLY);
+    expect(queued(store)).toEqual([['set', 'rrule', WEEKLY.rrule, 5]]);
+  });
+
+  it('turns a one-off into a series, each op at its own version', async () => {
+    const { store, core } = world([
+      task('o', { version: 5, scheduledOn: '2026-10-03' }),
+    ]);
+    expect((await setRecurrence(core, mint('s1'), 'o', WEEKLY)).synced).toBe(
+      false,
+    );
+    expect(queued(store)).toEqual([
+      ['set', 'dtstart', WEEKLY.dtstart, 5],
+      ['set', 'rrule', WEEKLY.rrule, 6],
+      ['set', 'scheduledOn', null, 7],
+    ]);
+    expect(store.pending()[0]?.opId).toBe('s1');
+    expect(taskDetails(store, TODAY, 'o')).toMatchObject({
+      rrule: WEEKLY.rrule,
+      dtstart: WEEKLY.dtstart,
+      occurrence: '2026-10-05',
+    });
+  });
+
+  it('changes the rule of a series and leaves its marks alone', async () => {
+    const { store, core } = world([recurring()]);
+    put(store, 'task_occurrence', {
+      id: 'r-1',
+      taskId: 'r',
+      occurrence: '2026-09-30',
+      state: 'done',
+    });
+    await setRecurrence(core, mint('s1'), 'r', {
+      rrule: 'FREQ=WEEKLY;BYDAY=MO',
+      dtstart: '2026-09-01',
+    });
+    expect(queued(store)).toEqual([
+      ['set', 'rrule', 'FREQ=WEEKLY;BYDAY=MO', 2],
+    ]);
+    expect(taskDetails(store, TODAY, 'r')?.occurrence).toBe('2026-09-28');
+    expect(
+      store.rows('task_occurrence').find((o) => o.id === 'r-1'),
+    ).toMatchObject({ state: 'done' });
+  });
+
+  it('sends rrule before dtstart when both change', async () => {
+    const { store, core } = world([recurring()]);
+    await setRecurrence(core, mint('s1'), 'r', {
+      rrule: 'FREQ=WEEKLY;BYDAY=MO',
+      dtstart: '2026-09-07',
+    });
+    expect(queued(store)).toEqual([
+      ['set', 'rrule', 'FREQ=WEEKLY;BYDAY=MO', 2],
+      ['set', 'dtstart', '2026-09-07', 3],
+    ]);
+  });
+
+  it('clears a series into a one-off on its current occurrence', async () => {
+    const { store, core } = world([
+      recurring({ rrule: 'FREQ=WEEKLY;BYDAY=MO', dtstart: '2026-09-07' }),
+    ]);
+    await setRecurrence(core, mint('s1'), 'r', null);
+    expect(queued(store)).toEqual([
+      ['set', 'rrule', null, 2],
+      ['set', 'dtstart', null, 3],
+      ['set', 'scheduledOn', '2026-09-28', 4],
+    ]);
+    expect(taskDetails(store, TODAY, 'r')).toMatchObject({
+      rrule: null,
+      dtstart: null,
+      scheduledOn: '2026-09-28',
+    });
+    await editTask(core, mint('e1'), 'r', { scheduledOn: '2026-10-09' });
+  });
+
+  it('clears an ended series without a scheduledOn', async () => {
+    const { store, core } = world([
+      recurring({ rrule: 'FREQ=DAILY;COUNT=1', dtstart: '2026-09-01' }),
+    ]);
+    put(store, 'task_occurrence', {
+      id: 'r-1',
+      taskId: 'r',
+      occurrence: '2026-09-01',
+      state: 'done',
+    });
+    await setRecurrence(core, mint('s1'), 'r', null);
+    expect(queued(store)).toEqual([
+      ['set', 'rrule', null, 2],
+      ['set', 'dtstart', null, 3],
+    ]);
+  });
+
+  it('queues nothing for an unchanged rule or for null on a one-off', async () => {
+    const { store, core } = world([
+      recurring({ version: null }),
+      task('o', { version: null }),
+    ]);
+    await setRecurrence(core, mint('s1'), 'r', {
+      rrule: 'FREQ=DAILY',
+      dtstart: '2026-09-01',
+    });
+    await setRecurrence(core, mint('s2'), 'o', null);
+    expect(store.pending()).toEqual([]);
+  });
+
+  it('refuses what it cannot write, queuing nothing', async () => {
+    const cases: [
+      string,
+      (store: Store, core: Core) => Promise<unknown> | void,
+      { rrule: string; dtstart: string },
+      RegExp,
+    ][] = [
+      ['s', () => undefined, WEEKLY, /a subtask repeats with its parent/],
+      [
+        'o',
+        (store) =>
+          put(
+            store,
+            'task',
+            task('o', {
+              version: 5,
+              originTaskId: 'd',
+              originOccurrence: '2026-10-05',
+            }),
+          ),
+        WEEKLY,
+        /a moved occurrence cannot repeat/,
+      ],
+      [
+        'o',
+        (store) => put(store, 'task', task('o', { version: null })),
+        WEEKLY,
+        /task o is not synced yet/,
+      ],
+      [
+        'o',
+        (_, core) => editTask(core, mint('e1'), 'o', { title: 'x' }),
+        WEEKLY,
+        /task o is not synced yet/,
+      ],
+      ['o', () => undefined, { ...WEEKLY, rrule: 'FREQ=HOURLY' }, /FREQ/],
+      ['o', () => undefined, { ...WEEKLY, dtstart: '2026-02-30' }, /a date/],
+      [
+        'o',
+        () => undefined,
+        { rrule: 'FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=30', dtstart: '2026-10-05' },
+        /produces no date/,
+      ],
+    ];
+    for (const [id, arrange, rule, pattern] of cases) {
+      const { store, core } = world([
+        task('o', { version: 5 }),
+        task('s', { parentId: 'o', version: 1 }),
+      ]);
+      await arrange(store, core);
+      const before = store.pending().length;
+      await expect(setRecurrence(core, mint('s1'), id, rule)).rejects.toThrow(
+        pattern,
+      );
+      expect(store.pending()).toHaveLength(before);
+    }
+  });
+
+  it('syncs online and replays without a second batch', async () => {
+    const { store, srv, core } = world([task('o', { version: 5 })]);
+    srv.state.offline = false;
+    expect((await setRecurrence(core, mint('s1'), 'o', WEEKLY)).synced).toBe(
+      true,
+    );
+    const sent = srv.sent.length;
+    expect((await setRecurrence(core, mint('s1'), 'o', WEEKLY)).synced).toBe(
+      true,
+    );
+    expect(srv.sent).toHaveLength(sent);
+    expect(store.pending()).toEqual([]);
+  });
+
+  it('rejects when the server answers conflict', async () => {
+    const { core } = world([task('o', { version: 5 })]);
+    const send: Transport = (request) =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            cursor: 0,
+            changes: [],
+            results: request.ops.map((op) => ({
+              opId: op.opId,
+              status: 'conflict',
+              currentVersion: 9,
+            })),
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+    await expect(
+      setRecurrence({ ...core, send }, mint('s1'), 'o', WEEKLY),
+    ).rejects.toThrow();
   });
 });

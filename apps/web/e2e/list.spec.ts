@@ -136,7 +136,7 @@ test('list: quick-add, done, undo, reorder, recurring', async ({
   await expect(oat).toContainText('@calls');
   await expect(oat).toContainText('p3');
   await expect(oat).toContainText(day(1));
-  await drawer.getByRole('heading').click(); // out of the date field
+  await drawer.getByRole('heading', { name: 'Task', exact: true }).click(); // out of the date field
   await page.keyboard.press('Escape');
   await expect(drawer).toHaveCount(0);
   await expect(page).not.toHaveURL(/task=/);

@@ -7,6 +7,7 @@ import {
   catalog,
   ConflictError,
   deleteStatus,
+  deleteTask,
   deleteView,
   editTask,
   flush,
@@ -23,6 +24,7 @@ import {
   saveView,
   seedStatuses,
   setCompleting,
+  setRecurrence,
   taskDetails,
   UsageError,
   undoMove,
@@ -515,9 +517,9 @@ export function createEngine({
     const { opId } = w;
     switch (w.kind) {
       case 'add':
-        return add(core, w.text, {}, { opId, id: w.id });
+        return add(core, w.text, {}, { opId, id: w.id }, w.parentId);
       case 'mark': {
-        const r = await mark(core, w.mark, w.taskId, undefined, { opId });
+        const r = await mark(core, w.mark, w.taskId, w.on, { opId });
         return w.mark === 'skip' || r.closed !== undefined || r.marked === null
           ? r
           : { ...r, note: noteFor(w.mark, r.occurrence, w.taskId) };
@@ -561,6 +563,10 @@ export function createEngine({
         );
       case 'undoMove':
         return undoMove(core, { opId }, w.taskId);
+      case 'deleteTask':
+        return deleteTask(core, { opId }, w.taskId);
+      case 'setRule':
+        return setRecurrence(core, { opId }, w.taskId, w.rule);
     }
   };
 
