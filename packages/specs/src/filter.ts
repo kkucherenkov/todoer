@@ -128,6 +128,34 @@ export function filterProblem(filter: unknown): string | null {
   return check(filter, 1, 'filter');
 }
 
+/**
+ * How many nodes `filter` has and how deep it goes, counted the way
+ * `filterProblem` counts them: every object is a node, the root is depth 1.
+ * Total for any input; a non-object counts as one node at its depth.
+ */
+export function filterSize(filter: unknown): { nodes: number; depth: number } {
+  const walk = (node: unknown, depth: number) => {
+    let nodes = 1;
+    let deepest = depth;
+    const rec = node as Record<string, unknown> | null;
+    const children =
+      typeof rec !== 'object' || rec === null
+        ? []
+        : 'and' in rec || 'or' in rec
+          ? (rec.and ?? rec.or)
+          : 'not' in rec
+            ? [rec.not]
+            : [];
+    for (const child of Array.isArray(children) ? children : []) {
+      const size = walk(child, depth + 1);
+      nodes += size.nodes;
+      deepest = Math.max(deepest, size.depth);
+    }
+    return { nodes, depth: deepest };
+  };
+  return walk(filter, 1);
+}
+
 function inRange(
   date: string | null,
   range: DateRange,
