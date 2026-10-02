@@ -2,7 +2,7 @@
 
 - Created: 2026-10-02
 - Owner: claude
-- Status: ready
+- Status: done
 - Blockers: —
 - Spec: [docs/specs/2026-10-01-views-design.md](../../../docs/specs/2026-10-01-views-design.md)
   (Q3, Q11, Q13 — the calendar; Q6, Q16–Q18 — the filter; Q7; V1, V2 and W3
@@ -163,11 +163,11 @@ answers, and can be done from the keyboard and on a touch screen.
   saved, reopened and saved again with no write.
 - **SC-004** `git diff main -- apps/cli apps/backend scripts/` is empty, and
   both shell e2e scripts pass.
-- [ ] every FR has a test that failed before the code made it pass
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] every FR has a test that failed before the code made it pass
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 
