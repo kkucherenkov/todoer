@@ -1419,3 +1419,205 @@ describe('calendar views and occurrence moves', () => {
     expect(store.pending()).toEqual([]);
   });
 });
+
+// ── delete, rule and subtask writes (W5 Task 4) ─────────────────────────
+
+describe('delete, rule and subtask writes', () => {
+  const P = uuid(1);
+  const C = uuid(2);
+  const today = localDate(NOW);
+  const yesterday = '2026-10-01';
+  const DAILY = taskRow(1, { rrule: 'FREQ=DAILY', dtstart: '2026-09-01' });
+  const SUB = taskRow(2, { parentId: P });
+  const hang = () => send.mockImplementation(() => new Promise(() => {}));
+  const ruleOf = (rrule: string) => ({ rrule, dtstart: today });
+
+  it('reach their operations with the tab ids', async () => {
+    const srv = server(TODO, DAILY, SUB, taskRow(3), taskRow(4));
+    const e = await signedIn(srv);
+    const first = (opId: string) => srv.sent.find((op) => op.opId === opId);
+    const ok = async (command: Parameters<typeof e.handle>[0]) =>
+      expect(await e.handle(command, 'A')).toMatchObject({ ok: true });
+
+    await ok({
+      kind: 'add',
+      opId: uuid(0xa1),
+      id: uuid(0xa2),
+      text: 'sub',
+      parentId: uuid(3),
+    });
+    expect(first(uuid(0xa1))).toMatchObject({
+      kind: 'create',
+      table: 'task',
+      id: uuid(0xa2),
+      fields: { parentId: uuid(3) },
+    });
+    await ok({
+      kind: 'mark',
+      opId: uuid(0xa3),
+      taskId: C,
+      mark: 'done',
+      on: yesterday,
+    });
+    expect(first(uuid(0xa3))).toMatchObject({
+      table: 'task_occurrence',
+      fields: { occurrence: yesterday },
+    });
+    await ok({ kind: 'deleteTask', opId: uuid(0xa4), taskId: uuid(4) });
+    expect(first(uuid(0xa4))).toMatchObject({
+      kind: 'delete',
+      table: 'task',
+      id: uuid(4),
+    });
+    await ok({
+      kind: 'setRule',
+      opId: uuid(0xa5),
+      taskId: uuid(3),
+      rule: ruleOf('FREQ=DAILY'),
+    });
+    expect(first(uuid(0xa5))).toMatchObject({ table: 'task', id: uuid(3) });
+  });
+
+  it('delete of a synced parent drops both rows and the task topic while pending', async () => {
+    const e = await signedIn(server(TODO, taskRow(1), SUB));
+    await e.handle({ kind: 'watch', view: 'all', task: P }, 'A');
+    expect(titles('all')).toEqual(expect.arrayContaining(['t1', 't2']));
+    hang();
+    void e.handle({ kind: 'deleteTask', opId: uuid(0xb1), taskId: P }, 'A');
+    await vi.waitFor(() => expect(last('task')).toEqual({ id: P, task: null }));
+    expect(titles('all')).not.toContain('t1');
+    expect(titles('all')).not.toContain('t2');
+  });
+
+  it('delete of a task created offline is invalid: not synced yet', async () => {
+    const e = await signedIn(server(TODO));
+    send.mockImplementation(offline);
+    await e.handle(
+      { kind: 'add', opId: uuid(0xb2), id: uuid(0xb3), text: 'x' },
+      'A',
+    );
+    expect(
+      await e.handle(
+        { kind: 'deleteTask', opId: uuid(0xb4), taskId: uuid(0xb3) },
+        'A',
+      ),
+    ).toMatchObject({
+      ok: false,
+      failure: {
+        kind: 'invalid',
+        detail: expect.stringContaining('not synced yet'),
+      },
+    });
+  });
+
+  it('a subtask shows in the parent task topic while pending', async () => {
+    const e = await signedIn(server(TODO, taskRow(1)));
+    await e.handle({ kind: 'watch', view: 'all', task: P }, 'A');
+    hang();
+    void e.handle(
+      {
+        kind: 'add',
+        opId: uuid(0xb5),
+        id: uuid(0xb6),
+        text: 'sub',
+        parentId: P,
+      },
+      'A',
+    );
+    await vi.waitFor(() =>
+      expect(last('task')?.task?.subtasks).toEqual([
+        { id: uuid(0xb6), title: 'sub', closed: false },
+      ]),
+    );
+  });
+
+  it('a mark with `on` reaches the transport with that date', async () => {
+    const srv = server(TODO, DAILY, SUB);
+    const e = await signedIn(srv);
+    await e.handle(
+      {
+        kind: 'mark',
+        opId: uuid(0xb7),
+        taskId: C,
+        mark: 'done',
+        on: yesterday,
+      },
+      'A',
+    );
+    expect(sentOps(srv, 'task_occurrence')).toMatchObject([
+      { fields: { occurrence: yesterday } },
+    ]);
+  });
+
+  it('a rule on a synced one-off shows while pending; three sets, versions v, v+1, v+2', async () => {
+    const srv = server(TODO, taskRow(1, { scheduledOn: today }));
+    const e = await signedIn(srv);
+    await e.handle({ kind: 'watch', view: 'all', task: P }, 'A');
+    const v = 1; // the mock server's first version of a row
+    send.mockClear();
+    hang();
+    void e.handle(
+      {
+        kind: 'setRule',
+        opId: uuid(0xb8),
+        taskId: P,
+        rule: ruleOf('FREQ=DAILY'),
+      },
+      'A',
+    );
+    await vi.waitFor(() =>
+      expect(last('task')?.task).toMatchObject({
+        rrule: 'FREQ=DAILY',
+        dtstart: today,
+        occurrence: today,
+      }),
+    );
+    const ops = store.pending();
+    expect(ops.map((op) => op.kind === 'set' && op.field)).toEqual([
+      'dtstart',
+      'rrule',
+      'scheduledOn',
+    ]);
+    expect(
+      ops.map((op) => (op.kind === 'set' ? op.baseVersion : null)),
+    ).toEqual([v, v + 1, v + 2]);
+  });
+
+  it('a delete resent after a worker restart sends no second batch', async () => {
+    const srv = server(TODO, taskRow(1));
+    const first = await signedIn(srv);
+    const del: Parameters<Engine['handle']>[0] = {
+      kind: 'deleteTask',
+      opId: uuid(0xb9),
+      taskId: P,
+    };
+    expect(await first.handle(del, 'A')).toEqual({ ok: true });
+    const sent = srv.sent.length;
+    const second = await signedIn(srv);
+    expect(await second.handle(del, 'A')).toEqual({ ok: true });
+    expect(srv.sent).toHaveLength(sent);
+  });
+
+  it('each new write while signed out is signed-out', async () => {
+    const e = engine();
+    await e.start(false);
+    for (const command of [
+      { kind: 'deleteTask', opId: uuid(0xc1), taskId: P },
+      { kind: 'setRule', opId: uuid(0xc2), taskId: P, rule: null },
+      { kind: 'add', opId: uuid(0xc3), id: uuid(0xc4), text: 'x', parentId: P },
+      {
+        kind: 'mark',
+        opId: uuid(0xc5),
+        taskId: P,
+        mark: 'done',
+        on: yesterday,
+      },
+    ] as const) {
+      expect(await e.handle(command, 'A')).toMatchObject({
+        ok: false,
+        failure: { kind: 'signed-out' },
+      });
+    }
+    expect(store.pending()).toEqual([]);
+  });
+});

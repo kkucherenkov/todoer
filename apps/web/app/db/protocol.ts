@@ -3,6 +3,7 @@ import type {
   Item,
   Mark,
   Placement,
+  Rule,
   Span,
   TaskChanges,
   taskDetails,
@@ -18,8 +19,22 @@ export type SyncReason =
 /** Every write carries its ids from the tab, so a resend is the same write
  *  (departure 2); a create also carries the new row's `id`. */
 export type Write =
-  | { kind: 'add'; opId: string; id: string; text: string }
-  | { kind: 'mark'; opId: string; taskId: string; mark: Mark }
+  | {
+      kind: 'add';
+      opId: string;
+      id: string;
+      text: string;
+      /** Makes the task a subtask of this one. */
+      parentId?: string;
+    }
+  | {
+      kind: 'mark';
+      opId: string;
+      taskId: string;
+      mark: Mark;
+      /** A subtask's parent occurrence (ADR 0009). */
+      on?: string;
+    }
   | { kind: 'edit'; opId: string; taskId: string; changes: TaskChanges }
   | {
       kind: 'move';
@@ -52,7 +67,9 @@ export type Write =
       to: string;
     }
   /** `taskId`: the copy. */
-  | { kind: 'undoMove'; opId: string; taskId: string };
+  | { kind: 'undoMove'; opId: string; taskId: string }
+  | { kind: 'deleteTask'; opId: string; taskId: string }
+  | { kind: 'setRule'; opId: string; taskId: string; rule: Rule | null };
 
 /** The view key of the built-in "All open" (departure 8). */
 export const ALL = 'all';

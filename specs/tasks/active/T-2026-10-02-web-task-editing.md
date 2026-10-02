@@ -168,7 +168,7 @@ answers, and is reachable from the keyboard.
 - [x] T002 [FR-002, FR-003] Subtasks: `add` under a parent, drawer and item fields — plan Task 2 — `packages/client-core/src/operations.ts`
 - [x] T003 [FR-004, FR-005] `ruleProblem`, `upcoming`, `setRecurrence` — plan Task 3 — `packages/client-core/src/occurrence.ts`, `operations.ts`
 - **Checkpoint:** client-core holds every W5 operation with Node tests, and the CLI is unchanged.
-- [ ] T004 [FR-006] Engine commands and protocol — plan Task 4 — `apps/web/app/db/`
+- [x] T004 [FR-006] Engine commands and protocol — plan Task 4 — `apps/web/app/db/`
 - **Checkpoint:** every W5 write exists behind the protocol, proven without a browser.
 - [ ] T005 [P] [FR-007] Presets to and from RRULE — plan Task 5 — `apps/web/app/utils/recurrence.ts`
 - [ ] T006 [FR-008, FR-011] Delete from the drawer — plan Task 6 — `apps/web/app/components/DeleteTaskDialog.vue`
