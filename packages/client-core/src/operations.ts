@@ -1,4 +1,5 @@
 import {
+  addDays,
   completingStatus,
   displayStatus,
   filterProblem,
@@ -29,6 +30,7 @@ import {
   liveTags,
   notDeleted,
   isAttached,
+  liveProjects,
   winner,
   resolveLabels,
 } from './labels.js';
@@ -283,10 +285,19 @@ function statusOps(
 }
 
 /** A task with the facts a view's filter reads. */
-type Listed = { row: Due; facts: FilterTask };
+type Listed = { row: Due; facts: FilterTask; closed: boolean };
 
-/** Each live task once, at its current occurrence (plan C design, Q11). */
-function due(store: Store, today: string): Listed[] {
+/**
+ * Each live task once, at its current occurrence (plan C design, Q11). With
+ * `closedSince`, also the one-off tasks closed on or after that date, each in
+ * the completing column (`null`: however long ago). A closed mark without a
+ * `fieldTs` is still in the outbox and counts as now.
+ */
+function due(
+  store: Store,
+  today: string,
+  closedSince?: string | null,
+): Listed[] {
   const all = tasks(store);
   const marks = occurrences(store);
   const labelRows = {
@@ -306,23 +317,42 @@ function due(store: Store, today: string): Listed[] {
       stateOf(marks, taskId),
       today,
     );
-    if (current === null) return [];
+    const closedMark =
+      current === null && recurrence === null && closedSince !== undefined
+        ? marks.find(
+            (m) => m.taskId === taskId && (m.occurrence ?? null) === null,
+          )
+        : undefined;
+    const closedAt = (
+      closedMark?.fieldTs as Record<string, string> | undefined
+    )?.state?.slice(0, 10);
+    if (
+      current === null &&
+      (closedMark === undefined ||
+        (typeof closedSince === 'string' &&
+          closedAt !== undefined &&
+          closedAt < closedSince))
+    ) {
+      return [];
+    }
+    const closed = current === null;
     const statusId =
       displayStatus(
         typeof task.statusId === 'string' ? task.statusId : null,
         facts,
-        false,
+        closed,
       ) ?? null;
     const row = {
       ...task,
       ref: shortRef(taskId),
-      occurrence: current.occurrence,
+      occurrence: current?.occurrence ?? null,
       ...labelsOf(task, labelRows),
       status: statusId === null ? null : (names.get(statusId) ?? null),
     };
     return [
       {
         row,
+        closed,
         facts: {
           tagIds: labelRows.links
             .filter(
@@ -340,7 +370,7 @@ function due(store: Store, today: string): Listed[] {
               ? typeof task.scheduledOn === 'string'
                 ? task.scheduledOn
                 : null
-              : current.occurrence,
+              : (current?.occurrence ?? null),
           dueOn: typeof task.dueOn === 'string' ? task.dueOn : null,
           recurring: recurrence !== null,
         },
@@ -375,14 +405,14 @@ function compareStrings(a: unknown, b: unknown): number {
 
 /** The view's order (plan V1, Global Constraints); without a view, `list`
  *  keeps its own. Every key ends in rank, then id. */
-function sortFor(view: ChosenView | undefined, rows: Listed[]): Listed[] {
-  if (view === undefined) return rows;
+function sortFor(sort: string | undefined, rows: Listed[]): Listed[] {
+  if (sort === undefined) return rows;
   const key = (l: Listed): string | number | null =>
-    view.sort === 'priority'
+    sort === 'priority'
       ? -l.facts.priority
-      : view.sort === 'due'
+      : sort === 'due'
         ? l.facts.dueOn
-        : view.sort === 'scheduled'
+        : sort === 'scheduled'
           ? l.facts.scheduledOn
           : 0;
   return [...rows].sort((a, b) => {
@@ -572,7 +602,7 @@ export function listTasks(
 ): Due[] {
   const chosen = view === undefined ? undefined : pickView(store, view);
   return sortFor(
-    chosen,
+    chosen?.sort,
     due(store, today).filter(
       ({ row, facts }) =>
         filters.every((f) =>
@@ -591,6 +621,135 @@ export function listViews(store: Store): Row[] {
     (a, b) => compareStrings(a.rank, b.rank) || compareIds(a, b),
   );
 }
+
+/** A view as the reads need it: a stored row or the built-in "All open". */
+export type ViewSpec = { filter: unknown; sort: string; layout: string };
+export const ALL_OPEN: ViewSpec = {
+  filter: { and: [] },
+  sort: 'manual',
+  layout: 'list',
+};
+
+/** A listed task with what a screen shows: its column (`displayStatus`) and
+ *  whether its occurrence is closed (only ever true on a board). */
+export type Item = Due & { column: string | null; closed: boolean };
+
+function itemOf({ row, facts, closed }: Listed): Item {
+  return { ...row, column: facts.statusId, closed };
+}
+
+function selected(
+  store: Store,
+  today: string,
+  view: ViewSpec,
+  closedSince?: string,
+): Item[] {
+  const problem = filterProblem(view.filter);
+  if (problem !== null) {
+    throw new RefusalError(`view has an invalid filter: ${problem}`);
+  }
+  return sortFor(
+    view.sort,
+    due(store, today, closedSince).filter(({ facts }) =>
+      matches(view.filter as Filter, facts, today),
+    ),
+  ).map(itemOf);
+}
+
+/** The open tasks a list view shows, filtered and sorted (the CLI's facts). */
+export function viewTasks(store: Store, today: string, view: ViewSpec): Item[] {
+  return selected(store, today, view);
+}
+
+/** viewTasks plus one-off tasks closed within `closedDays` (departure 6),
+ *  each in the completing column. */
+export function boardTasks(
+  store: Store,
+  today: string,
+  view: ViewSpec,
+  closedDays = 7,
+): Item[] {
+  return selected(store, today, view, addDays(today, -closedDays));
+}
+
+/** One task for the drawer: the row, labels, current occurrence, column,
+ *  closed state; null when it is deleted or unknown. */
+export function taskDetails(
+  store: Store,
+  today: string,
+  id: string,
+): (Item & { notes: string | null; rrule: string | null }) | null {
+  const found = due(store, today, null).find(({ row }) => row.id === id);
+  if (found === undefined) return null;
+  const { notes, rrule } = found.row;
+  return {
+    ...itemOf(found),
+    notes: typeof notes === 'string' ? notes : null,
+    rrule: typeof rrule === 'string' ? rrule : null,
+  };
+}
+
+/** What the sidebar, forms and pickers need: live views by rank (with
+ *  `problem` from filterProblem), live statuses by rank then id with
+ *  `completing` resolved by completingStatus, live projects and tags by name. */
+export function catalog(store: Store): Catalog {
+  const byName = (a: Row, b: Row) =>
+    compareStrings(a.name, b.name) || compareIds(a, b);
+  const statuses = notDeleted(statusRows(store)).sort(
+    (a, b) => compareStrings(a.rank, b.rank) || compareIds(a, b),
+  );
+  const completing = completingStatus(statusFacts(statuses));
+  const version = (row: Row) =>
+    typeof row.version === 'number' ? row.version : null;
+  return {
+    views: listViews(store).map((v) => ({
+      id: String(v.id),
+      name: String(v.name),
+      layout: String(v.layout),
+      sort: String(v.sort),
+      filter: v.filter,
+      rank: String(v.rank),
+      version: version(v),
+      problem: filterProblem(v.filter),
+    })),
+    statuses: statuses.map((s) => ({
+      id: String(s.id),
+      name: String(s.name),
+      rank: String(s.rank),
+      color: typeof s.color === 'string' ? s.color : null,
+      completing: s.id === completing,
+      version: version(s),
+    })),
+    projects: liveProjects(projects(store))
+      .sort(byName)
+      .map((p) => ({ id: String(p.id), name: String(p.name) })),
+    tags: liveTags(tagRows(store))
+      .sort(byName)
+      .map((t) => ({ id: String(t.id), name: String(t.name) })),
+  };
+}
+export type Catalog = {
+  views: {
+    id: string;
+    name: string;
+    layout: string;
+    sort: string;
+    filter: unknown;
+    rank: string;
+    version: number | null;
+    problem: string | null;
+  }[];
+  statuses: {
+    id: string;
+    name: string;
+    rank: string;
+    color: string | null;
+    completing: boolean;
+    version: number | null;
+  }[];
+  projects: { id: string; name: string }[];
+  tags: { id: string; name: string }[];
+};
 
 /** After a pull: drop moot failed entries, queue the duplicate-name merge.
  *  Returns the merged names when it queued anything, else []. */
