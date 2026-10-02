@@ -17,5 +17,28 @@ services:
       timeout: 3s
       retries: 10
 
+  # The NAS service. Behind a profile so the developer's plain `up -d` still
+  # starts only Postgres: `docker compose -f docker/compose.yml --profile app up -d`.
+  app:
+    profiles: [app]
+    build:
+      context: ..
+      args:
+        APP_VERSION: ${APP_VERSION:-0.0.0-dev}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://todoer:todoer@postgres:5432/todoer
+      # Not `:?`: compose interpolates every service, so a required variable
+      # would break the developer's plain `up -d`. The app refuses to start
+      # without it (AppConfig).
+      JWT_SECRET: ${JWT_SECRET:-}
+      # Hops between the NAS proxy and the app, or its address (README).
+      TRUST_PROXY: ${TRUST_PROXY:-}
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    restart: unless-stopped
+
 volumes:
   pgdata:

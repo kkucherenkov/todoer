@@ -60,7 +60,7 @@ recurrence).
 | `apps/web/`                               | the web client, a Nuxt 4 SPA: the leader tab's worker runs `packages/client-core` on SQLite WASM; the backend serves the build |
 | `packages/client-core/`                   | the logic every client shares: replica, outbox, sync, overlay, recurrence, labels, merge, views, on a synchronous SQLite adapter |
 | `packages/specs/`                         | the OpenAPI document and the client generated from it                                                                      |
-| `docker/compose.yml`                      | Postgres 18 for local development, on port **5433**                                                                        |
+| `Dockerfile`, `docker/compose.yml`        | the production image (backend + SPA) and compose: Postgres 18 on **5433**; `--profile app` adds the image on port **3000** |
 | `scripts/`                                | the end-to-end proofs (`walking-skeleton.sh`, `outbox-e2e.sh`) run in CI, and their owner-aware helper `lib/fresh-user.sh` |
 | `docs/adr/`, `docs/specs/`, `docs/plans/` | decisions, design, plans                                                                                                   |
 | `specs/tasks/`                            | the task stack — one file per task, `active/` then `done/`                                                                 |
@@ -167,6 +167,20 @@ Behind a reverse proxy, set `TRUST_PROXY` to the number of proxies in front
 (usually `1`) or to their addresses. Unset, every client behind a proxy shares
 one IP for the rate limits. To reach the instance from outside without opening
 ports, `tailscale serve` gives it an HTTPS name inside your tailnet.
+
+On a NAS, one image carries the backend and the SPA, so web and API are always
+the same version. The `app` profile adds it to the compose file; the plain
+`up -d` still starts only Postgres:
+
+```sh
+JWT_SECRET=<at least 32 characters> TRUST_PROXY=1 \
+  docker compose -f docker/compose.yml --profile app up -d --build
+```
+
+The container applies pending migrations (`prisma migrate deploy`) on every
+start, runs as a non-root user, and listens on 3000 (`APP_PORT` changes the
+host side). It refuses to start without `JWT_SECRET`. Compose publishes
+Postgres on 5433 too; drop that mapping on a shared host.
 
 Browsers. Chromium and Firefox are tested in CI. Firefox skips one case, the
 return from offline to online, because Playwright's emulation fires no `online`

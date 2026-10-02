@@ -208,7 +208,7 @@ to before W3 ships.
 - [x] T011 [FR-019] View template form — plan Task 11 — `apps/web/app/components/ViewForm.vue`
 - [x] T012 [FR-020] Playwright screens, offline, two tabs — plan Task 12 — `apps/web/e2e/`
 - **Checkpoint:** every v1 screen is proven in Chromium and Firefox under the CSP.
-- [ ] T013 [FR-021] Image and NAS compose — plan Task 13 — `Dockerfile`, `docker/compose.yml`
+- [x] T013 [FR-021] Image and NAS compose — plan Task 13 — `Dockerfile`, `docker/compose.yml`
 - [ ] T014 [FR-022] Docs, departures, ADR 0008 amendment — plan Task 14 — `README.md`, `docs/`
 
 ### Open questions

@@ -283,3 +283,54 @@ jobs:
           name: playwright-report
           path: apps/web/playwright-report
           retention-days: 7
+
+  # Not a required gate yet (CLAUDE.md, Quality gates): a candidate until it
+  # has run green on a few PRs.
+  #
+  # The production image as the NAS runs it: compose builds it, the entrypoint
+  # migrates a fresh volume, and the proofs hit the container, not a dev server.
+  image:
+    name: Image
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      JWT_SECRET: ci-only-secret-at-least-32-characters-long
+
+    steps:
+      - uses: actions/checkout@v6
+
+      # The proofs run the CLI from the checkout, so it must be built here.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the CLI
+        run: pnpm -w exec turbo run build --filter=@todoer/cli...
+
+      - name: Start Postgres and the image
+        run: docker compose -f docker/compose.yml --profile app up -d --build --wait
+
+      - name: Prove the walking skeleton against the container
+        env:
+          TODOER_URL: http://localhost:3000/api/v1
+        run: sh scripts/walking-skeleton.sh
+
+      # `id="__nuxt"`, not the whole tag: Nuxt adds a class to the div.
+      - name: Check that the container serves the SPA under the CSP
+        run: |
+          curl -fsS -D headers.txt -H 'Accept: text/html' http://localhost:3000/ -o index.html
+          grep -q 'id="__nuxt"' index.html
+          grep -qi '^content-security-policy:' headers.txt
+
+      - name: Show the container's log
+        if: always()
+        run: docker compose -f docker/compose.yml --profile app logs app
