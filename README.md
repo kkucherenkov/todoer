@@ -17,7 +17,7 @@ second, independent CLI invocation through the server, over one endpoint:
   refresh token (reuse detection, 30-second grace window) carried in the body,
   or, for the web client, in an `HttpOnly` cookie (`transport: cookie`), owner-first
   registration (the first account is the owner, later ones need a single-use
-  invitation), password change, reset without mail, account deletion, and
+  invitation; `GET /auth/registration` says whether it is still open), password change, reset without mail, account deletion, and
   rate-limited login ([ADR 0011](docs/adr/0011-bearer-everywhere-cookie-only-for-refresh.md),
   [ADR 0014](docs/adr/0014-owner-first-registration-and-two-path-reset.md)).
   The device-code flow and mail for `forgot` are not built yet.
@@ -52,6 +52,12 @@ recurrence).
 
 ## Using the web client
 
+- **First account.** While the instance has no users, the start screen is a
+  registration form (email, password twice) instead of sign-in; the account it
+  creates is the owner and is signed in at once. A refused registration shows
+  the server's reason. Once an account exists the screen is sign-in only:
+  invited users register through `POST /auth/register` with their invitation,
+  since the web has no invitation form.
 - **Views.** The sidebar lists "All open" (built in) and the synced views,
   the same ones `todoer views` shows. A view has a layout (list, kanban or
   calendar) and a sort. The view form's filter is a tree of All of / Any of
@@ -141,7 +147,9 @@ PORT=3010 node apps/backend/dist/main.js
 ```
 
 Then, in another shell, create the owner and sign in. The first account on an
-empty instance becomes the owner:
+empty instance becomes the owner. The web client offers the same registration:
+while the instance has no users it shows a registration form in place of
+sign-in (see below). From a shell:
 
 ```sh
 export TODOER_URL=http://localhost:3010/api/v1
@@ -243,7 +251,8 @@ docker compose -f docker/compose.yml --profile app up -d --build
 ```
 
 The first account to register becomes the owner, so register it before anyone
-else can reach the instance. To update, run `git pull`, then the same `up -d
+else can reach the instance: open the web client, which shows a registration
+form until the first account exists, or use the curl call above. To update, run `git pull`, then the same `up -d
 --build`: the container restarts on the new image and applies pending
 migrations (it runs as a non-root user, listens on 3000 inside, and refuses to
 start without `JWT_SECRET`).
@@ -355,7 +364,9 @@ The suite spends a fixed share of the per-IP auth budgets, however many tests
 it has: `e2e/global-setup.ts` registers one account per browser, each worker
 logs it in once, and every test continues that one session with a refresh
 (the server counts only failed refreshes) after wiping the account's data.
-Only the sign-in tests use the form. A run takes about 7 of the 20 logins and
+Only the sign-in tests use the form. The registration form's tests intercept
+`GET /auth/registration` and `POST /auth/register`, since global-setup has
+already closed registration, and spend nothing. A run takes about 7 of the 20 logins and
 3 of the 20 registrations per 15 minutes, so two runs in a row fit. A failed
 test restarts its worker, which costs one more login.
 

@@ -113,6 +113,7 @@ beforeEach(() => {
   store = openWasmStore(sqlite3, new sqlite3.oo1.DB(':memory:', 'c'));
   const fns = {
     login: vi.fn(() => Promise.resolve(grant('u1'))),
+    register: vi.fn(() => Promise.resolve(grant('u1'))),
     refresh: vi.fn(() => Promise.resolve(grant('u1'))),
     logout: vi.fn(() => Promise.resolve(undefined)),
   };
@@ -289,6 +290,41 @@ describe('signIn', () => {
     expect(store.rows('task')).toEqual([]);
     expect(last('session')?.state).toBe('signed-in');
     expect(last('summary')).toEqual({ tasks: 0 });
+  });
+});
+
+describe('register', () => {
+  it('signs in with the grant and syncs, like a sign-in', async () => {
+    const e = engine();
+    await e.start(false);
+    const result = await e.handle({
+      kind: 'register',
+      email: 'a@b.c',
+      password: 'x',
+    });
+    expect(result).toEqual({ ok: true });
+    expect(auth.register).toHaveBeenCalledWith('a@b.c', 'x');
+    expect(auth.login).not.toHaveBeenCalled();
+    expect(store.owner()).toBe('u1');
+    expect(last('session')?.state).toBe('signed-in');
+    expect(send).toHaveBeenCalled();
+  });
+
+  it("a refusal → refused with the server's reason, still signed out", async () => {
+    auth.register.mockRejectedValue(new RefusalError('registration is closed'));
+    const e = engine();
+    await e.start(false);
+    const result = await e.handle({
+      kind: 'register',
+      email: 'a@b.c',
+      password: 'x',
+    });
+    expect(result).toEqual({
+      ok: false,
+      failure: { kind: 'refused', detail: 'registration is closed' },
+    });
+    expect(last('session')?.state).toBe('signed-out');
+    expect(send).not.toHaveBeenCalled();
   });
 });
 

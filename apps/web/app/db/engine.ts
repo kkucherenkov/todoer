@@ -29,6 +29,7 @@ import {
   UsageError,
   undoMove,
   viewTasks,
+  type AccessGrant,
   type Catalog,
   type Core,
   type CookieAuthApi,
@@ -427,10 +428,13 @@ export function createEngine({
     await runSync('start');
   };
 
-  const signIn = async (email: string, password: string): Promise<Result> => {
+  /** A sign-in or a registration: only how the grant is asked for differs. */
+  const signIn = async (
+    ask: () => Promise<AccessGrant | 'invalid'>,
+  ): Promise<Result> => {
     // The previous account's sync must not end in this account's replica.
     await running;
-    const grant = await auth.login(email, password);
+    const grant = await ask();
     if (grant === 'invalid') {
       return fail('invalid-credentials', 'wrong email or password');
     }
@@ -607,7 +611,13 @@ export function createEngine({
             });
             return OK;
           case 'signIn':
-            return await serial(() => signIn(command.email, command.password));
+            return await serial(() =>
+              signIn(() => auth.login(command.email, command.password)),
+            );
+          case 'register':
+            return await serial(() =>
+              signIn(() => auth.register(command.email, command.password)),
+            );
           case 'signOut':
             return await serial(signOut);
           case 'sync': {

@@ -21,6 +21,14 @@
     "password": "Password",
     "submit": "Sign in"
   },
+  "register": {
+    "title": "Create the owner account",
+    "intro": "This instance has no accounts yet. The first one becomes its owner and can invite others.",
+    "confirm": "Confirm password",
+    "rule": "At least 8 characters, with a letter, a digit and another character.",
+    "mismatch": "The passwords do not match.",
+    "submit": "Create account"
+  },
   "summary": {
     "tasks": {
       "one": "{n} task",

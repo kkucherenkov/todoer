@@ -191,6 +191,9 @@ The CLI device-code flow follows v1.
 - **v1 scope (Q8).** v1 has sign-in, list with views, kanban, quick-add and a
   task card. The calendar layout (two placements, range expansion, moving an
   occurrence) and the filter-tree editor come in the next plan. *Shipped in plan W4.*
+  Registering the first account (the owner) from the browser came after v1:
+  the sign-in screen shows a registration form while `GET /auth/registration`
+  says it is open (ADR 0014, amendment of 2026-10-02).
 - **Sync cadence (Q14).** The leader syncs at start, right after every write,
   every 30 s while the tab is visible, on regained focus and on the `online`
   event. No server push now; an SSE "changes after seq N" signal can be added

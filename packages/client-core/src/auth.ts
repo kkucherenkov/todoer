@@ -152,6 +152,9 @@ export function httpAuthApi(config: HttpConfig): AuthApi {
 export type CookieAuthApi = {
   /** `'invalid'`: wrong email or password (401). */
   login(email: string, password: string): Promise<AccessGrant | 'invalid'>;
+  /** Refused (closed, weak password, taken, 429): a RefusalError carrying
+   *  the server's own reason. */
+  register(email: string, password: string): Promise<AccessGrant>;
   /** `'invalid'`: no cookie, or one the server no longer accepts (401). */
   refresh(): Promise<AccessGrant | 'invalid'>;
   logout(accessToken: string): Promise<'unauthorized' | undefined>;
@@ -178,6 +181,26 @@ export function httpCookieAuthApi(config: HttpConfig): CookieAuthApi {
       });
       if (response.status === 401) return 'invalid';
       if (!response.ok) throw await refuse('login', response);
+      return grant(response);
+    },
+    async register(email, password) {
+      const response = await send('/auth/register', {
+        email,
+        password,
+        transport: 'cookie',
+      });
+      if (!response.ok) {
+        // Shown to the person registering: the problem's detail alone, not
+        // the status line refuse() builds.
+        const body = (await response.json().catch(() => null)) as {
+          detail?: unknown;
+        } | null;
+        throw new RefusalError(
+          typeof body?.detail === 'string'
+            ? body.detail
+            : `register refused: ${response.status}`,
+        );
+      }
       return grant(response);
     },
     async refresh() {

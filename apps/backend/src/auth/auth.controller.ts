@@ -4,6 +4,7 @@ import {
   ConflictException,
   Controller,
   Delete,
+  Get,
   HttpCode,
   Param,
   Post,
@@ -193,6 +194,13 @@ export class AuthController {
       body.transport === 'cookie',
       res,
     );
+  }
+
+  // Not limited: one count, no hash, and it touches no limiter, so it can
+  // neither spend nor reset another route's budget.
+  @Get('registration')
+  async registration(): Promise<{ open: boolean }> {
+    return { open: await this.accounts.registrationOpen() };
   }
 
   @Post('register')

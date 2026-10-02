@@ -12,6 +12,9 @@ import type {
   PostAuthLoginData,
   PostAuthLoginResponse,
   PostAuthLoginError,
+  GetAuthRegistrationData,
+  GetAuthRegistrationResponse,
+  GetAuthRegistrationError,
   PostAuthRegisterData,
   PostAuthRegisterResponse,
   PostAuthRegisterError,
@@ -96,6 +99,23 @@ export const postAuthLogin = <ThrowOnError extends boolean = false>(
       'Content-Type': 'application/json',
       ...options?.headers,
     },
+  });
+};
+
+/**
+ * Whether registration without an invitation is open
+ * `open` is true while the instance has no users, which is exactly when `POST /auth/register` accepts a registration without an invitation: the first account becomes the owner. A client shows a registration form instead of sign-in on that answer. The answer is a hint, not a reservation; a registration can still be refused with 403 when someone else registered first.
+ */
+export const getAuthRegistration = <ThrowOnError extends boolean = false>(
+  options?: Options<GetAuthRegistrationData, ThrowOnError>,
+) => {
+  return (options?.client ?? _heyApiClient).get<
+    GetAuthRegistrationResponse,
+    GetAuthRegistrationError,
+    ThrowOnError
+  >({
+    url: '/auth/registration',
+    ...options,
   });
 };
 
