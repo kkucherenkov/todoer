@@ -1109,6 +1109,28 @@ describe('write commands', () => {
   });
 });
 
+describe('a drop resent after it applied', () => {
+  it('is a no-op even when its anchor has left the list', async () => {
+    const srv = server(TODO, taskRow(1), taskRow(2), taskRow(3));
+    const e = await signedIn(srv);
+    const drop = {
+      kind: 'move' as const,
+      opId: uuid(0xd4),
+      taskId: uuid(1),
+      view: 'all',
+      after: uuid(2),
+    };
+    expect(await e.handle(drop, 'A')).toMatchObject({ ok: true });
+    await e.handle(
+      { kind: 'mark', opId: uuid(0xd5), mark: 'done', taskId: uuid(2) },
+      'A',
+    );
+    srv.sent.length = 0;
+    expect(await e.handle(drop, 'A')).toMatchObject({ ok: true });
+    expect(srv.sent).toEqual([]);
+  });
+});
+
 describe('a drop that names a stale anchor', () => {
   it('is invalid, and changes nothing', async () => {
     const srv = server(TODO, taskRow(1), taskRow(2));
@@ -1127,6 +1149,72 @@ describe('a drop that names a stale anchor', () => {
       ),
     ).toMatchObject({ ok: false, failure: { kind: 'invalid' } });
     expect(srv.sent).toEqual([]);
+  });
+});
+
+describe('a write the server refused', () => {
+  it('still merges what its pull brought', async () => {
+    const WIN = uuid(0x7a);
+    const LOSE = uuid(0x7b);
+    const V = uuid(0x71);
+    const srv = server(TODO, taskRow(1));
+    const e = await signedIn(srv);
+    const row = (table: string, id: string, extra: Fields, seq: number) => ({
+      table,
+      id,
+      seq,
+      row: { id, deletedAt: null, version: 1, ...extra },
+    });
+    const sent: Op[] = [];
+    send.mockImplementation((request) => {
+      sent.push(...request.ops);
+      return Promise.resolve(
+        json({
+          cursor: 200_000,
+          results: request.ops.map((op: Op) => ({
+            opId: op.opId,
+            status: 'rejected',
+            reason: 'no',
+          })),
+          changes: [
+            row('tag', WIN, { name: 'Work' }, 200_001),
+            row('tag', LOSE, { name: 'work' }, 200_002),
+            ...(sent.length > 1
+              ? []
+              : [
+                  row(
+                    'view',
+                    V,
+                    {
+                      name: 'v',
+                      layout: 'list',
+                      sort: 'manual',
+                      filter: { tag: LOSE },
+                      rank: 'a0',
+                    },
+                    200_003,
+                  ),
+                ]),
+          ],
+        }),
+      );
+    });
+    expect(
+      await e.handle(
+        {
+          kind: 'edit',
+          opId: uuid(0xe1),
+          taskId: uuid(1),
+          changes: { title: 'x' },
+        },
+        'A',
+      ),
+    ).toMatchObject({ ok: false });
+    await vi.waitFor(() =>
+      expect(
+        sent.filter((op) => op.kind === 'set' && op.table === 'view'),
+      ).toMatchObject([{ id: V, field: 'filter', value: { tag: WIN } }]),
+    );
   });
 });
 

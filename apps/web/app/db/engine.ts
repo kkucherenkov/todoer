@@ -246,11 +246,14 @@ export function createEngine({
 
   /** The core's ops publish after their enqueue commits and before the
    *  network answers: a write shows at once, offline included. */
+  let answered = 0; // responses the server accepted, to see a flush reach it
   const core: Core = {
     store,
-    send: (body) => {
+    send: async (body) => {
       publishAll();
-      return send(body);
+      const response = await send(body);
+      if (response.ok) answered += 1;
+      return response;
     },
     now,
     newId,
@@ -409,7 +412,9 @@ export function createEngine({
   const dropRanks = (
     w: Extract<Write, { kind: 'move' }>,
   ): Ranked[] | undefined => {
-    if (w.after === undefined) return undefined;
+    // A resend of an applied drop must not re-validate an anchor that has
+    // since left the list: the core answers it from the marker.
+    if (w.after === undefined || store.seen(w.opId)) return undefined;
     const spec = viewSpec(w.view, catalog(store));
     if (spec === undefined || spec.sort !== 'manual' || spec.problem !== null) {
       return undefined;
@@ -494,7 +499,16 @@ export function createEngine({
   };
 
   const write = async (w: Write): Promise<Result> => {
-    const { synced, note } = await apply(w);
+    const before = answered;
+    let done: Awaited<ReturnType<typeof apply>>;
+    try {
+      done = await apply(w);
+    } catch (error) {
+      // A refused write still pulled: merge what that brought.
+      if (answered > before) afterReached();
+      throw error;
+    }
+    const { synced, note } = done;
     if (synced) afterReached();
     return note === undefined ? OK : { ok: true, note };
   };
