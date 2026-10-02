@@ -69,7 +69,8 @@
     "skipped": "Skipped",
     "doneRecurring": "Done for {occurrence}, next {next}",
     "undo": "Undo",
-    "empty": "No open tasks."
+    "empty": "No open tasks.",
+    "openParent": "Open parent: {title}"
   },
   "drawer": {
     "title": "Task",
@@ -96,7 +97,12 @@
       "few": "{n} subtasks",
       "many": "{n} subtasks",
       "other": "{n} subtasks"
-    }
+    },
+    "subtasksTitle": "Subtasks",
+    "progress": "{done} of {total} done",
+    "doneLabel": "Done: {title}",
+    "addSubtask": "Add subtask",
+    "subtaskOf": "Subtask of {title}"
   },
   "deleteTask": {
     "title": "Delete task",
@@ -208,6 +214,7 @@
     "date": "Date",
     "move": "Move",
     "moved": "Moved to {to}",
-    "movedOccurrence": "{from} moved to {to}"
+    "movedOccurrence": "{from} moved to {to}",
+    "openParent": "Open parent"
   }
 }

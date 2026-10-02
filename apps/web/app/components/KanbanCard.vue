@@ -16,6 +16,7 @@ const emit = defineEmits<{
   open: [];
 }>();
 const { t } = useI18n();
+const open = useOpenTask();
 
 // Every drop has a keyboard and touch path: native DnD needs a pointer.
 const actions = computed<DropdownMenuItem[]>(() => [
@@ -67,6 +68,19 @@ const actions = computed<DropdownMenuItem[]>(() => [
       >
         {{ item.title }}
       </span>
+      <UButton
+        v-if="item.parentTitle"
+        variant="link"
+        color="neutral"
+        size="xs"
+        icon="i-lucide-corner-down-right"
+        class="p-0"
+        data-testid="parent-link"
+        :aria-label="$t('list.openParent', { title: item.parentTitle })"
+        @click.stop="open(String(item.parentId))"
+      >
+        {{ item.parentTitle }}
+      </UButton>
       <div class="flex flex-wrap gap-x-2 gap-y-1 text-sm text-muted">
         <span v-if="item.project">#{{ item.project }}</span>
         <span v-for="tag in item.tags" :key="tag">{{ tag }}</span>

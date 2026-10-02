@@ -69,7 +69,8 @@
     "skipped": "Пропущено",
     "doneRecurring": "Выполнено за {occurrence}, дальше {next}",
     "undo": "Отменить",
-    "empty": "Открытых задач нет."
+    "empty": "Открытых задач нет.",
+    "openParent": "Открыть родителя: {title}"
   },
   "drawer": {
     "title": "Задача",
@@ -96,7 +97,12 @@
       "few": "{n} подзадачи",
       "many": "{n} подзадач",
       "other": "{n} подзадачи"
-    }
+    },
+    "subtasksTitle": "Подзадачи",
+    "progress": "{done} из {total} выполнено",
+    "doneLabel": "Выполнено: {title}",
+    "addSubtask": "Добавить подзадачу",
+    "subtaskOf": "Подзадача: {title}"
   },
   "deleteTask": {
     "title": "Удалить задачу",
@@ -208,6 +214,7 @@
     "date": "Дата",
     "move": "Перенести",
     "moved": "Перенесено на {to}",
-    "movedOccurrence": "{from} перенесено на {to}"
+    "movedOccurrence": "{from} перенесено на {to}",
+    "openParent": "Открыть родителя"
   }
 }

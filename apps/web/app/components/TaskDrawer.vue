@@ -3,6 +3,7 @@ import type { TaskChanges } from '@todoer/client-core';
 import { ALL } from '~/db/protocol';
 
 const db = useDb();
+const open = useOpenTask();
 const route = useRoute();
 const router = useRouter();
 const toast = useToast();
@@ -249,6 +250,17 @@ const dates = [
             {{ $t('drawer.returnToSeries') }}
           </UButton>
         </div>
+        <UButton
+          v-if="task.parentId && task.parentTitle"
+          variant="link"
+          color="neutral"
+          icon="i-lucide-corner-up-left"
+          class="self-start p-0"
+          data-testid="subtask-of"
+          @click="open(String(task.parentId))"
+        >
+          {{ $t('drawer.subtaskOf', { title: task.parentTitle }) }}
+        </UButton>
         <UFormField :label="$t('drawer.titleField')">
           <UInput
             v-model="draft.title"
@@ -341,6 +353,7 @@ const dates = [
             @update:model-value="saveStatus"
           />
         </UFormField>
+        <SubtaskList v-if="!task.parentId" :task="task" :readonly="readonly" />
         <UButton
           color="error"
           variant="outline"

@@ -15,6 +15,7 @@ const emit = defineEmits<{
   open: [];
 }>();
 const { t } = useI18n();
+const open = useOpenTask();
 
 const actions = computed<DropdownMenuItem[]>(() => [
   {
@@ -66,6 +67,19 @@ const actions = computed<DropdownMenuItem[]>(() => [
       >
         {{ item.title }}
       </button>
+      <UButton
+        v-if="item.parentTitle"
+        variant="link"
+        color="neutral"
+        size="xs"
+        icon="i-lucide-corner-down-right"
+        class="p-0"
+        data-testid="parent-link"
+        :aria-label="$t('list.openParent', { title: item.parentTitle })"
+        @click.stop="open(String(item.parentId))"
+      >
+        {{ item.parentTitle }}
+      </UButton>
       <span v-if="item.project" class="text-sm text-muted"
         >#{{ item.project }}</span
       >

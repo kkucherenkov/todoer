@@ -1,5 +1,13 @@
 import type { Page } from '@playwright/test';
-import { count, expect, seedTask, tasks, test } from './fixtures';
+import {
+  count,
+  day,
+  expect,
+  seedTask,
+  seedView,
+  tasks,
+  test,
+} from './fixtures';
 
 const rows = (page: Page) => page.getByTestId('task-row');
 const row = (page: Page, title: string) =>
@@ -110,4 +118,125 @@ test('editing: a parent delete the server refuses shows as refused', async ({
   // Nothing hides what the server kept.
   await expect(row(page, 'Trip')).toBeVisible();
   await expect(row(page, 'Visa')).toBeVisible();
+});
+
+test('editing: subtasks in the drawer and as rows', async ({
+  page,
+  account,
+  cli,
+}) => {
+  type Listed = {
+    id: string;
+    title: string;
+    parentId: string | null;
+    project: string | null;
+  };
+  const listed = async () =>
+    (
+      JSON.parse(await cli(account.token, 'list', '--json')) as {
+        data: Listed[];
+      }
+    ).data;
+  const drawer = page.getByRole('dialog');
+  const progress = drawer.getByTestId('progress');
+  const check = (title: string) =>
+    drawer.getByRole('checkbox', { name: `Done: ${title}` });
+
+  await cli(account.token, 'add', 'Clean kitchen #house');
+  await page.goto('/');
+  await row(page, 'Clean kitchen').getByTestId('task-title').click();
+  const add = drawer.getByRole('textbox', { name: 'Add subtask' });
+  await add.fill('Dishes');
+  await add.press('Enter');
+  await expect(check('Dishes')).toBeVisible();
+  await expect(add).toHaveValue('');
+  await add.fill('Floor #garage');
+  await add.press('Enter');
+  await expect(check('Floor')).toBeVisible();
+  await expect(progress).toHaveText('0 of 2 done');
+
+  await expect
+    .poll(async () => {
+      const all = await listed();
+      const kitchen = all.find((t) => t.title === 'Clean kitchen');
+      const sub = (title: string) => all.find((t) => t.title === title);
+      return [
+        sub('Dishes')?.parentId === kitchen?.id,
+        sub('Floor')?.parentId === kitchen?.id,
+        sub('Dishes')?.project,
+        sub('Floor')?.project,
+      ];
+    })
+    .toEqual([true, true, 'house', 'garage']);
+
+  await check('Dishes').click();
+  await expect(progress).toHaveText('1 of 2 done');
+
+  // A subtask is an ordinary row, with a link to its parent.
+  await page.keyboard.press('Escape');
+  await expect(drawer).toHaveCount(0);
+  await expect(row(page, 'Floor')).toBeVisible();
+  await expect(row(page, 'Dishes')).toHaveCount(0);
+  const link = row(page, 'Floor').getByRole('button', {
+    name: 'Open parent: Clean kitchen',
+  });
+  await link.click();
+  await expect(drawer.getByRole('textbox', { name: 'Title' })).toHaveValue(
+    'Clean kitchen',
+  );
+  await page.keyboard.press('Escape');
+  await expect(drawer).toHaveCount(0);
+
+  await row(page, 'Floor').getByTestId('task-title').click();
+  await expect(drawer).toContainText('Subtask of Clean kitchen');
+  await expect(
+    drawer.getByRole('textbox', { name: 'Add subtask' }),
+  ).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(drawer).toHaveCount(0);
+
+  // A board shows the same link.
+  const board = await seedView(page.request, account.token, 'Board', 'a0');
+  await page.goto(`/views/${board}`);
+  const card = page.getByTestId('card').filter({ hasText: 'Floor' });
+  await expect(
+    card.getByRole('button', { name: 'Open parent: Clean kitchen' }),
+  ).toBeVisible();
+
+  // A recurring parent: the checklist is on its current occurrence.
+  await page.goto('/');
+  const weekly = (
+    JSON.parse(
+      await cli(
+        account.token,
+        'add',
+        'Weekly review',
+        '--rrule',
+        'FREQ=WEEKLY',
+        '--from',
+        day(),
+        '--json',
+      ),
+    ) as { data: { id: string } }
+  ).data.id;
+  await page.getByTestId('sync-now').click();
+  await row(page, 'Weekly review').getByTestId('task-title').click();
+  await add.fill('Inbox zero');
+  await add.press('Enter');
+  await expect(check('Inbox zero')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(drawer).toHaveCount(0);
+
+  await cli(account.token, 'done', weekly);
+  await page.getByTestId('sync-now').click();
+  await expect(row(page, 'Weekly review').getByTestId('occurrence')).toHaveText(
+    day(7),
+  );
+  await row(page, 'Weekly review').getByTestId('task-title').click();
+  await expect(progress).toHaveText('0 of 1 done');
+  await check('Inbox zero').click();
+  await expect(progress).toHaveText('1 of 1 done');
+  await page.reload();
+  await expect(progress).toHaveText('1 of 1 done');
+  await expect(check('Inbox zero')).toBeChecked();
 });
