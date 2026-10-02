@@ -16,6 +16,7 @@ import {
   editTask,
   listTasks,
   mark,
+  moveOccurrence,
   moveTask,
   saveStatus,
   saveView,
@@ -23,6 +24,7 @@ import {
   setCompleting,
   submit,
   taskDetails,
+  undoMove,
   viewTasks,
   type Core,
 } from './operations.js';
@@ -1306,5 +1308,272 @@ describe('calendarTasks', () => {
     expect(() => read({ ...ALL_OPEN, filter: { nope: 1 } })).toThrow(
       /invalid filter/,
     );
+  });
+});
+
+describe('moveOccurrence and undoMove', () => {
+  const FROM = '2026-10-08';
+  const TO = '2026-10-10';
+  const SPAN = { from: '2026-10-05', to: '2026-10-11' };
+  const daily = (extra: Record<string, unknown> = {}) =>
+    task('d', {
+      rrule: 'FREQ=DAILY',
+      dtstart: '2026-10-01',
+      title: 'Water plants',
+      notes: 'twice',
+      projectId: 'p1',
+      priority: 3,
+      statusId: 's1',
+      rank: 'a5',
+      dueOn: '2026-10-20',
+      ...extra,
+    });
+  const on = (store: Store) =>
+    calendarTasks(store, TODAY, ALL_OPEN, SPAN).placements.map(
+      (p) => `${p.taskId}@${p.date}`,
+    );
+  function setup(extra: Record<string, unknown> = {}) {
+    const store = boardStore();
+    const srv = fakeServer();
+    put(store, 'project', { id: 'p1', name: 'home', rank: 'a0' });
+    for (const name of ['a', 'b']) {
+      put(store, 'tag', { id: `t-${name}`, name });
+      put(store, 'task_tag', {
+        id: `l-${name}`,
+        taskId: 'd',
+        tagId: `t-${name}`,
+        attached: true,
+      });
+    }
+    put(store, 'task', daily(extra));
+    return { store, srv, core: coreOf(store, srv.send) };
+  }
+  const move = (core: Core, opId = 'm1') =>
+    moveOccurrence(core, { opId, id: 'c' }, 'd', FROM, TO);
+  /** A synced copy of the 10-08 occurrence, which is skipped. */
+  function moved(extra: Record<string, unknown> = {}) {
+    const ctx = setup();
+    ctx.srv.state.offline = true;
+    put(ctx.store, 'task', {
+      ...task('c', { scheduledOn: TO }),
+      originTaskId: 'd',
+      originOccurrence: FROM,
+      version: 3,
+      ...extra,
+    });
+    put(ctx.store, 'task_occurrence', {
+      id: taskOccurrenceId('d', FROM),
+      taskId: 'd',
+      occurrence: FROM,
+      state: 'skipped',
+    });
+    return ctx;
+  }
+  const refusedUndo = (core: Core, pattern: RegExp) =>
+    expect(undoMove(core, mint('u1'), 'c')).rejects.toSatisfy(
+      (e) =>
+        e instanceof UsageError &&
+        pattern.test(e.message) &&
+        core.store.pending().length === 0,
+    );
+
+  it('queues the copy, its tags, then the skip, and the calendar follows', async () => {
+    const { store, srv, core } = setup();
+    srv.state.offline = true;
+    expect(await move(core)).toEqual({ synced: false });
+    const ops = store.pending();
+    expect(ops.map((o) => `${o.kind}:${o.table}`)).toEqual([
+      'create:task',
+      'create:task_tag',
+      'create:task_tag',
+      'create:task_occurrence',
+    ]);
+    expect(ops[0]).toMatchObject({
+      id: 'c',
+      opId: 'm1',
+      fields: {
+        title: 'Water plants',
+        notes: 'twice',
+        projectId: 'p1',
+        priority: 3,
+        statusId: 's1',
+        rank: 'a5',
+        scheduledOn: TO,
+        originTaskId: 'd',
+        originOccurrence: FROM,
+      },
+    });
+    const fields = (ops[0] as { fields: object }).fields;
+    for (const key of ['rrule', 'dtstart', 'dueOn', 'parentId']) {
+      expect(fields).not.toHaveProperty(key);
+    }
+    expect(ops.slice(1, 3).map((o) => o.id)).toEqual([
+      taskTagId('c', 't-a'),
+      taskTagId('c', 't-b'),
+    ]);
+    expect(ops[3]).toMatchObject({
+      id: taskOccurrenceId('d', FROM),
+      fields: { taskId: 'd', occurrence: FROM, state: 'skipped' },
+    });
+    expect(on(store)).toContain(`c@${TO}`);
+    expect(on(store)).not.toContain(`d@${FROM}`);
+  });
+
+  it('leaves null fields out of the copy', async () => {
+    const { store, srv, core } = setup({
+      notes: null,
+      projectId: null,
+      statusId: null,
+    });
+    srv.state.offline = true;
+    await move(core);
+    const fields = (store.pending()[0] as { fields: object }).fields;
+    for (const key of ['notes', 'projectId', 'statusId']) {
+      expect(fields).not.toHaveProperty(key);
+    }
+  });
+
+  it("copies a subtask without its parent and skips it at the parent's date", async () => {
+    const store = boardStore();
+    const srv = fakeServer();
+    srv.state.offline = true;
+    const core = coreOf(store, srv.send);
+    put(store, 'task', daily({ projectId: null, statusId: null }));
+    put(store, 'task', task('s', { parentId: 'd', projectId: 'p1' }));
+    await moveOccurrence(core, { opId: 'm1', id: 'c' }, 's', FROM, TO);
+    const [copy, skip] = store.pending();
+    expect(copy).toMatchObject({ fields: { projectId: 'p1' } });
+    expect((copy as { fields: object }).fields).not.toHaveProperty('parentId');
+    expect(skip).toMatchObject({
+      id: taskOccurrenceId('s', FROM),
+      fields: { taskId: 's', occurrence: FROM },
+    });
+    expect(on(store)).toContain(`c@${TO}`);
+    expect(on(store).filter((d) => d.startsWith('c@'))).toHaveLength(1);
+  });
+
+  it('refuses what it cannot move, queuing nothing', async () => {
+    const { store, core } = setup();
+    put(store, 'task', task('one'));
+    put(store, 'task_occurrence', {
+      id: taskOccurrenceId('d', '2026-10-09'),
+      taskId: 'd',
+      occurrence: '2026-10-09',
+      state: 'done',
+    });
+    put(store, 'task_occurrence', {
+      id: taskOccurrenceId('d', '2026-10-06'),
+      taskId: 'd',
+      occurrence: '2026-10-06',
+      state: 'skipped',
+    });
+    const refuse = (taskId: string, from: string, to: string, p: RegExp) =>
+      expect(
+        moveOccurrence(core, { opId: 'm1', id: 'c' }, taskId, from, to),
+      ).rejects.toSatisfy(
+        (e) =>
+          e instanceof UsageError &&
+          p.test(e.message) &&
+          store.pending().length === 0 &&
+          !store.seen('m1'),
+      );
+    await refuse('one', FROM, TO, /recurring/);
+    await refuse('d', FROM, FROM, /already there/);
+    await refuse('d', '2026-09-30', TO, /not an occurrence/);
+    await refuse('d', FROM, '2026-02-30', /date/);
+    await refuse('d', '2026-10-09', TO, /already done — undo it first/);
+    await refuse('d', '2026-10-06', TO, /already skipped/);
+  });
+
+  it('works offline: queued, not synced, shown on the calendar', async () => {
+    const { store, srv, core } = setup();
+    srv.state.offline = true;
+    expect((await move(core)).synced).toBe(false);
+    expect(store.pending()).toHaveLength(4);
+    expect(on(store)).toContain(`c@${TO}`);
+  });
+
+  it('lands in one batch and replays without a second copy or "already skipped"', async () => {
+    const { store, srv, core } = setup();
+    expect((await move(core)).synced).toBe(true);
+    expect(store.pending()).toEqual([]);
+    const sent = srv.sent.length;
+    expect((await move(core)).synced).toBe(true);
+    expect(srv.sent).toHaveLength(sent);
+    expect(store.rows('task').filter((t) => t.id === 'c')).toHaveLength(1);
+  });
+
+  it('undoes a synced move: delete at its version, then open', async () => {
+    const { store, core } = moved();
+    expect((await undoMove(core, mint('u1'), 'c')).synced).toBe(false);
+    expect(store.pending()).toMatchObject([
+      { kind: 'delete', table: 'task', id: 'c', baseVersion: 3, opId: 'u1' },
+      {
+        kind: 'create',
+        table: 'task_occurrence',
+        id: taskOccurrenceId('d', FROM),
+        fields: { state: 'open', completedAt: null },
+      },
+    ]);
+    expect(store.pending()[1]).not.toHaveProperty('fields.statusId');
+    expect(on(store)).toContain(`d@${FROM}`);
+    expect(on(store)).not.toContain(`c@${TO}`);
+  });
+
+  it('writes only the delete when the occurrence was reopened meanwhile', async () => {
+    const { store, core } = moved();
+    put(store, 'task_occurrence', {
+      id: taskOccurrenceId('d', FROM),
+      taskId: 'd',
+      occurrence: FROM,
+      state: 'open',
+    });
+    await undoMove(core, mint('u1'), 'c');
+    expect(store.pending().map((o) => o.kind)).toEqual(['delete']);
+  });
+
+  it("still reopens after the original's rule stopped producing the date", async () => {
+    const { store, core } = moved();
+    put(store, 'task', daily({ rrule: 'FREQ=WEEKLY;BYDAY=MO' }));
+    await undoMove(core, mint('u1'), 'c');
+    expect(store.pending().map((o) => o.kind)).toEqual(['delete', 'create']);
+  });
+
+  it('refuses an undo it cannot do exactly', async () => {
+    const plain = moved({ originTaskId: null, originOccurrence: null });
+    await refusedUndo(plain.core, /not a moved occurrence/);
+
+    const pendingCreate = setup();
+    pendingCreate.srv.state.offline = true;
+    await move(pendingCreate.core);
+    await expect(undoMove(pendingCreate.core, mint('u1'), 'c')).rejects.toThrow(
+      /not synced yet/,
+    );
+    expect(pendingCreate.store.pending()).toHaveLength(4);
+
+    const edited = moved();
+    await editTask(edited.core, mint('e1'), 'c', { title: 'x' });
+    await expect(undoMove(edited.core, mint('u1'), 'c')).rejects.toThrow(
+      /not synced yet/,
+    );
+    expect(edited.store.pending()).toHaveLength(1);
+
+    const parent = moved();
+    put(parent.store, 'task', task('kid', { parentId: 'c' }));
+    await refusedUndo(parent.core, /subtasks/);
+
+    const gone = moved();
+    put(gone.store, 'task', daily({ deletedAt: '2026-10-01' }));
+    await refusedUndo(gone.core, /no task d/);
+  });
+
+  it('replays an applied undo as ok, queuing nothing', async () => {
+    const { store, srv, core } = moved();
+    srv.state.offline = false;
+    expect((await undoMove(core, mint('u1'), 'c')).synced).toBe(true);
+    const sent = srv.sent.length;
+    expect((await undoMove(core, mint('u1'), 'c')).synced).toBe(true);
+    expect(srv.sent).toHaveLength(sent);
+    expect(store.pending()).toEqual([]);
   });
 });

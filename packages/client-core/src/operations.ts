@@ -1377,7 +1377,7 @@ function syncedRow(
 }
 
 const deleteOp = (
-  table: 'view' | 'status',
+  table: 'task' | 'view' | 'status',
   row: Row & { version: number },
   newId: () => string,
 ): Op => ({
@@ -1532,4 +1532,144 @@ export function seedStatuses(core: Core): boolean {
     }
     return true;
   });
+}
+
+/**
+ * Moves one occurrence of a recurring task to `to` (views Q13): a one-off
+ * copy with id `minted.id` on `to`, carrying title, notes, projectId, the
+ * attached tags, priority, statusId and the original's rank, plus
+ * originTaskId and originOccurrence; then `skip` of the occurrence. One
+ * batch, the copy first (departure 4). Replay-safe.
+ */
+export async function moveOccurrence(
+  core: Core,
+  minted: Minted & { id: string },
+  taskId: string,
+  occurrence: string,
+  to: string,
+): Promise<{ synced: boolean }> {
+  const done = await replayed(core, minted.opId);
+  if (done !== undefined) return done;
+  const { store } = core;
+  const all = tasks(store);
+  const task = liveTask(all, taskId);
+  if (recurrenceOf(task, parentOf(all, task)) === null) {
+    throw new UsageError('only a recurring task has occurrences to move');
+  }
+  if (!isIsoDate(to)) throw new UsageError('to must be a date, YYYY-MM-DD');
+  if (to === occurrence)
+    throw new UsageError('the occurrence is already there');
+  const plan = planMark(core, 'skip', task, all, occurrence, undefined);
+  if (plan.closed !== undefined) {
+    throw new UsageError(`already ${plan.closed} — undo it first`);
+  }
+  const ts = core.now().toISOString();
+  const optional = Object.fromEntries(
+    (['notes', 'projectId', 'statusId'] as const)
+      .filter((field) => task[field] !== null && task[field] !== undefined)
+      .map((field) => [field, task[field]]),
+  );
+  const copy: OpCreate = {
+    opId: minted.opId,
+    kind: 'create',
+    table: 'task',
+    id: minted.id,
+    fields: {
+      title: task.title,
+      priority: task.priority,
+      rank: task.rank,
+      ...optional,
+      scheduledOn: to,
+      originTaskId: taskId,
+      originOccurrence: occurrence,
+    },
+    ts,
+  };
+  const live = new Set(liveTags(tagRows(store)).map((tag) => String(tag.id)));
+  const tagOps: OpCreate[] = links(store)
+    .filter(
+      (link) =>
+        link.taskId === taskId &&
+        isAttached(link) &&
+        live.has(String(link.tagId)),
+    )
+    .map((link) => String(link.tagId))
+    .sort()
+    .map((tagId) => ({
+      opId: core.newId(),
+      kind: 'create',
+      table: 'task_tag',
+      id: taskTagId(minted.id, tagId),
+      fields: { taskId: minted.id, tagId },
+      ts,
+    }));
+  return {
+    synced: await submitOwn(
+      core,
+      [copy, ...tagOps, plan.op],
+      'move',
+      minted.opId,
+    ),
+  };
+}
+
+/**
+ * Undoes a move (views Q13): deletes the copy, then reopens its origin
+ * occurrence if it is still skipped. One batch. Refuses (UsageError) a task
+ * without origin fields, a copy with no `version` or with queued ops, a copy
+ * with live subtasks, and a copy whose original is not live (departure 5).
+ * Replay-safe.
+ */
+export async function undoMove(
+  core: Core,
+  minted: Minted,
+  copyId: string,
+): Promise<{ synced: boolean }> {
+  const done = await replayed(core, minted.opId);
+  if (done !== undefined) return done;
+  const { store } = core;
+  const all = tasks(store);
+  const copy = liveTask(all, copyId);
+  const { originTaskId, originOccurrence } = copy;
+  if (
+    typeof originTaskId !== 'string' ||
+    typeof originOccurrence !== 'string'
+  ) {
+    throw new UsageError(`task ${copyId} is not a moved occurrence`);
+  }
+  if (store.pending().some((op) => op.table === 'task' && op.id === copyId)) {
+    throw new UsageError(`task ${copyId} is not synced yet`);
+  }
+  const row = syncedRow(all, copyId, 'task');
+  if (liveTasks(all).some((t) => t.parentId === copyId)) {
+    throw new UsageError(`task ${copyId} has subtasks`);
+  }
+  liveTask(all, originTaskId);
+  const ts = core.now().toISOString();
+  const reopen: OpCreate[] =
+    stateOf(occurrences(store), originTaskId)(originOccurrence) === 'skipped'
+      ? [
+          {
+            opId: core.newId(),
+            kind: 'create',
+            table: 'task_occurrence',
+            id: taskOccurrenceId(originTaskId, originOccurrence),
+            fields: {
+              taskId: originTaskId,
+              occurrence: originOccurrence,
+              state: 'open',
+              completedAt: null,
+            },
+            ts,
+          },
+        ]
+      : [];
+  return {
+    synced: await submitOwn(
+      core,
+      [deleteOp('task', row, core.newId), ...reopen],
+      'move',
+      minted.opId,
+    ),
+  };
 }
