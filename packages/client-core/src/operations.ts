@@ -1,4 +1,5 @@
 import {
+  addDays,
   completingStatus,
   displayStatus,
   filterProblem,
@@ -29,10 +30,12 @@ import {
   liveTags,
   notDeleted,
   isAttached,
+  liveProjects,
   winner,
   resolveLabels,
 } from './labels.js';
 import { planMerge } from './merge.js';
+import { rankBetween, rankWrites, type Ranked } from './rank.js';
 import { liveTasks, overlay } from './overlay.js';
 import { planAdd } from './parse-quick-add.js';
 import { resolveRef, shortRef } from './ref.js';
@@ -83,14 +86,24 @@ export type Due = Row & {
  * §4). Every one counts as the command's own, so a refusal of any of them is
  * the command's exit 1 (4 for a conflict), reporting every operation's fate.
  * Returns whether the server has all of them.
+ *
+ * With `key`, the command is the unit of idempotence (plan W3, departure 2):
+ * the claim is written in the same transaction as the enqueue, and a key
+ * already claimed queues nothing, so a resend only flushes.
  */
 export async function submit(
   store: Store,
   send: Transport,
   build: Op[] | (() => Op[]),
   command: string,
+  key?: string,
+  nowMs: number = Date.now(),
 ): Promise<boolean> {
   const ops = store.transaction(() => {
+    if (key !== undefined) {
+      if (store.seen(key)) return [];
+      store.claim(key, nowMs);
+    }
     const queued = typeof build === 'function' ? build() : build;
     for (const op of queued) store.enqueue(op);
     return queued;
@@ -208,8 +221,9 @@ function stateOf(marks: Row[], taskId: string): StateOf {
     )?.state;
 }
 
-function setTask(
-  task: Row,
+function setRow(
+  table: 'task' | 'view' | 'status',
+  row: Row,
   field: string,
   value: unknown,
   newId: () => string,
@@ -218,13 +232,21 @@ function setTask(
   return {
     opId: newId(),
     kind: 'set',
-    table: 'task',
-    id: String(task.id),
+    table,
+    id: String(row.id),
     field,
     value,
     ts,
   };
 }
+
+const setTask = (
+  task: Row,
+  field: string,
+  value: unknown,
+  newId: () => string,
+  ts: string,
+): OpSet => setRow('task', task, field, value, newId, ts);
 
 /** The statuses as `displayStatus` and `completingStatus` read them. */
 function statusFacts(statuses: Row[]): StatusRow[] {
@@ -232,6 +254,22 @@ function statusFacts(statuses: Row[]): StatusRow[] {
     id: String(s.id),
     rank: String(s.rank),
     completing: s.completing === true,
+  }));
+}
+
+/** The Inbox, Doing, Done creates (views Q9), shared with statusOps. */
+export function seedOps(newId: () => string, ts: string): OpCreate[] {
+  return [
+    { name: 'Inbox', rank: 'a0', completing: false },
+    { name: 'Doing', rank: 'a1', completing: false },
+    { name: 'Done', rank: 'a2', completing: true },
+  ].map((fields) => ({
+    opId: newId(),
+    kind: 'create',
+    table: 'status',
+    id: newId(),
+    fields,
+    ts,
   }));
 }
 
@@ -255,21 +293,7 @@ function statusOps(
       : [setTask(task, 'statusId', null, newId, ts)];
   }
   const live = statusFacts(statuses);
-  const seeded: OpCreate[] =
-    live.length > 0
-      ? []
-      : [
-          { name: 'Inbox', rank: 'a0', completing: false },
-          { name: 'Doing', rank: 'a1', completing: false },
-          { name: 'Done', rank: 'a2', completing: true },
-        ].map((fields) => ({
-          opId: newId(),
-          kind: 'create',
-          table: 'status',
-          id: newId(),
-          fields,
-          ts,
-        }));
+  const seeded = live.length > 0 ? [] : seedOps(newId, ts);
   const target = completingStatus([
     ...live,
     ...seeded.map((op) => ({
@@ -283,10 +307,19 @@ function statusOps(
 }
 
 /** A task with the facts a view's filter reads. */
-type Listed = { row: Due; facts: FilterTask };
+type Listed = { row: Due; facts: FilterTask; closed: boolean };
 
-/** Each live task once, at its current occurrence (plan C design, Q11). */
-function due(store: Store, today: string): Listed[] {
+/**
+ * Each live task once, at its current occurrence (plan C design, Q11). With
+ * `closedSince`, also the one-off tasks closed on or after that date, each in
+ * the completing column (`null`: however long ago). A closed mark without a
+ * `fieldTs` is still in the outbox and counts as now.
+ */
+function due(
+  store: Store,
+  today: string,
+  closedSince?: string | null,
+): Listed[] {
   const all = tasks(store);
   const marks = occurrences(store);
   const labelRows = {
@@ -306,23 +339,44 @@ function due(store: Store, today: string): Listed[] {
       stateOf(marks, taskId),
       today,
     );
-    if (current === null) return [];
+    const closedMark =
+      current === null && recurrence === null && closedSince !== undefined
+        ? marks.find(
+            (m) => m.taskId === taskId && (m.occurrence ?? null) === null,
+          )
+        : undefined;
+    const closedAt = (
+      closedMark?.fieldTs as Record<string, string> | undefined
+    )?.state?.slice(0, 10);
+    // The drawer (`closedSince` null) reads any live task, an ended series too.
+    if (
+      current === null &&
+      closedSince !== null &&
+      (closedMark === undefined ||
+        (typeof closedSince === 'string' &&
+          closedAt !== undefined &&
+          closedAt < closedSince))
+    ) {
+      return [];
+    }
+    const closed = current === null;
     const statusId =
       displayStatus(
         typeof task.statusId === 'string' ? task.statusId : null,
         facts,
-        false,
+        closed,
       ) ?? null;
     const row = {
       ...task,
       ref: shortRef(taskId),
-      occurrence: current.occurrence,
+      occurrence: current?.occurrence ?? null,
       ...labelsOf(task, labelRows),
       status: statusId === null ? null : (names.get(statusId) ?? null),
     };
     return [
       {
         row,
+        closed,
         facts: {
           tagIds: labelRows.links
             .filter(
@@ -340,7 +394,7 @@ function due(store: Store, today: string): Listed[] {
               ? typeof task.scheduledOn === 'string'
                 ? task.scheduledOn
                 : null
-              : current.occurrence,
+              : (current?.occurrence ?? null),
           dueOn: typeof task.dueOn === 'string' ? task.dueOn : null,
           recurring: recurrence !== null,
         },
@@ -375,14 +429,14 @@ function compareStrings(a: unknown, b: unknown): number {
 
 /** The view's order (plan V1, Global Constraints); without a view, `list`
  *  keeps its own. Every key ends in rank, then id. */
-function sortFor(view: ChosenView | undefined, rows: Listed[]): Listed[] {
-  if (view === undefined) return rows;
+function sortFor(sort: string | undefined, rows: Listed[]): Listed[] {
+  if (sort === undefined) return rows;
   const key = (l: Listed): string | number | null =>
-    view.sort === 'priority'
+    sort === 'priority'
       ? -l.facts.priority
-      : view.sort === 'due'
+      : sort === 'due'
         ? l.facts.dueOn
-        : view.sort === 'scheduled'
+        : sort === 'scheduled'
           ? l.facts.scheduledOn
           : 0;
   return [...rows].sort((a, b) => {
@@ -443,11 +497,16 @@ function pickOccurrence(
   return current.occurrence;
 }
 
+/** Minted in the tab: the command's first op id (and replay key), and for a
+ *  create the new row's id. */
+export type Minted = { opId: string; id?: string };
+
 /** `add`: quick-add text plus already-validated recurrence fields. */
 export async function add(
   core: Core,
   text: string,
   recurrence: Record<string, string>,
+  minted?: Minted,
 ): Promise<{
   synced: boolean;
   title: string;
@@ -455,6 +514,16 @@ export async function add(
   task: Row | null;
 }> {
   const { store, send } = core;
+  if (minted !== undefined && store.seen(minted.opId)) {
+    const task = tasks(store).find((row) => row.id === minted.id) ?? null;
+    const { synced } = await flush(store, send);
+    return {
+      synced,
+      title: typeof task?.title === 'string' ? task.title : '',
+      created: [],
+      task,
+    };
+  }
   // Refuses an empty title — see planAdd.
   const { title, priority, project, tags } = planAdd(text);
   const ts = core.now().toISOString();
@@ -465,10 +534,10 @@ export async function add(
     ts,
   );
   const op: OpCreate = {
-    opId: core.newId(),
+    opId: minted?.opId ?? core.newId(),
     kind: 'create',
     table: 'task',
-    id: core.newId(),
+    id: minted?.id ?? core.newId(),
     fields: {
       title,
       priority,
@@ -491,29 +560,27 @@ export async function add(
     send,
     [...labels.creates, op, ...linkOps],
     'add',
+    minted?.opId,
+    core.now().getTime(),
   );
   const task = tasks(store).find((row) => row.id === op.id) ?? null;
   return { synced, title, created: labels.created, task };
 }
 
-/** done / skip / undo on the task `ref` names, at `on` or the default occurrence. */
-export async function mark(
+/**
+ * What a mark writes, validated: the occurrence it applies to, whether that
+ * is already closed, the occurrence op and the statusId writes that go with
+ * it. Shared by `mark` and `moveTask`, so there is one path to `done`.
+ */
+function planMark(
   core: Core,
   command: Mark,
-  ref: string,
+  task: Row,
+  all: Row[],
   on: string | undefined,
-): Promise<{
-  synced: boolean;
-  task: Row;
-  occurrence: string | null;
-  closed: 'done' | 'skipped' | undefined;
-  marked: Row | null;
-}> {
-  const { store, send } = core;
-  // Resolved against what this client can see, before anything is sent:
-  // like every write, a mark works offline.
-  const all = tasks(store);
-  const task = resolveRef(liveTasks(all), ref);
+  opId: string | undefined,
+) {
+  const { store } = core;
   const taskId = String(task.id);
   const marks = occurrences(store);
   const occurrence = pickOccurrence(
@@ -528,13 +595,14 @@ export async function mark(
   // done and skipped goes through undo, so completedAt is never rewritten.
   const state =
     command === 'undo' ? undefined : stateOf(marks, taskId)(occurrence);
-  const closed = state === 'done' || state === 'skipped' ? state : undefined;
+  const closed: 'done' | 'skipped' | undefined =
+    state === 'done' || state === 'skipped' ? state : undefined;
   if (closed !== undefined && closed !== MARK[command]) {
     throw new UsageError(`already ${closed} — undo it first`);
   }
   const now = core.now().toISOString();
   const op: OpCreate = {
-    opId: core.newId(),
+    opId: opId ?? core.newId(),
     kind: 'create',
     table: 'task_occurrence',
     id: taskOccurrenceId(taskId, occurrence),
@@ -546,20 +614,324 @@ export async function mark(
     },
     ts: now,
   };
+  return {
+    occurrence,
+    closed,
+    op,
+    statusWrites: (): Op[] =>
+      statusOps(command, task, statusRows(store), core.newId, now),
+  };
+}
+
+/** done / skip / undo on the task `ref` names, at `on` or the default occurrence. */
+export async function mark(
+  core: Core,
+  command: Mark,
+  ref: string,
+  on: string | undefined,
+  minted?: Minted,
+): Promise<{
+  synced: boolean;
+  task: Row;
+  occurrence: string | null;
+  closed: 'done' | 'skipped' | undefined;
+  marked: Row | null;
+}> {
+  const { store, send } = core;
+  // Resolved against what this client can see, before anything is sent:
+  // like every write, a mark works offline.
+  const all = tasks(store);
+  if (minted !== undefined && store.seen(minted.opId)) {
+    // Before resolving the ref and pickOccurrence: the task may be deleted
+    // since, and an undo that already landed has nothing left to undo. What
+    // can be read back is the op if it is still queued.
+    let task: Row = { id: ref };
+    try {
+      task = resolveRef(all, ref);
+    } catch {
+      // pruned: the resend only flushes, the caller keeps its own ref
+    }
+    const queued = store.entry(minted.opId)?.op;
+    const { synced } = await flush(store, send);
+    return {
+      synced,
+      task,
+      occurrence:
+        queued?.kind === 'create'
+          ? ((queued.fields.occurrence as string | null) ?? null)
+          : null,
+      closed: undefined,
+      marked:
+        queued === undefined
+          ? null
+          : (occurrences(store).find((row) => row.id === queued.id) ?? null),
+    };
+  }
+  const task = resolveRef(liveTasks(all), ref);
+  const plan = planMark(core, command, task, all, on, minted?.opId);
+  const { occurrence, closed, op } = plan;
   const synced =
     closed !== undefined
       ? (await flush(store, send)).synced
       : await submit(
           store,
           send,
-          () => [
-            ...statusOps(command, task, statusRows(store), core.newId, now),
-            op,
-          ],
+          () => [...plan.statusWrites(), op],
           command,
+          minted?.opId,
+          core.now().getTime(),
         );
   const marked = occurrences(store).find((row) => row.id === op.id) ?? null;
   return { synced, task, occurrence, closed, marked };
+}
+
+export type TaskChanges = Partial<{
+  title: string;
+  notes: string | null;
+  priority: number;
+  scheduledOn: string | null;
+  dueOn: string | null;
+  project: string | null;
+  tags: string[];
+}>;
+
+/** The first op carries the command's minted id (plan W3, departure 2). */
+function withFirstId(ops: Op[], opId: string): Op[] {
+  const [first, ...rest] = ops;
+  return first === undefined ? ops : [{ ...first, opId }, ...rest];
+}
+
+const isClosed = (state: unknown) => state === 'done' || state === 'skipped';
+
+function liveTask(all: Row[], id: string): Row {
+  const task = liveTasks(all).find((row) => row.id === id);
+  if (task === undefined) throw new UsageError(`no task ${id}`);
+  return task;
+}
+
+function requiredName(name: string, what: string): string {
+  const trimmed = name.trim();
+  if (trimmed === '') throw new UsageError(`${what} must not be empty`);
+  return trimmed;
+}
+
+/**
+ * One `set` per changed field (plus label creates and links), one batch.
+ * Replay-safe: a seen `minted.opId` only flushes, before any validation.
+ */
+export async function editTask(
+  core: Core,
+  minted: Minted,
+  taskId: string,
+  changes: TaskChanges,
+): Promise<{ synced: boolean }> {
+  const { store, send } = core;
+  if (store.seen(minted.opId)) {
+    return { synced: (await flush(store, send)).synced };
+  }
+  const all = tasks(store);
+  const task = liveTask(all, taskId);
+  const ts = core.now().toISOString();
+  const fields: [string, unknown][] = [];
+  if (changes.title !== undefined) {
+    fields.push(['title', requiredName(changes.title, 'title')]);
+  }
+  if (changes.notes !== undefined) {
+    fields.push(['notes', changes.notes === '' ? null : changes.notes]);
+  }
+  if (changes.priority !== undefined) {
+    if (![0, 1, 2, 3, 4].includes(changes.priority)) {
+      throw new UsageError('priority must be 0 to 4');
+    }
+    fields.push(['priority', changes.priority]);
+  }
+  for (const key of ['scheduledOn', 'dueOn'] as const) {
+    const value = changes[key];
+    if (value === undefined) continue;
+    if (value !== null && !isIsoDate(value)) {
+      throw new UsageError(`${key} must be a date, YYYY-MM-DD`);
+    }
+    if (
+      key === 'scheduledOn' &&
+      value !== null &&
+      recurrenceOf(task, parentOf(all, task)) !== null
+    ) {
+      throw new UsageError('a recurring task is scheduled by its rule');
+    }
+    fields.push([key, value]);
+  }
+  const rows = { projects: projects(store), tags: tagRows(store) };
+  const creates: OpCreate[] = [];
+  if (changes.project !== undefined) {
+    if (changes.project === null) {
+      fields.push(['projectId', null]);
+    } else {
+      const labels = resolveLabels(
+        { project: requiredName(changes.project, 'project'), tags: [] },
+        rows,
+        core.newId,
+        ts,
+      );
+      creates.push(...labels.creates);
+      fields.push(['projectId', labels.projectId]);
+    }
+  }
+  const linkOps: Op[] = [];
+  if (changes.tags !== undefined) {
+    const labels = resolveLabels(
+      {
+        project: undefined,
+        tags: changes.tags.map((name) => requiredName(name, 'tag')),
+      },
+      rows,
+      core.newId,
+      ts,
+    );
+    creates.push(...labels.creates);
+    const mine = links(store).filter((link) => link.taskId === taskId);
+    const attached = new Set(
+      mine.filter(isAttached).map((link) => String(link.tagId)),
+    );
+    const wanted = new Set(labels.tagIds);
+    const attach = (id: string, value: boolean): Op => ({
+      opId: core.newId(),
+      kind: 'set',
+      table: 'task_tag',
+      id,
+      field: 'attached',
+      value,
+      ts,
+    });
+    for (const tagId of wanted) {
+      if (attached.has(tagId)) continue;
+      const id = taskTagId(taskId, tagId);
+      const detached = mine.some(
+        (link) => link.id === id && link.deletedAt === null,
+      );
+      linkOps.push(
+        detached
+          ? attach(id, true)
+          : {
+              opId: core.newId(),
+              kind: 'create',
+              table: 'task_tag',
+              id,
+              fields: { taskId, tagId },
+              ts,
+            },
+      );
+    }
+    for (const link of mine) {
+      if (isAttached(link) && !wanted.has(String(link.tagId))) {
+        linkOps.push(attach(String(link.id), false));
+      }
+    }
+  }
+  const setOps = fields
+    .filter(([field, value]) => (task[field] ?? null) !== value)
+    .map(([field, value]) => setTask(task, field, value, core.newId, ts));
+  const ops = withFirstId([...creates, ...setOps, ...linkOps], minted.opId);
+  return {
+    synced: await submit(
+      store,
+      send,
+      ops,
+      'edit',
+      minted.opId,
+      core.now().getTime(),
+    ),
+  };
+}
+
+/**
+ * A card moved (views Q5, Q7): into the completing status is `done` through
+ * mark's path (current occurrence, statusOps, seeding); out of it, for a
+ * closed task, is `undo` plus one `set statusId` to the target; between other
+ * statuses one `set statusId`. `ranks` are written too. `statusId` undefined:
+ * a reorder only. A user with no statuses has nothing to name but the column
+ * `mark done` would seed, so any `statusId` then means completing.
+ */
+export async function moveTask(
+  core: Core,
+  minted: Minted,
+  taskId: string,
+  move: { statusId?: string | null; ranks?: Ranked[] },
+): Promise<{
+  synced: boolean;
+  marked: 'done' | 'undo' | null;
+  occurrence: string | null;
+}> {
+  const { store, send } = core;
+  if (store.seen(minted.opId)) {
+    const { synced } = await flush(store, send);
+    return { synced, marked: null, occurrence: null };
+  }
+  const all = tasks(store);
+  const task = liveTask(all, taskId);
+  const { statusId } = move;
+  const live = statusFacts(statusRows(store));
+  if (
+    statusId !== undefined &&
+    statusId !== null &&
+    live.length > 0 &&
+    !live.some((s) => s.id === statusId)
+  ) {
+    throw new UsageError(`no status ${statusId}`);
+  }
+  const intoDone =
+    statusId !== undefined &&
+    statusId !== null &&
+    (live.length === 0 || statusId === completingStatus(live));
+  // Already closed (done or skipped), the card's column is all that moves.
+  const closedOneOff =
+    recurrenceOf(task, parentOf(all, task)) === null &&
+    isClosed(stateOf(occurrences(store), taskId)(null));
+  const reopen = statusId !== undefined && !intoDone && closedOneOff;
+  const plan =
+    (intoDone && !closedOneOff) || reopen
+      ? planMark(
+          core,
+          intoDone ? 'done' : 'undo',
+          task,
+          all,
+          undefined,
+          minted.opId,
+        )
+      : undefined;
+  const ts = core.now().toISOString();
+  const build = (): Op[] => {
+    const ops: Op[] = [];
+    if (intoDone) {
+      if (plan !== undefined) ops.push(...plan.statusWrites(), plan.op);
+    } else if (statusId !== undefined) {
+      if (plan !== undefined) ops.push(plan.op);
+      if ((task.statusId ?? null) !== statusId) {
+        ops.push(setTask(task, 'statusId', statusId, core.newId, ts));
+      }
+    }
+    for (const { id, rank } of move.ranks ?? []) {
+      ops.push(setTask({ id }, 'rank', rank, core.newId, ts));
+    }
+    return plan === undefined ? withFirstId(ops, minted.opId) : ops;
+  };
+  const synced = await submit(
+    store,
+    send,
+    build,
+    'move',
+    minted.opId,
+    core.now().getTime(),
+  );
+  return {
+    synced,
+    marked:
+      plan === undefined || plan.closed !== undefined
+        ? null
+        : intoDone
+          ? 'done'
+          : 'undo',
+    occurrence: plan?.occurrence ?? null,
+  };
 }
 
 /** Each live task once at its current occurrence, label-filtered, then the
@@ -572,7 +944,7 @@ export function listTasks(
 ): Due[] {
   const chosen = view === undefined ? undefined : pickView(store, view);
   return sortFor(
-    chosen,
+    chosen?.sort,
     due(store, today).filter(
       ({ row, facts }) =>
         filters.every((f) =>
@@ -591,6 +963,143 @@ export function listViews(store: Store): Row[] {
     (a, b) => compareStrings(a.rank, b.rank) || compareIds(a, b),
   );
 }
+
+/** A view as the reads need it: a stored row or the built-in "All open". */
+export type ViewSpec = { filter: unknown; sort: string; layout: string };
+export const ALL_OPEN: ViewSpec = {
+  filter: { and: [] },
+  sort: 'manual',
+  layout: 'list',
+};
+
+/** A listed task with what a screen shows: its column (`displayStatus`) and
+ *  whether its occurrence is closed (only ever true on a board). */
+export type Item = Due & { column: string | null; closed: boolean };
+
+function itemOf({ row, facts, closed }: Listed): Item {
+  return { ...row, column: facts.statusId, closed };
+}
+
+function selected(
+  store: Store,
+  today: string,
+  view: ViewSpec,
+  closedSince?: string,
+): Item[] {
+  const problem = filterProblem(view.filter);
+  if (problem !== null) {
+    throw new RefusalError(`view has an invalid filter: ${problem}`);
+  }
+  return sortFor(
+    view.sort,
+    due(store, today, closedSince).filter(({ facts }) =>
+      matches(view.filter as Filter, facts, today),
+    ),
+  ).map(itemOf);
+}
+
+/** The open tasks a list view shows, filtered and sorted (the CLI's facts). */
+export function viewTasks(store: Store, today: string, view: ViewSpec): Item[] {
+  return selected(store, today, view);
+}
+
+/** viewTasks plus one-off tasks closed within `closedDays` (departure 6),
+ *  each in the completing column. */
+export function boardTasks(
+  store: Store,
+  today: string,
+  view: ViewSpec,
+  closedDays = 7,
+): Item[] {
+  return selected(store, today, view, addDays(today, -closedDays));
+}
+
+/** One task for the drawer: the row, labels, current occurrence, column,
+ *  closed state; null when it is deleted or unknown. A recurring task whose
+ *  series ended is live: `closed`, with no occurrence. */
+export function taskDetails(
+  store: Store,
+  today: string,
+  id: string,
+): (Item & { notes: string | null; rrule: string | null }) | null {
+  const found = due(store, today, null).find(({ row }) => row.id === id);
+  if (found === undefined) return null;
+  const { notes, rrule } = found.row;
+  return {
+    ...itemOf(found),
+    notes: typeof notes === 'string' ? notes : null,
+    rrule: typeof rrule === 'string' ? rrule : null,
+  };
+}
+
+/** What the sidebar, forms and pickers need: live views by rank (with
+ *  `problem` from filterProblem), live statuses by rank then id with
+ *  `completing` resolved by completingStatus, live projects and tags by name. */
+export function catalog(store: Store): Catalog {
+  const byName = (a: Row, b: Row) =>
+    compareStrings(a.name, b.name) || compareIds(a, b);
+  const statuses = notDeleted(statusRows(store)).sort(
+    (a, b) => compareStrings(a.rank, b.rank) || compareIds(a, b),
+  );
+  const completing = completingStatus(statusFacts(statuses));
+  const perStatus = new Map<unknown, number>();
+  for (const t of liveTasks(tasks(store))) {
+    perStatus.set(t.statusId, (perStatus.get(t.statusId) ?? 0) + 1);
+  }
+  const version = (row: Row) =>
+    typeof row.version === 'number' ? row.version : null;
+  return {
+    views: listViews(store).map((v) => ({
+      id: String(v.id),
+      name: String(v.name),
+      layout: String(v.layout),
+      sort: String(v.sort),
+      filter: v.filter,
+      rank: String(v.rank),
+      version: version(v),
+      problem: filterProblem(v.filter),
+    })),
+    statuses: statuses.map((s) => ({
+      id: String(s.id),
+      name: String(s.name),
+      rank: String(s.rank),
+      color: typeof s.color === 'string' ? s.color : null,
+      completing: s.id === completing,
+      /** Live tasks with this `statusId`: what deleting the status moves. */
+      tasks: perStatus.get(s.id) ?? 0,
+      version: version(s),
+    })),
+    projects: liveProjects(projects(store))
+      .sort(byName)
+      .map((p) => ({ id: String(p.id), name: String(p.name) })),
+    tags: liveTags(tagRows(store))
+      .sort(byName)
+      .map((t) => ({ id: String(t.id), name: String(t.name) })),
+  };
+}
+export type Catalog = {
+  views: {
+    id: string;
+    name: string;
+    layout: string;
+    sort: string;
+    filter: unknown;
+    rank: string;
+    version: number | null;
+    problem: string | null;
+  }[];
+  statuses: {
+    id: string;
+    name: string;
+    rank: string;
+    color: string | null;
+    completing: boolean;
+    tasks: number;
+    version: number | null;
+  }[];
+  projects: { id: string; name: string }[];
+  tags: { id: string; name: string }[];
+};
 
 /** After a pull: drop moot failed entries, queue the duplicate-name merge.
  *  Returns the merged names when it queued anything, else []. */
@@ -635,4 +1144,298 @@ export function reconcile(core: Core): string[] {
     return merged;
   }
   return [];
+}
+
+export type ViewFields = {
+  name: string;
+  layout: 'list' | 'kanban' | 'calendar';
+  sort: 'manual' | 'priority' | 'due' | 'scheduled';
+  filter: unknown;
+};
+
+const LAYOUTS = ['list', 'kanban', 'calendar'];
+const SORTS = ['manual', 'priority', 'due', 'scheduled'];
+
+const byRank = (a: Row, b: Row) =>
+  compareStrings(a.rank, b.rank) || compareIds(a, b);
+
+/** Structural equality of JSON values; object key order does not matter. */
+function sameJson(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || !a || !b) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a);
+  return (
+    ka.length === Object.keys(b).length &&
+    ka.every(
+      (k) =>
+        k in b &&
+        sameJson(
+          (a as Record<string, unknown>)[k],
+          (b as Record<string, unknown>)[k],
+        ),
+    )
+  );
+}
+
+/** A seen `opId` only flushes, before any validation. */
+async function replayed(core: Core, opId: string) {
+  if (!core.store.seen(opId)) return undefined;
+  return { synced: (await flush(core.store, core.send)).synced };
+}
+
+function submitOwn(core: Core, ops: Op[], command: string, opId: string) {
+  return submit(
+    core.store,
+    core.send,
+    withFirstId(ops, opId),
+    command,
+    opId,
+    core.now().getTime(),
+  );
+}
+
+/** A name no other live row of `rows` has, trimmed and non-empty. */
+function uniqueName(rows: Row[], id: string, name: string, what: string) {
+  const trimmed = requiredName(name, `${what} name`);
+  const key = nameKey(trimmed);
+  if (
+    rows.some(
+      (r) =>
+        r.id !== id && typeof r.name === 'string' && nameKey(r.name) === key,
+    )
+  ) {
+    throw new UsageError(`a ${what} named ${trimmed} already exists`);
+  }
+  return trimmed;
+}
+
+/**
+ * Create (id unknown) or update (one `set` per changed field) a view. A new
+ * view ranks after the last. Replay-safe.
+ */
+export async function saveView(
+  core: Core,
+  minted: Minted & { id: string },
+  fields: ViewFields,
+): Promise<{ synced: boolean }> {
+  const done = await replayed(core, minted.opId);
+  if (done !== undefined) return done;
+  const all = viewRows(core.store);
+  const live = notDeleted(all);
+  const existing = all.find((v) => v.id === minted.id);
+  if (existing !== undefined && existing.deletedAt !== null) {
+    throw new UsageError(`no view ${minted.id}`);
+  }
+  const name = uniqueName(live, minted.id, fields.name, 'view');
+  if (!LAYOUTS.includes(fields.layout)) {
+    throw new UsageError(`layout must be one of ${LAYOUTS.join(', ')}`);
+  }
+  if (!SORTS.includes(fields.sort)) {
+    throw new UsageError(`sort must be one of ${SORTS.join(', ')}`);
+  }
+  const problem = filterProblem(fields.filter);
+  if (problem !== null) throw new UsageError(problem);
+  const ts = core.now().toISOString();
+  const written = {
+    name,
+    layout: fields.layout,
+    sort: fields.sort,
+    filter: fields.filter,
+  };
+  const ops: Op[] =
+    existing === undefined
+      ? [
+          {
+            opId: core.newId(),
+            kind: 'create',
+            table: 'view',
+            id: minted.id,
+            fields: {
+              ...written,
+              rank: rankBetween(
+                ([...live].sort(byRank).at(-1)?.rank as string | undefined) ??
+                  null,
+                null,
+              ),
+            },
+            ts,
+          },
+        ]
+      : Object.entries(written)
+          .filter(([k, v]) => !sameJson(existing[k], v))
+          .map(([k, v]) => setRow('view', existing, k, v, core.newId, ts));
+  return { synced: await submitOwn(core, ops, 'view', minted.opId) };
+}
+
+/** A delete's `baseVersion` is the row's version; an unsynced row has none. */
+function syncedRow(
+  rows: Row[],
+  id: string,
+  what: string,
+): Row & { version: number } {
+  const row = notDeleted(rows).find((r) => r.id === id);
+  if (row === undefined) throw new UsageError(`no ${what} ${id}`);
+  if (typeof row.version !== 'number') {
+    throw new UsageError(`${what} ${id} is not synced yet`);
+  }
+  return row as Row & { version: number };
+}
+
+const deleteOp = (
+  table: 'view' | 'status',
+  row: Row & { version: number },
+  newId: () => string,
+): Op => ({
+  opId: newId(),
+  kind: 'delete',
+  table,
+  id: String(row.id),
+  baseVersion: row.version,
+});
+
+/** Refuses a view without a `version` ("not synced yet"). Replay-safe. */
+export async function deleteView(
+  core: Core,
+  minted: Minted,
+  id: string,
+): Promise<{ synced: boolean }> {
+  const done = await replayed(core, minted.opId);
+  if (done !== undefined) return done;
+  const row = syncedRow(viewRows(core.store), id, 'view');
+  return {
+    synced: await submitOwn(
+      core,
+      [deleteOp('view', row, core.newId)],
+      'view',
+      minted.opId,
+    ),
+  };
+}
+
+/**
+ * Create (id unknown; ranks after `after`, or last) or rename and/or reorder
+ * (`after`: the status it follows; null: first). Names are nameKey-unique.
+ */
+export async function saveStatus(
+  core: Core,
+  minted: Minted & { id: string },
+  change: { name?: string; after?: string | null },
+): Promise<{ synced: boolean }> {
+  const done = await replayed(core, minted.opId);
+  if (done !== undefined) return done;
+  const all = statusRows(core.store);
+  const live = notDeleted(all);
+  const existing = all.find((s) => s.id === minted.id);
+  if (existing !== undefined && existing.deletedAt !== null) {
+    throw new UsageError(`no status ${minted.id}`);
+  }
+  const ts = core.now().toISOString();
+  const name =
+    change.name === undefined
+      ? undefined
+      : uniqueName(live, minted.id, change.name, 'status');
+  if (existing === undefined && name === undefined) {
+    throw new UsageError('status name must not be empty');
+  }
+  const ordered = live.filter((s) => s.id !== minted.id).sort(byRank);
+  const after =
+    change.after === undefined && existing === undefined
+      ? ((ordered.at(-1)?.id as string | undefined) ?? null)
+      : change.after;
+  if (after != null && !ordered.some((s) => s.id === after)) {
+    throw new UsageError(`no status ${after}`);
+  }
+  const ranks =
+    after === undefined
+      ? []
+      : rankWrites(
+          ordered.map((s) => ({ id: String(s.id), rank: String(s.rank) })),
+          minted.id,
+          after,
+        );
+  const ops: Op[] = [];
+  if (existing === undefined) {
+    const mine = ranks.find((r) => r.id === minted.id)!;
+    ops.push({
+      opId: core.newId(),
+      kind: 'create',
+      table: 'status',
+      id: minted.id,
+      fields: { name, rank: mine.rank, completing: false },
+      ts,
+    });
+  } else if (name !== undefined && name !== existing.name) {
+    ops.push(setRow('status', existing, 'name', name, core.newId, ts));
+  }
+  for (const { id, rank } of ranks) {
+    if (existing === undefined && id === minted.id) continue;
+    ops.push(setRow('status', { id }, 'rank', rank, core.newId, ts));
+  }
+  return { synced: await submitOwn(core, ops, 'status', minted.opId) };
+}
+
+/** `completing: true` on this one and false on every other that has it. */
+export async function setCompleting(
+  core: Core,
+  minted: Minted,
+  id: string,
+): Promise<{ synced: boolean }> {
+  const done = await replayed(core, minted.opId);
+  if (done !== undefined) return done;
+  const live = notDeleted(statusRows(core.store));
+  const target = live.find((s) => s.id === id);
+  if (target === undefined) throw new UsageError(`no status ${id}`);
+  const ts = core.now().toISOString();
+  const ops = live
+    .filter((s) => s.id !== id && s.completing === true)
+    .sort(compareIds)
+    .map((s) => setRow('status', s, 'completing', false, core.newId, ts));
+  if (target.completing !== true) {
+    ops.push(setRow('status', target, 'completing', true, core.newId, ts));
+  }
+  return { synced: await submitOwn(core, ops, 'status', minted.opId) };
+}
+
+/**
+ * One batch: `set statusId null` for every live task on the status, then
+ * `delete` (views Q8). Refuses the completing status, the last non-completing
+ * one, and one without a `version`. Replay-safe.
+ */
+export async function deleteStatus(
+  core: Core,
+  minted: Minted,
+  id: string,
+): Promise<{ synced: boolean }> {
+  const done = await replayed(core, minted.opId);
+  if (done !== undefined) return done;
+  const all = statusRows(core.store);
+  const row = syncedRow(all, id, 'status');
+  if (row.completing === true) {
+    throw new UsageError('the completing status cannot be deleted');
+  }
+  if (notDeleted(all).filter((s) => s.completing !== true).length < 2) {
+    throw new UsageError('the last open status cannot be deleted');
+  }
+  const ts = core.now().toISOString();
+  const ops: Op[] = [
+    ...liveTasks(tasks(core.store))
+      .filter((t) => t.statusId === id)
+      .sort(compareIds)
+      .map((t) => setTask(t, 'statusId', null, core.newId, ts)),
+    deleteOp('status', row, core.newId),
+  ];
+  return { synced: await submitOwn(core, ops, 'status', minted.opId) };
+}
+
+/** Queues seedOps when there is no live status; returns whether it did. */
+export function seedStatuses(core: Core): boolean {
+  const { store } = core;
+  return store.transaction(() => {
+    if (notDeleted(statusRows(store)).length > 0) return false;
+    for (const op of seedOps(core.newId, core.now().toISOString())) {
+      store.enqueue(op);
+    }
+    return true;
+  });
 }

@@ -1,5 +1,7 @@
 {
-  "app": { "title": "Todoer" },
+  "app": {
+    "title": "Todoer"
+  },
   "insecure": {
     "title": "A secure connection is required",
     "body": "This app stores your tasks in the browser and needs HTTPS. Serve it through a reverse proxy that terminates TLS, or open it on localhost."
@@ -28,8 +30,8 @@
     },
     "lastSynced": "Last synced {when}",
     "neverSynced": "Not synced yet",
-    "pending": "Pending: {n}",
-    "failed": "Failed: {n}",
+    "pending": "{n} waiting",
+    "failed": "{n} refused",
     "offline": "Offline",
     "syncNow": "Sync now",
     "signOut": "Sign out"
@@ -40,6 +42,111 @@
     "unreachable": "The server cannot be reached.",
     "signed-out": "Your session has ended. Sign in again.",
     "unavailable": "The local database did not answer.",
-    "unexpected": "Something went wrong."
+    "invalid": "That cannot be done.",
+    "unexpected": "Something went wrong.",
+    "syncProblem": "Sync refused"
+  },
+  "nav": {
+    "title": "Views",
+    "all": "All open",
+    "problem": "This view has a problem"
+  },
+  "view": {
+    "problem": "This view cannot be shown",
+    "deleted": "This view no longer exists.",
+    "soon": "Tasks appear here soon."
+  },
+  "list": {
+    "quickAdd": "Quick add",
+    "quickAddPlaceholder": "Buy milk #home {'@'}errand p2",
+    "markDone": "Mark done",
+    "actions": "Task actions",
+    "skip": "Skip",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "open": "Open",
+    "due": "due {date}",
+    "done": "Done",
+    "skipped": "Skipped",
+    "doneRecurring": "Done for {occurrence}, next {next}",
+    "undo": "Undo",
+    "empty": "No open tasks."
+  },
+  "drawer": {
+    "title": "Task",
+    "description": "Edit the task; each field saves when you leave it.",
+    "titleField": "Title",
+    "notes": "Notes",
+    "project": "Project",
+    "noProject": "No project",
+    "tags": "Tags",
+    "priority": "Priority",
+    "scheduled": "Scheduled",
+    "due": "Due",
+    "clear": "Clear {field}",
+    "status": "Status",
+    "rule": "Repeats: {rule}",
+    "ended": "This series has ended; the task is read-only.",
+    "invalidDate": "Use a date, YYYY-MM-DD.",
+    "gone": "The task was deleted",
+    "notFound": "This task no longer exists."
+  },
+  "kanban": {
+    "columns": "Columns",
+    "noColumns": "Columns appear after the first sync.",
+    "moveTo": "Move to",
+    "completing": "Completing column"
+  },
+  "columns": {
+    "title": "Columns",
+    "description": "Rename, reorder and choose the column that completes a task.",
+    "name": "Column name",
+    "makeCompleting": "Make completing",
+    "delete": "Delete",
+    "confirm": "Delete “{name}”? Its tasks move to {first} ({count}).",
+    "confirmDelete": "Delete column",
+    "cancel": "Cancel",
+    "new": "New column",
+    "add": "Add column"
+  },
+  "viewForm": {
+    "newTitle": "New view",
+    "editTitle": "Edit view",
+    "description": "A view shows the tasks its filter matches.",
+    "name": "Name",
+    "template": "Show",
+    "kinds": {
+      "today": "Today",
+      "overdue": "Overdue",
+      "next7": "Next 7 days",
+      "project": "Project…",
+      "tag": "Tag…",
+      "status": "Status…"
+    },
+    "pick": "Pick one.",
+    "noProject": "No project",
+    "raw": "Raw JSON",
+    "filter": "Filter",
+    "layout": "Layout",
+    "layouts": {
+      "list": "List",
+      "kanban": "Kanban",
+      "calendar": "Calendar"
+    },
+    "soon": "Comes later",
+    "sort": "Sort",
+    "sorts": {
+      "manual": "Manual",
+      "priority": "Priority",
+      "due": "Due date",
+      "scheduled": "Scheduled date"
+    },
+    "save": "Save",
+    "cancel": "Cancel",
+    "new": "New view",
+    "edit": "Edit",
+    "delete": "Delete",
+    "deleteTitle": "Delete “{name}”?",
+    "deleteBody": "The view goes away; its tasks stay."
   }
 }

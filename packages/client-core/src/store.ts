@@ -201,6 +201,26 @@ export class Store {
     );
   }
 
+  /** Whether a command with this id already queued its ops (plan W3,
+   *  departure 2). */
+  seen(opId: string): boolean {
+    return (
+      this.db.all('SELECT 1 FROM meta WHERE key = ?', [`op:${opId}`]).length > 0
+    );
+  }
+
+  /** Records it and prunes markers older than `keepMs`; call inside the
+   *  transaction that enqueues the command's ops. The value is when. */
+  claim(opId: string, nowMs: number, keepMs = 7 * 24 * 60 * 60 * 1000): void {
+    this.db.run("DELETE FROM meta WHERE key LIKE 'op:%' AND value < ?", [
+      nowMs - keepMs,
+    ]);
+    this.db.run(
+      'INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO NOTHING',
+      [`op:${opId}`, nowMs],
+    );
+  }
+
   enqueue(op: Op): void {
     this.db.run('INSERT INTO outbox (op_id, op) VALUES (?, ?)', [
       op.opId,

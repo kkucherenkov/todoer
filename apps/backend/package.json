@@ -3,6 +3,10 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "files": [
+    "dist",
+    "prisma"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "postinstall": "prisma generate",
@@ -20,6 +24,7 @@
     "@todoer/specs": "workspace:^",
     "express": "^5.2.1",
     "express-openapi-validator": "^5.6.2",
+    "prisma": "6.19.3",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2",
     "uuidv7": "^1.2.1"
@@ -27,7 +32,6 @@
   "devDependencies": {
     "@types/express": "^5.0.6",
     "@types/node": "^22.10.0",
-    "prisma": "6.19.3",
     "typescript": "^5.6.3",
     "vitest": "^5.0.2"
   }

@@ -1,12 +1,16 @@
 import sqlite3InitModule, { type Sqlite3Static } from '@sqlite.org/sqlite-wasm';
 import {
+  ALL_OPEN,
   cookieTokenSource,
   httpTransport,
+  localDate,
   RefusalError,
+  viewTasks,
   type AccessGrant,
   type CookieAuthApi,
   type CookieTokenSource,
   type Store,
+  taskDetails,
   type Transport,
 } from '@todoer/client-core';
 import { openWasmStore } from '@todoer/client-core/sqlite-wasm';
@@ -19,8 +23,14 @@ import {
   it,
   vi,
 } from 'vitest';
-import { createEngine, dispatcher } from './engine';
+import { createEngine, dispatcher, type Engine } from './engine';
 import type { Result, ToWorker, Topic, Topics } from './protocol';
+
+// A spy that calls through, so one test can make a computation throw.
+vi.mock('@todoer/client-core', async (original) => {
+  const actual = await original<typeof import('@todoer/client-core')>();
+  return { ...actual, taskDetails: vi.fn(actual.taskDetails) };
+});
 
 type Op = Parameters<Store['enqueue']>[0];
 
@@ -48,11 +58,26 @@ const task = (id: string) => ({
   seq: 1,
   row: { id, title: id, deletedAt: null },
 });
-/** The canned answer: two live tasks and one deleted. */
+/** A status, so that a first sync has nothing to seed (departure 5). */
+const status = {
+  table: 'status',
+  id: 's',
+  seq: 1,
+  row: {
+    id: 's',
+    name: 'To do',
+    rank: 'a0',
+    completing: false,
+    deletedAt: null,
+    version: 1,
+  },
+};
+/** The canned answer: two live tasks and one deleted, and a status. */
 const CANNED = {
   cursor: 3,
   results: [],
   changes: [
+    status,
     task('a'),
     task('b'),
     { ...task('c'), row: { id: 'c', title: 'c', deletedAt: EARLIER } },
@@ -99,11 +124,17 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.mocked(taskDetails).mockReset();
+  vi.restoreAllMocks();
   store.close();
   vi.unstubAllGlobals();
 });
 
 let clock = NOW;
+let minted = 0;
+/** A uuid-shaped id, as filters and refs need; `n` in the last group. */
+const uuid = (n: number) =>
+  `00000000-0000-7000-8000-${n.toString(16).padStart(12, '0')}`;
 const engine = (transport: Transport = send) =>
   createEngine({
     store,
@@ -111,6 +142,7 @@ const engine = (transport: Transport = send) =>
     tokens,
     send: transport,
     now: () => clock,
+    newId: () => uuid(0x100000 + (minted += 1)),
     publish: (topic, value) => {
       (published[topic] ??= [] as never[]).push(value as never);
     },
@@ -212,7 +244,11 @@ describe('signIn', () => {
   it("waits for the previous account's sync: its answer never reaches the new replica", async () => {
     // Cursor 0 on both sides: store.applyResponse's guard cannot tell them apart.
     const answer = (id?: string) =>
-      json({ cursor: id ? 3 : 0, results: [], changes: id ? [task(id)] : [] });
+      json({
+        cursor: id ? 3 : 0,
+        results: [],
+        changes: id ? [status, task(id)] : [status],
+      });
     send.mockImplementation(() => Promise.resolve(answer()));
     const e = engine();
     await e.start(true);
@@ -548,5 +584,679 @@ describe('dispatcher', () => {
     expect(last('engine')).toEqual({ state: 'ready', reason: null });
     expect(auth.login).not.toHaveBeenCalled();
     expect(replies).toEqual([]);
+  });
+});
+
+// ── writes, watches and view topics (Task 6) ────────────────────────────
+
+type Fields = Record<string, unknown>;
+type Change = { table: string; id: string; seq: number; row: Fields };
+
+/**
+ * A server that applies every op, bumps the row's version and answers with
+ * what changed since the last pull. `put` stages a row for the next pull,
+ * as another client's write would.
+ */
+function server(...initial: [table: string, row: Fields][]) {
+  const sent: Op[] = [];
+  const rows = new Map<string, Fields>();
+  const queue: Change[] = [];
+  let seq = 100_000;
+  const put = (table: string, row: Fields) => {
+    const key = `${table}:${String(row.id)}`;
+    const version = ((rows.get(key)?.version as number | undefined) ?? 0) + 1;
+    const next = { deletedAt: null, ...row, version };
+    rows.set(key, next);
+    queue.push({ table, id: String(row.id), seq: (seq += 1), row: next });
+  };
+  for (const [table, row] of initial) put(table, row);
+  const fn: Transport = (request) => {
+    const results = request.ops.map((op) => {
+      sent.push(op);
+      const current = rows.get(`${op.table}:${op.id}`) ?? {};
+      put(
+        op.table,
+        op.kind === 'create'
+          ? { ...current, ...op.fields, id: op.id }
+          : op.kind === 'set'
+            ? { ...current, [op.field]: op.value }
+            : { ...current, deletedAt: EARLIER },
+      );
+      return { opId: op.opId, status: 'applied' as const };
+    });
+    return Promise.resolve(
+      json({ cursor: seq, results, changes: queue.splice(0) }),
+    );
+  };
+  return { sent, put, send: fn };
+}
+
+const S1 = uuid(0x51);
+const S2 = uuid(0x52);
+const DONE = uuid(0x5d);
+const statusRow = (
+  id: string,
+  name: string,
+  rank: string,
+  completing = false,
+) => ['status', { id, name, rank, completing }] as [string, Fields];
+const TODO = statusRow(S1, 'To do', 'a0');
+const taskRow = (n: number, extra: Fields = {}) =>
+  [
+    'task',
+    { id: uuid(n), title: `t${n}`, priority: 2, rank: 'a0', ...extra },
+  ] as [string, Fields];
+const viewRow = (id: string, extra: Fields = {}) =>
+  [
+    'view',
+    {
+      id,
+      name: id.slice(-4),
+      layout: 'list',
+      sort: 'manual',
+      filter: { and: [] },
+      rank: 'a0',
+      ...extra,
+    },
+  ] as [string, Fields];
+
+/** Signed in over `srv`, after the first sync. */
+async function signedIn(srv: ReturnType<typeof server>) {
+  send.mockImplementation(srv.send);
+  const e = engine();
+  await e.start(true);
+  return e;
+}
+
+const views = (key: string) =>
+  (published.view ?? []).filter((v) => v.key === key);
+const lastView = (key: string) => views(key).at(-1);
+const titles = (key: string) => lastView(key)?.items.map((i) => i.title);
+const sentOps = (srv: ReturnType<typeof server>, table: string) =>
+  srv.sent.filter((op) => op.table === table);
+
+describe('watches and view topics', () => {
+  const V = uuid(0x71);
+
+  it('two tabs watch two views: each publish carries its key, both after a write', async () => {
+    const srv = server(TODO, viewRow(V, { sort: 'priority' }), taskRow(1));
+    const e = await signedIn(srv);
+    await e.handle({ kind: 'watch', view: V, task: null }, 'A');
+    await e.handle({ kind: 'watch', view: 'all', task: null }, 'B');
+    expect(lastView(V)).toMatchObject({
+      key: V,
+      sort: 'priority',
+      problem: null,
+    });
+    expect(lastView('all')).toMatchObject({ key: 'all', sort: 'manual' });
+    published = {};
+    const result = await e.handle(
+      { kind: 'add', opId: uuid(0xa1), id: uuid(0xa2), text: 'buy milk' },
+      'A',
+    );
+    expect(result).toEqual({ ok: true });
+    expect(titles(V)).toContain('buy milk');
+    expect(titles('all')).toContain('buy milk');
+    expect(published.catalog?.length).toBeGreaterThan(0);
+  });
+
+  it('an add shows in the view while the transport is still pending', async () => {
+    const srv = server(TODO, taskRow(1));
+    const e = await signedIn(srv);
+    await e.handle({ kind: 'watch', view: 'all', task: null }, 'A');
+    send.mockImplementation(() => new Promise<Response>(() => {}));
+    void e.handle(
+      { kind: 'add', opId: uuid(0xa1), id: uuid(0xa2), text: 'offline add' },
+      'A',
+    );
+    await vi.waitFor(() => expect(titles('all')).toContain('offline add'));
+    expect(last('sync')?.pending).toBe(1);
+  });
+
+  it('stops publishing a key nobody watches any more', async () => {
+    const srv = server(TODO, viewRow(V));
+    const e = await signedIn(srv);
+    await e.handle({ kind: 'watch', view: V, task: uuid(0xa2) }, 'A');
+    await e.handle({ kind: 'watch', view: null, task: null }, 'A');
+    published = {};
+    await e.handle(
+      { kind: 'add', opId: uuid(0xa1), id: uuid(0xa2), text: 'x' },
+      'A',
+    );
+    expect(published.view).toBeUndefined();
+    expect(published.task).toBeUndefined();
+    expect(published.catalog?.length).toBeGreaterThan(0);
+  });
+
+  it('publishes the watched task after an edit and after a pull', async () => {
+    const T = uuid(1);
+    const srv = server(TODO, taskRow(1));
+    const e = await signedIn(srv);
+    await e.handle({ kind: 'watch', view: null, task: T }, 'A');
+    expect(last('task')).toMatchObject({ id: T, task: { title: 't1' } });
+    await e.handle(
+      {
+        kind: 'edit',
+        opId: uuid(0xe1),
+        taskId: T,
+        changes: { title: 'renamed' },
+      },
+      'A',
+    );
+    expect(last('task')?.task?.title).toBe('renamed');
+    srv.put('task', {
+      id: T,
+      title: 'from elsewhere',
+      priority: 2,
+      rank: 'a0',
+    });
+    await e.handle({ kind: 'sync', reason: 'manual' });
+    expect(last('task')?.task?.title).toBe('from elsewhere');
+  });
+
+  it('the day changes: the next sync publishes against the new today', async () => {
+    const tomorrow = localDate(new Date(NOW.getTime() + 86_400_000));
+    const srv = server(
+      TODO,
+      viewRow(V, { filter: { scheduled: { from: 0, to: 0 } } }),
+      taskRow(1, { scheduledOn: tomorrow }),
+    );
+    const e = await signedIn(srv);
+    await e.handle({ kind: 'watch', view: V, task: null }, 'A');
+    expect(titles(V)).toEqual([]);
+    clock = new Date(NOW.getTime() + 86_400_000);
+    await e.handle({ kind: 'sync', reason: 'tick' });
+    expect(titles(V)).toEqual(['t1']);
+  });
+
+  it('a deleted view is published as deleted, with no items', async () => {
+    const srv = server(TODO, taskRow(1));
+    const e = await signedIn(srv);
+    await e.handle({ kind: 'watch', view: V, task: null }, 'A');
+    expect(lastView(V)).toMatchObject({ problem: 'deleted', items: [] });
+  });
+
+  it('a view with an invalid filter (from the server) publishes its problem, not every task', async () => {
+    const srv = server(
+      TODO,
+      taskRow(1),
+      viewRow(V, { filter: { tag: 'not-a-uuid' } }),
+    );
+    const e = await signedIn(srv);
+    await e.handle({ kind: 'watch', view: V, task: null }, 'A');
+    expect(lastView(V)?.problem).toContain('not a uuid');
+    expect(lastView(V)?.items).toEqual([]);
+  });
+
+  it('a pull that brings a duplicate tag: the view already matches by the winner, and the merge is sent', async () => {
+    const WIN = uuid(0x7a);
+    const LOSE = uuid(0x7b);
+    const T = uuid(1);
+    const srv = server(
+      TODO,
+      ['tag', { id: WIN, name: 'Work' }],
+      ['tag', { id: LOSE, name: 'work' }],
+      taskRow(1),
+      ['task_tag', { id: uuid(0x7c), taskId: T, tagId: WIN }],
+      viewRow(V, { filter: { tag: LOSE } }),
+    );
+    const e = await signedIn(srv);
+    await e.handle({ kind: 'watch', view: V, task: null }, 'A');
+    expect(titles(V)).toEqual(['t1']);
+    await vi.waitFor(() =>
+      expect(
+        srv.sent.filter(
+          (op) =>
+            op.kind === 'set' && op.table === 'view' && op.field === 'filter',
+        ),
+      ).toMatchObject([{ id: V, value: { tag: WIN } }]),
+    );
+  });
+});
+
+describe('a session that is not signed in', () => {
+  const EMPTY = { views: [], statuses: [], projects: [], tags: [] };
+
+  it('publishes nothing of the replica after signOut, and replaces what was shown', async () => {
+    const srv = server(TODO, taskRow(1), viewRow(uuid(0x71)));
+    const e = await signedIn(srv);
+    await e.handle({ kind: 'watch', view: 'all', task: uuid(1) }, 'A');
+    expect(titles('all')).toEqual(['t1']);
+    expect(last('catalog')?.views).toHaveLength(1);
+    await e.handle({ kind: 'signOut' });
+    expect(lastView('all')).toMatchObject({ problem: 'signed-out', items: [] });
+    expect(last('task')).toEqual({ id: uuid(1), task: null });
+    expect(last('catalog')).toEqual(EMPTY);
+    // A tab that says hello now, or starts watching, gets the same.
+    published = {};
+    e.snapshot();
+    await e.handle({ kind: 'watch', view: 'all', task: null }, 'B');
+    expect(published.catalog?.every((c) => c.views.length === 0)).toBe(true);
+    expect(views('all').every((v) => v.items.length === 0)).toBe(true);
+  });
+
+  it('shows no counters of the replica when signed out, and when restoring', async () => {
+    const srv = server(TODO, taskRow(1));
+    const e = await signedIn(srv);
+    store.enqueue(create('queued')); // a pending op of the account
+    e.snapshot();
+    expect(last('summary')).toEqual({ tasks: 2 });
+    expect(last('sync')).toMatchObject({ pending: 1 });
+    await e.handle({ kind: 'signOut' });
+    expect(last('summary')).toEqual({ tasks: 0 });
+    expect(last('sync')).toMatchObject({ pending: 0, failed: 0 });
+    // A fresh engine over the same replica, before its session is known.
+    const again = engine();
+    again.snapshot();
+    expect(last('session')?.state).toBe('restoring');
+    expect(last('summary')).toEqual({ tasks: 0 });
+    expect(last('sync')).toMatchObject({ pending: 0, failed: 0 });
+  });
+
+  it('publishes nothing of the replica while the session restores', async () => {
+    const srv = server(TODO, taskRow(1), viewRow(uuid(0x71)));
+    await signedIn(srv); // fills the replica, then a fresh engine over it
+    published = {};
+    const e = engine();
+    e.snapshot();
+    await e.handle({ kind: 'watch', view: 'all', task: uuid(1) }, 'A');
+    expect(last('session')?.state).toBe('restoring');
+    expect(last('catalog')).toEqual(EMPTY);
+    expect(lastView('all')).toMatchObject({ problem: 'signed-out', items: [] });
+    expect(last('task')).toEqual({ id: uuid(1), task: null });
+  });
+});
+
+describe('publication that throws', () => {
+  it('does not replace a write result or stop the other keys; logs once', async () => {
+    const BAD = uuid(2);
+    const srv = server(TODO, taskRow(1), taskRow(2));
+    const e = await signedIn(srv);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(taskDetails).mockImplementation(() => {
+      throw new Error('boom');
+    });
+    await e.handle({ kind: 'watch', view: 'all', task: BAD }, 'A');
+    expect(
+      await e.handle(
+        { kind: 'add', opId: uuid(0xa1), id: uuid(0xa2), text: 'milk' },
+        'A',
+      ),
+    ).toEqual({ ok: true });
+    expect(titles('all')).toContain('milk');
+    expect(last('task')).toEqual({ id: BAD, task: null });
+    expect(error).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('status seeding', () => {
+  it('the first sync that reaches the server with no statuses queues the seed', async () => {
+    const srv = server(taskRow(1));
+    await signedIn(srv);
+    await vi.waitFor(() => expect(sentOps(srv, 'status')).toHaveLength(3));
+  });
+
+  it('a start that never reaches the server seeds nothing', async () => {
+    send.mockImplementation(offline);
+    await engine().start(true);
+    expect(last('sync')?.reached).toBe(false);
+    expect(store.pending()).toEqual([]);
+  });
+
+  it('a replica that already has a status seeds nothing', async () => {
+    const srv = server(TODO);
+    await signedIn(srv);
+    expect(store.pending()).toEqual([]);
+    expect(sentOps(srv, 'status')).toEqual([]);
+  });
+});
+
+describe('write commands', () => {
+  it('reach their operations with the tab ids', async () => {
+    const T = uuid(1);
+    const V = uuid(0x71);
+    const srv = server(
+      TODO,
+      statusRow(S2, 'Doing', 'a1'),
+      statusRow(DONE, 'Done', 'a2', true),
+      taskRow(1),
+    );
+    const e = await signedIn(srv);
+    const first = (opId: string) => srv.sent.find((op) => op.opId === opId);
+    const ok = async (command: Parameters<typeof e.handle>[0]) =>
+      expect(await e.handle(command, 'A')).toMatchObject({ ok: true });
+
+    await ok({
+      kind: 'add',
+      opId: uuid(0xa1),
+      id: uuid(0xa2),
+      text: 'x #p @t',
+    });
+    expect(first(uuid(0xa1))).toMatchObject({
+      kind: 'create',
+      table: 'task',
+      id: uuid(0xa2),
+    });
+    await ok({
+      kind: 'edit',
+      opId: uuid(0xa3),
+      taskId: T,
+      changes: { priority: 0 },
+    });
+    expect(first(uuid(0xa3))).toMatchObject({
+      field: 'priority',
+      value: 0,
+      id: T,
+    });
+    await ok({
+      kind: 'move',
+      opId: uuid(0xa4),
+      taskId: T,
+      view: 'all',
+      statusId: S2,
+    });
+    expect(first(uuid(0xa4))).toMatchObject({ field: 'statusId', value: S2 });
+    await ok({
+      kind: 'saveView',
+      opId: uuid(0xa5),
+      id: V,
+      fields: {
+        name: 'Mine',
+        layout: 'kanban',
+        sort: 'manual',
+        filter: { and: [] },
+      },
+    });
+    expect(first(uuid(0xa5))).toMatchObject({
+      kind: 'create',
+      table: 'view',
+      id: V,
+    });
+    await ok({ kind: 'deleteView', opId: uuid(0xa6), id: V });
+    expect(first(uuid(0xa6))).toMatchObject({
+      kind: 'delete',
+      table: 'view',
+      id: V,
+    });
+    const S3 = uuid(0x53);
+    await ok({
+      kind: 'saveStatus',
+      opId: uuid(0xa7),
+      id: S3,
+      name: 'Review',
+      after: S2,
+    });
+    expect(first(uuid(0xa7))).toMatchObject({
+      kind: 'create',
+      table: 'status',
+      id: S3,
+    });
+    await ok({ kind: 'setCompleting', opId: uuid(0xa8), id: S3 });
+    expect(first(uuid(0xa8))).toMatchObject({
+      table: 'status',
+      field: 'completing',
+    });
+    await ok({ kind: 'deleteStatus', opId: uuid(0xa9), id: S2 });
+    expect(srv.sent.at(-1)).toMatchObject({
+      kind: 'delete',
+      table: 'status',
+      id: S2,
+    });
+    expect(first(uuid(0xa9))).toBeDefined();
+    await ok({
+      kind: 'mark',
+      opId: uuid(0xaa),
+      taskId: uuid(0xa2),
+      mark: 'done',
+    });
+    expect(first(uuid(0xaa))).toMatchObject({ table: 'task_occurrence' });
+  });
+
+  it('a recurring mark answers with the occurrence and the next one', async () => {
+    const today = localDate(NOW);
+    const srv = server(
+      TODO,
+      statusRow(DONE, 'Done', 'a2', true),
+      taskRow(1, { rrule: 'FREQ=DAILY', dtstart: today }),
+    );
+    const e = await signedIn(srv);
+    const result = await e.handle(
+      { kind: 'mark', opId: uuid(0xb1), taskId: uuid(1), mark: 'done' },
+      'A',
+    );
+    expect(result).toEqual({
+      ok: true,
+      note: { marked: 'done', occurrence: today, next: expect.any(String) },
+    });
+    if (result.ok) expect(String(result.note?.next) > today).toBe(true);
+  });
+
+  it('an edit with an empty title is invalid', async () => {
+    const e = await signedIn(server(TODO, taskRow(1)));
+    expect(
+      await e.handle(
+        {
+          kind: 'edit',
+          opId: uuid(0xc1),
+          taskId: uuid(1),
+          changes: { title: ' ' },
+        },
+        'A',
+      ),
+    ).toMatchObject({ ok: false, failure: { kind: 'invalid' } });
+  });
+
+  it('a write while signed out is signed-out, and queues nothing', async () => {
+    const e = engine();
+    await e.start(false);
+    expect(
+      await e.handle(
+        { kind: 'add', opId: uuid(0xc2), id: uuid(0xc3), text: 'x' },
+        'A',
+      ),
+    ).toMatchObject({ ok: false, failure: { kind: 'signed-out' } });
+    expect(store.pending()).toEqual([]);
+  });
+
+  it('a move with `after` in a priority-sorted view writes no rank', async () => {
+    const V = uuid(0x71);
+    const srv = server(
+      TODO,
+      viewRow(V, { sort: 'priority' }),
+      taskRow(1),
+      taskRow(2),
+    );
+    const e = await signedIn(srv);
+    srv.sent.length = 0;
+    expect(
+      await e.handle(
+        {
+          kind: 'move',
+          opId: uuid(0xd1),
+          taskId: uuid(1),
+          view: V,
+          after: uuid(2),
+        },
+        'A',
+      ),
+    ).toEqual({ ok: true });
+    expect(
+      srv.sent.filter((op) => op.kind === 'set' && op.field === 'rank'),
+    ).toEqual([]);
+  });
+
+  it('a move with `after` in a manual view re-ranks the tie run it lands in', async () => {
+    const srv = server(TODO, taskRow(1), taskRow(2), taskRow(3));
+    const e = await signedIn(srv);
+    await e.handle(
+      {
+        kind: 'move',
+        opId: uuid(0xd2),
+        taskId: uuid(1),
+        view: 'all',
+        after: uuid(2),
+      },
+      'A',
+    );
+    expect(
+      srv.sent
+        .filter((op) => op.kind === 'set' && op.field === 'rank')
+        .map((op) => op.id),
+    ).toEqual([uuid(1), uuid(3)]);
+    expect(viewTasks(store, localDate(NOW), ALL_OPEN).map((t) => t.id)).toEqual(
+      [uuid(2), uuid(1), uuid(3)],
+    );
+  });
+});
+
+describe('a drop resent after it applied', () => {
+  it('is a no-op even when its anchor has left the list', async () => {
+    const srv = server(TODO, taskRow(1), taskRow(2), taskRow(3));
+    const e = await signedIn(srv);
+    const drop = {
+      kind: 'move' as const,
+      opId: uuid(0xd4),
+      taskId: uuid(1),
+      view: 'all',
+      after: uuid(2),
+    };
+    expect(await e.handle(drop, 'A')).toMatchObject({ ok: true });
+    await e.handle(
+      { kind: 'mark', opId: uuid(0xd5), mark: 'done', taskId: uuid(2) },
+      'A',
+    );
+    srv.sent.length = 0;
+    expect(await e.handle(drop, 'A')).toMatchObject({ ok: true });
+    expect(srv.sent).toEqual([]);
+  });
+});
+
+describe('a drop that names a stale anchor', () => {
+  it('is invalid, and changes nothing', async () => {
+    const srv = server(TODO, taskRow(1), taskRow(2));
+    const e = await signedIn(srv);
+    srv.sent.length = 0;
+    expect(
+      await e.handle(
+        {
+          kind: 'move',
+          opId: uuid(0xd3),
+          taskId: uuid(1),
+          view: 'all',
+          after: uuid(0x99),
+        },
+        'A',
+      ),
+    ).toMatchObject({ ok: false, failure: { kind: 'invalid' } });
+    expect(srv.sent).toEqual([]);
+  });
+});
+
+describe('a write the server refused', () => {
+  it('still merges what its pull brought', async () => {
+    const WIN = uuid(0x7a);
+    const LOSE = uuid(0x7b);
+    const V = uuid(0x71);
+    const srv = server(TODO, taskRow(1));
+    const e = await signedIn(srv);
+    const row = (table: string, id: string, extra: Fields, seq: number) => ({
+      table,
+      id,
+      seq,
+      row: { id, deletedAt: null, version: 1, ...extra },
+    });
+    const sent: Op[] = [];
+    send.mockImplementation((request) => {
+      sent.push(...request.ops);
+      return Promise.resolve(
+        json({
+          cursor: 200_000,
+          results: request.ops.map((op: Op) => ({
+            opId: op.opId,
+            status: 'rejected',
+            reason: 'no',
+          })),
+          changes: [
+            row('tag', WIN, { name: 'Work' }, 200_001),
+            row('tag', LOSE, { name: 'work' }, 200_002),
+            ...(sent.length > 1
+              ? []
+              : [
+                  row(
+                    'view',
+                    V,
+                    {
+                      name: 'v',
+                      layout: 'list',
+                      sort: 'manual',
+                      filter: { tag: LOSE },
+                      rank: 'a0',
+                    },
+                    200_003,
+                  ),
+                ]),
+          ],
+        }),
+      );
+    });
+    expect(
+      await e.handle(
+        {
+          kind: 'edit',
+          opId: uuid(0xe1),
+          taskId: uuid(1),
+          changes: { title: 'x' },
+        },
+        'A',
+      ),
+    ).toMatchObject({ ok: false });
+    await vi.waitFor(() =>
+      expect(
+        sent.filter((op) => op.kind === 'set' && op.table === 'view'),
+      ).toMatchObject([{ id: V, field: 'filter', value: { tag: WIN } }]),
+    );
+  });
+});
+
+describe('resends', () => {
+  const add = (): Parameters<Engine['handle']>[0] => ({
+    kind: 'add',
+    opId: uuid(0xf1),
+    id: uuid(0xf2),
+    text: 'once',
+  });
+  const creates = (srv: ReturnType<typeof server>) =>
+    sentOps(srv, 'task').filter((op) => op.kind === 'create');
+
+  it('the same tab and request id runs once (the dispatcher)', async () => {
+    const srv = server(TODO);
+    const e = await signedIn(srv);
+    const replies: Result[] = [];
+    const dispatch = dispatcher('b1', e, (_t, _i, r) => replies.push(r));
+    const request: ToWorker = {
+      type: 'request',
+      tab: 'A',
+      id: 1,
+      command: add(),
+      build: 'b1',
+    };
+    dispatch(request);
+    dispatch(request);
+    await vi.waitFor(() => expect(replies).toHaveLength(2));
+    expect(creates(srv)).toHaveLength(1);
+    expect(viewTasks(store, localDate(NOW), ALL_OPEN)).toHaveLength(1);
+  });
+
+  it('after a worker restart the marker makes the same write a no-op', async () => {
+    const srv = server(TODO);
+    const first = await signedIn(srv);
+    expect(await first.handle(add(), 'A')).toEqual({ ok: true });
+    expect(store.pending()).toEqual([]); // applied and settled
+    const second = await signedIn(srv); // a new worker over the same store
+    expect(await second.handle(add(), 'A')).toEqual({ ok: true });
+    expect(viewTasks(store, localDate(NOW), ALL_OPEN).map((t) => t.id)).toEqual(
+      [uuid(0xf2)],
+    );
+    expect(creates(srv)).toHaveLength(1);
   });
 });
