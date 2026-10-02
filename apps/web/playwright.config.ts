@@ -11,10 +11,11 @@ const required = (name: string): string => {
 
 export default defineConfig({
   testDir: 'e2e',
-  // One backend, per-IP auth budgets (fixtures.ts): one worker, so the owner
-  // logs in once per project, not once per file.
+  // One backend, per-IP auth budgets (fixtures.ts): one worker, so one
+  // session per account and one test at a time on its data.
   fullyParallel: false,
   workers: 1,
+  globalSetup: './e2e/global-setup.ts',
   retries: process.env.CI ? 1 : 0,
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : 'list',
   use: { baseURL: `http://localhost:${port}`, trace: 'retain-on-failure' },

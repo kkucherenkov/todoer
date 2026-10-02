@@ -10,49 +10,78 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
+import { PASSWORD, post, type Tokens } from './global-setup';
 
 export { expect };
 
 export type Account = { email: string; password: string; token: string };
+/** The worker's account and the head of its one session's refresh chain. */
+type User = { email: string; password: string; refresh: string | null };
 
-const OWNER = {
-  email: process.env.OWNER_EMAIL ?? 'owner@example.test',
-  password: process.env.OWNER_PASSWORD ?? 'correct horse 9 battery!',
-};
-const PASSWORD = 'correct horse 9 battery!';
 const CLI = fileURLToPath(new URL('../../cli/dist/index.js', import.meta.url));
+/** The web client's "a cookie session may exist" bit (plugins/db.client.ts). */
+const HINT = 'todoer.session';
 
-/**
- * POST to the API. A 429 names the limit it hit: the server counts every
- * login and registration per IP (20 per 15 minutes each), and a run that
- * spends them should say so instead of timing out somewhere later.
- */
-async function post(
-  api: APIRequestContext,
-  path: string,
-  data: object,
-  bearer?: string,
-) {
-  const response = await api.post(`/api/v1${path}`, {
-    data,
-    headers: bearer ? { authorization: `Bearer ${bearer}` } : {},
-  });
-  if (response.status() === 429) {
-    throw new Error(
-      `POST ${path} answered 429: the per-IP limit on ${path} (20 per 15 minutes) is spent; restart the backend`,
-    );
+/** The next link of the worker's session: a successful refresh, which the
+ *  server never counts. A login only starts a chain, on the worker's first
+ *  test or after a test signed out. A chain that broke in a passing test
+ *  fails here rather than spending a login per test from then on (a failed
+ *  test restarts the worker, and with it the chain). */
+async function renew(api: APIRequestContext, user: User): Promise<Tokens> {
+  if (user.refresh !== null) {
+    const response = await post(api, '/auth/refresh', {
+      refreshToken: user.refresh,
+    });
+    expect(
+      response.status(),
+      'the previous test left the session it was handed unusable',
+    ).toBe(200);
+    return (await response.json()) as Tokens;
   }
-  return response;
+  const { email, password } = user;
+  const response = await post(api, '/auth/login', { email, password });
+  expect(response.status(), 'login').toBe(200);
+  return (await response.json()) as Tokens;
 }
 
-/** The owner's access token: registered on an empty instance, else logged in. */
-async function ownerToken(api: APIRequestContext): Promise<string> {
-  let response = await post(api, '/auth/register', OWNER);
-  if (response.status() !== 201) {
-    response = await post(api, '/auth/login', OWNER);
-    expect(response.status(), 'owner login').toBe(200);
-  }
-  return ((await response.json()) as { accessToken: string }).accessToken;
+/** Deletes every live row the account can delete, subtasks before their
+ *  parents, so each test starts as on a new account. The client seeds
+ *  statuses again when none is live; task_tag and task_occurrence rows are
+ *  never deleted and point at tombstones, as after any delete. */
+async function wipe(api: APIRequestContext, token: string) {
+  const pulled = await post(api, '/sync', { since: 0, ops: [] }, token);
+  expect(pulled.status(), 'pull').toBe(200);
+  const { changes } = (await pulled.json()) as {
+    changes: {
+      table: string;
+      id: string;
+      row: { version: number; parentId?: string | null };
+    }[];
+  };
+  const order = (c: (typeof changes)[number]) =>
+    c.table === 'task' && c.row.parentId ? 0 : 1;
+  const ops = changes
+    .filter((c) =>
+      ['task', 'project', 'tag', 'view', 'status'].includes(c.table),
+    )
+    .sort((a, b) => order(a) - order(b))
+    .map((c) => ({
+      opId: crypto.randomUUID(),
+      kind: 'delete',
+      table: c.table,
+      id: c.id,
+      baseVersion: c.row.version,
+    }));
+  if (ops.length === 0) return;
+  const deleted = await post(api, '/sync', { since: 0, ops }, token);
+  expect(deleted.status(), 'wipe').toBe(200);
+  const { results } = (await deleted.json()) as {
+    results: { status: string; reason?: string }[];
+  };
+  expect(
+    results.filter((r) => r.status !== 'applied'),
+    'wipe',
+  ).toEqual([]);
 }
 
 declare global {
@@ -75,47 +104,84 @@ async function seen(page: Page): Promise<string[]> {
   }
 }
 
+/**
+ * The per-IP auth budgets (README) are a product property, so the suite
+ * spends a fixed amount whatever the number of tests: global-setup.ts
+ * registers one account per project, each worker logs it in once, and each
+ * test continues that one session with a refresh, which the server never
+ * counts when it succeeds. Every test wipes the account first, so none
+ * depends on another's data or order. Only the tests of the sign-in form
+ * sign in through it.
+ */
 export const test = base.extend<
   {
+    /** The worker's account, wiped, with a fresh access token for the CLI.
+     *  The browser is signed out: for the tests of the sign-in form. */
+    credentials: Account;
+    /** The same, with the browser signed in through the worker's session. */
     account: Account;
     cli: (token: string, ...args: string[]) => Promise<string>;
     guard: void;
   },
-  { owner: string }
+  { user: User }
 >({
-  // The fresh-user.sh flow over Playwright's request (budget: one owner login
-  // per worker, one registration and one UI sign-in per test).
-  owner: [
-    async ({ playwright }, use, { project }) => {
-      const api = await playwright.request.newContext({
-        ...(project.use.baseURL && { baseURL: project.use.baseURL }),
-      });
-      await use(await ownerToken(api));
-      await api.dispose();
+  // Registered by global-setup.ts; signed in by the first test that needs it.
+  user: [
+    // eslint-disable-next-line no-empty-pattern -- Playwright reads the pattern
+    async ({}, use, { project }) => {
+      const accounts = JSON.parse(process.env.E2E_ACCOUNTS ?? '{}') as Record<
+        string,
+        string
+      >;
+      const email = accounts[project.name];
+      if (!email)
+        throw new Error(`global-setup.ts made no account for ${project.name}`);
+      await use({ email, password: PASSWORD, refresh: null });
     },
     { scope: 'worker' },
   ],
 
-  account: async ({ owner, playwright, baseURL }, use, { testId }) => {
+  credentials: async ({ user, playwright, baseURL }, use) => {
     const api = await playwright.request.newContext({
       ...(baseURL && { baseURL }),
     });
-    const invite = await post(api, '/auth/invites', {}, owner);
-    expect(invite.status(), 'invitation').toBe(201);
-    const { token: invitation } = (await invite.json()) as { token: string };
-    const email = `e2e-${testId}-${Date.now()}@example.test`;
-    // The body transport: the CLI needs the access token itself.
-    const registered = await post(api, '/auth/register', {
-      email,
-      password: PASSWORD,
-      invitation,
-    });
-    expect(registered.status(), 'registration').toBe(201);
-    const { accessToken } = (await registered.json()) as {
-      accessToken: string;
-    };
+    const { accessToken, refreshToken } = await renew(api, user);
+    user.refresh = refreshToken;
+    await wipe(api, accessToken);
     await api.dispose();
-    await use({ email, password: PASSWORD, token: accessToken });
+    await use({
+      email: user.email,
+      password: user.password,
+      token: accessToken,
+    });
+  },
+
+  // The chain's head goes into this context only, and comes back from it:
+  // the page rotates it, and a token two contexts held would trip the
+  // server's reuse detection once the 30 s grace has passed.
+  account: async ({ credentials, user, context }, use) => {
+    await context.addCookies([
+      {
+        name: 'todoer_refresh',
+        value: user.refresh!,
+        domain: 'localhost',
+        path: '/api/v1/auth',
+        httpOnly: true,
+        secure: true,
+        sameSite: 'Strict',
+      },
+    ]);
+    await context.addInitScript((hint) => {
+      try {
+        localStorage.setItem(hint, '1');
+      } catch {
+        // about:blank has no storage
+      }
+    }, HINT);
+    await use(credentials);
+    user.refresh =
+      (await context.cookies()).find((c) => c.name === 'todoer_refresh')
+        ?.value ?? null;
   },
 
   cli: async ({ baseURL }, use) => {

@@ -1,4 +1,4 @@
-import { count, expect, signIn, test } from './fixtures';
+import { count, expect, test } from './fixtures';
 
 /** A view the CLI cannot make but the API can: one `create view` op. */
 async function seedView(
@@ -32,8 +32,6 @@ async function seedView(
   expect(response.status(), `create view ${name}`).toBe(200);
 }
 
-// One test, one account: the suite spends the server's per-IP registration
-// budget (fixtures.ts), so a screen test shares its account.
 test('the sidebar lists views, and a sync that fails shows why', async ({
   page,
   context,
@@ -44,7 +42,7 @@ test('the sidebar lists views, and a sync that fails shows why', async ({
   await seedView(page.request, account.token, 'Second view', 'a1');
   await seedView(page.request, account.token, 'First view', 'a0');
   await page.goto('/');
-  await signIn(page, account);
+  await expect(count(page)).toBeVisible();
   const nav = page.getByRole('navigation', { name: 'Views' });
   await expect(nav.getByRole('link')).toHaveText([
     'All open',
@@ -79,10 +77,4 @@ test('the sidebar lists views, and a sync that fails shows why', async ({
     await expect(page.getByTestId('offline')).toBeVisible();
     await expect(alert).toHaveCount(0);
   }
-
-  // Signed out, no replica data: the form and no sidebar.
-  await page.getByTestId('sign-out').click();
-  await expect(page.getByTestId('sign-in')).toBeVisible();
-  await expect(nav).toHaveCount(0);
-  await expect(count(page)).toHaveCount(0);
 });

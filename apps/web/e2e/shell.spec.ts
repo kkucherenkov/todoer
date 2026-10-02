@@ -1,9 +1,8 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { count, expect, signIn, swActivated, tasks, test } from './fixtures';
 
-test('signs in and sees a CLI write', async ({ page, account, cli }) => {
+test('sees a CLI write on focus', async ({ page, account, cli }) => {
   await page.goto('/');
-  await signIn(page, account);
   await expect(count(page)).toHaveText(tasks(0));
   await cli(account.token, 'add', 'from the cli');
   await page.evaluate(() => window.dispatchEvent(new Event('focus')));
@@ -16,23 +15,24 @@ test('the 30 s tick syncs a visible tab', async ({ page, account, cli }) => {
   // windows tick). So real time passes first, then the tab's 30 s.
   await page.clock.install();
   await page.goto('/');
-  await signIn(page, account);
+  await expect(count(page)).toBeVisible();
   await cli(account.token, 'add', 'from the cli');
   await page.waitForTimeout(26_000);
   await page.clock.runFor(30_000);
   await expect(count(page)).toHaveText(tasks(1), { timeout: 10_000 });
 });
 
+// The one test that signs in through the form (fixtures.ts).
 test('a reload restores the session through the cookie', async ({
   page,
-  account,
+  credentials,
 }) => {
   const refreshes: number[] = [];
   page.context().on('request', (r) => {
     if (r.url().endsWith('/api/v1/auth/refresh')) refreshes.push(Date.now());
   });
   await page.goto('/');
-  await signIn(page, account);
+  await signIn(page, credentials);
   await page.reload();
   await expect(count(page)).toBeVisible();
   await expect(page.getByTestId('sign-in')).toHaveCount(0);
@@ -44,6 +44,9 @@ test('a reload restores the session through the cookie', async ({
   await page.reload();
   await expect(page.getByTestId('sign-in')).toBeVisible();
   expect(refreshes, 'no hint, no refresh (departure 4)').toEqual([]);
+  // Signed out, no replica data: the form and no sidebar.
+  await expect(page.getByRole('navigation', { name: 'Views' })).toHaveCount(0);
+  await expect(count(page)).toHaveCount(0);
 });
 
 test('wrong password', async ({ page }, { testId }) => {

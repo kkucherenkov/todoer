@@ -1,8 +1,7 @@
 import type { Page } from '@playwright/test';
-import { expect, signIn, test } from './fixtures';
+import { count, expect, test } from './fixtures';
 
-/** Opens a task by URL without a reload (each reload spends the per-IP
- *  refresh budget, fixtures.ts): the router follows a popstate. */
+/** Opens a task by URL without a reload: the router follows a popstate. */
 const visit = (page: Page, task: string) =>
   page.evaluate((id) => {
     history.pushState(history.state, '', `/?task=${id}`);
@@ -27,8 +26,6 @@ type Listed = {
   tags: string[];
 };
 
-// One test, one account (the per-IP registration and login budgets,
-// fixtures.ts): the drawer's scenario continues this one.
 test('list: quick-add, done, undo, reorder, recurring', async ({
   page,
   account,
@@ -42,7 +39,7 @@ test('list: quick-add, done, undo, reorder, recurring', async ({
       }
     ).data;
   await page.goto('/');
-  await signIn(page, account);
+  await expect(count(page)).toBeVisible();
   const syncNow = () => page.getByTestId('sync-now').click();
 
   // Quick-add, with the CLI's grammar; the CLI sees the same task.

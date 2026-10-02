@@ -259,8 +259,13 @@ pnpm --filter @todoer/web exec playwright install chromium firefox   # once
 pnpm --filter @todoer/web e2e
 ```
 
-A run spends about 16 logins and 15 registrations of the per-IP budget of 20
-each per 15 minutes, so two runs in a row from one address can hit `429`.
+The suite spends a fixed share of the per-IP auth budgets, however many tests
+it has: `e2e/global-setup.ts` registers one account per browser, each worker
+logs it in once, and every test continues that one session with a refresh
+(the server counts only failed refreshes) after wiping the account's data.
+Only the sign-in tests use the form. A run takes about 7 of the 20 logins and
+3 of the 20 registrations per 15 minutes, so two runs in a row fit. A failed
+test restarts its worker, which costs one more login.
 
 ## Changing the API
 

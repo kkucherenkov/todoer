@@ -1,4 +1,4 @@
-import { count, expect, signIn, swActivated, tasks, test } from './fixtures';
+import { count, expect, swActivated, tasks, test } from './fixtures';
 
 test('offline, then online', async ({
   page,
@@ -13,7 +13,7 @@ test('offline, then online', async ({
   );
   await cli(account.token, 'add', 'synced before going offline');
   await page.goto('/');
-  await signIn(page, account);
+  await expect(count(page)).toBeVisible();
   await expect(count(page)).toHaveText(tasks(1));
   // The shell must be precached and the SW active before the network goes.
   await swActivated(page);

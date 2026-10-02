@@ -1,22 +1,14 @@
 import type { Page } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
-import {
-  count,
-  expect,
-  signIn,
-  swActivated,
-  tasks,
-  test,
-  type Account,
-} from './fixtures';
+import { count, expect, swActivated, tasks, test } from './fixtures';
 
 const focus = (page: Page) =>
   page.evaluate(() => window.dispatchEvent(new Event('focus')));
 
 /** A signed-in leader A and a follower B in the same context. */
-async function twoTabs(page: Page, account: Account) {
+async function twoTabs(page: Page) {
   await page.goto('/');
-  await signIn(page, account);
+  await expect(count(page)).toBeVisible();
   const b = await page.context().newPage();
   await b.goto('/');
   await expect(count(b)).toHaveText(tasks(0));
@@ -29,7 +21,7 @@ test('a follower shares the leader’s worker', async ({
   account,
   cli,
 }) => {
-  const b = await twoTabs(page, account);
+  const b = await twoTabs(page);
   expect(page.workers(), 'the leader runs the database').toHaveLength(1);
   expect(b.workers(), 'the follower starts none').toHaveLength(0);
   await cli(account.token, 'add', 'from the cli');
@@ -44,7 +36,7 @@ test('leadership passes when the leader closes', async ({
   account,
   cli,
 }) => {
-  const b = await twoTabs(page, account);
+  const b = await twoTabs(page);
   const cookie = async () =>
     (await context.cookies()).find((c) => c.name === 'todoer_refresh')!;
   const beforeHandOver = await cookie();
@@ -70,9 +62,10 @@ test('leadership passes when the leader closes', async ({
 
 test('a new leader retries the pool until the old worker lets go', async ({
   page,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- signs the context in
   account,
 }) => {
-  const b = await twoTabs(page, account);
+  const b = await twoTabs(page);
   // Steal the lock from A and let it go at once: B's queued request takes
   // it while A's worker still holds every pool handle. B's install must
   // fail and retry (sqlite-wasm caches a failed install unless told

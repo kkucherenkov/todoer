@@ -1074,14 +1074,13 @@ Implements FR-020 (T012).
 - Modify: `apps/web/e2e/fixtures.ts`, `apps/web/e2e/screens.spec.ts`
   (gathered from Tasks 7–11), `apps/web/e2e/offline.spec.ts`
 
-- [ ] **Step 1: The budget fixture.** A worker-scoped `screen` fixture
-      registers one account per project through `page.request` with
-      `transport: 'cookie'` and an invitation from `owner`. It sets
-      `localStorage['todoer.session'] = '1'` by `addInitScript`, opens `/`,
-      and waits for the shell. That costs one registration and no login per
-      project, so a run spends 17 of 20 registrations and the same logins as
-      W2. `screens.spec.ts` runs `test.describe.configure({ mode: 'serial' })`
-      on that one page. Each scenario uses names with its own prefix.
+- [x] **Step 1: The budget fixture.** Landed before Task 10 as the budget
+      fix (`test(web): keep the e2e suite inside the auth rate limits`):
+      `e2e/global-setup.ts` registers one account per project, each worker
+      logs it in once, and the `account` fixture wipes it and hands each test
+      the worker's session (one refresh, never counted). A run spends about
+      7 logins and 3 registrations whatever the number of tests. New
+      scenarios take `account`; only sign-in tests take `credentials`.
 - [ ] **Step 2: Offline.** Extend `offline.spec.ts`: offline → the Offline
       badge; quick-add a task, mark another done, and drag a card on a
       kanban view, each visible at once; reload while offline (served by the
@@ -1098,8 +1097,7 @@ Implements FR-020 (T012).
       spent (from the backend log) into the PR.
 - [ ] **Step 6: Commit.** `test(web): end-to-end scenarios for every v1
       screen`. Body: Q20 names quick-add, a list through a view, kanban,
-      offline and two tabs. One registration per project keeps the run inside
-      the per-IP limits with room for one retry.
+      offline and two tabs.
 
 **Checkpoint:** each screen is proven in Chromium and Firefox under the
 backend's CSP.
