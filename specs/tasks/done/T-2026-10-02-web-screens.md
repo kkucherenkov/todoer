@@ -10,6 +10,8 @@
   [docs/specs/2026-10-01-views-design.md](../../../docs/specs/2026-10-01-views-design.md)
   (Q1, Q2, Q5, Q7–Q10, V1/V2 departures); ADR 0005, 0006, 0008
 - Plan: [docs/plans/2026-10-02-plan-w3-web-screens.md](../../../docs/plans/2026-10-02-plan-w3-web-screens.md)
+- Completed: 2026-10-02
+- Result: https://github.com/kkucherenkov/todoer/pull/20
 
 ### Goal
 
@@ -189,7 +191,7 @@ to before W3 ships.
 - [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
 - [x] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] dnote changelog line
 
 ### Steps
 
