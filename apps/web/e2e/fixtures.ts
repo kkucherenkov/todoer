@@ -347,7 +347,7 @@ export async function arrowTo(page: Page, item: Locator) {
 export async function seedTask(
   request: APIRequestContext,
   token: string,
-  fields: { title: string; scheduledOn?: string; dueOn?: string },
+  fields: { title: string } & Record<string, unknown>,
 ): Promise<string> {
   const id = crypto.randomUUID();
   const response = await request.post('/api/v1/sync', {

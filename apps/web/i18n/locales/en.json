@@ -90,7 +90,22 @@
     "gone": "The task was deleted",
     "notFound": "This task no longer exists.",
     "movedFrom": "Moved from {date}",
-    "returnToSeries": "Return to series"
+    "returnToSeries": "Return to series",
+    "subtasks": {
+      "one": "{n} subtask",
+      "few": "{n} subtasks",
+      "many": "{n} subtasks",
+      "other": "{n} subtasks"
+    }
+  },
+  "deleteTask": {
+    "title": "Delete task",
+    "confirm": "Delete “{title}”?",
+    "confirmWith": "Delete “{title}” and {subtasks}?",
+    "irreversible": "This cannot be undone.",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "done": "Task deleted"
   },
   "kanban": {
     "columns": "Columns",

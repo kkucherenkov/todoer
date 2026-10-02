@@ -241,3 +241,53 @@ test('offline: a moved occurrence shows at once, Undo waits for the sync', async
     listed.data.some((t) => t.rrule === null && t.scheduledOn === to),
   ).toBe(true);
 });
+
+test('offline: a delete shows at once, an unsynced task cannot be deleted', async ({
+  page,
+  context,
+  account,
+  cli,
+  browserName,
+}) => {
+  await cli(account.token, 'add', 'Errand');
+  await page.goto('/');
+  await expect(count(page)).toHaveText(tasks(1));
+  await swActivated(page);
+
+  await context.setOffline(true);
+  await page.getByTestId('sync-now').click();
+  await expect(page.getByTestId('offline')).toBeVisible({ timeout: 15_000 });
+
+  const rows = page.getByTestId('task-row');
+  const dialog = page.getByRole('dialog');
+  const remove = async (title: string) => {
+    await rows.filter({ hasText: title }).getByTestId('task-title').click();
+    await page.getByTestId('delete-task').click();
+    await dialog.last().getByRole('button', { name: 'Delete' }).click();
+  };
+  await remove('Errand');
+  await expect(page.getByText('Task deleted', { exact: true })).toBeVisible();
+  await expect(rows.filter({ hasText: 'Errand' })).toHaveCount(0);
+  await page.reload();
+  await expect(rows.filter({ hasText: 'Errand' })).toHaveCount(0);
+  await expect(page.getByTestId('pending')).toHaveText(/^\d+ waiting$/);
+
+  // A task the server has not seen cannot be deleted.
+  const input = page.getByRole('textbox', { name: 'Quick add' });
+  await input.fill('Draft');
+  await input.press('Enter');
+  await remove('Draft');
+  await expect(
+    page.locator('[data-slot="description"]', { hasText: 'not synced yet' }),
+  ).toBeVisible();
+  await expect(rows.filter({ hasText: 'Draft' })).toBeVisible();
+
+  // Firefox: no `online` event (see the first test); it ends here.
+  if (browserName === 'firefox') return;
+  await context.setOffline(false);
+  await expect(page.getByTestId('pending')).toHaveCount(0, { timeout: 15_000 });
+  const listed = JSON.parse(await cli(account.token, 'list', '--json')) as {
+    data: { title: string }[];
+  };
+  expect(listed.data.map((t) => t.title)).toEqual(['Draft']);
+});

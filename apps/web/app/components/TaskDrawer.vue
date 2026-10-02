@@ -80,10 +80,12 @@ const off = router.beforeEach(() => {
 });
 onScopeDispose(off);
 
-// Deleted elsewhere while open: close, and say so.
+// Deleted elsewhere while open: close, and say so. Our own delete and
+// return-to-series close it themselves.
 const returning = ref(false);
+const deleting = ref(false);
 watch(task, (now, before) => {
-  if (now !== null || !before || returning.value) return;
+  if (now !== null || !before || returning.value || deleting.value) return;
   toast.add({ title: t('drawer.gone') });
   void close();
 });
@@ -97,6 +99,21 @@ async function returnToSeries() {
   returning.value = false;
   if (result.ok) void close();
   else fail(result);
+}
+
+const confirmingDelete = ref(false);
+
+/** The task and its live subtasks go in one batch; a refusal (a subtask
+ *  another device added) stays here with its reason. */
+async function deleteTask() {
+  if (id.value === null) return;
+  confirmingDelete.value = false;
+  deleting.value = true;
+  const result = await db.write({ kind: 'deleteTask', taskId: id.value });
+  deleting.value = false;
+  if (!result.ok) return void fail(result);
+  toast.add({ title: t('deleteTask.done') });
+  void close();
 }
 
 const same = (a: unknown, b: unknown) =>
@@ -324,7 +341,24 @@ const dates = [
             @update:model-value="saveStatus"
           />
         </UFormField>
+        <UButton
+          color="error"
+          variant="outline"
+          icon="i-lucide-trash-2"
+          class="self-start"
+          data-testid="delete-task"
+          @click="confirmingDelete = true"
+        >
+          {{ $t('deleteTask.delete') }}
+        </UButton>
       </form>
     </template>
   </USlideover>
+  <DeleteTaskDialog
+    :open="confirmingDelete"
+    :title="String(task?.title ?? '')"
+    :subtasks="task?.subtasks.length ?? 0"
+    @confirm="deleteTask"
+    @close="confirmingDelete = false"
+  />
 </template>

@@ -90,7 +90,22 @@
     "gone": "Задача удалена",
     "notFound": "Этой задачи больше нет.",
     "movedFrom": "Перенесено с {date}",
-    "returnToSeries": "Вернуть в серию"
+    "returnToSeries": "Вернуть в серию",
+    "subtasks": {
+      "one": "{n} подзадачу",
+      "few": "{n} подзадачи",
+      "many": "{n} подзадач",
+      "other": "{n} подзадачи"
+    }
+  },
+  "deleteTask": {
+    "title": "Удалить задачу",
+    "confirm": "Удалить «{title}»?",
+    "confirmWith": "Удалить «{title}» и {subtasks}?",
+    "irreversible": "Это нельзя отменить.",
+    "cancel": "Отмена",
+    "delete": "Удалить",
+    "done": "Задача удалена"
   },
   "kanban": {
     "columns": "Колонки",
