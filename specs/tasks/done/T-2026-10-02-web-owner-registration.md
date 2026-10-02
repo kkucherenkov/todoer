@@ -2,11 +2,12 @@
 
 - Created: 2026-10-02
 - Owner: claude
-- Status: in-progress
+- Status: done
 - Blockers: —
 - Spec: maintainer request, 2026-10-02 — the web shows a registration form
   while the instance has no users; ADR 0014
 - Plan: none; the steps below are the whole change
+- Completed: 2026-10-02
 
 ### Goal
 
@@ -65,31 +66,42 @@ otherwise.
 
 - **SC-001** on an empty instance the browser shows the registration form, and
   registering lands in the app; with a user it shows the sign-in form
-- [ ] every FR has a test that failed before the code made it pass
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] every FR has a test that failed before the code made it pass
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 
-- [ ] T001 [FR-002] `GET /auth/registration` and `RegistrationStatus`, then
+- [x] T001 [FR-002] `GET /auth/registration` and `RegistrationStatus`, then
       regenerate — `packages/specs/openapi/openapi.yaml`
-- [ ] T002 [FR-001] `AccountsService.registrationOpen()` used by `register`'s
+- [x] T002 [FR-001] `AccountsService.registrationOpen()` used by `register`'s
       early refusal and the new route; HTTP spec: open on an empty database,
       closed after the first registration — `apps/backend/src/auth/`,
       `apps/backend/src/create-app.spec.ts`
-- [ ] T003 [FR-005] `CookieAuthApi.register` with the cookie transport; a
+- [x] T003 [FR-005] `CookieAuthApi.register` with the cookie transport; a
       refusal carries the problem's `detail` — `packages/client-core/src/auth.ts`
-- [ ] T004 [FR-005] a `register` command that shares the sign-in path —
+- [x] T004 [FR-005] a `register` command that shares the sign-in path —
       `apps/web/app/db/engine.ts`, `apps/web/app/db/protocol.ts`
-- [ ] T005 [P] [FR-003] the gate asks for the status whenever it is signed out —
+- [x] T005 [P] [FR-003] the gate asks for the status whenever it is signed out —
       `apps/web/app/components/AppGate.vue`
-- [ ] T006 [P] [FR-003] `registrationOpen()`: false on any failure —
+- [x] T006 [P] [FR-003] `registrationOpen()`: false on any failure —
       `apps/web/app/utils/registration.ts`
-- [ ] T007 [FR-004] `RegisterForm.vue`, RU and EN strings; e2e with the status
+- [x] T007 [FR-004] `RegisterForm.vue`, RU and EN strings; e2e with the status
       and the register call intercepted — `apps/web/app/components/`,
       `apps/web/e2e/register.spec.ts`
 - **Checkpoint:** the form shows on an intercepted `open: true`, refuses a
   mismatch, shows a refusal and signs in on success, in Chromium and Firefox
-- [ ] T008 [FR-006] ADR 0014 amendment, README, client-shells design doc
+
+### Departures
+
+- The confirmation is validated on submit only (`validate-on` empty). On blur,
+  the mismatch message appeared between the button's mousedown and mouseup,
+  moved the button, and the click never reached it; the e2e caught it.
+- The strength rule is not repeated in the web: it is the field's help line,
+  and the server's refusal text is shown when it refuses.
+- The registration e2e intercepts `POST /auth/register` too (global-setup has
+  closed registration), so it spends no registration budget; the backend's
+  real answer is covered by `create-app.spec.ts`.
+- [x] T008 [FR-006] ADR 0014 amendment, README, client-shells design doc

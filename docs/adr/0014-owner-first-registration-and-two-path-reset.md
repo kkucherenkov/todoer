@@ -59,3 +59,18 @@ authenticates until it expires, up to 15 minutes. Its writes to `/sync` cannot
 land, because every synced row has a foreign key to the user, which is gone; a
 pull returns nothing. The refresh token dies at once with the account's
 sessions.
+
+## Amendment (2026-10-02): the instance says whether registration is open
+
+`GET /auth/registration` answers `{ "open": boolean }` without
+authentication, so the web client can show a registration form instead of
+sign-in on an empty instance. `open` is the same check `register` refuses on,
+so the answer cannot disagree with the endpoint it describes; it is a hint, and
+a registration that loses a race is still refused with 403.
+
+Anyone who can reach the instance learns whether it has any users. That is one
+bit, true only until the owner registers, and on a self-hosted single-owner
+instance it reveals nothing an attacker could use: the window it describes is
+the one in which they could simply register. The route is not rate limited. It
+reads one count, hashes nothing, and touches no limiter, so it cannot spend or
+reset another route's budget.
