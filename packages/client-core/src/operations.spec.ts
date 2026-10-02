@@ -287,6 +287,30 @@ describe('taskDetails', () => {
   });
 });
 
+describe('taskDetails of an ended series', () => {
+  it('returns a live recurring task with no occurrence left, closed', () => {
+    const store = boardStore();
+    put(
+      store,
+      'task',
+      task('a', { rrule: 'FREQ=DAILY;COUNT=1', dtstart: '2026-01-01' }),
+    );
+    put(store, 'task_occurrence', {
+      id: 'a-occ',
+      taskId: 'a',
+      occurrence: '2026-01-01',
+      state: 'done',
+    });
+    expect(viewTasks(store, TODAY, ALL_OPEN)).toEqual([]);
+    expect(taskDetails(store, TODAY, 'a')).toMatchObject({
+      id: 'a',
+      rrule: 'FREQ=DAILY;COUNT=1',
+      occurrence: null,
+      closed: true,
+    });
+  });
+});
+
 describe('catalog', () => {
   it('flags a view with an invalid filter and orders views by rank then id', () => {
     const store = boardStore();

@@ -203,7 +203,7 @@ to before W3 ships.
 - **Checkpoint:** every screen's data and write exists behind the protocol.
 - [x] T007 [FR-013, FR-014] Shell, navigation, sync state — plan Task 7 — `apps/web/app/components/`
 - [x] T008 [FR-015] List layout — plan Task 8 — `apps/web/app/components/TaskList.vue`
-- [ ] T009 [FR-016] Task drawer — plan Task 9 — `apps/web/app/components/TaskDrawer.vue`
+- [x] T009 [FR-016] Task drawer — plan Task 9 — `apps/web/app/components/TaskDrawer.vue`
 - [ ] T010 [FR-017, FR-018] Kanban and columns — plan Task 10 — `apps/web/app/components/KanbanBoard.vue`
 - [ ] T011 [FR-019] View template form — plan Task 11 — `apps/web/app/components/ViewForm.vue`
 - [ ] T012 [FR-020] Playwright screens, offline, two tabs — plan Task 12 — `apps/web/e2e/`

@@ -41,5 +41,6 @@ const sync = useTopic('sync');
         <slot />
       </template>
     </UDashboardPanel>
+    <TaskDrawer />
   </UDashboardGroup>
 </template>

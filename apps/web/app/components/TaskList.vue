@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { Item } from '@todoer/client-core';
-import type { Result } from '~/db/protocol';
 
 const props = defineProps<{ view: string; sort: string; items: Item[] }>();
 const db = useDb();
@@ -12,12 +11,7 @@ const { t } = useI18n();
 const manual = computed(() => props.sort === 'manual');
 const ids = computed(() => props.items.map((i) => String(i.id)));
 
-const fail = (result: Extract<Result, { ok: false }>) =>
-  toast.add({
-    color: 'error',
-    title: t(`errors.${result.failure.kind}`),
-    description: result.failure.detail,
-  });
+const fail = useFail();
 
 async function undo(taskId: string) {
   const result = await db.write({ kind: 'mark', taskId, mark: 'undo' });

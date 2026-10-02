@@ -71,5 +71,24 @@
     "doneRecurring": "Done for {occurrence}, next {next}",
     "undo": "Undo",
     "empty": "No open tasks."
+  },
+  "drawer": {
+    "title": "Task",
+    "description": "Edit the task; each field saves when you leave it.",
+    "titleField": "Title",
+    "notes": "Notes",
+    "project": "Project",
+    "noProject": "No project",
+    "tags": "Tags",
+    "priority": "Priority",
+    "scheduled": "Scheduled",
+    "due": "Due",
+    "clear": "Clear {field}",
+    "status": "Status",
+    "rule": "Repeats: {rule}",
+    "ended": "This series has ended; the task is read-only.",
+    "invalidDate": "Use a date, YYYY-MM-DD.",
+    "gone": "The task was deleted",
+    "notFound": "This task no longer exists."
   }
 }

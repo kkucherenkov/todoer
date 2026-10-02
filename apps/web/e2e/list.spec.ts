@@ -1,6 +1,14 @@
 import type { Page } from '@playwright/test';
 import { expect, signIn, test } from './fixtures';
 
+/** Opens a task by URL without a reload (each reload spends the per-IP
+ *  refresh budget, fixtures.ts): the router follows a popstate. */
+const visit = (page: Page, task: string) =>
+  page.evaluate((id) => {
+    history.pushState(history.state, '', `/?task=${id}`);
+    dispatchEvent(new PopStateEvent('popstate', { state: history.state }));
+  }, task);
+
 const rows = (page: Page) => page.getByTestId('task-row');
 const titles = (page: Page) => page.getByTestId('task-title').allTextContents();
 const day = (offset = 0) => {
@@ -9,16 +17,28 @@ const day = (offset = 0) => {
   return d.toLocaleDateString('sv'); // YYYY-MM-DD, local
 };
 
-// One test, one account (the per-IP registration budget, fixtures.ts).
+type Listed = {
+  id: string;
+  title: string;
+  notes: string | null;
+  priority: number;
+  dueOn: string | null;
+  project: string | null;
+  tags: string[];
+};
+
+// One test, one account (the per-IP registration and login budgets,
+// fixtures.ts): the drawer's scenario continues this one.
 test('list: quick-add, done, undo, reorder, recurring', async ({
   page,
   account,
   cli,
+  request,
 }) => {
   const listed = async () =>
     (
       JSON.parse(await cli(account.token, 'list', '--json')) as {
-        data: { title: string; project: string | null; tags: string[] }[];
+        data: Listed[];
       }
     ).data;
   await page.goto('/');
@@ -105,4 +125,123 @@ test('list: quick-add, done, undo, reorder, recurring', async ({
     page.getByText(`Done for ${day()}, next ${day(1)}`, { exact: true }),
   ).toBeVisible();
   await expect(plants.getByTestId('occurrence')).toHaveText(day(1));
+
+  // The drawer edits every field, each saving on blur or change.
+  await milk.getByTestId('task-title').click();
+  const drawer = page.getByRole('dialog');
+  await expect(page).toHaveURL(/\?task=[0-9a-f-]+$/);
+  await drawer.getByLabel('Title').fill('Buy oat milk');
+  await drawer.getByLabel('Notes').fill('Two cartons');
+  await drawer.getByLabel('Notes').blur();
+  await drawer.getByRole('button', { name: 'Project' }).click();
+  await page.keyboard.type('work');
+  await page.getByRole('option', { name: /^Create .work.$/ }).click();
+  await drawer.getByRole('button', { name: 'Tags' }).click();
+  await page.keyboard.type('@calls');
+  await page.getByRole('option', { name: /^Create .@calls.$/ }).click();
+  await page.keyboard.press('Escape');
+  await drawer.getByRole('radio', { name: 'p3' }).click();
+  await drawer.getByRole('textbox', { name: 'Due' }).fill(day(1));
+
+  // The list shows it at once; Esc closes the drawer.
+  const oat = rows(page).filter({ hasText: 'Buy oat milk' });
+  await expect(oat).toContainText('#work');
+  await expect(oat).toContainText('@calls');
+  await expect(oat).toContainText('p3');
+  await expect(oat).toContainText(day(1));
+  await drawer.getByRole('heading').click(); // out of the date field
+  await page.keyboard.press('Escape');
+  await expect(drawer).toHaveCount(0);
+  await expect(page).not.toHaveURL(/task=/);
+
+  // The CLI sees each field, and the project exists once.
+  await expect
+    .poll(async () => (await listed()).find((t) => t.title === 'Buy oat milk'))
+    .toMatchObject({
+      notes: 'Two cartons',
+      priority: 3,
+      dueOn: day(1),
+      project: 'work',
+      tags: ['@calls', '@errand'],
+    });
+  const pulled = await request.post('/api/v1/sync', {
+    headers: { authorization: `Bearer ${account.token}` },
+    data: { since: 0, ops: [] },
+  });
+  const changes = (
+    (await pulled.json()) as {
+      changes: { table: string; row: { name?: string } }[];
+    }
+  ).changes;
+  expect(
+    changes.filter((c) => c.table === 'project' && c.row.name === 'work'),
+  ).toHaveLength(1);
+
+  // Reopen after a reload: the values are there.
+  const { id } = (await listed()).find((t) => t.title === 'Buy oat milk')!;
+  await page.goto(`/?task=${id}`);
+  await expect(drawer.getByLabel('Title')).toHaveValue('Buy oat milk');
+  await expect(drawer.getByLabel('Notes')).toHaveValue('Two cartons');
+  await expect(drawer.getByRole('textbox', { name: 'Due' })).toHaveValue(
+    day(1),
+  );
+  await expect(drawer.getByRole('radio', { name: 'p3' })).toBeChecked();
+  await expect(drawer.getByRole('button', { name: 'Project' })).toContainText(
+    'work',
+  );
+  await expect(drawer.getByRole('button', { name: 'Tags' })).toContainText(
+    '@calls',
+  );
+
+  // Clearing a date sends null.
+  await drawer.getByRole('button', { name: 'Clear Due' }).click();
+  await expect
+    .poll(async () => (await listed()).find((t) => t.id === id)?.dueOn)
+    .toBeNull();
+
+  // The completing status is `done`: the task leaves the list.
+  await drawer.getByRole('button', { name: 'Status' }).click();
+  await page.getByRole('option', { name: 'Done', exact: true }).click();
+  await expect(oat).toHaveCount(0);
+  await expect
+    .poll(async () => (await listed()).map((t) => t.title))
+    .not.toContain('Buy oat milk');
+
+  // An unknown id is said so, not left blank.
+  await visit(page, '00000000-0000-4000-8000-000000000000');
+  await expect(drawer).toContainText('no longer exists');
+  await page.keyboard.press('Escape');
+  await expect(drawer).toHaveCount(0);
+
+  // A recurring task's schedule is the rule's: shown, not editable.
+  await plants.getByTestId('task-title').click();
+  await expect(page.getByTestId('rule')).toContainText(day(1));
+  await expect(page.getByTestId('rule')).toContainText('FREQ=DAILY');
+  await expect(drawer.getByRole('textbox', { name: 'Scheduled' })).toHaveCount(
+    0,
+  );
+  await expect(drawer.getByRole('textbox', { name: 'Due' })).toBeEditable();
+
+  // A series that has ended still opens, read-only (not "no longer exists").
+  const ended = (
+    JSON.parse(
+      await cli(
+        account.token,
+        'add',
+        'Once more',
+        '--rrule',
+        'FREQ=DAILY;COUNT=1',
+        '--from',
+        day(-1),
+        '--json',
+      ),
+    ) as { data: { id: string } }
+  ).data.id;
+  await cli(account.token, 'done', ended);
+  await page.keyboard.press('Escape');
+  await expect(drawer).toHaveCount(0);
+  await syncNow();
+  await visit(page, ended);
+  await expect(drawer).toContainText('This series has ended');
+  await expect(drawer.getByLabel('Title')).toBeDisabled();
 });

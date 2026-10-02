@@ -348,8 +348,10 @@ function due(
     const closedAt = (
       closedMark?.fieldTs as Record<string, string> | undefined
     )?.state?.slice(0, 10);
+    // The drawer (`closedSince` null) reads any live task, an ended series too.
     if (
       current === null &&
+      closedSince !== null &&
       (closedMark === undefined ||
         (typeof closedSince === 'string' &&
           closedAt !== undefined &&
@@ -1013,7 +1015,8 @@ export function boardTasks(
 }
 
 /** One task for the drawer: the row, labels, current occurrence, column,
- *  closed state; null when it is deleted or unknown. */
+ *  closed state; null when it is deleted or unknown. A recurring task whose
+ *  series ended is live: `closed`, with no occurrence. */
 export function taskDetails(
   store: Store,
   today: string,
