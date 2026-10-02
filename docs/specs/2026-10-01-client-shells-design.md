@@ -476,8 +476,7 @@ dependency, the same package Nuxt installs.
 **6. No production image in W2.** Q9 has the image build the SPA. No Dockerfile
 exists yet, and building one takes a multi-stage Dockerfile with `pnpm deploy`,
 `prisma migrate deploy` on start, a health check, a compose service and an e2e
-run against the image. That is a task of its own, deferred before W3 ships. Shipped in W3 (departure
-11).
+run against the image. It was a task of its own, left for W3, and shipped there (departure 11).
 
 **7. Core error messages keep their CLI wording, and the UI does not show them
 as copy.** W0 departure 6 left the rewording to W2. The worker maps errors to a
@@ -576,8 +575,6 @@ person far from UTC.
 it sets the status and the card lands where the sort puts it. Within a column
 it is not a drop target. Q10 leaves this open ("writes nothing, or switches the
 view to manual"); switching silently would rewrite a view the person chose.
-Undo of a recurring task from the list acts on the default (current)
-occurrence, because the write has no `on`.
 
 **8. "All open" is a built-in view, not a row.** Filter `{ "and": [] }`, list
 layout, manual sort, key `all`; it cannot be edited or deleted. A synced default
@@ -607,6 +604,8 @@ secret itself. The host port is `${APP_PORT:-3000}`.
 
 ### Behaviour worth knowing in W3
 
+- **Undo of a recurring task from the list acts on the default (current)
+  occurrence**, because the write has no `on`.
 - **A just-added column cannot be deleted before its first sync.** `deleteStatus`
   needs the row's `version`, which a column gets from the server; the core
   refuses with a reason instead of sending a guessed `baseVersion`. The same

@@ -185,10 +185,10 @@ to before W3 ships.
   `scripts/walking-skeleton.sh` passes against it.
 - **SC-004** `git diff main -- apps/cli scripts/ apps/backend/src` is empty,
   and both shell e2e scripts pass.
-- [ ] every FR has a test that failed before the code made it pass
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] every FR has a test that failed before the code made it pass
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
+- [x] no document still asserts the behaviour this task replaced
 - [ ] dnote changelog line
 
 ### Steps

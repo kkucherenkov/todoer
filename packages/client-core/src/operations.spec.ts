@@ -737,6 +737,23 @@ describe('moveTask', () => {
     expect(sets(store, 'rank')).toEqual([['a', 'a3']]);
   });
 
+  it('with two completing statuses only the lowest id closes a task', async () => {
+    const { store, core } = offline([['task', task('a')]]);
+    put(store, 'status', {
+      id: '0-also-done',
+      name: 'Also done',
+      rank: 'a3',
+      completing: true,
+    });
+    const other = await moveTask(core, mint('m1'), 'a', { statusId: DONE });
+    expect(other.marked).toBeNull();
+    expect(occurrenceOps(store)).toEqual([]);
+    const lowest = await moveTask(core, mint('m2'), 'a', {
+      statusId: '0-also-done',
+    });
+    expect(lowest.marked).toBe('done');
+  });
+
   it('moves between plain statuses with one set, plus the rank writes', async () => {
     const { store, core } = offline([
       ['task', task('a')],
