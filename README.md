@@ -83,8 +83,21 @@ recurrence).
   server.
 - **Quick-add.** The same grammar as `todoer add`: `p2`, `#project`, `@tag`.
 - **Task drawer.** Title, notes, project, tags, priority, dates and status,
-  each saved on change. A recurring task's scheduled date is read-only. A copy made by moving an
-  occurrence has "Return to series".
+  each saved on change. A recurring task's scheduled date is set by its rule.
+  A copy made by moving an occurrence has "Return to series". A subtask shows
+  "Subtask of …" with a link to its parent. The drawer also has:
+  - **Delete.** A dialog counts the task's subtasks and deletes them with it.
+    There is no undo. It is refused until the task and its subtasks have
+    reached the server. A subtask added on another device and not pulled yet
+    makes the server refuse the parent's delete; the "N refused" badge shows it.
+  - **Subtasks.** A checklist to add, tick and open subtasks. A recurring
+    parent's checklist starts over at each occurrence.
+  - **Repeat…** Presets (daily, weekly on chosen weekdays, monthly, yearly,
+    each with an interval), a start date, or a raw RRULE for the rest of the
+    supported subset, with a preview of the next dates. "Does not repeat" makes
+    the task one-off again. It is refused until the task has reached the server.
+- **Subtasks.** An ordinary row, card or chip with a link to the parent, never
+  nested. Two levels only.
 - **Offline.** Every write shows at once, survives a reload and is sent on the
   next sync. The badge shows queued operations and, when the server refuses a
   sync, the reason. Undo of a recurring task from the list acts on its current

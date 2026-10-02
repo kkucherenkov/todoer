@@ -1788,8 +1788,11 @@ export type Rule = { rrule: string; dtstart: string };
  * Sets, changes or clears (null) a task's rule (#414 decision 1), one batch.
  * Op i carries baseVersion `version + i` (departure 2): the server bumps the
  * row's version per op, so each op cites the version its predecessor leaves.
- * A batch the server applies only in part (a refusal mid-way) leaves the
- * earlier fields written; the next pull shows what stuck.
+ * A batch the server applies only in part leaves some fields written and
+ * others not, and not only the earlier ones: if another device's single write
+ * moves the version to v+1, `set rrule` (base v) conflicts while `set dtstart`
+ * (base v+1) applies, leaving a new dtstart with the old rrule. The next pull
+ * shows what stuck.
  * Recurring → one-off: rrule null, dtstart null, scheduledOn = the current
  * occurrence. One-off → recurring: dtstart (when it differs), rrule,
  * scheduledOn null. Recurring → recurring: rrule, then dtstart, each when it

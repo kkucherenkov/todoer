@@ -307,7 +307,7 @@ Settled by the maintainer on 2026-10-02, for plan W5
 - The auth limiters key on `req.ip`, and `main.ts` set no `trust proxy` before #407.
 - Each generated migration carries the trap-6 statements; `dbgenerated()` on
   the `seq` fields does not remove them (dnote, plan B2 follow-up).
-- The CLI has no `delete` command, so no client deletes tasks today.
+- The CLI has no `delete` command, so no client deletes tasks today. *(The web deletes tasks since W5.)*
 
 ## Risks
 
@@ -627,7 +627,7 @@ their trees.
 **10. A recurring task's scheduled date is read-only in the drawer.** It is the
 current occurrence (V1 departure 5). Changing it means editing `dtstart` or
 `rrule`, which needs `baseVersion`. Moving one occurrence is the calendar's
-(W4); editing `dtstart` or `rrule` is still not built.
+(W4); editing `dtstart` and `rrule` shipped in W5.
 
 **11. The production image ships in W3** (W2 departure 6). `prisma` moves from
 the backend's dev dependencies to its dependencies so that the image can run
@@ -691,3 +691,62 @@ wider one, and the mode and anchor date live in the URL
 
 - **F3.** A layout switched in place with a stale span hung the tab; the span
   callback now returns null unless the layout is calendar, with an e2e test.
+
+## Departures in plan W5
+
+Plan W5 (task delete, subtasks and recurrence editing in the web,
+[`docs/plans/2026-10-02-plan-w5-web-task-editing.md`](../plans/2026-10-02-plan-w5-web-task-editing.md))
+fills in "Decisions for #414" in eleven places. No backend, CLI or contract
+change.
+
+1. **One-off and recurring switch tidy the date fields.** Recurring to one-off
+   writes `rrule` and `dtstart` null and `scheduledOn` = the current occurrence;
+   the reverse writes `dtstart` and `rrule` and clears `scheduledOn`. The start
+   date defaults to `scheduledOn`, else today. Fills in decision 1.
+2. **Every op of a rule batch carries `baseVersion` = `version + i`**, though
+   the server requires it on `rrule` only, so a stale batch is refused at its
+   first op. `dtstart` goes first only when the row has none. Fills in decision
+   1's `baseVersion`.
+3. **Delete and rule writes refuse an unsettled task**: no `version`, or a
+   queued op for it. One helper, `settledTask`, serves `undoMove`, `deleteTask`
+   and `setRecurrence`. Fills in decisions 1 and 3.
+4. **A rule with no date within 10 years of its start is refused**
+   (`ruleProblem`); the CLI only warns. A rule whose dates all lie in the past
+   is accepted and ends the series. Fills in decision 1's live check.
+5. **A rule change has no undo.** Past marks stay, so re-entering the old rule
+   restores the old series.
+6. **A subtask takes its parent's project** when its text names none; it is
+   rank `a0` and listed by id. Fills in decision 2.
+7. **The drawer reads and ticks a subtask at the parent's current
+   occurrence**; the list shows it at its own. They differ when the parent was
+   done before the subtask. Fills in decision 2 and ADR 0009.
+8. **Switching a parent between one-off and recurring moves its subtasks to
+   the other axis.** Old marks no longer apply and they show open; marks are
+   not migrated.
+9. **Presets write canonical text only** (`FREQ=…`, `INTERVAL` above 1, `BYDAY`
+   in `WEEKDAYS` order); any other rule, including `FREQ=WEEKLY` with no
+   `BYDAY`, opens in the raw field unchanged. Monthly and Yearly repeat on the
+   start date's day, so a rule from the 31st skips short months.
+10. **The parent link** is a link on a row and a card and an "Open parent" menu
+    item on a calendar chip, which already holds a button.
+11. **Delete lives in the drawer only.** An ended series keeps its rule editor
+    enabled; its other fields stay read-only.
+
+### Behaviour worth knowing in W5
+
+- **A partial rule batch.** Each op of a batch is its own server transaction,
+  so another device's write can land between two. Part of the change applies and
+  the badge shows the refused rest. It is not only the earlier fields that stick:
+  if the version moves to v+1, `set rrule` (base v) conflicts and `set dtstart`
+  (base v+1) applies, leaving a new start date under the old rule.
+- **A superseded `rrule` loses the whole change.** If another device with a
+  clock ahead wrote `rrule` last (the server clamps timestamps only to +5
+  minutes), the op comes back `superseded` and the row's version does not
+  bump. The next op of the batch then conflicts, so the rule change is lost and
+  shows as a conflict on the second field.
+- **A parent delete refused for an unpulled subtask** (the cost of #391). The
+  known subtasks are gone from view, the server refuses the parent, and the
+  "N refused" badge shows it. Nothing hides it; a pull brings the subtask back.
+- **A subtask can read open in the drawer and be listed at another date**
+  (departure 7).
+- **Marks stop applying when a parent switches axis** (departure 8).

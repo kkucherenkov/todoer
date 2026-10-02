@@ -175,7 +175,7 @@ answers, and is reachable from the keyboard.
 - [x] T007 [FR-009, FR-011] Subtasks in the drawer and parent links — plan Task 7 — `apps/web/app/components/SubtaskList.vue`
 - [x] T008 [FR-010, FR-011] The recurrence dialog — plan Task 8 — `apps/web/app/components/RecurrenceDialog.vue`
 - **Checkpoint:** delete, subtasks and rule editing are proven in Chromium and Firefox under the CSP.
-- [ ] T009 [FR-012] Docs and departures — plan Task 9 — `README.md`, `docs/specs/`
+- [x] T009 [FR-012] Docs and departures — plan Task 9 — `README.md`, `docs/specs/`
 - [ ] T010 [FR-011, FR-012] Full proof and close-out — plan Task 10
 
 ### Open questions
