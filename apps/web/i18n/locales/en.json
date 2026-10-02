@@ -1,5 +1,7 @@
 {
-  "app": { "title": "Todoer" },
+  "app": {
+    "title": "Todoer"
+  },
   "insecure": {
     "title": "A secure connection is required",
     "body": "This app stores your tasks in the browser and needs HTTPS. Serve it through a reverse proxy that terminates TLS, or open it on localhost."
@@ -53,5 +55,21 @@
     "problem": "This view cannot be shown",
     "deleted": "This view no longer exists.",
     "soon": "Tasks appear here soon."
+  },
+  "list": {
+    "quickAdd": "Quick add",
+    "quickAddPlaceholder": "Buy milk #home {'@'}errand p2",
+    "markDone": "Mark done",
+    "actions": "Task actions",
+    "skip": "Skip",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "open": "Open",
+    "due": "due {date}",
+    "done": "Done",
+    "skipped": "Skipped",
+    "doneRecurring": "Done for {occurrence}, next {next}",
+    "undo": "Undo",
+    "empty": "No open tasks."
   }
 }

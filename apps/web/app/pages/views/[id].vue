@@ -4,5 +4,5 @@ useWatch(() => String(route.params.id));
 </script>
 
 <template>
-  <ViewPlaceholder />
+  <ViewBody />
 </template>

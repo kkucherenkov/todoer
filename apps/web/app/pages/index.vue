@@ -3,5 +3,5 @@ useWatch(() => 'all');
 </script>
 
 <template>
-  <ViewPlaceholder />
+  <ViewBody />
 </template>
