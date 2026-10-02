@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { filterProblem, type Catalog } from '@todoer/client-core';
+import { filterProblem, type Catalog, type Filter } from '@todoer/client-core';
 import type { ViewFields } from '@todoer/client-core';
-import { filterOf, templateOf, type Template } from '~/utils/templates';
+import { editable } from '~/utils/filterTree';
+import { filterOf, type Template } from '~/utils/templates';
 
 type View = Catalog['views'][number];
 
@@ -12,7 +13,7 @@ const fail = useFail();
 const { t } = useI18n();
 const catalog = useTopic('catalog');
 
-const KINDS = [
+const STARTS = [
   'today',
   'overdue',
   'next7',
@@ -22,66 +23,50 @@ const KINDS = [
 ] as const;
 const LAYOUTS = ['list', 'kanban', 'calendar'] as const;
 const SORTS = ['manual', 'priority', 'due', 'scheduled'] as const;
-/** A select cannot hold null or ''. */
-const NONE = 'none';
 
 const name = ref('');
-const kind = ref<Template['kind']>('today');
-const picked = ref('');
+// Never reactive inside: the edit helpers keep untouched subtrees identical.
+const filter = shallowRef<unknown>({});
 const layout = ref<ViewFields['layout']>('list');
 const sort = ref<ViewFields['sort']>('manual');
 const raw = ref(false);
 const text = ref('');
 const saving = ref(false);
 
-const options = computed(() => {
+/** A "…" start holds the catalog's first id, so it is a leaf to change, not
+ *  an empty one to fill. */
+function start(kind: (typeof STARTS)[number]): Template {
   const c = catalog.value;
-  const named = (rows: { id: string; name: string }[] = []) =>
-    rows.map((r) => ({ label: r.name, value: r.id }));
-  return {
-    project: [
-      { label: t('viewForm.noProject'), value: NONE },
-      ...named(c?.projects),
-    ],
-    tag: named(c?.tags),
-    status: named(c?.statuses),
-  };
-});
-
-/** The template the radio and picker say, or null while a picker is empty. */
-const template = computed<Template | null>(() => {
-  const k = kind.value;
-  if (k === 'project') {
-    return picked.value === ''
-      ? null
-      : { kind: k, id: picked.value === NONE ? null : picked.value };
+  switch (kind) {
+    case 'project':
+      return { kind, id: c?.projects[0]?.id ?? null };
+    case 'tag':
+      return { kind, id: c?.tags[0]?.id ?? '' };
+    case 'status':
+      return { kind, id: c?.statuses[0]?.id ?? '' };
+    default:
+      return { kind };
   }
-  if (k === 'tag' || k === 'status') {
-    return picked.value === '' ? null : { kind: k, id: picked.value };
-  }
-  return { kind: k };
-});
+}
+const starts = STARTS.map((k) => ({
+  label: t(`viewForm.kinds.${k}`),
+  onSelect: () => {
+    filter.value = filterOf(start(k));
+  },
+}));
 
-/** The text parsed, or why it is not a filter: the same check the server runs. */
+/** The filter, or why it is not one: the same check the server runs. */
 const parsed = computed<{ filter?: unknown; problem: string | null }>(() => {
   if (!raw.value) {
-    const tpl = template.value;
-    return tpl
-      ? { filter: filterOf(tpl), problem: null }
-      : { problem: t('viewForm.pick') };
+    return { filter: filter.value, problem: filterProblem(filter.value) };
   }
   try {
-    const filter: unknown = JSON.parse(text.value);
-    return { filter, problem: filterProblem(filter) };
+    const value: unknown = JSON.parse(text.value);
+    return { filter: value, problem: filterProblem(value) };
   } catch (e) {
     return { problem: (e as Error).message };
   }
 });
-
-function load(tpl: Template | null) {
-  kind.value = tpl?.kind ?? 'today';
-  picked.value = tpl && 'id' in tpl ? (tpl.id ?? NONE) : '';
-}
 
 watch(open, (now) => {
   if (!now) return;
@@ -89,29 +74,17 @@ watch(open, (now) => {
   name.value = v?.name ?? '';
   layout.value = (v?.layout as ViewFields['layout']) ?? 'list';
   sort.value = (v?.sort as ViewFields['sort']) ?? 'manual';
-  const tpl = v ? templateOf(v.filter) : { kind: 'today' as const };
-  raw.value = tpl === null;
-  text.value = JSON.stringify(v?.filter ?? {}, null, 2);
-  load(tpl);
+  filter.value = v ? v.filter : filterOf({ kind: 'today' });
+  raw.value = !editable(filter.value);
+  text.value = JSON.stringify(filter.value, null, 2);
 });
 
-/** Picking a "…" template selects its first choice, so Save is never blocked
- *  by an unnoticed empty picker. */
-watch(kind, (k) => {
-  if (k === 'today' || k === 'overdue' || k === 'next7') return;
-  if (!options.value[k].some((o) => o.value === picked.value)) {
-    picked.value = options.value[k][0]?.value ?? '';
-  }
-});
+/** The raw box leaves for the tree only when it parses into one. */
+const rawIsTree = computed(() => editable(parsed.value.filter));
 
-/** The raw box leaves for the radio only when it is exactly a template. */
-const rawIsTemplate = computed(() => templateOf(parsed.value.filter) !== null);
 function toggle(on: boolean) {
-  if (on) {
-    text.value = JSON.stringify(parsed.value.filter ?? {}, null, 2);
-  } else {
-    load(templateOf(parsed.value.filter));
-  }
+  if (on) text.value = JSON.stringify(filter.value, null, 2);
+  else filter.value = parsed.value.filter;
   raw.value = on;
 }
 
@@ -153,36 +126,31 @@ async function save() {
           <UInput v-model="name" class="w-full" data-testid="view-name" />
         </UFormField>
 
-        <UFormField :label="$t('viewForm.template')">
-          <div v-if="!raw" class="flex flex-col gap-2">
-            <URadioGroup
-              v-model="kind"
-              :items="
-                KINDS.map((k) => ({
-                  label: $t(`viewForm.kinds.${k}`),
-                  value: k,
-                }))
-              "
-            />
-            <USelect
-              v-if="kind === 'project' || kind === 'tag' || kind === 'status'"
-              v-model="picked"
-              :items="options[kind]"
-              :aria-label="$t(`viewForm.kinds.${kind}`)"
-              :placeholder="$t('viewForm.pick')"
-              class="w-full"
-              data-testid="view-picker"
+        <UFormField :label="$t('viewForm.filter')">
+          <div v-if="!raw" class="flex flex-col gap-3">
+            <UDropdownMenu :items="starts" class="self-start">
+              <UButton
+                variant="outline"
+                color="neutral"
+                trailing-icon="i-lucide-chevron-down"
+                data-testid="start-from"
+              >
+                {{ $t('viewForm.startFrom') }}
+              </UButton>
+            </UDropdownMenu>
+            <FilterTree
+              :model-value="filter as Filter"
+              @update:model-value="filter = $event"
             />
           </div>
-          <div v-else class="flex flex-col gap-1">
-            <UTextarea
-              v-model="text"
-              :rows="6"
-              class="w-full font-mono"
-              :aria-label="$t('viewForm.filter')"
-              data-testid="view-filter"
-            />
-          </div>
+          <UTextarea
+            v-else
+            v-model="text"
+            :rows="6"
+            class="w-full font-mono"
+            :aria-label="$t('viewForm.filter')"
+            data-testid="view-filter"
+          />
         </UFormField>
 
         <p
@@ -197,7 +165,7 @@ async function save() {
         <USwitch
           :model-value="raw"
           :label="$t('viewForm.raw')"
-          :disabled="raw && !rawIsTemplate"
+          :disabled="raw && !rawIsTree"
           data-testid="view-raw"
           @update:model-value="toggle"
         />

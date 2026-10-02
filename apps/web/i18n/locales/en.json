@@ -115,7 +115,7 @@
     "editTitle": "Edit view",
     "description": "A view shows the tasks its filter matches.",
     "name": "Name",
-    "template": "Show",
+    "startFrom": "Start from",
     "kinds": {
       "today": "Today",
       "overdue": "Overdue",
@@ -124,7 +124,6 @@
       "tag": "Tag…",
       "status": "Status…"
     },
-    "pick": "Pick one.",
     "noProject": "No project",
     "raw": "Raw JSON",
     "filter": "Filter",
@@ -148,6 +147,37 @@
     "delete": "Delete",
     "deleteTitle": "Delete “{name}”?",
     "deleteBody": "The view goes away; its tasks stay."
+  },
+  "filterTree": {
+    "and": "All of",
+    "or": "Any of",
+    "group": "Match",
+    "not": "Not",
+    "addLabel": "Add",
+    "remove": "Remove",
+    "unknown": "Unknown (deleted?)",
+    "yes": "Yes",
+    "no": "No",
+    "from": "From",
+    "to": "To",
+    "hint": "0 = today, −1 = yesterday",
+    "limits": "{nodes}/256 conditions · depth {depth}/8",
+    "bound": {
+      "label": "bound",
+      "none": "None",
+      "offset": "Days from today",
+      "date": "Date"
+    },
+    "add": {
+      "tag": "Tag",
+      "project": "Project",
+      "status": "Status",
+      "priority": "Priority",
+      "scheduled": "Scheduled",
+      "due": "Due",
+      "recurring": "Recurring",
+      "and": "Group"
+    }
   },
   "calendar": {
     "previous": "Previous",

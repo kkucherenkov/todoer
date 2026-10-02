@@ -1,9 +1,17 @@
 import { filterSize, type Catalog, type Filter } from '@todoer/client-core';
+import type { ComputedRef, InjectionKey } from 'vue';
 
 /** Child indexes from the root; a `not` has one child, at 0. */
 export type Path = readonly number[];
 export type LeafKind =
   'tag' | 'project' | 'status' | 'priority' | 'scheduled' | 'due' | 'recurring';
+
+/** What FilterTree gives its nodes: the root, and the one way to change it. */
+export type TreeContext = {
+  root: ComputedRef<Filter>;
+  edit(fn: (root: Filter) => Filter): void;
+};
+export const TREE: InjectionKey<TreeContext> = Symbol('filterTree');
 
 const KEYS = new Set<string>([
   'and',
@@ -63,7 +71,15 @@ export function at(root: Filter, path: Path): Filter {
 function withChildren(node: Filter, kids: Filter[]): Filter {
   if ('and' in node) return { and: kids };
   if ('or' in node) return { or: kids };
-  return { not: kids[0] as Filter };
+  if ('not' in node) return { not: kids[0] as Filter };
+  throw new Error('a leaf has no children');
+}
+
+const isGroup = (node: Filter) => 'and' in node || 'or' in node;
+function groupAt(root: Filter, path: Path): Filter {
+  const node = at(root, path);
+  if (!isGroup(node)) throw new Error('not a group');
+  return node;
 }
 
 /** A new tree with `node` at `path`; every untouched subtree is the same object,
@@ -90,13 +106,9 @@ export function remove(root: Filter, path: Path): Filter {
   return replace(root, parentPath, withChildren(parent, kids));
 }
 
-export function append(root: Filter, group: Path, node: Filter): Filter {
-  const parent = at(root, group);
-  return replace(
-    root,
-    group,
-    withChildren(parent, [...children(parent), node]),
-  );
+export function append(root: Filter, to: Path, node: Filter): Filter {
+  const parent = groupAt(root, to);
+  return replace(root, to, withChildren(parent, [...children(parent), node]));
 }
 
 /** Wraps the node in a `not`, or unwraps a `not`. */
@@ -107,7 +119,7 @@ export function toggleNot(root: Filter, path: Path): Filter {
 
 /** and ↔ or, keeping the children. */
 export function setGroup(root: Filter, path: Path, op: 'and' | 'or'): Filter {
-  const kids = children(at(root, path));
+  const kids = children(groupAt(root, path));
   return replace(root, path, { [op]: kids } as Filter);
 }
 
@@ -143,8 +155,16 @@ export function blank(kind: LeafKind | 'and' | 'or', catalog: Catalog): Filter {
 export function canAdd(root: Filter, path: Path): boolean {
   const { nodes, depth } = filterSize(root);
   return (
+    isGroup(at(root, path)) &&
     nodes < LIMIT_NODES &&
     path.length + 2 <= LIMIT_DEPTH &&
     depth <= LIMIT_DEPTH
   );
+}
+
+/** Whether `toggleNot` at `path` stays within the limits: a wrap adds a node
+ * and a level, an unwrap never does. */
+export function canToggleNot(root: Filter, path: Path): boolean {
+  const { nodes, depth } = filterSize(toggleNot(root, path));
+  return nodes <= LIMIT_NODES && depth <= LIMIT_DEPTH;
 }

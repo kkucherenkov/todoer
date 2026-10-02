@@ -11,6 +11,7 @@ import {
   at,
   blank,
   canAdd,
+  canToggleNot,
   children,
   editable,
   remove,
@@ -251,5 +252,32 @@ describe('canAdd', () => {
     const next = append(f, [], blank('recurring', catalog()));
     expect(filterSize(next).nodes).toBeLessThanOrEqual(256);
     expect(filterProblem(next)).toBeNull();
+  });
+});
+
+describe('only groups take children', () => {
+  const f: Filter = { and: [{ tag: ID }, { not: { tag: ID2 } }] };
+  it.each([
+    ['a leaf', [0]],
+    ['a not', [1]],
+  ])('%s: canAdd is false, append and setGroup throw', (_, path) => {
+    expect(canAdd(f, path)).toBe(false);
+    expect(() => append(f, path, { recurring: true })).toThrow();
+    expect(() => setGroup(f, path, 'or')).toThrow();
+  });
+});
+
+describe('canToggleNot', () => {
+  it('stops a wrap at depth 8 and at 256 nodes, never an unwrap', () => {
+    const nest = (n: number): Filter =>
+      n === 1 ? { tag: ID } : { and: [nest(n - 1)] };
+    const deep = (n: number): Path => Array.from({ length: n - 1 }, () => 0);
+    expect(canToggleNot(nest(7), deep(7))).toBe(true);
+    expect(canToggleNot(nest(8), deep(8))).toBe(false);
+    expect(canToggleNot(wide(254), [])).toBe(true); // 255 + not = 256
+    expect(canToggleNot(wide(255), [])).toBe(false);
+    const over = toggleNot(wide(254), []);
+    expect(canToggleNot(append(over, [0], { tag: ID }), [])).toBe(true);
+    expect(canToggleNot({ not: nest(8) }, [])).toBe(true);
   });
 });
