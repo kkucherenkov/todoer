@@ -2,7 +2,7 @@
 
 - Created: 2026-10-02
 - Owner: claude
-- Status: ready
+- Status: done
 - Blockers: —
 - Spec: [docs/specs/2026-10-01-client-shells-design.md](../../../docs/specs/2026-10-01-client-shells-design.md)
   ("Decisions for #414 (task editing)"; #391 under "Backlog decisions"; W3
@@ -156,11 +156,11 @@ answers, and is reachable from the keyboard.
   then makes it one-off again, and `todoer list --json` agrees at each step.
 - **SC-004** `git diff main -- apps/cli apps/backend scripts/
   packages/specs` is empty, and both shell e2e scripts pass.
-- [ ] every FR has a test that failed before the code made it pass
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] every FR has a test that failed before the code made it pass
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 
@@ -176,7 +176,7 @@ answers, and is reachable from the keyboard.
 - [x] T008 [FR-010, FR-011] The recurrence dialog — plan Task 8 — `apps/web/app/components/RecurrenceDialog.vue`
 - **Checkpoint:** delete, subtasks and rule editing are proven in Chromium and Firefox under the CSP.
 - [x] T009 [FR-012] Docs and departures — plan Task 9 — `README.md`, `docs/specs/`
-- [ ] T010 [FR-011, FR-012] Full proof and close-out — plan Task 10
+- [x] T010 [FR-011, FR-012] Full proof and close-out — plan Task 10
 
 ### Open questions
 
