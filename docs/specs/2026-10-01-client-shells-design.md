@@ -172,7 +172,7 @@ leader design needs it anyway.
 2. **W1: backend.** Serve the SPA (static, fallback, middleware order),
    issue and accept the refresh cookie, `TRUST_PROXY`.
 3. **W2: web shell.** Nuxt app, worker, leader tab, sign-in, sync, i18n, PWA,
-   Playwright harness. No feature screens.
+   Playwright harness. No feature screens (they came in W3).
 4. **W3: v1 screens** (Q8, Q17, Q18).
 
 The CLI device-code flow follows v1.
@@ -476,7 +476,8 @@ dependency, the same package Nuxt installs.
 **6. No production image in W2.** Q9 has the image build the SPA. No Dockerfile
 exists yet, and building one takes a multi-stage Dockerfile with `pnpm deploy`,
 `prisma migrate deploy` on start, a health check, a compose service and an e2e
-run against the image. That is a task of its own, deferred before W3 ships.
+run against the image. That is a task of its own, deferred before W3 ships. Shipped in W3 (departure
+11).
 
 **7. Core error messages keep their CLI wording, and the UI does not show them
 as copy.** W0 departure 6 left the rewording to W2. The worker maps errors to a
@@ -499,7 +500,8 @@ cookies" note above is therefore still open: W2 documented it and did not test
 it.
 
 **For W3:** `sync.problem` is published but nothing renders it, so a refused
-sync is invisible except as offline. W3's screens should show it.
+sync is invisible except as offline. W3's screens show it; see "Departures in
+plan W3".
 
 ### Behaviour worth knowing
 
@@ -522,3 +524,94 @@ sync is invisible except as offline. W3's screens should show it.
   re-entrant call would otherwise hang), so a command must not nest.
 - **Sign-out keeps the replica** (open question 4): the data is the person's, and
   a sign-in as another account resets it.
+
+## Departures in plan W3
+
+Plan W3 (`docs/plans/2026-10-02-plan-w3-web-screens.md`) built the v1 screens
+and the production image. It departs from this document and from the brief in
+eleven places. The maintainer settled the plan's open questions: `uuidv7` is a
+dependency of `apps/web` (nothing new in the lockfile), a closed one-off task
+stays in the completing column for 7 days, and the image is not published to a
+registry (the NAS builds from a checkout).
+
+**1. `uuidv5` gets a synchronous SHA-1 in plain TypeScript.** The design never
+said where the hash runs. One implementation serves Node and the browser, and
+the existing vectors prove it unchanged. The alternatives were an async
+`crypto.subtle`, which cannot run inside `Store.transaction`, or a SHA-1
+library, a new dependency for about 60 lines.
+
+**2. The replay guard is a marker, not byte-identical ops.** The tab mints the
+command's `opId`, and creates also get their entity `id` from the tab. `submit`
+records `op:<opId>` in `meta` inside the transaction that queues the ops, and a
+write that finds the marker queues nothing and only flushes. Secondary op ids
+(labels, seeds, moved tasks) are still minted in the worker. A resend after a
+crash finds the marker if the first run committed, or runs fresh if it did not.
+Markers older than 7 days are pruned on each write. Resending the ops
+themselves would mint different ones against a changed replica.
+
+**3. Deleting a status moves its tasks to `statusId: null`**, meaning the first
+status, instead of to the first status's id (Q8). Same reasoning as V1
+departure 2: null stays right when columns are reordered, and it releases the
+status's foreign key so its tombstone can be pruned. It is still one batch.
+
+**4. Ranks are a deterministic midpoint, and ties break by id.** ADR 0008 said
+two offline insertions "produce two different strings"; they now produce the
+same string, ordered by id. Since every existing task has `'a0'`, a move into a
+run of equal ranks re-ranks that run as one batch of `set`s. ADR 0008 is
+amended.
+
+**5. The web seeds statuses after its first sync that reached the server**,
+when the replica has no live status. A client that has not pulled cannot know it
+found none (Q9). Two devices first started offline still seed twice, and the
+merge, now run by the engine after every pull, folds them.
+
+**6. The completing column shows one-off tasks closed in the last 7 days**, by
+`fieldTs.state` of the occurrence row (a mark still in the outbox counts as
+now). Q7 says where a closed task goes, not for how long. Known edge: the
+window is measured in UTC while the card shows a local date, so a task closed
+late in the evening can leave the column up to a day early or late for a
+person far from UTC.
+
+**7. Dragging in a view not sorted `manual` writes no rank.** Between columns
+it sets the status and the card lands where the sort puts it. Within a column
+it is not a drop target. Q10 leaves this open ("writes nothing, or switches the
+view to manual"); switching silently would rewrite a view the person chose.
+Undo of a recurring task from the list acts on the default (current)
+occurrence, because the write has no `on`.
+
+**8. "All open" is a built-in view, not a row.** Filter `{ "and": [] }`, list
+layout, manual sort, key `all`; it cannot be edited or deleted. A synced default
+would be seeded by every device, the same duplicate problem as Q9.
+
+**9. The template form has fixed filter shapes.** A view whose filter is not
+exactly one of them opens in raw-JSON mode. The design names the templates, not
+their trees.
+
+**10. A recurring task's scheduled date is read-only in the drawer.** It is the
+current occurrence (V1 departure 5). Changing it means editing `dtstart` or
+`rrule`, which needs `baseVersion` and belongs with the calendar's "move an
+occurrence" (deferred).
+
+**11. The production image ships in W3** (W2 departure 6). `prisma` moves from
+the backend's dev dependencies to its dependencies so that the image can run
+`migrate deploy`, and `files` lists what ships; no source file changes. The
+image keeps the backend at `/app/apps/backend` and the OpenAPI document at
+`/app/packages/specs/openapi`, because `create-app.ts` resolves it relative to
+`dist/`. The build stage runs `pnpm deploy`, which skips `postinstall`, so
+`prisma generate` runs explicitly, with OpenSSL installed so Prisma fetches
+engines that load in the runtime image. The NAS service sits in
+`docker/compose.yml` behind the profile `app`, so `up -d` still starts Postgres
+alone. `JWT_SECRET` is interpolated as `${JWT_SECRET:-}`: Compose interpolates
+every service, so `:?` would break plain `up -d`; the backend refuses an empty
+secret itself. The host port is `${APP_PORT:-3000}`.
+
+### Behaviour worth knowing in W3
+
+- **A just-added column cannot be deleted before its first sync.** `deleteStatus`
+  needs the row's `version`, which a column gets from the server; the core
+  refuses with a reason instead of sending a guessed `baseVersion`. The same
+  holds for views.
+- **The sync badge counts queued operations, not user writes**: one drop can
+  queue several.
+- **Firefox flake.** The guard fixture's teardown `waitForLoadState` can hang in
+  Firefox now and then; CI retries once. It is not an app failure.

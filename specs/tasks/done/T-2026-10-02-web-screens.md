@@ -2,7 +2,7 @@
 
 - Created: 2026-10-02
 - Owner: claude
-- Status: ready
+- Status: done
 - Blockers: —
 - Spec: [docs/specs/2026-10-01-client-shells-design.md](../../../docs/specs/2026-10-01-client-shells-design.md)
   (Q8, Q9, Q13, Q16 — plan W3, Q17, Q18, Q19, Q20, visual design note, W1
@@ -209,7 +209,7 @@ to before W3 ships.
 - [x] T012 [FR-020] Playwright screens, offline, two tabs — plan Task 12 — `apps/web/e2e/`
 - **Checkpoint:** every v1 screen is proven in Chromium and Firefox under the CSP.
 - [x] T013 [FR-021] Image and NAS compose — plan Task 13 — `Dockerfile`, `docker/compose.yml`
-- [ ] T014 [FR-022] Docs, departures, ADR 0008 amendment — plan Task 14 — `README.md`, `docs/`
+- [x] T014 [FR-022] Docs, departures, ADR 0008 amendment — plan Task 14 — `README.md`, `docs/`
 
 ### Open questions
 

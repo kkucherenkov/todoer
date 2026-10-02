@@ -23,14 +23,13 @@ second, independent CLI invocation through the server, over one endpoint:
   The device-code flow and mail for `forgot` are not built yet.
 - **`WEB_ROOT`** — the backend serves a built web client from this directory on
   the API's origin; see [Serving the web client](#serving-the-web-client).
-- **The web client** (`apps/web`) is a shell: sign-in with the refresh cookie,
-  a sync that runs in the background, and a count of the tasks in the local
-  replica. The replica lives in the browser (SQLite WASM on OPFS) and is owned
-  by one worker, which every tab of the origin shares, so a second tab shows
-  the same state without a second sync. It opens offline as an installable app
-  (a service worker caches the shell), shows an offline badge, speaks English
-  and Russian, and asks before it reloads onto a new build. The feature screens
-  (lists, views, kanban, quick-add, the task card) come in plan W3.
+- **The web client** (`apps/web`) has the v1 screens, described under
+  [Using the web client](#using-the-web-client). The replica lives in the
+  browser (SQLite WASM on OPFS) and is owned by one worker, which every tab of
+  the origin shares, so a second tab shows the same state without a second
+  sync. It opens offline as an installable app (a service worker caches the
+  shell), speaks English and Russian, and asks before it reloads onto a new
+  build.
 - **`todoer login` / `logout` / `add` / `list` / `done` / `skip` / `undo` / `outbox`** — a network
   client with `--json` output and exit codes a script can branch on
   ([ADR 0015](docs/adr/0015-the-cli-is-a-client-for-automation.md)). It keeps a
@@ -50,6 +49,36 @@ client.
 [The plan](docs/plans/2026-09-25-walking-skeleton.md#what-this-plan-does-not-do)
 lists plan A's original exclusions, narrowed since by plans B and C (offline,
 recurrence).
+
+## Using the web client
+
+- **Views.** The sidebar lists "All open" (built in) and the synced views,
+  the same ones `todoer views` shows. A view has a layout (list or kanban) and
+  a sort. The view form offers templates (Today, Overdue, Next 7 days,
+  Project, Tag, Status) or a raw-JSON filter, and refuses an invalid filter
+  with the reason. A view with a broken filter shows its problem, not every
+  task. Calendar and a filter-tree editor are not built.
+- **List.** Marks done, skips and undoes a task, and in a view sorted
+  `manual`, reorders by dragging or from the keyboard. In any other sort a
+  reorder writes nothing.
+- **Kanban.** One column per status. Drag a card to another column, or use
+  the card's "Move to" menu, which is the touch path: drag and drop needs a
+  pointer. A move into the completing column marks the task done (a recurring
+  task is done for its current date and reappears in the first column at its
+  next one, and a toast says so); a move out undoes it. The completing column
+  keeps tasks closed in the last 7 days. The columns dialog adds, renames,
+  reorders, marks completing and deletes columns; a deleted column's tasks go
+  to the first one. A column added in this session cannot be deleted until the
+  first sync has reached the server.
+- **Quick-add.** The same grammar as `todoer add`: `p2`, `#project`, `@tag`.
+- **Task drawer.** Title, notes, project, tags, priority, dates and status,
+  each saved on change. A recurring task's scheduled date is read-only.
+- **Offline.** Every write shows at once, survives a reload and is sent on the
+  next sync. The badge shows queued operations and, when the server refuses a
+  sync, the reason. Undo of a recurring task from the list acts on its current
+  occurrence.
+- **Updates.** A new build reaches an open tab as a prompt; accepting it
+  reloads every tab that showed it.
 
 ## Layout
 
@@ -168,20 +197,35 @@ Behind a reverse proxy, set `TRUST_PROXY` to the number of proxies in front
 one IP for the rate limits. To reach the instance from outside without opening
 ports, `tailscale serve` gives it an HTTPS name inside your tailnet.
 
-On a NAS, one image carries the backend and the SPA, so web and API are always
-the same version. The `app` profile adds it to the compose file; the plain
-`up -d` still starts only Postgres:
+To run the production image on a NAS, see [Running on a NAS](#running-on-a-nas).
 
-```sh
-JWT_SECRET=<at least 32 characters> TRUST_PROXY=1 \
-  docker compose -f docker/compose.yml --profile app up -d --build
+### Running on a NAS
+
+One image carries the backend and the SPA, so web and API are the same
+version. The compose profile `app` adds it; the plain `up -d` still starts
+only Postgres. In a checkout on the NAS, put the variables in `docker/.env` (git-ignored; Compose
+reads it from the file's directory) or export them:
+
+```text
+JWT_SECRET=<at least 32 characters>
+TRUST_PROXY=1
+APP_PORT=3000
 ```
 
-The container applies pending migrations (`prisma migrate deploy`) on every
-start, runs as a non-root user, and listens on 3000 (`APP_PORT` changes the
-host side). It refuses to start without `JWT_SECRET`. Compose publishes
-Postgres on 5433 too; drop that mapping on a shared host.
+```sh
+docker compose -f docker/compose.yml --profile app up -d --build
+```
 
+The first account to register becomes the owner, so register it before anyone
+else can reach the instance. To update, run `git pull`, then the same `up -d
+--build`: the container restarts on the new image and applies pending
+migrations (it runs as a non-root user, listens on 3000 inside, and refuses to
+start without `JWT_SECRET`). Compose also publishes Postgres on 5433; drop that
+mapping on a shared host. Browsers cannot sign in over plain HTTP, so put an HTTPS proxy in
+front and set `TRUST_PROXY`; see [Serving the web client](#serving-the-web-client).
+The image is built from the repository, not published to a registry.
+
+### Browsers
 Browsers. Chromium and Firefox are tested in CI. Firefox skips one case, the
 return from offline to online, because Playwright's emulation fires no `online`
 event there; the app syncs on a manual "Sync now" after it. The blob-worker
@@ -209,7 +253,7 @@ See [ADR 0011](docs/adr/0011-bearer-everywhere-cookie-only-for-refresh.md).
 | `JWT_SECRET`                    | backend     | —                                                | required; signs the access token, at least 32 characters                                   |
 | `PORT`                          | backend     | `3000`                                           | refuses a value that is not a whole port number                                            |
 | `TRUST_PROXY`                   | backend     | unset                                            | proxy hop count (`1`) or addresses/subnets (`loopback, 10.0.0.0/8`); `true` is refused     |
-| `WEB_ROOT`                      | backend     | unset                                            | a built SPA to serve on the API's origin; must hold `index.html`; unset serves nothing     |
+| `WEB_ROOT`                      | backend     | unset                                            | a built SPA to serve on the API's origin; must hold `index.html`; the image sets it        |
 | `APP_VERSION`                   | backend     | `0.0.0-dev`                                      | reported by `GET /api/v1/health`                                                           |
 | `TODOER_URL`                    | CLI         | `http://localhost:3000/api/v1`                   | instance base URL                                                                          |
 | `TODOER_TOKEN`                  | CLI         | —                                                | bearer token; when set it is used as is, never refreshed, and overrides the stored session |

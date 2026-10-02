@@ -23,10 +23,19 @@ A fractional index never renumbers, so a move is a single `set` on a single
 row — which is what lets [0006](0006-three-generic-operations.md) avoid a
 `reorder` operation.
 
-Two offline insertions at the same position produce two different strings
-rather than a collision. The order between them is arbitrary but stable, and
-nothing is lost.
+Two offline insertions at the same position may produce the same string. The
+tie breaks by id, which is equally stable, and nothing is lost. A move into a
+run of equal ranks re-ranks that run as one batch of `set`s.
 
 The cost is that ranks lengthen under repeated insertion at the same point.
 This is bounded in practice and, if it ever matters, is fixed by a
 rebalancing pass that is itself an ordinary batch of `set` operations.
+
+## Amendment (2026-10-02, plan W3)
+
+`rankBetween` is a deterministic midpoint, so two offline insertions at one
+position get the same string instead of two different ones. Every sort ends in
+the id, which keeps the order total and stable. Every existing task has `'a0'`,
+so a move into a tie re-ranks the tied run: the rebalancing pass above, kept as
+small as the run. Generated keys never end in `'0'`, which would leave no room
+below them.

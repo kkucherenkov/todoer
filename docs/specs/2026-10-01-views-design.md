@@ -306,6 +306,21 @@ them at its top
    another gives each live view that names the loser one `set filter` with the
    winner's id, so a merge never drops rows from a view.
 
+Plan W3 (the web screens) adds the departures below; the full list is under
+"Departures in plan W3" in the
+[client shells design](2026-10-01-client-shells-design.md#departures-in-plan-w3).
+
+- **Deleting a status writes `statusId: null`** on its tasks, not the first
+  status's id (Q8; W3 departure 3). Same rule as V1 departure 2.
+- **Ranks tie-break by id and a move into a tie re-ranks the run** (Q10; W3
+  departure 4, ADR 0008 amended).
+- **A reorder in a view not sorted `manual` writes nothing** (Q10; W3
+  departure 7).
+- **"All open" is built in**, not a row (Q1; W3 departure 8), and the template
+  form's filter shapes are fixed (Q6; W3 departure 9).
+- **The completing column keeps closed one-off tasks 7 days** (Q7; W3
+  departure 6).
+
 ## Open threads
 
 None.
