@@ -280,6 +280,7 @@ export async function seedView(
   name: string,
   rank: string,
   layout = 'kanban',
+  filter: object = { and: [] },
 ): Promise<string> {
   const id = crypto.randomUUID();
   const response = await request.post('/api/v1/sync', {
@@ -292,7 +293,7 @@ export async function seedView(
           kind: 'create',
           table: 'view',
           id,
-          fields: { name, layout, sort: 'manual', rank, filter: { and: [] } },
+          fields: { name, layout, sort: 'manual', rank, filter },
           ts: new Date().toISOString(),
         },
       ],
@@ -300,6 +301,27 @@ export async function seedView(
   });
   expect(response.status(), `create view ${name}`).toBe(200);
   return id;
+}
+
+/** The id of the project the CLI made for `#name`, from a pull. */
+export async function projectId(
+  request: APIRequestContext,
+  token: string,
+  name: string,
+): Promise<string> {
+  const response = await request.post('/api/v1/sync', {
+    headers: { authorization: `Bearer ${token}` },
+    data: { since: 0, ops: [] },
+  });
+  expect(response.status(), 'pull').toBe(200);
+  const { changes } = (await response.json()) as {
+    changes: { table: string; id: string; row: { name?: string } }[];
+  };
+  const found = changes.find(
+    (c) => c.table === 'project' && c.row.name === name,
+  );
+  expect(found, `project ${name}`).toBeDefined();
+  return found!.id;
 }
 
 /** A local date, YYYY-MM-DD, `offset` days from today. */

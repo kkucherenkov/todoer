@@ -206,7 +206,7 @@ to before W3 ships.
 - [x] T009 [FR-016] Task drawer — plan Task 9 — `apps/web/app/components/TaskDrawer.vue`
 - [x] T010 [FR-017, FR-018] Kanban and columns — plan Task 10 — `apps/web/app/components/KanbanBoard.vue`
 - [x] T011 [FR-019] View template form — plan Task 11 — `apps/web/app/components/ViewForm.vue`
-- [ ] T012 [FR-020] Playwright screens, offline, two tabs — plan Task 12 — `apps/web/e2e/`
+- [x] T012 [FR-020] Playwright screens, offline, two tabs — plan Task 12 — `apps/web/e2e/`
 - **Checkpoint:** every v1 screen is proven in Chromium and Firefox under the CSP.
 - [ ] T013 [FR-021] Image and NAS compose — plan Task 13 — `Dockerfile`, `docker/compose.yml`
 - [ ] T014 [FR-022] Docs, departures, ADR 0008 amendment — plan Task 14 — `README.md`, `docs/`
