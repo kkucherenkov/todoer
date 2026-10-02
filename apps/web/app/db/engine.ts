@@ -132,12 +132,23 @@ export function createEngine({
   const items = (spec: ViewSpec, today: string) =>
     (spec.layout === 'kanban' ? boardTasks : viewTasks)(store, today, spec);
 
+  const open = () => session.state === 'signed-in';
+  /** What a tab gets while no account is signed in: the replica still holds
+   *  the last one's rows (signOut keeps it), and none of it is shown. */
+  const NONE: Catalog = { views: [], statuses: [], projects: [], tags: [] };
+  const problemView = (key: string, problem: string) =>
+    publish('view', {
+      key,
+      layout: 'list',
+      sort: 'manual',
+      problem,
+      items: [],
+    });
+
   const publishView = (key: string, cat: Catalog, today: string) => {
+    if (!open()) return problemView(key, 'signed-out');
     const spec = viewSpec(key, cat);
-    if (spec === undefined) {
-      const deleted = { layout: 'list', sort: 'manual', problem: 'deleted' };
-      return publish('view', { key, ...deleted, items: [] });
-    }
+    if (spec === undefined) return problemView(key, 'deleted');
     const { layout, sort, problem } = spec;
     publish('view', {
       key,
@@ -148,29 +159,82 @@ export function createEngine({
     });
   };
   const publishTask = (id: string, today: string) =>
-    publish('task', { id, task: taskDetails(store, today, id) });
+    publish('task', {
+      id,
+      task: open() ? taskDetails(store, today, id) : null,
+    });
 
-  /** Every topic, recomputed: no caching (Review Focus 2). */
-  const publishAll = () => {
-    publishSync();
-    const cat = catalog(store);
-    publish('catalog', cat);
+  /** One key's publication may throw (a row this build cannot compute): that
+   *  key gets its problem, logged once, and nothing else is cut short. */
+  const logged = new Set<string>();
+  const guard = (key: string, run: () => void, onError: () => void) => {
+    try {
+      run();
+    } catch (error) {
+      if (!logged.has(key)) {
+        logged.add(key);
+        console.error('[engine] publishing', key, error);
+      }
+      onError();
+    }
+  };
+  const publishKeys = (
+    cat: Catalog,
+    views: Iterable<string | null>,
+    tasks: Iterable<string | null>,
+  ) => {
     const today = localDate(now());
-    const all = [...watches.values()];
-    for (const key of new Set(all.map((w) => w.view))) {
-      if (key !== null) publishView(key, cat, today);
+    for (const key of new Set(views)) {
+      if (key === null) continue;
+      guard(
+        `view:${key}`,
+        () => publishView(key, cat, today),
+        () => problemView(key, 'unavailable'),
+      );
     }
-    for (const id of new Set(all.map((w) => w.task))) {
-      if (id !== null) publishTask(id, today);
+    for (const id of new Set(tasks)) {
+      if (id === null) continue;
+      guard(
+        `task:${id}`,
+        () => publishTask(id, today),
+        () => publish('task', { id, task: null }),
+      );
     }
+  };
+
+  // ponytail: every publish recomputes every watched key from scratch, and a
+  // write publishes twice (before the network answers, and when it settles)
+  // while every tick republishes. Fine at this size; when it shows up in a
+  // profile, skip a key whose inputs did not change (the store's cursor and
+  // pending counts, or a hash of the last items).
+  /** Every topic, recomputed: no caching (Review Focus 2). Never throws. */
+  const publishAll = () => {
+    guard(
+      'catalog',
+      () => {
+        publishSync();
+        const cat = open() ? catalog(store) : NONE;
+        publish('catalog', cat);
+        const all = [...watches.values()];
+        publishKeys(
+          cat,
+          all.map((w) => w.view),
+          all.map((w) => w.task),
+        );
+      },
+      () => undefined,
+    );
   };
 
   const watch = (tab: string, next: Watch) => {
     if (next.view === null && next.task === null) watches.delete(tab);
     else watches.set(tab, next);
-    const today = localDate(now());
-    if (next.view !== null) publishView(next.view, catalog(store), today);
-    if (next.task !== null) publishTask(next.task, today);
+    guard(
+      'watch',
+      () =>
+        publishKeys(open() ? catalog(store) : NONE, [next.view], [next.task]),
+      () => undefined,
+    );
   };
 
   /** The core's ops publish after their enqueue commits and before the
@@ -284,10 +348,11 @@ export function createEngine({
         return void setSession('signed-out');
       }
       setSession('signed-in');
-      return publishSync({
+      publishSync({
         reached: false,
         problem: error instanceof RefusalError ? error.message : null,
       });
+      return publishAll(); // the replica is this account's: show it
     }
     try {
       await adopt(accessToken);
@@ -328,6 +393,7 @@ export function createEngine({
     }
     tokens.adopt(undefined);
     setSession('signed-out');
+    publishAll(); // the replica stays, the screens must not
     return OK;
   };
 
@@ -350,11 +416,16 @@ export function createEngine({
       (i) =>
         i.id !== w.taskId && (spec.layout !== 'kanban' || i.column === column),
     );
-    return rankWrites(
-      container.map((i) => ({ id: String(i.id), rank: String(i.rank) })),
-      w.taskId,
-      w.after,
-    );
+    try {
+      return rankWrites(
+        container.map((i) => ({ id: String(i.id), rank: String(i.rank) })),
+        w.taskId,
+        w.after,
+      );
+    } catch (error) {
+      // The anchor left the list since the drag began: the drop is stale.
+      throw new UsageError(message(error));
+    }
   };
 
   /** What a mark or a drop did, for the toast; `next` is the recurring

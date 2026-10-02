@@ -226,4 +226,39 @@ describe('watches and writes', () => {
       sent,
     ]);
   });
+
+  it('a retry of a minted write reuses its ids', async () => {
+    const { seen } = fakeWorker();
+    db = connect(BUILD, { timeoutMs: 30 });
+    const w = db.mint({ kind: 'add', text: 'milk' });
+    expect(await db.write(w)).toMatchObject({
+      failure: { kind: 'unavailable' },
+    });
+    void db.write(w);
+    const adds = () =>
+      seen.flatMap((m) =>
+        m.type === 'request' && m.command.kind === 'add' ? [m.command] : [],
+      );
+    await vi.waitFor(() => expect(adds()).toHaveLength(2));
+    expect(adds()[1]).toEqual(adds()[0]);
+    expect(adds()[0]).toMatchObject({
+      opId: w.opId,
+      id: (w as { id: string }).id,
+    });
+  });
+
+  it('a session that is not signed in clears the keyed topics', async () => {
+    const { post } = fakeWorker();
+    db = connect(BUILD);
+    db.watch('v1', null);
+    post(view('v1', 'mine'));
+    await vi.waitFor(() => expect(db!.topics.view.value?.key).toBe('v1'));
+    post({
+      type: 'publish',
+      topic: 'session',
+      value: { state: 'signed-out', reason: null },
+      build: BUILD,
+    });
+    await vi.waitFor(() => expect(db!.topics.view.value).toBeUndefined());
+  });
 });

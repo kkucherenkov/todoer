@@ -24,8 +24,11 @@ export type Draft<W = Write> = W extends {
 
 export type Db = {
   request(command: Command): Promise<Result>;
-  /** Mints the write's ids, then requests it; a resend reuses them. */
-  write(draft: Draft): Promise<Result>;
+  /** Mints a draft's ids. Keep the result to retry: a new mint is a new
+   *  operation, and a slow first attempt may already have applied. */
+  mint(draft: Draft): Write;
+  /** Requests a write; a draft is minted first. A resend reuses the ids. */
+  write(write: Draft | Write): Promise<Result>;
   /** What this tab shows; publishes for other keys are dropped. */
   watch(view: string | null, task: string | null): void;
   topics: { [T in Topic]: Readonly<ShallowRef<Topics[T] | undefined>> };
@@ -99,6 +102,11 @@ export function connect(
         return waiting.resolve(m.result);
       }
       case 'publish':
+        // Defence in depth: the worker publishes nothing of the replica to a
+        // session that is not signed in, and this tab drops what it holds.
+        if (m.topic === 'session' && m.value.state !== 'signed-in') {
+          topics.view.value = topics.task.value = undefined;
+        }
         // Keyed topics: another tab's keys reach this channel too.
         if (m.topic === 'view' && m.value.key !== watching.view) return;
         if (m.topic === 'task' && m.value.id !== watching.task) return;
@@ -131,17 +139,17 @@ export function connect(
     });
   }
 
+  const mint = (draft: Draft): Write =>
+    (draft.kind === 'add' ||
+    draft.kind === 'saveView' ||
+    draft.kind === 'saveStatus'
+      ? { id: mintId(), ...draft, opId: mintOpId() }
+      : { ...draft, opId: mintOpId() }) as Write;
+
   return {
     request,
-    write(draft) {
-      const minted =
-        draft.kind === 'add' ||
-        draft.kind === 'saveView' ||
-        draft.kind === 'saveStatus'
-          ? { id: mintId(), ...draft, opId: mintOpId() }
-          : { ...draft, opId: mintOpId() };
-      return request(minted as Write);
-    },
+    mint,
+    write: (w) => request('opId' in w ? w : mint(w)),
     watch(view, task) {
       if (view !== watching.view) topics.view.value = undefined;
       if (task !== watching.task) topics.task.value = undefined;

@@ -10,6 +10,7 @@ import {
   type CookieAuthApi,
   type CookieTokenSource,
   type Store,
+  taskDetails,
   type Transport,
 } from '@todoer/client-core';
 import { openWasmStore } from '@todoer/client-core/sqlite-wasm';
@@ -24,6 +25,12 @@ import {
 } from 'vitest';
 import { createEngine, dispatcher, type Engine } from './engine';
 import type { Result, ToWorker, Topic, Topics } from './protocol';
+
+// A spy that calls through, so one test can make a computation throw.
+vi.mock('@todoer/client-core', async (original) => {
+  const actual = await original<typeof import('@todoer/client-core')>();
+  return { ...actual, taskDetails: vi.fn(actual.taskDetails) };
+});
 
 type Op = Parameters<Store['enqueue']>[0];
 
@@ -117,6 +124,8 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  vi.mocked(taskDetails).mockReset();
+  vi.restoreAllMocks();
   store.close();
   vi.unstubAllGlobals();
 });
@@ -805,6 +814,63 @@ describe('watches and view topics', () => {
   });
 });
 
+describe('a session that is not signed in', () => {
+  const EMPTY = { views: [], statuses: [], projects: [], tags: [] };
+
+  it('publishes nothing of the replica after signOut, and replaces what was shown', async () => {
+    const srv = server(TODO, taskRow(1), viewRow(uuid(0x71)));
+    const e = await signedIn(srv);
+    await e.handle({ kind: 'watch', view: 'all', task: uuid(1) }, 'A');
+    expect(titles('all')).toEqual(['t1']);
+    expect(last('catalog')?.views).toHaveLength(1);
+    await e.handle({ kind: 'signOut' });
+    expect(lastView('all')).toMatchObject({ problem: 'signed-out', items: [] });
+    expect(last('task')).toEqual({ id: uuid(1), task: null });
+    expect(last('catalog')).toEqual(EMPTY);
+    // A tab that says hello now, or starts watching, gets the same.
+    published = {};
+    e.snapshot();
+    await e.handle({ kind: 'watch', view: 'all', task: null }, 'B');
+    expect(published.catalog?.every((c) => c.views.length === 0)).toBe(true);
+    expect(views('all').every((v) => v.items.length === 0)).toBe(true);
+  });
+
+  it('publishes nothing of the replica while the session restores', async () => {
+    const srv = server(TODO, taskRow(1), viewRow(uuid(0x71)));
+    await signedIn(srv); // fills the replica, then a fresh engine over it
+    published = {};
+    const e = engine();
+    e.snapshot();
+    await e.handle({ kind: 'watch', view: 'all', task: uuid(1) }, 'A');
+    expect(last('session')?.state).toBe('restoring');
+    expect(last('catalog')).toEqual(EMPTY);
+    expect(lastView('all')).toMatchObject({ problem: 'signed-out', items: [] });
+    expect(last('task')).toEqual({ id: uuid(1), task: null });
+  });
+});
+
+describe('publication that throws', () => {
+  it('does not replace a write result or stop the other keys; logs once', async () => {
+    const BAD = uuid(2);
+    const srv = server(TODO, taskRow(1), taskRow(2));
+    const e = await signedIn(srv);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(taskDetails).mockImplementation(() => {
+      throw new Error('boom');
+    });
+    await e.handle({ kind: 'watch', view: 'all', task: BAD }, 'A');
+    expect(
+      await e.handle(
+        { kind: 'add', opId: uuid(0xa1), id: uuid(0xa2), text: 'milk' },
+        'A',
+      ),
+    ).toEqual({ ok: true });
+    expect(titles('all')).toContain('milk');
+    expect(last('task')).toEqual({ id: BAD, task: null });
+    expect(error).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('status seeding', () => {
   it('the first sync that reaches the server with no statuses queues the seed', async () => {
     const srv = server(taskRow(1));
@@ -1022,6 +1088,27 @@ describe('write commands', () => {
     expect(viewTasks(store, localDate(NOW), ALL_OPEN).map((t) => t.id)).toEqual(
       [uuid(2), uuid(1), uuid(3)],
     );
+  });
+});
+
+describe('a drop that names a stale anchor', () => {
+  it('is invalid, and changes nothing', async () => {
+    const srv = server(TODO, taskRow(1), taskRow(2));
+    const e = await signedIn(srv);
+    srv.sent.length = 0;
+    expect(
+      await e.handle(
+        {
+          kind: 'move',
+          opId: uuid(0xd3),
+          taskId: uuid(1),
+          view: 'all',
+          after: uuid(0x99),
+        },
+        'A',
+      ),
+    ).toMatchObject({ ok: false, failure: { kind: 'invalid' } });
+    expect(srv.sent).toEqual([]);
   });
 });
 
