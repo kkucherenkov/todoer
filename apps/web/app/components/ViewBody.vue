@@ -26,8 +26,12 @@ const view = useTopic('view');
       :sort="view.sort"
       :items="view.items"
     />
-    <p v-else-if="view" class="text-sm">
-      {{ $t('view.soon') }}
-    </p>
+    <CalendarView
+      v-else-if="view?.layout === 'calendar'"
+      :today="view.today"
+      :span="view.span"
+      :items="view.items"
+      :placements="view.placements"
+    />
   </div>
 </template>

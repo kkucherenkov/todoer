@@ -3,10 +3,24 @@ const route = useRoute();
 const db = useDb();
 const fail = useFail();
 const catalog = useTopic('catalog');
-useWatch(() => String(route.params.id));
-
 const view = computed(() =>
   catalog.value?.views.find((v) => v.id === route.params.id),
+);
+// The worker's date, kept apart from the view topic: a watch with a new span
+// clears that topic, and a span derived from it would never settle.
+const shown = useTopic('view');
+const today = ref<string>();
+watch(shown, (v) => v && (today.value = v.today));
+// The span comes from the URL alone, and only a calendar has one: a stale
+// span on a list publish would be dropped by the tab and hang it (F3).
+useWatch(
+  () => String(route.params.id),
+  () => {
+    if (view.value?.layout !== 'calendar') return null;
+    const { mode, at } = fromQuery(route.query, today.value ?? '');
+    if (!at) return null;
+    return gridSpan(mode, at);
+  },
 );
 const editing = ref(false);
 const deleting = ref(false);

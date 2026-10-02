@@ -53,8 +53,7 @@
   },
   "view": {
     "problem": "This view cannot be shown",
-    "deleted": "This view no longer exists.",
-    "soon": "Tasks appear here soon."
+    "deleted": "This view no longer exists."
   },
   "list": {
     "quickAdd": "Quick add",
@@ -133,7 +132,6 @@
       "kanban": "Kanban",
       "calendar": "Calendar"
     },
-    "soon": "Comes later",
     "sort": "Sort",
     "sorts": {
       "manual": "Manual",
@@ -148,5 +146,13 @@
     "delete": "Delete",
     "deleteTitle": "Delete “{name}”?",
     "deleteBody": "The view goes away; its tasks stay."
+  },
+  "calendar": {
+    "previous": "Previous",
+    "next": "Next",
+    "today": "Today",
+    "week": "Week",
+    "month": "Month",
+    "more": "+{n} more"
   }
 }

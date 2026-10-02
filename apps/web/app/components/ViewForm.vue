@@ -20,7 +20,7 @@ const KINDS = [
   'tag',
   'status',
 ] as const;
-const LAYOUTS = ['list', 'kanban'] as const;
+const LAYOUTS = ['list', 'kanban', 'calendar'] as const;
 const SORTS = ['manual', 'priority', 'due', 'scheduled'] as const;
 /** A select cannot hold null or ''. */
 const NONE = 'none';
@@ -211,12 +211,6 @@ async function save() {
                 label: $t(`viewForm.layouts.${l}`),
                 value: l,
               })),
-              {
-                label: $t('viewForm.layouts.calendar'),
-                description: $t('viewForm.soon'),
-                value: 'calendar',
-                disabled: true,
-              },
             ]"
           />
         </UFormField>
