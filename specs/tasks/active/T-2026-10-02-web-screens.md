@@ -196,7 +196,7 @@ to before W3 ships.
 - [x] T001 [FR-001] Browser-safe `uuidv5` — plan Task 1 — `packages/specs/src/ids.ts`
 - [x] T002 [FR-002] Fractional ranks with tie repair — plan Task 2 — `packages/client-core/src/rank.ts`
 - [x] T003 [FR-003, FR-004] View, board, task and catalog reads — plan Task 3 — `packages/client-core/src/operations.ts`
-- [ ] T004 [FR-005, FR-006, FR-007] Replay guard, `editTask`, `moveTask` — plan Task 4 — `packages/client-core/src/{store,operations}.ts`
+- [x] T004 [FR-005, FR-006, FR-007] Replay guard, `editTask`, `moveTask` — plan Task 4 — `packages/client-core/src/{store,operations}.ts`
 - [ ] T005 [FR-008, FR-009] Views, statuses, seeds — plan Task 5 — `packages/client-core/src/operations.ts`
 - **Checkpoint:** client-core holds every W3 operation with Node tests, and the CLI is unchanged.
 - [ ] T006 [FR-010, FR-011, FR-012] Worker commands, watches, keyed topics — plan Task 6 — `apps/web/app/db/`

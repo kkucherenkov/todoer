@@ -1,13 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import {
+  taskOccurrenceId,
+  taskTagId,
+  type Change,
+  type Op,
+} from '@todoer/specs';
+import {
   ALL_OPEN,
+  add,
   boardTasks,
   catalog,
+  editTask,
   listTasks,
+  mark,
+  moveTask,
+  submit,
   taskDetails,
   viewTasks,
+  type Core,
 } from './operations.js';
+import { UsageError } from './protocol.js';
 import type { Row, Store } from './store.js';
+import type { Transport } from './sync.js';
 import { openStore } from './test-store.js';
 
 const TODAY = '2026-10-02';
@@ -318,5 +332,385 @@ describe('listTasks', () => {
     expect(
       Object.keys(listTasks(store, TODAY, [], undefined)[0] ?? {}),
     ).not.toContain('closed');
+  });
+});
+
+const DONE = '20000000-0000-4000-8000-000000000000';
+
+/** A server that applies every op to its own rows and answers with the
+ *  changes; `offline` makes the transport reject like a dead network. */
+function fakeServer() {
+  const sent: Op[] = [];
+  const rows = new Map<string, Row>();
+  const state = { offline: false };
+  // above any seq `put` hands out, so the server's rows win the merge
+  let seq = 100_000;
+  const send: Transport = (request) => {
+    if (state.offline) return Promise.reject(new TypeError('fetch failed'));
+    const changes: Change[] = [];
+    const results = request.ops.map((op) => {
+      sent.push(op);
+      const key = `${op.table}:${op.id}`;
+      const current = rows.get(key);
+      let next: Row;
+      if (op.kind === 'create') {
+        next = { ...current, ...op.fields, id: op.id, deletedAt: null };
+      } else if (op.kind === 'set') {
+        next = { ...current, [op.field]: op.value };
+      } else {
+        next = { ...current, deletedAt: 'deleted' };
+      }
+      rows.set(key, next);
+      changes.push({ table: op.table, id: op.id, seq: (seq += 1), row: next });
+      return { opId: op.opId, status: 'applied' as const };
+    });
+    return Promise.resolve(
+      new Response(JSON.stringify({ cursor: seq, results, changes }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
+    );
+  };
+  return { sent, rows, state, send };
+}
+
+function coreOf(store: Store, send: Transport): Core {
+  let n = 0;
+  return {
+    store,
+    send,
+    now: () => new Date('2026-10-02T12:00:00'),
+    newId: () => `id-${(n += 1)}`,
+  };
+}
+
+const mint = (opId: string, id?: string) =>
+  id === undefined ? { opId } : { opId, id };
+const sets = (store: Store, field: string) =>
+  store
+    .pending()
+    .filter((op) => op.kind === 'set' && op.field === field)
+    .map((op) => (op.kind === 'set' ? [op.id, op.value] : []));
+
+describe('replay guard', () => {
+  const op: Op = {
+    opId: 'o1',
+    kind: 'create',
+    table: 'task',
+    id: 't',
+    fields: { title: 'x', rank: 'a0' },
+    ts: '2026-10-02T00:00:00.000Z',
+  };
+
+  it('queues a keyed command once however often it is submitted', async () => {
+    const store = openStore(':memory:');
+    const srv = fakeServer();
+    srv.state.offline = true;
+    // a crash after the enqueue (mutation checks inject one) is survivable
+    await submit(store, srv.send, [op], 'x', 'k1').catch(() => undefined);
+    await submit(store, srv.send, [{ ...op, opId: 'o2' }], 'x', 'k1');
+    expect(store.pending().map((o) => o.opId)).toEqual(['o1']);
+  });
+
+  it('writes the claim only when the ops are queued with it', () => {
+    const store = openStore(':memory:');
+    const srv = fakeServer();
+    return submit(
+      store,
+      srv.send,
+      () => {
+        throw new Error('boom');
+      },
+      'x',
+      'k1',
+    ).then(
+      () => expect.unreachable(),
+      () => {
+        expect(store.seen('k1')).toBe(false);
+        expect(store.pending()).toEqual([]);
+      },
+    );
+  });
+
+  it('add with minted ids creates the task once, even after the ops settled', async () => {
+    const store = openStore(':memory:');
+    const srv = fakeServer();
+    const core = coreOf(store, srv.send);
+    const first = await add(
+      core,
+      'Buy milk #Home @err',
+      {},
+      mint('m1', 't-new'),
+    );
+    expect(first.task?.id).toBe('t-new');
+    expect(srv.sent.map((o) => o.opId)).toContain('m1');
+    expect(store.pending()).toEqual([]);
+    const sentBefore = srv.sent.length;
+
+    const again = await add(
+      core,
+      'Buy milk #Home @err',
+      {},
+      mint('m1', 't-new'),
+    );
+    expect(srv.sent).toHaveLength(sentBefore);
+    expect(again.synced).toBe(true);
+    expect(again.task?.id).toBe('t-new');
+    expect(store.rows('task')).toHaveLength(1);
+    expect(store.rows('project')).toHaveLength(1);
+    expect(store.rows('tag')).toHaveLength(1);
+  });
+
+  it('answers a replayed undo like the first one instead of "nothing to undo"', async () => {
+    const store = openStore(':memory:');
+    const srv = fakeServer();
+    const core = coreOf(store, srv.send);
+    put(store, 'task', task('abcd0001'));
+    put(store, 'task_occurrence', {
+      id: taskOccurrenceId('abcd0001', null),
+      taskId: 'abcd0001',
+      occurrence: null,
+      state: 'done',
+    });
+    const first = await mark(core, 'undo', 'abcd0001', undefined, mint('u1'));
+    expect(first.synced).toBe(true);
+    expect(srv.sent).toHaveLength(1);
+    expect(store.rows('task_occurrence')).toMatchObject([{ state: 'open' }]);
+    const again = await mark(core, 'undo', 'abcd0001', undefined, mint('u1'));
+    expect(again.synced).toBe(true);
+    expect(srv.sent).toHaveLength(1);
+  });
+});
+
+describe('editTask', () => {
+  function offline(extra: Record<string, unknown> = {}) {
+    const store = boardStore();
+    const srv = fakeServer();
+    srv.state.offline = true;
+    put(store, 'task', task('t1', extra));
+    return { store, core: coreOf(store, srv.send) };
+  }
+  const refused = (changes: Parameters<typeof editTask>[3], extra = {}) => {
+    const { store, core } = offline(extra);
+    return expect(editTask(core, mint('e1'), 't1', changes)).rejects.toSatisfy(
+      (e) => e instanceof UsageError && store.pending().length === 0,
+    );
+  };
+
+  it('refuses a blank title, priority 5, a date on a recurring task and 2026-02-30', async () => {
+    await refused({ title: '  ' });
+    await refused({ priority: 5 });
+    await refused(
+      { scheduledOn: '2026-10-05' },
+      { rrule: 'FREQ=DAILY', dtstart: '2026-09-30' },
+    );
+    await refused({ dueOn: '2026-02-30' });
+  });
+
+  it('writes one set per changed field and nothing for an unchanged one', async () => {
+    const { store, core } = offline({ notes: 'keep' });
+    const result = await editTask(core, mint('e1'), 't1', {
+      title: ' New ',
+      notes: 'keep',
+      priority: 3,
+      dueOn: '2026-10-09',
+    });
+    expect(result.synced).toBe(false);
+    expect(store.pending().map((o) => o.kind === 'set' && o.field)).toEqual([
+      'title',
+      'priority',
+      'dueOn',
+    ]);
+    expect(store.pending()[0]?.opId).toBe('e1');
+    expect(sets(store, 'title')).toEqual([['t1', 'New']]);
+  });
+
+  it('turns empty notes into null', async () => {
+    const { store, core } = offline({ notes: 'x' });
+    await editTask(core, mint('e1'), 't1', { notes: '' });
+    expect(sets(store, 'notes')).toEqual([['t1', null]]);
+  });
+
+  it('creates a missing project and sets projectId in one batch; null detaches', async () => {
+    const { store, core } = offline();
+    await editTask(core, mint('e1'), 't1', { project: 'New' });
+    const [create] = store.pending();
+    expect(create).toMatchObject({ kind: 'create', table: 'project' });
+    expect(sets(store, 'projectId')).toEqual([['t1', create?.id]]);
+    await editTask(core, mint('e2'), 't1', { project: null });
+    expect(sets(store, 'projectId').at(-1)).toEqual(['t1', null]);
+  });
+
+  it('attaches the new tag and detaches the gone one, by name', async () => {
+    const { store, core } = offline();
+    put(store, 'tag', { id: 'ta', name: '@a' });
+    put(store, 'tag', { id: 'tb', name: '@b' });
+    for (const tag of ['ta', 'tb']) {
+      put(store, 'task_tag', {
+        id: taskTagId('t1', tag),
+        taskId: 't1',
+        tagId: tag,
+        attached: true,
+      });
+    }
+    await editTask(core, mint('e1'), 't1', { tags: ['@a', '@c'] });
+    const ops = store.pending();
+    const created = ops.filter(
+      (o) => o.kind === 'create' && o.table === 'task_tag',
+    );
+    expect(created).toHaveLength(1);
+    expect(created[0]).toMatchObject({ fields: { taskId: 't1' } });
+    expect(
+      ops.filter((o) => o.kind === 'set' && o.table === 'task_tag'),
+    ).toEqual([
+      expect.objectContaining({
+        id: taskTagId('t1', 'tb'),
+        field: 'attached',
+        value: false,
+      }),
+    ]);
+  });
+
+  it('does nothing when its opId was already claimed', async () => {
+    const { store, core } = offline();
+    await editTask(core, mint('e1'), 't1', { priority: 2 });
+    await editTask(core, mint('e1'), 't1', { priority: 3 });
+    expect(sets(store, 'priority')).toEqual([['t1', 2]]);
+  });
+});
+
+describe('moveTask', () => {
+  function offline(rows: Array<[string, Record<string, unknown>]> = []) {
+    const store = boardStore();
+    put(store, 'status', {
+      id: 's2',
+      name: 'Doing',
+      rank: 'a05',
+      completing: false,
+    });
+    const srv = fakeServer();
+    srv.state.offline = true;
+    for (const [table, row] of rows) put(store, table, row);
+    return { store, core: coreOf(store, srv.send) };
+  }
+  const occurrenceOps = (store: Store) =>
+    store
+      .pending()
+      .filter((o) => o.kind === 'create' && o.table === 'task_occurrence')
+      .map((o) => (o.kind === 'create' ? o.fields : {}));
+
+  it('marks an open one-off done and sets the completing status', async () => {
+    const { store, core } = offline([['task', task('a')]]);
+    const result = await moveTask(core, mint('m1'), 'a', { statusId: DONE });
+    expect(result).toMatchObject({ synced: false, marked: 'done' });
+    expect(occurrenceOps(store)).toMatchObject([
+      { state: 'done', occurrence: null },
+    ]);
+    expect(sets(store, 'statusId')).toEqual([['a', DONE]]);
+    expect(store.pending().some((o) => o.opId === 'm1')).toBe(true);
+  });
+
+  it('marks a recurring task done at the current occurrence, open at the next', async () => {
+    const { store, core } = offline([
+      ['task', task('r', { rrule: 'FREQ=DAILY', dtstart: '2026-09-30' })],
+    ]);
+    const result = await moveTask(core, mint('m1'), 'r', { statusId: DONE });
+    expect(result).toMatchObject({ marked: 'done', occurrence: TODAY });
+    expect(occurrenceOps(store)).toMatchObject([
+      { state: 'done', occurrence: TODAY },
+    ]);
+    expect(sets(store, 'statusId')).toEqual([['r', DONE]]);
+    const [item] = boardTasks(store, TODAY, ALL_OPEN);
+    expect(item).toMatchObject({
+      occurrence: '2026-10-03',
+      column: 's1',
+      closed: false,
+    });
+  });
+
+  it('reopens a closed one-off with undo and exactly one statusId write', async () => {
+    const { store, core } = offline([
+      ['task', task('a', { statusId: DONE })],
+      [
+        'task_occurrence',
+        { id: 'a-occ', taskId: 'a', occurrence: null, state: 'done' },
+      ],
+    ]);
+    const result = await moveTask(core, mint('m1'), 'a', { statusId: 's2' });
+    expect(result.marked).toBe('undo');
+    expect(occurrenceOps(store)).toMatchObject([{ state: 'open' }]);
+    expect(sets(store, 'statusId')).toEqual([['a', 's2']]);
+  });
+
+  it('moves between plain statuses with one set, plus the rank writes', async () => {
+    const { store, core } = offline([
+      ['task', task('a')],
+      ['task', task('b')],
+    ]);
+    const result = await moveTask(core, mint('m1'), 'a', {
+      statusId: 's2',
+      ranks: [
+        { id: 'a', rank: 'a1' },
+        { id: 'b', rank: 'a2' },
+      ],
+    });
+    expect(result.marked).toBeNull();
+    expect(sets(store, 'statusId')).toEqual([['a', 's2']]);
+    expect(sets(store, 'rank')).toEqual([
+      ['a', 'a1'],
+      ['b', 'a2'],
+    ]);
+    expect(occurrenceOps(store)).toEqual([]);
+  });
+
+  it('reorders only when statusId is undefined', async () => {
+    const { store, core } = offline([['task', task('a')]]);
+    await moveTask(core, mint('m1'), 'a', { ranks: [{ id: 'a', rank: 'a7' }] });
+    expect(sets(store, 'statusId')).toEqual([]);
+    expect(sets(store, 'rank')).toEqual([['a', 'a7']]);
+  });
+
+  it('refuses a deleted status', async () => {
+    const { store, core } = offline([
+      ['task', task('a')],
+      [
+        'status',
+        {
+          id: 'gone',
+          name: 'G',
+          rank: 'a2',
+          completing: false,
+          deletedAt: '2026-10-01',
+        },
+      ],
+    ]);
+    await expect(
+      moveTask(core, mint('m1'), 'a', { statusId: 'gone' }),
+    ).rejects.toBeInstanceOf(UsageError);
+    expect(store.pending()).toEqual([]);
+  });
+
+  it('seeds the statuses when the user has none, as mark does', async () => {
+    const store = openStore(':memory:');
+    const srv = fakeServer();
+    srv.state.offline = true;
+    put(store, 'task', task('a'));
+    const core = coreOf(store, srv.send);
+    const result = await moveTask(core, mint('m1'), 'a', { statusId: 'done' });
+    expect(result.marked).toBe('done');
+    const creates = store
+      .pending()
+      .filter((o) => o.kind === 'create' && o.table === 'status');
+    expect(creates).toHaveLength(3);
+    expect(sets(store, 'statusId')).toEqual([['a', creates[2]?.id]]);
+  });
+
+  it('is a no-op the second time its opId is seen', async () => {
+    const { store, core } = offline([['task', task('a')]]);
+    await moveTask(core, mint('m1'), 'a', { statusId: DONE });
+    const queued = store.pending().length;
+    const again = await moveTask(core, mint('m1'), 'a', { statusId: DONE });
+    expect(again.synced).toBe(false);
+    expect(store.pending()).toHaveLength(queued);
   });
 });

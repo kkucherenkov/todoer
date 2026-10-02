@@ -384,3 +384,37 @@ describe('Store auth', () => {
     );
   });
 });
+
+describe('claim', () => {
+  const DAY = 24 * 60 * 60 * 1000;
+
+  it('is seen after the transaction commits and not after a rollback', () => {
+    const store = storeAt();
+    store.transaction(() => store.claim('a', 1000));
+    expect(store.seen('a')).toBe(true);
+    expect(() =>
+      store.transaction(() => {
+        store.claim('b', 1000);
+        throw new Error('boom');
+      }),
+    ).toThrow('boom');
+    expect(store.seen('b')).toBe(false);
+  });
+
+  it('forgets markers older than 7 days on the next claim', () => {
+    const store = storeAt();
+    store.claim('old', 0);
+    store.claim('edge', DAY);
+    store.claim('new', 8 * DAY);
+    expect(store.seen('old')).toBe(false);
+    expect(store.seen('edge')).toBe(true);
+    expect(store.seen('new')).toBe(true);
+  });
+
+  it('does not touch the cursor', () => {
+    const store = storeAt();
+    store.advanceCursor(5);
+    store.claim('a', 100 * DAY);
+    expect(store.cursor()).toBe(5);
+  });
+});

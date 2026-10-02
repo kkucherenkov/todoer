@@ -35,6 +35,7 @@ import {
   resolveLabels,
 } from './labels.js';
 import { planMerge } from './merge.js';
+import type { Ranked } from './rank.js';
 import { liveTasks, overlay } from './overlay.js';
 import { planAdd } from './parse-quick-add.js';
 import { resolveRef, shortRef } from './ref.js';
@@ -85,14 +86,23 @@ export type Due = Row & {
  * §4). Every one counts as the command's own, so a refusal of any of them is
  * the command's exit 1 (4 for a conflict), reporting every operation's fate.
  * Returns whether the server has all of them.
+ *
+ * With `key`, the command is the unit of idempotence (plan W3, departure 2):
+ * the claim is written in the same transaction as the enqueue, and a key
+ * already claimed queues nothing, so a resend only flushes.
  */
 export async function submit(
   store: Store,
   send: Transport,
   build: Op[] | (() => Op[]),
   command: string,
+  key?: string,
 ): Promise<boolean> {
   const ops = store.transaction(() => {
+    if (key !== undefined) {
+      if (store.seen(key)) return [];
+      store.claim(key, Date.now());
+    }
     const queued = typeof build === 'function' ? build() : build;
     for (const op of queued) store.enqueue(op);
     return queued;
@@ -473,11 +483,16 @@ function pickOccurrence(
   return current.occurrence;
 }
 
+/** Minted in the tab: the command's first op id (and replay key), and for a
+ *  create the new row's id. */
+export type Minted = { opId: string; id?: string };
+
 /** `add`: quick-add text plus already-validated recurrence fields. */
 export async function add(
   core: Core,
   text: string,
   recurrence: Record<string, string>,
+  minted?: Minted,
 ): Promise<{
   synced: boolean;
   title: string;
@@ -485,6 +500,16 @@ export async function add(
   task: Row | null;
 }> {
   const { store, send } = core;
+  if (minted !== undefined && store.seen(minted.opId)) {
+    const task = tasks(store).find((row) => row.id === minted.id) ?? null;
+    const { synced } = await flush(store, send);
+    return {
+      synced,
+      title: typeof task?.title === 'string' ? task.title : '',
+      created: [],
+      task,
+    };
+  }
   // Refuses an empty title — see planAdd.
   const { title, priority, project, tags } = planAdd(text);
   const ts = core.now().toISOString();
@@ -495,10 +520,10 @@ export async function add(
     ts,
   );
   const op: OpCreate = {
-    opId: core.newId(),
+    opId: minted?.opId ?? core.newId(),
     kind: 'create',
     table: 'task',
-    id: core.newId(),
+    id: minted?.id ?? core.newId(),
     fields: {
       title,
       priority,
@@ -521,29 +546,26 @@ export async function add(
     send,
     [...labels.creates, op, ...linkOps],
     'add',
+    minted?.opId,
   );
   const task = tasks(store).find((row) => row.id === op.id) ?? null;
   return { synced, title, created: labels.created, task };
 }
 
-/** done / skip / undo on the task `ref` names, at `on` or the default occurrence. */
-export async function mark(
+/**
+ * What a mark writes, validated: the occurrence it applies to, whether that
+ * is already closed, the occurrence op and the statusId writes that go with
+ * it. Shared by `mark` and `moveTask`, so there is one path to `done`.
+ */
+function planMark(
   core: Core,
   command: Mark,
-  ref: string,
+  task: Row,
+  all: Row[],
   on: string | undefined,
-): Promise<{
-  synced: boolean;
-  task: Row;
-  occurrence: string | null;
-  closed: 'done' | 'skipped' | undefined;
-  marked: Row | null;
-}> {
-  const { store, send } = core;
-  // Resolved against what this client can see, before anything is sent:
-  // like every write, a mark works offline.
-  const all = tasks(store);
-  const task = resolveRef(liveTasks(all), ref);
+  opId: string | undefined,
+) {
+  const { store } = core;
   const taskId = String(task.id);
   const marks = occurrences(store);
   const occurrence = pickOccurrence(
@@ -558,13 +580,14 @@ export async function mark(
   // done and skipped goes through undo, so completedAt is never rewritten.
   const state =
     command === 'undo' ? undefined : stateOf(marks, taskId)(occurrence);
-  const closed = state === 'done' || state === 'skipped' ? state : undefined;
+  const closed: 'done' | 'skipped' | undefined =
+    state === 'done' || state === 'skipped' ? state : undefined;
   if (closed !== undefined && closed !== MARK[command]) {
     throw new UsageError(`already ${closed} — undo it first`);
   }
   const now = core.now().toISOString();
   const op: OpCreate = {
-    opId: core.newId(),
+    opId: opId ?? core.newId(),
     kind: 'create',
     table: 'task_occurrence',
     id: taskOccurrenceId(taskId, occurrence),
@@ -576,20 +599,301 @@ export async function mark(
     },
     ts: now,
   };
+  return {
+    occurrence,
+    closed,
+    op,
+    statusWrites: (): Op[] =>
+      statusOps(command, task, statusRows(store), core.newId, now),
+  };
+}
+
+/** done / skip / undo on the task `ref` names, at `on` or the default occurrence. */
+export async function mark(
+  core: Core,
+  command: Mark,
+  ref: string,
+  on: string | undefined,
+  minted?: Minted,
+): Promise<{
+  synced: boolean;
+  task: Row;
+  occurrence: string | null;
+  closed: 'done' | 'skipped' | undefined;
+  marked: Row | null;
+}> {
+  const { store, send } = core;
+  // Resolved against what this client can see, before anything is sent:
+  // like every write, a mark works offline.
+  const all = tasks(store);
+  const task = resolveRef(liveTasks(all), ref);
+  if (minted !== undefined && store.seen(minted.opId)) {
+    // Before pickOccurrence: an undo that already landed has nothing left to
+    // undo. What can be read back is the op if it is still queued.
+    const queued = store.entry(minted.opId)?.op;
+    const { synced } = await flush(store, send);
+    return {
+      synced,
+      task,
+      occurrence:
+        queued?.kind === 'create'
+          ? ((queued.fields.occurrence as string | null) ?? null)
+          : null,
+      closed: undefined,
+      marked:
+        queued === undefined
+          ? null
+          : (occurrences(store).find((row) => row.id === queued.id) ?? null),
+    };
+  }
+  const plan = planMark(core, command, task, all, on, minted?.opId);
+  const { occurrence, closed, op } = plan;
   const synced =
     closed !== undefined
       ? (await flush(store, send)).synced
       : await submit(
           store,
           send,
-          () => [
-            ...statusOps(command, task, statusRows(store), core.newId, now),
-            op,
-          ],
+          () => [...plan.statusWrites(), op],
           command,
+          minted?.opId,
         );
   const marked = occurrences(store).find((row) => row.id === op.id) ?? null;
   return { synced, task, occurrence, closed, marked };
+}
+
+export type TaskChanges = Partial<{
+  title: string;
+  notes: string | null;
+  priority: number;
+  scheduledOn: string | null;
+  dueOn: string | null;
+  project: string | null;
+  tags: string[];
+}>;
+
+/** The first op carries the command's minted id (plan W3, departure 2). */
+function withFirstId(ops: Op[], opId: string): Op[] {
+  const [first, ...rest] = ops;
+  return first === undefined ? ops : [{ ...first, opId }, ...rest];
+}
+
+const isClosed = (state: unknown) => state === 'done' || state === 'skipped';
+
+function liveTask(all: Row[], id: string): Row {
+  const task = liveTasks(all).find((row) => row.id === id);
+  if (task === undefined) throw new UsageError(`no task ${id}`);
+  return task;
+}
+
+function requiredName(name: string, what: string): string {
+  const trimmed = name.trim();
+  if (trimmed === '') throw new UsageError(`${what} must not be empty`);
+  return trimmed;
+}
+
+/**
+ * One `set` per changed field (plus label creates and links), one batch.
+ * Replay-safe: a seen `minted.opId` only flushes, before any validation.
+ */
+export async function editTask(
+  core: Core,
+  minted: Minted,
+  taskId: string,
+  changes: TaskChanges,
+): Promise<{ synced: boolean }> {
+  const { store, send } = core;
+  if (store.seen(minted.opId)) {
+    return { synced: (await flush(store, send)).synced };
+  }
+  const all = tasks(store);
+  const task = liveTask(all, taskId);
+  const ts = core.now().toISOString();
+  const fields: [string, unknown][] = [];
+  if (changes.title !== undefined) {
+    fields.push(['title', requiredName(changes.title, 'title')]);
+  }
+  if (changes.notes !== undefined) {
+    fields.push(['notes', changes.notes === '' ? null : changes.notes]);
+  }
+  if (changes.priority !== undefined) {
+    if (![0, 1, 2, 3, 4].includes(changes.priority)) {
+      throw new UsageError('priority must be 0 to 4');
+    }
+    fields.push(['priority', changes.priority]);
+  }
+  for (const key of ['scheduledOn', 'dueOn'] as const) {
+    const value = changes[key];
+    if (value === undefined) continue;
+    if (value !== null && !isIsoDate(value)) {
+      throw new UsageError(`${key} must be a date, YYYY-MM-DD`);
+    }
+    if (
+      key === 'scheduledOn' &&
+      value !== null &&
+      recurrenceOf(task, parentOf(all, task)) !== null
+    ) {
+      throw new UsageError('a recurring task is scheduled by its rule');
+    }
+    fields.push([key, value]);
+  }
+  const rows = { projects: projects(store), tags: tagRows(store) };
+  const creates: OpCreate[] = [];
+  if (changes.project !== undefined) {
+    if (changes.project === null) {
+      fields.push(['projectId', null]);
+    } else {
+      const labels = resolveLabels(
+        { project: requiredName(changes.project, 'project'), tags: [] },
+        rows,
+        core.newId,
+        ts,
+      );
+      creates.push(...labels.creates);
+      fields.push(['projectId', labels.projectId]);
+    }
+  }
+  const linkOps: Op[] = [];
+  if (changes.tags !== undefined) {
+    const labels = resolveLabels(
+      {
+        project: undefined,
+        tags: changes.tags.map((name) => requiredName(name, 'tag')),
+      },
+      rows,
+      core.newId,
+      ts,
+    );
+    creates.push(...labels.creates);
+    const mine = links(store).filter((link) => link.taskId === taskId);
+    const attached = new Set(
+      mine.filter(isAttached).map((link) => String(link.tagId)),
+    );
+    const wanted = new Set(labels.tagIds);
+    const attach = (id: string, value: boolean): Op => ({
+      opId: core.newId(),
+      kind: 'set',
+      table: 'task_tag',
+      id,
+      field: 'attached',
+      value,
+      ts,
+    });
+    for (const tagId of wanted) {
+      if (attached.has(tagId)) continue;
+      const id = taskTagId(taskId, tagId);
+      const detached = mine.some(
+        (link) => link.id === id && link.deletedAt === null,
+      );
+      linkOps.push(
+        detached
+          ? attach(id, true)
+          : {
+              opId: core.newId(),
+              kind: 'create',
+              table: 'task_tag',
+              id,
+              fields: { taskId, tagId },
+              ts,
+            },
+      );
+    }
+    for (const link of mine) {
+      if (isAttached(link) && !wanted.has(String(link.tagId))) {
+        linkOps.push(attach(String(link.id), false));
+      }
+    }
+  }
+  const setOps = fields
+    .filter(([field, value]) => (task[field] ?? null) !== value)
+    .map(([field, value]) => setTask(task, field, value, core.newId, ts));
+  const ops = withFirstId([...creates, ...setOps, ...linkOps], minted.opId);
+  return { synced: await submit(store, send, ops, 'edit', minted.opId) };
+}
+
+/**
+ * A card moved (views Q5, Q7): into the completing status is `done` through
+ * mark's path (current occurrence, statusOps, seeding); out of it, for a
+ * closed task, is `undo` plus one `set statusId` to the target; between other
+ * statuses one `set statusId`. `ranks` are written too. `statusId` undefined:
+ * a reorder only. A user with no statuses has nothing to name but the column
+ * `mark done` would seed, so any `statusId` then means completing.
+ */
+export async function moveTask(
+  core: Core,
+  minted: Minted,
+  taskId: string,
+  move: { statusId?: string | null; ranks?: Ranked[] },
+): Promise<{
+  synced: boolean;
+  marked: 'done' | 'undo' | null;
+  occurrence: string | null;
+}> {
+  const { store, send } = core;
+  if (store.seen(minted.opId)) {
+    const { synced } = await flush(store, send);
+    return { synced, marked: null, occurrence: null };
+  }
+  const all = tasks(store);
+  const task = liveTask(all, taskId);
+  const { statusId } = move;
+  const live = statusFacts(statusRows(store));
+  if (
+    statusId !== undefined &&
+    statusId !== null &&
+    live.length > 0 &&
+    !live.some((s) => s.id === statusId)
+  ) {
+    throw new UsageError(`no status ${statusId}`);
+  }
+  const intoDone =
+    statusId !== undefined &&
+    statusId !== null &&
+    (live.length === 0 || statusId === completingStatus(live));
+  const reopen =
+    statusId !== undefined &&
+    !intoDone &&
+    recurrenceOf(task, parentOf(all, task)) === null &&
+    isClosed(stateOf(occurrences(store), taskId)(null));
+  const plan =
+    intoDone || reopen
+      ? planMark(
+          core,
+          intoDone ? 'done' : 'undo',
+          task,
+          all,
+          undefined,
+          minted.opId,
+        )
+      : undefined;
+  const ts = core.now().toISOString();
+  const build = (): Op[] => {
+    const ops: Op[] = [];
+    if (intoDone) {
+      if (plan?.closed === undefined)
+        ops.push(...plan!.statusWrites(), plan!.op);
+    } else if (statusId !== undefined) {
+      if (plan !== undefined) ops.push(plan.op);
+      if ((task.statusId ?? null) !== statusId) {
+        ops.push(setTask(task, 'statusId', statusId, core.newId, ts));
+      }
+    }
+    for (const { id, rank } of move.ranks ?? []) {
+      ops.push(setTask({ id }, 'rank', rank, core.newId, ts));
+    }
+    return plan === undefined ? withFirstId(ops, minted.opId) : ops;
+  };
+  const synced = await submit(store, send, build, 'move', minted.opId);
+  return {
+    synced,
+    marked:
+      plan === undefined || plan.closed !== undefined
+        ? null
+        : intoDone
+          ? 'done'
+          : 'undo',
+    occurrence: plan?.occurrence ?? null,
+  };
 }
 
 /** Each live task once at its current occurrence, label-filtered, then the
