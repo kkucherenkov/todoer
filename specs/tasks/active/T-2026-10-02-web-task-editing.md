@@ -170,7 +170,7 @@ answers, and is reachable from the keyboard.
 - **Checkpoint:** client-core holds every W5 operation with Node tests, and the CLI is unchanged.
 - [x] T004 [FR-006] Engine commands and protocol — plan Task 4 — `apps/web/app/db/`
 - **Checkpoint:** every W5 write exists behind the protocol, proven without a browser.
-- [ ] T005 [P] [FR-007] Presets to and from RRULE — plan Task 5 — `apps/web/app/utils/recurrence.ts`
+- [x] T005 [P] [FR-007] Presets to and from RRULE — plan Task 5 — `apps/web/app/utils/recurrence.ts`
 - [ ] T006 [FR-008, FR-011] Delete from the drawer — plan Task 6 — `apps/web/app/components/DeleteTaskDialog.vue`
 - [ ] T007 [FR-009, FR-011] Subtasks in the drawer and parent links — plan Task 7 — `apps/web/app/components/SubtaskList.vue`
 - [ ] T008 [FR-010, FR-011] The recurrence dialog — plan Task 8 — `apps/web/app/components/RecurrenceDialog.vue`
