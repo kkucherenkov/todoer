@@ -291,3 +291,35 @@ test('offline: a delete shows at once, an unsynced task cannot be deleted', asyn
   };
   expect(listed.data.map((t) => t.title)).toEqual(['Draft']);
 });
+
+test('offline: a rule cannot be set on a task the server has not seen', async ({
+  page,
+  context,
+  account,
+  cli,
+}) => {
+  await cli(account.token, 'add', 'Synced');
+  await page.goto('/');
+  await expect(count(page)).toHaveText(tasks(1));
+  await swActivated(page);
+
+  await context.setOffline(true);
+  await page.getByTestId('sync-now').click();
+  await expect(page.getByTestId('offline')).toBeVisible({ timeout: 15_000 });
+
+  const input = page.getByRole('textbox', { name: 'Quick add' });
+  await input.fill('Plan');
+  await input.press('Enter');
+  const queued = await page.getByTestId('pending').textContent();
+  await page.getByTestId('task-title').filter({ hasText: 'Plan' }).click();
+  await page.getByRole('button', { name: 'Repeat…' }).click();
+  const form = page.getByRole('dialog').last();
+  await form.getByRole('combobox', { name: 'Repeat' }).click();
+  await page.getByRole('option', { name: 'Daily' }).click();
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(
+    page.locator('[data-slot="description"]', { hasText: 'not synced yet' }),
+  ).toBeVisible();
+  await expect(form).toBeVisible();
+  await expect(page.getByTestId('pending')).toHaveText(queued ?? '');
+});

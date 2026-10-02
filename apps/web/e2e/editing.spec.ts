@@ -240,3 +240,179 @@ test('editing: subtasks in the drawer and as rows', async ({
   await expect(progress).toHaveText('1 of 1 done');
   await expect(check('Inbox zero')).toBeChecked();
 });
+
+test('editing: recurrence', async ({ page, account, cli }) => {
+  type Listed = {
+    title: string;
+    rrule: string | null;
+    dtstart: string | null;
+    scheduledOn: string | null;
+  };
+  const listed = async (title: string) =>
+    (
+      JSON.parse(await cli(account.token, 'list', '--json')) as {
+        data: Listed[];
+      }
+    ).data.find((t) => t.title === title);
+  // CSS, not role: an open modal hides the drawer from the role tree.
+  const drawer = page.locator('[role="dialog"]').first();
+  const form = page.locator('[role="dialog"]').last();
+  const save = form.getByRole('button', { name: 'Save' });
+  const problem = form.getByTestId('rule-problem');
+  const dates = form.getByTestId('rule-preview').locator('time');
+  const repeat = form.getByRole('combobox', { name: 'Repeat' });
+  const rule = form.getByRole('textbox', { name: 'RRULE' });
+  const every = form.getByRole('spinbutton', { name: 'Every' });
+  const choose = async (mode: string) => {
+    await repeat.click();
+    await page.getByRole('option', { name: mode }).click();
+  };
+  const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  const tick = async (...on: string[]) => {
+    for (const d of weekdays) {
+      await form.getByRole('checkbox', { name: d }).setChecked(on.includes(d));
+    }
+  };
+  const open = async (title: string) => {
+    await row(page, title).getByTestId('task-title').click();
+    await expect(drawer.getByRole('textbox', { name: 'Title' })).toHaveValue(
+      title,
+    );
+  };
+  const closeDrawer = async () => {
+    await expect(page.locator('[role="dialog"]')).toHaveCount(1);
+    await page.keyboard.press('Escape');
+    await expect(page.getByRole('dialog')).toHaveCount(0);
+  };
+
+  const monday = day(7 - ((new Date().getDay() + 6) % 7));
+  const wednesday = day(9 - ((new Date().getDay() + 6) % 7));
+  await seedTask(page.request, account.token, {
+    title: 'Gym',
+    scheduledOn: day(1),
+  });
+  await page.goto('/');
+  await open('Gym');
+
+  // One-off to weekly: the form previews what Save will write.
+  await drawer.getByRole('button', { name: 'Repeat…' }).click();
+  await choose('Weekly');
+  await tick('Mon', 'Wed');
+  await every.fill('2');
+  await every.press('Tab');
+  await form.getByLabel('Starts').fill(monday);
+  await expect(dates.nth(0)).toHaveAttribute('datetime', monday);
+  await expect(dates.nth(1)).toHaveAttribute('datetime', wednesday);
+  await save.click();
+  await expect(page.getByRole('dialog')).toHaveCount(1);
+  await expect(drawer.getByTestId('rule')).toContainText(
+    'Repeats: FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE',
+  );
+  await expect
+    .poll(() => listed('Gym'))
+    .toMatchObject({
+      rrule: 'FREQ=WEEKLY;INTERVAL=2;BYDAY=MO,WE',
+      dtstart: monday,
+      scheduledOn: null,
+    });
+
+  // Reopened, the form shows the rule and nothing to save.
+  await drawer.getByRole('button', { name: 'Edit repeat…' }).click();
+  await expect(repeat).toHaveText('Weekly');
+  await expect(form.getByRole('checkbox', { name: 'Mon' })).toBeChecked();
+  await expect(form.getByRole('checkbox', { name: 'Wed' })).toBeChecked();
+  await expect(form.getByRole('checkbox', { name: 'Tue' })).not.toBeChecked();
+  await expect(every).toHaveValue('2');
+  await expect(save).toBeDisabled();
+
+  await tick();
+  await expect(problem).toHaveText('Pick at least one day');
+  await expect(save).toBeDisabled();
+
+  // The raw field.
+  await choose('Custom (RRULE)');
+  await rule.fill('FREQ=HOURLY');
+  await expect(problem).toBeVisible();
+  await expect(save).toBeDisabled();
+  await rule.fill('FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=30');
+  await expect(problem).toContainText('produces no date');
+  await rule.fill('FREQ=MONTHLY;BYDAY=1MO');
+  await expect(problem).toHaveCount(0);
+  await expect(dates).toHaveCount(5);
+  for (const d of await dates.evaluateAll((l) =>
+    l.map((e) => e.getAttribute('datetime')),
+  )) {
+    const at = new Date(`${d}T00:00:00Z`);
+    expect([at.getUTCDay(), at.getUTCDate() <= 7]).toEqual([1, true]);
+  }
+  await save.click();
+  await expect(page.getByRole('dialog')).toHaveCount(1);
+  await expect
+    .poll(() => listed('Gym'))
+    .toMatchObject({ rrule: 'FREQ=MONTHLY;BYDAY=1MO', dtstart: monday });
+  await drawer.getByRole('button', { name: 'Edit repeat…' }).click();
+  await expect(repeat).toHaveText('Custom (RRULE)');
+  await expect(rule).toHaveValue('FREQ=MONTHLY;BYDAY=1MO');
+
+  // Back to one-off: the date it was showing becomes the scheduled date.
+  const shown = /\d{4}-\d{2}-\d{2}/.exec(
+    (await drawer.getByTestId('rule').textContent()) ?? '',
+  )?.[0];
+  expect(shown).toBeTruthy();
+  await choose('Does not repeat');
+  await save.click();
+  await expect(page.getByRole('dialog')).toHaveCount(1);
+  await expect(drawer.getByLabel('Scheduled', { exact: true })).toHaveValue(
+    shown!,
+  );
+  await expect
+    .poll(() => listed('Gym'))
+    .toMatchObject({ rrule: null, dtstart: null, scheduledOn: shown });
+  await closeDrawer();
+
+  // What the CLI writes opens in the right mode.
+  await cli(
+    account.token,
+    'add',
+    'Stretch',
+    '--rrule',
+    'FREQ=DAILY',
+    '--from',
+    day(),
+  );
+  await cli(
+    account.token,
+    'add',
+    'Walk',
+    '--rrule',
+    'FREQ=WEEKLY',
+    '--from',
+    day(),
+  );
+  await page.getByTestId('sync-now').click();
+  await open('Stretch');
+  await drawer.getByRole('button', { name: 'Edit repeat…' }).click();
+  await expect(repeat).toHaveText('Daily');
+  await form.getByRole('button', { name: 'Cancel' }).click();
+  await closeDrawer();
+  await open('Walk');
+  await drawer.getByRole('button', { name: 'Edit repeat…' }).click();
+  await expect(repeat).toHaveText('Custom (RRULE)');
+  await expect(rule).toHaveValue('FREQ=WEEKLY');
+  await form.getByRole('button', { name: 'Cancel' }).click();
+  await closeDrawer();
+
+  // A subtask repeats with its parent.
+  const move = await seedTask(page.request, account.token, { title: 'Move' });
+  await seedTask(page.request, account.token, {
+    title: 'Pack',
+    parentId: move,
+  });
+  await page.reload();
+  await open('Pack');
+  await expect(drawer).toContainText('Subtask of Move');
+  await expect(drawer.getByRole('button', { name: 'Repeat…' })).toHaveCount(0);
+  await expect(
+    drawer.getByRole('button', { name: 'Edit repeat…' }),
+  ).toHaveCount(0);
+});

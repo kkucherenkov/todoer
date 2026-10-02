@@ -103,6 +103,7 @@ async function returnToSeries() {
 }
 
 const confirmingDelete = ref(false);
+const editingRule = ref(false);
 
 /** The task and its live subtasks go in one batch; a refusal (a subtask
  *  another device added) stays here with its reason. */
@@ -341,6 +342,17 @@ const dates = [
               @click="clearDate(key)"
             />
           </div>
+          <UButton
+            v-if="key === 'scheduledOn' && !task.parentId"
+            variant="outline"
+            color="neutral"
+            size="sm"
+            icon="i-lucide-repeat"
+            class="mt-2"
+            @click="editingRule = true"
+          >
+            {{ recurring ? $t('drawer.editRepeat') : $t('drawer.repeat') }}
+          </UButton>
         </UFormField>
         <UFormField v-if="statuses.length > 0" :label="$t('drawer.status')">
           <USelectMenu
@@ -367,6 +379,12 @@ const dates = [
       </form>
     </template>
   </USlideover>
+  <RecurrenceDialog
+    v-if="task"
+    :open="editingRule"
+    :task="task"
+    @close="editingRule = false"
+  />
   <DeleteTaskDialog
     :open="confirmingDelete"
     :title="String(task?.title ?? '')"

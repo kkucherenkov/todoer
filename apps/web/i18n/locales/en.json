@@ -86,7 +86,9 @@
     "clear": "Clear {field}",
     "status": "Status",
     "rule": "Repeats: {rule}",
-    "ended": "This series has ended; the task is read-only.",
+    "ended": "This series has ended; only its rule can be changed.",
+    "repeat": "Repeat…",
+    "editRepeat": "Edit repeat…",
     "invalidDate": "Use a date, YYYY-MM-DD.",
     "gone": "The task was deleted",
     "notFound": "This task no longer exists.",
@@ -103,6 +105,30 @@
     "doneLabel": "Done: {title}",
     "addSubtask": "Add subtask",
     "subtaskOf": "Subtask of {title}"
+  },
+  "recurrence": {
+    "title": "Repeat",
+    "description": "Choose how the task repeats, or write the rule.",
+    "repeat": "Repeat",
+    "none": "Does not repeat",
+    "DAILY": "Daily",
+    "WEEKLY": "Weekly",
+    "MONTHLY": "Monthly",
+    "YEARLY": "Yearly",
+    "custom": "Custom (RRULE)",
+    "every": "Every",
+    "unit": {
+      "DAILY": "day(s)",
+      "WEEKLY": "week(s)",
+      "MONTHLY": "month(s)",
+      "YEARLY": "year(s)"
+    },
+    "on": "On",
+    "starts": "Starts",
+    "rrule": "RRULE",
+    "pickDay": "Pick at least one day",
+    "cancel": "Cancel",
+    "save": "Save"
   },
   "deleteTask": {
     "title": "Delete task",
