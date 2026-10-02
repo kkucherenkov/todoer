@@ -255,6 +255,45 @@ Settled in the same interview; each becomes its own small task.
   always (any client could spoof its IP past the limits); keeping only the
   README warning.
 
+## Decisions for #414 (task editing)
+
+Settled by the maintainer on 2026-10-02, for plan W5
+(`docs/plans/2026-10-02-plan-w5-web-task-editing.md`).
+
+- **Recurrence editing.** A preset form (Daily, Weekly with weekdays,
+  Monthly, Yearly, an interval, a start date that is `dtstart`) plus a raw
+  RRULE field for the rest of the supported subset, checked live, as the
+  filter tree pairs with raw JSON. Marks on past occurrences stay as history;
+  future occurrences follow the new rule. A task can be made recurring, and a
+  recurring task one-off by clearing `rrule`. A rule write carries
+  `baseVersion` (ADR 0004) and is refused with a reason while the row has no
+  `version`. The form previews the next dates with the shared expander. A
+  subtask carries no rule (ADR 0009).
+  - *Rejected: presets only.* The subset has rules no preset writes ("last
+    working day of the month"), and a task carrying one could not be edited.
+  - *Rejected: raw RRULE only.* Correct, and unusable for most people.
+  - *Cost:* stranded occurrences become routine (plan C design, "Risks"),
+    and a rule edit fails offline for a task that has not synced yet.
+- **Subtasks.** Shown in the parent's drawer, where they are added, marked
+  and opened. In list, kanban and calendar a subtask is an ordinary row with
+  a link to its parent. Two levels only. A subtask of a recurring parent is
+  marked on the parent's current occurrence (ADR 0009).
+  - *Rejected: nesting subtasks under their parent in every layout.* A
+    kanban column or a calendar day has no room for a tree, and a filter
+    selects a subtask on its own facts, not its parent's.
+  - *Cost:* a subtask appears in a view apart from its parent; the link is
+    the only connection there.
+- **Delete.** A confirmation dialog, "Delete task and N subtasks?", then one
+  batch that deletes the live subtasks first and the parent last (#391). No
+  undo. Every `delete` carries the row's `baseVersion`, like the other
+  deletes.
+  - *Rejected: undo.* A tombstone cannot be resurrected (ADR 0013), so undo
+    would mean recreating rows under new ids, losing their marks and links.
+  - *Rejected: refusing to delete a task with subtasks.* It makes the person
+    delete each subtask by hand for what #391 already allows in one batch.
+  - *Cost:* a subtask added on another device and not yet pulled gets the
+    parent's delete refused by the server; the badge shows it.
+
 ## Verified facts
 
 - The domain design names the three clients: web, CLI, Flutter
