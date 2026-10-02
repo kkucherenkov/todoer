@@ -502,12 +502,15 @@ function pickOccurrence(
  *  create the new row's id. */
 export type Minted = { opId: string; id?: string };
 
-/** `add`: quick-add text plus already-validated recurrence fields. */
+/** `add`: quick-add text plus already-validated recurrence fields; with
+ *  `parentId`, a subtask of that task (no rule; the parent's project unless
+ *  the text names one). */
 export async function add(
   core: Core,
   text: string,
   recurrence: Record<string, string>,
   minted?: Minted,
+  parentId?: string,
 ): Promise<{
   synced: boolean;
   title: string;
@@ -525,6 +528,16 @@ export async function add(
       task,
     };
   }
+  let parent: Row | undefined;
+  if (parentId !== undefined) {
+    if (Object.keys(recurrence).length > 0) {
+      throw new UsageError('a subtask repeats with its parent');
+    }
+    parent = liveTask(tasks(store), parentId);
+    if (typeof parent.parentId === 'string') {
+      throw new UsageError('a subtask cannot have subtasks');
+    }
+  }
   // Refuses an empty title — see planAdd.
   const { title, priority, project, tags } = planAdd(text);
   const ts = core.now().toISOString();
@@ -534,6 +547,9 @@ export async function add(
     core.newId,
     ts,
   );
+  const projectId =
+    labels.projectId ??
+    (typeof parent?.projectId === 'string' ? parent.projectId : null);
   const op: OpCreate = {
     opId: minted?.opId ?? core.newId(),
     kind: 'create',
@@ -543,7 +559,8 @@ export async function add(
       title,
       priority,
       rank: 'a0',
-      ...(labels.projectId === null ? {} : { projectId: labels.projectId }),
+      ...(parentId === undefined ? {} : { parentId }),
+      ...(projectId === null || projectId === undefined ? {} : { projectId }),
       ...recurrence,
     },
     ts,
@@ -975,11 +992,28 @@ export const ALL_OPEN: ViewSpec = {
 
 /** A listed task with what a screen shows: its column (`displayStatus`) and
  *  whether its occurrence is closed (only ever true on a board). */
-export type Item = Due & { column: string | null; closed: boolean };
+export type Item = Due & {
+  column: string | null;
+  closed: boolean;
+  /** The parent's title for a subtask; null for a top-level task. */
+  parentTitle: string | null;
+};
 
-function itemOf({ row, facts, closed }: Listed): Item {
-  return { ...row, column: facts.statusId, closed };
+/** `titles`: the live tasks' titles by id. */
+function itemOf(titles: Map<string, string>) {
+  return ({ row, facts, closed }: Listed): Item => ({
+    ...row,
+    column: facts.statusId,
+    closed,
+    parentTitle:
+      typeof row.parentId === 'string'
+        ? (titles.get(row.parentId) ?? null)
+        : null,
+  });
 }
+
+const titlesOf = (store: Store) =>
+  new Map(liveTasks(tasks(store)).map((t) => [String(t.id), String(t.title)]));
 
 function selected(
   store: Store,
@@ -996,7 +1030,7 @@ function selected(
     due(store, today, closedSince).filter(({ facts }) =>
       matches(view.filter as Filter, facts, today),
     ),
-  ).map(itemOf);
+  ).map(itemOf(titlesOf(store)));
 }
 
 /** The open tasks a list view shows, filtered and sorted (the CLI's facts). */
@@ -1111,6 +1145,18 @@ export function calendarTasks(
   return { items: items.filter((i) => placed.has(String(i.id))), placements };
 }
 
+/** One row of a drawer's checklist: closed at the parent's current
+ *  occurrence (ADR 0009), or by its own mark under a one-off parent. */
+export type Subtask = { id: string; title: string; closed: boolean };
+
+export type TaskDetails = Item & {
+  notes: string | null;
+  rrule: string | null;
+  dtstart: string | null;
+  /** Live subtasks by rank, then id. */
+  subtasks: Subtask[];
+};
+
 /** One task for the drawer: the row, labels, current occurrence, column,
  *  closed state; null when it is deleted or unknown. A recurring task whose
  *  series ended is live: `closed`, with no occurrence. */
@@ -1118,14 +1164,25 @@ export function taskDetails(
   store: Store,
   today: string,
   id: string,
-): (Item & { notes: string | null; rrule: string | null }) | null {
+): TaskDetails | null {
   const found = due(store, today, null).find(({ row }) => row.id === id);
   if (found === undefined) return null;
-  const { notes, rrule } = found.row;
+  const { notes, rrule, dtstart, occurrence } = found.row;
+  const marks = occurrences(store);
+  const subtasks = liveTasks(tasks(store))
+    .filter((t) => t.parentId === id)
+    .sort((a, b) => compareStrings(a.rank, b.rank) || compareIds(a, b))
+    .map((t) => ({
+      id: String(t.id),
+      title: String(t.title),
+      closed: isClosed(stateOf(marks, String(t.id))(occurrence)),
+    }));
   return {
-    ...itemOf(found),
+    ...itemOf(titlesOf(store))(found),
     notes: typeof notes === 'string' ? notes : null,
     rrule: typeof rrule === 'string' ? rrule : null,
+    dtstart: typeof dtstart === 'string' ? dtstart : null,
+    subtasks,
   };
 }
 

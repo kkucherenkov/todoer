@@ -1718,3 +1718,158 @@ describe('deleteTask', () => {
     );
   });
 });
+
+describe('subtasks', () => {
+  /** Offline, so the queue stays inspectable. */
+  function homeStore() {
+    const store = openStore(':memory:');
+    const srv = fakeServer();
+    srv.state.offline = true;
+    put(store, 'project', { id: 'home-id', name: 'home' });
+    put(store, 'task', task('p', { projectId: 'home-id', version: 1 }));
+    return { store, core: coreOf(store, srv.send) };
+  }
+  const creates = (store: Store) =>
+    store.pending().flatMap((op) => (op.kind === 'create' ? [op] : []));
+
+  it('adds a subtask in the parent project with no rule', async () => {
+    const { store, core } = homeStore();
+    await add(core, 'Dishes', {}, mint('a1', 's1'), 'p');
+    const [create] = creates(store);
+    expect(create).toMatchObject({
+      table: 'task',
+      id: 's1',
+      fields: { title: 'Dishes', parentId: 'p', projectId: 'home-id' },
+    });
+    expect(create?.fields).not.toHaveProperty('rrule');
+    expect(create?.fields).not.toHaveProperty('dtstart');
+  });
+
+  it('takes the project the text names over the parent’s', async () => {
+    const { store, core } = homeStore();
+    await add(core, 'Floor #garage', {}, mint('a1', 's1'), 'p');
+    const all = creates(store);
+    const project = all.find((op) => op.table === 'project');
+    expect(project?.fields).toMatchObject({ name: 'garage' });
+    expect(all.find((op) => op.table === 'task')?.fields).toMatchObject({
+      parentId: 'p',
+      projectId: project?.id,
+    });
+  });
+
+  it('refuses a bad parent or a rule, queuing nothing', async () => {
+    const { store, core } = homeStore();
+    put(store, 'task', task('c', { parentId: 'p' }));
+    const rule = { rrule: 'FREQ=DAILY', dtstart: TODAY };
+    const cases: [string, Record<string, string>, RegExp][] = [
+      ['c', {}, /a subtask cannot have subtasks/],
+      ['nope', {}, /no task nope/],
+      ['p', rule, /a subtask repeats with its parent/],
+    ];
+    for (const [parent, recurrence, pattern] of cases) {
+      await expect(
+        add(core, 'X', recurrence, mint('a1', 's1'), parent),
+      ).rejects.toThrow(pattern);
+      expect(store.pending()).toEqual([]);
+    }
+  });
+
+  it('lists live subtasks by rank then id, closed by their own one-off mark', () => {
+    const store = boardStore();
+    put(store, 'task', task('p', { dtstart: null }));
+    put(store, 'task', task('b', { parentId: 'p', rank: 'a1' }));
+    put(store, 'task', task('z', { parentId: 'p', rank: 'a0' }));
+    put(store, 'task', task('a', { parentId: 'p', rank: 'a1' }));
+    put(
+      store,
+      'task',
+      task('gone', { parentId: 'p', deletedAt: '2026-10-01' }),
+    );
+    closeAt(store, 'z', '2026-10-01');
+    const details = taskDetails(store, TODAY, 'p');
+    expect(details?.subtasks).toEqual([
+      { id: 'z', title: 'z', closed: true },
+      { id: 'a', title: 'a', closed: false },
+      { id: 'b', title: 'b', closed: false },
+    ]);
+    expect(details?.parentTitle).toBeNull();
+    expect(details?.dtstart).toBeNull();
+    const child = taskDetails(store, TODAY, 'a');
+    expect(child).toMatchObject({ parentTitle: 'p', subtasks: [] });
+    const items = viewTasks(store, TODAY, ALL_OPEN);
+    expect(items.map((i) => [i.id, i.parentTitle])).toEqual([
+      ['p', null],
+      ['a', 'p'],
+      ['b', 'p'],
+    ]);
+  });
+
+  describe('of a weekly parent', () => {
+    const weekly = () => {
+      const store = boardStore();
+      put(
+        store,
+        'task',
+        task('w', {
+          rrule: 'FREQ=WEEKLY;BYDAY=MO',
+          dtstart: '2026-09-07',
+          version: 1,
+        }),
+      );
+      put(store, 'task', task('cafe', { parentId: 'w', version: 1 }));
+      return store;
+    };
+    const doneAt = (store: Store, id: string, occurrence: string) =>
+      put(store, 'task_occurrence', {
+        id: `${id}-${occurrence}`,
+        taskId: id,
+        occurrence,
+        state: 'done',
+      });
+    const closedOf = (store: Store) =>
+      taskDetails(store, TODAY, 'w')?.subtasks.find((s) => s.id === 'cafe')
+        ?.closed;
+
+    it('reads a subtask at the parent’s current occurrence', () => {
+      const store = weekly();
+      expect(taskDetails(store, TODAY, 'w')?.dtstart).toBe('2026-09-07');
+      expect(taskDetails(store, TODAY, 'w')?.occurrence).toBe('2026-09-28');
+      doneAt(store, 'cafe', '2026-09-28');
+      expect(closedOf(store)).toBe(true);
+      doneAt(store, 'w', '2026-09-28');
+      expect(taskDetails(store, TODAY, 'w')?.occurrence).toBe('2026-10-05');
+      expect(closedOf(store)).toBe(false);
+    });
+
+    it('closes by the parent’s axis while the list shows its own', () => {
+      const store = weekly();
+      doneAt(store, 'w', '2026-09-28');
+      doneAt(store, 'cafe', '2026-10-05');
+      expect(closedOf(store)).toBe(true);
+      const listed = viewTasks(store, TODAY, ALL_OPEN).find(
+        (i) => i.id === 'cafe',
+      );
+      expect(listed?.occurrence).toBe('2026-09-28');
+    });
+
+    it('marks a subtask at an occurrence of the parent', async () => {
+      const store = weekly();
+      const srv = fakeServer();
+      srv.state.offline = true;
+      doneAt(store, 'w', '2026-09-28');
+      await mark(
+        coreOf(store, srv.send),
+        'done',
+        'cafe',
+        '2026-10-05',
+        mint('m1'),
+      );
+      const op = store.pending().find((o) => o.kind === 'create');
+      expect(op).toMatchObject({
+        id: taskOccurrenceId('cafe', '2026-10-05'),
+        fields: { taskId: 'cafe', occurrence: '2026-10-05' },
+      });
+      expect(closedOf(store)).toBe(true);
+    });
+  });
+});
