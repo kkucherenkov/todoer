@@ -418,14 +418,14 @@ describe('replay guard', () => {
     srv.state.offline = true;
     const real = store.transaction.bind(store);
     let crash = true;
-    store.transaction = ((fn) => {
+    store.transaction = (fn) => {
       const result = real(fn);
       if (crash) {
         crash = false;
         throw new Error('crash after commit');
       }
       return result;
-    }) as typeof store.transaction;
+    };
     await expect(submit(store, srv.send, [op], 'x', 'k1')).rejects.toThrow(
       'crash after commit',
     );
