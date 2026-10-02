@@ -123,6 +123,7 @@ recurrence).
 | `Dockerfile`, `docker/compose.yml`        | the production image (backend + SPA) and compose: Postgres 18 on **127.0.0.1:5433**; `--profile app` adds the image on port **3000** |
 | `scripts/`                                | the end-to-end proofs (`walking-skeleton.sh`, `outbox-e2e.sh`) run in CI, and their owner-aware helper `lib/fresh-user.sh` |
 | `docs/adr/`, `docs/specs/`, `docs/plans/` | decisions, design, plans                                                                                                   |
+| `docs/design/`                            | the web client's design system (`DESIGN.md`, `tokens.css`) and the Open Design kit for its redesign                       |
 | `specs/tasks/`                            | the task stack — one file per task, `active/` then `done/`                                                                 |
 | `.claude/CLAUDE.md`                       | the working agreement                                                                                                      |
 
