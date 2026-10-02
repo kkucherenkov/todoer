@@ -37,12 +37,15 @@ test('editing: delete a task and its subtasks', async ({
   );
   await dialog(page).last().getByRole('button', { name: 'Cancel' }).click();
   await expect(row(page, 'Trip')).toBeVisible();
+  await expect(page.getByTestId('delete-task')).toBeFocused();
 
   // Delete, then confirm: all three go.
   await page.getByTestId('delete-task').click();
   await dialog(page).last().getByRole('button', { name: 'Delete' }).click();
   await expect(page.getByText('Task deleted', { exact: true })).toBeVisible();
   await expect(page).not.toHaveURL(/task=/);
+  // Settled: the sync is done and the drawer's own toast would have shown.
+  await expect(page.getByTestId('pending')).toHaveCount(0);
   await expect(
     page.getByText('The task was deleted', { exact: true }),
   ).toHaveCount(0);
@@ -76,6 +79,16 @@ test('editing: delete a task and its subtasks', async ({
   await expect(del).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(dialog(page).last()).toContainText('Delete “Lone”?');
+  // Cancel has the focus: Enter alone deletes nothing and returns to Delete.
+  await expect(
+    dialog(page).last().getByRole('button', { name: 'Cancel' }),
+  ).toBeFocused();
+  await page.keyboard.press('Enter');
+  await expect(del).toBeFocused();
+  await expect(row(page, 'Lone')).toBeVisible();
+  await page.keyboard.press('Enter');
+  await page.keyboard.press('Tab');
+  await expect(page.getByTestId('confirm-delete')).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(row(page, 'Lone')).toHaveCount(0);
   await expect(count(page)).toHaveText(tasks(0));
@@ -394,6 +407,9 @@ test('editing: recurrence', async ({ page, account, cli }) => {
   await drawer.getByRole('button', { name: 'Edit repeat…' }).click();
   await expect(repeat).toHaveText('Daily');
   await form.getByRole('button', { name: 'Cancel' }).click();
+  await expect(
+    drawer.getByRole('button', { name: 'Edit repeat…' }),
+  ).toBeFocused();
   await closeDrawer();
   await open('Walk');
   await drawer.getByRole('button', { name: 'Edit repeat…' }).click();

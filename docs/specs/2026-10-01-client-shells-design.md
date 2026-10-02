@@ -291,6 +291,9 @@ Settled by the maintainer on 2026-10-02, for plan W5
   batch that deletes the live subtasks first and the parent last (#391). No
   undo. Every `delete` carries the row's `baseVersion`, like the other
   deletes.
+  The dialog focuses Cancel, so a stray Enter deletes nothing (WAI-ARIA
+  alertdialog). Closing it, like the rule dialog, returns focus to the button
+  that opened it (Reka's focus scope does this; the e2e pins it).
   - *Rejected: undo.* A tombstone cannot be resurrected (ADR 0013), so undo
     would mean recreating rows under new ids, losing their marks and links.
   - *Rejected: refusing to delete a task with subtasks.* It makes the person
