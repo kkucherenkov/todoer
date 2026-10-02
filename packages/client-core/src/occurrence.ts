@@ -1,4 +1,4 @@
-import { addDays, parseRrule, type Rrule } from '@todoer/specs';
+import { addDays, isIsoDate, parseRrule, type Rrule } from '@todoer/specs';
 import { expand } from './expand.js';
 import type { Row } from './store.js';
 
@@ -100,4 +100,46 @@ export function latestClosed(
     .sort((a, b) => (a ?? '').localeCompare(b ?? ''));
   const last = closed.at(-1);
   return last === undefined ? null : { occurrence: last };
+}
+
+/**
+ * Why `rrule` from `dtstart` cannot be a task's rule, or null: the parser's
+ * message, a start that is not a date ("the start must be a date,
+ * YYYY-MM-DD"), or a rule that produces no date within HORIZON_DAYS of its
+ * start ("this rule produces no date from <dtstart>"). The one check the
+ * form and setRecurrence share (departure 4).
+ */
+export function ruleProblem(rrule: string, dtstart: string): string | null {
+  const parsed = parseRrule(rrule);
+  if (!parsed.ok) return parsed.error;
+  if (!isIsoDate(dtstart)) return 'the start must be a date, YYYY-MM-DD';
+  const first = expand(
+    parsed.rule,
+    dtstart,
+    dtstart,
+    addDays(dtstart, HORIZON_DAYS),
+    1,
+  );
+  return first.length === 0
+    ? `this rule produces no date from ${dtstart}`
+    : null;
+}
+
+/** The first `n` dates of a rule on or after `from` (and on or after
+ *  `dtstart`), within HORIZON_DAYS of `from`; [] when ruleProblem refuses it. */
+export function upcoming(
+  rrule: string,
+  dtstart: string,
+  from: string,
+  n = 5,
+): string[] {
+  const parsed = parseRrule(rrule);
+  if (ruleProblem(rrule, dtstart) !== null || !parsed.ok) return [];
+  return expand(
+    parsed.rule,
+    dtstart,
+    from < dtstart ? dtstart : from,
+    addDays(from, HORIZON_DAYS),
+    n,
+  );
 }

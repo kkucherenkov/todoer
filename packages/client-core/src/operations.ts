@@ -21,6 +21,7 @@ import {
   latestClosed,
   localDate,
   recurrenceOf,
+  ruleProblem,
   type Recurrence,
   type StateOf,
 } from './occurrence.js';
@@ -1776,4 +1777,77 @@ export async function deleteTask(
     deleteOp('task', row, core.newId),
   );
   return { synced: await submitOwn(core, ops, 'delete', minted.opId) };
+}
+
+export type Rule = { rrule: string; dtstart: string };
+
+/**
+ * Sets, changes or clears (null) a task's rule (#414 decision 1), one batch.
+ * Op i carries baseVersion `version + i` (departure 2): the server bumps the
+ * row's version per op, so each op cites the version its predecessor leaves.
+ * A batch the server applies only in part (a refusal mid-way) leaves the
+ * earlier fields written; the next pull shows what stuck.
+ * Recurring → one-off: rrule null, dtstart null, scheduledOn = the current
+ * occurrence. One-off → recurring: dtstart (when it differs), rrule,
+ * scheduledOn null. Recurring → recurring: rrule, then dtstart, each when it
+ * differs. Fields equal to the stored value are left out; an unchanged rule
+ * queues nothing. Refuses a subtask, a rule ruleProblem refuses, and (when
+ * anything would be written) a task that is not settled. Replay-safe.
+ */
+export async function setRecurrence(
+  core: Core,
+  minted: Minted,
+  taskId: string,
+  rule: Rule | null,
+): Promise<{ synced: boolean }> {
+  const done = await replayed(core, minted.opId);
+  if (done !== undefined) return done;
+  const { store } = core;
+  const all = tasks(store);
+  const task = liveTask(all, taskId);
+  if (task.parentId !== null && task.parentId !== undefined) {
+    throw new UsageError('a subtask repeats with its parent');
+  }
+  if (rule !== null) {
+    const problem = ruleProblem(rule.rrule, rule.dtstart);
+    if (problem !== null) throw new UsageError(problem);
+  }
+  const current = recurrenceOf(task, undefined);
+  const wanted: [string, unknown][] =
+    rule === null
+      ? current === null
+        ? []
+        : [
+            ['rrule', null],
+            ['dtstart', null],
+            [
+              'scheduledOn',
+              currentOccurrence(
+                current,
+                stateOf(occurrences(store), taskId),
+                localDate(core.now()),
+              )?.occurrence ?? null,
+            ],
+          ]
+      : current === null
+        ? [
+            ['dtstart', rule.dtstart],
+            ['rrule', rule.rrule],
+            ['scheduledOn', null],
+          ]
+        : [
+            ['rrule', rule.rrule],
+            ['dtstart', rule.dtstart],
+          ];
+  const fields = wanted.filter(([k, v]) => !sameJson(task[k] ?? null, v));
+  if (fields.length === 0) {
+    return { synced: await submitOwn(core, [], 'rule', minted.opId) };
+  }
+  const { version } = settledTask(store, all, taskId, 'task');
+  const ts = core.now().toISOString();
+  const ops = fields.map(([k, v], i) => ({
+    ...setTask(task, k, v, core.newId, ts),
+    baseVersion: version + i,
+  }));
+  return { synced: await submitOwn(core, ops, 'rule', minted.opId) };
 }

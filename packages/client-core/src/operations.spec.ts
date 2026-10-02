@@ -23,6 +23,7 @@ import {
   saveView,
   seedStatuses,
   setCompleting,
+  setRecurrence,
   submit,
   taskDetails,
   undoMove,
@@ -1871,5 +1872,223 @@ describe('subtasks', () => {
       });
       expect(closedOf(store)).toBe(true);
     });
+  });
+});
+
+describe('setRecurrence', () => {
+  const WEEKLY = { rrule: 'FREQ=WEEKLY;BYDAY=MO', dtstart: '2026-10-05' };
+
+  /** Offline, so the queue stays inspectable; every row has version 5 unless
+   *  it says otherwise. */
+  function world(rows: Record<string, unknown>[]) {
+    const store = openStore(':memory:');
+    const srv = fakeServer();
+    srv.state.offline = true;
+    for (const row of rows) put(store, 'task', row);
+    return { store, srv, core: coreOf(store, srv.send) };
+  }
+  const queued = (store: Store) =>
+    store
+      .pending()
+      .map((op) => [
+        op.kind,
+        op.kind === 'set' ? op.field : null,
+        op.kind === 'set' ? op.value : null,
+        'baseVersion' in op ? op.baseVersion : null,
+      ]);
+  const recurring = (extra: Record<string, unknown> = {}) =>
+    task('r', {
+      rrule: 'FREQ=DAILY',
+      dtstart: '2026-09-01',
+      version: 2,
+      ...extra,
+    });
+
+  it('sets a rule on a one-off with a leftover dtstart: rrule alone', async () => {
+    const { store, core } = world([
+      task('o2', { version: 5, dtstart: '2026-10-05' }),
+    ]);
+    await setRecurrence(core, mint('s1'), 'o2', WEEKLY);
+    expect(queued(store)).toEqual([['set', 'rrule', WEEKLY.rrule, 5]]);
+  });
+
+  it('turns a one-off into a series, each op at its own version', async () => {
+    const { store, core } = world([
+      task('o', { version: 5, scheduledOn: '2026-10-03' }),
+    ]);
+    expect((await setRecurrence(core, mint('s1'), 'o', WEEKLY)).synced).toBe(
+      false,
+    );
+    expect(queued(store)).toEqual([
+      ['set', 'dtstart', WEEKLY.dtstart, 5],
+      ['set', 'rrule', WEEKLY.rrule, 6],
+      ['set', 'scheduledOn', null, 7],
+    ]);
+    expect(store.pending()[0]?.opId).toBe('s1');
+    expect(taskDetails(store, TODAY, 'o')).toMatchObject({
+      rrule: WEEKLY.rrule,
+      dtstart: WEEKLY.dtstart,
+      occurrence: '2026-10-05',
+    });
+  });
+
+  it('changes the rule of a series and leaves its marks alone', async () => {
+    const { store, core } = world([recurring()]);
+    put(store, 'task_occurrence', {
+      id: 'r-1',
+      taskId: 'r',
+      occurrence: '2026-09-30',
+      state: 'done',
+    });
+    await setRecurrence(core, mint('s1'), 'r', {
+      rrule: 'FREQ=WEEKLY;BYDAY=MO',
+      dtstart: '2026-09-01',
+    });
+    expect(queued(store)).toEqual([
+      ['set', 'rrule', 'FREQ=WEEKLY;BYDAY=MO', 2],
+    ]);
+    expect(taskDetails(store, TODAY, 'r')?.occurrence).toBe('2026-09-28');
+    expect(
+      store.rows('task_occurrence').find((o) => o.id === 'r-1'),
+    ).toMatchObject({ state: 'done' });
+  });
+
+  it('sends rrule before dtstart when both change', async () => {
+    const { store, core } = world([recurring()]);
+    await setRecurrence(core, mint('s1'), 'r', {
+      rrule: 'FREQ=WEEKLY;BYDAY=MO',
+      dtstart: '2026-09-07',
+    });
+    expect(queued(store)).toEqual([
+      ['set', 'rrule', 'FREQ=WEEKLY;BYDAY=MO', 2],
+      ['set', 'dtstart', '2026-09-07', 3],
+    ]);
+  });
+
+  it('clears a series into a one-off on its current occurrence', async () => {
+    const { store, core } = world([
+      recurring({ rrule: 'FREQ=WEEKLY;BYDAY=MO', dtstart: '2026-09-07' }),
+    ]);
+    await setRecurrence(core, mint('s1'), 'r', null);
+    expect(queued(store)).toEqual([
+      ['set', 'rrule', null, 2],
+      ['set', 'dtstart', null, 3],
+      ['set', 'scheduledOn', '2026-09-28', 4],
+    ]);
+    expect(taskDetails(store, TODAY, 'r')).toMatchObject({
+      rrule: null,
+      dtstart: null,
+      scheduledOn: '2026-09-28',
+    });
+    await editTask(core, mint('e1'), 'r', { scheduledOn: '2026-10-09' });
+  });
+
+  it('clears an ended series without a scheduledOn', async () => {
+    const { store, core } = world([
+      recurring({ rrule: 'FREQ=DAILY;COUNT=1', dtstart: '2026-09-01' }),
+    ]);
+    put(store, 'task_occurrence', {
+      id: 'r-1',
+      taskId: 'r',
+      occurrence: '2026-09-01',
+      state: 'done',
+    });
+    await setRecurrence(core, mint('s1'), 'r', null);
+    expect(queued(store)).toEqual([
+      ['set', 'rrule', null, 2],
+      ['set', 'dtstart', null, 3],
+    ]);
+  });
+
+  it('queues nothing for an unchanged rule or for null on a one-off', async () => {
+    const { store, core } = world([
+      recurring({ version: null }),
+      task('o', { version: null }),
+    ]);
+    await setRecurrence(core, mint('s1'), 'r', {
+      rrule: 'FREQ=DAILY',
+      dtstart: '2026-09-01',
+    });
+    await setRecurrence(core, mint('s2'), 'o', null);
+    expect(store.pending()).toEqual([]);
+  });
+
+  it('refuses what it cannot write, queuing nothing', async () => {
+    const cases: [
+      string,
+      (store: Store, core: Core) => Promise<unknown> | void,
+      { rrule: string; dtstart: string },
+      RegExp,
+    ][] = [
+      ['s', () => undefined, WEEKLY, /a subtask repeats with its parent/],
+      [
+        'o',
+        (store) => put(store, 'task', task('o', { version: null })),
+        WEEKLY,
+        /task o is not synced yet/,
+      ],
+      [
+        'o',
+        (_, core) => editTask(core, mint('e1'), 'o', { title: 'x' }),
+        WEEKLY,
+        /task o is not synced yet/,
+      ],
+      ['o', () => undefined, { ...WEEKLY, rrule: 'FREQ=HOURLY' }, /FREQ/],
+      ['o', () => undefined, { ...WEEKLY, dtstart: '2026-02-30' }, /a date/],
+      [
+        'o',
+        () => undefined,
+        { rrule: 'FREQ=YEARLY;BYMONTH=2;BYMONTHDAY=30', dtstart: '2026-10-05' },
+        /produces no date/,
+      ],
+    ];
+    for (const [id, arrange, rule, pattern] of cases) {
+      const { store, core } = world([
+        task('o', { version: 5 }),
+        task('s', { parentId: 'o', version: 1 }),
+      ]);
+      await arrange(store, core);
+      const before = store.pending().length;
+      await expect(setRecurrence(core, mint('s1'), id, rule)).rejects.toThrow(
+        pattern,
+      );
+      expect(store.pending()).toHaveLength(before);
+    }
+  });
+
+  it('syncs online and replays without a second batch', async () => {
+    const { store, srv, core } = world([task('o', { version: 5 })]);
+    srv.state.offline = false;
+    expect((await setRecurrence(core, mint('s1'), 'o', WEEKLY)).synced).toBe(
+      true,
+    );
+    const sent = srv.sent.length;
+    expect((await setRecurrence(core, mint('s1'), 'o', WEEKLY)).synced).toBe(
+      true,
+    );
+    expect(srv.sent).toHaveLength(sent);
+    expect(store.pending()).toEqual([]);
+  });
+
+  it('rejects when the server answers conflict', async () => {
+    const { core } = world([task('o', { version: 5 })]);
+    const send: Transport = (request) =>
+      Promise.resolve(
+        new Response(
+          JSON.stringify({
+            cursor: 0,
+            changes: [],
+            results: request.ops.map((op) => ({
+              opId: op.opId,
+              status: 'conflict',
+              currentVersion: 9,
+            })),
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+    await expect(
+      setRecurrence({ ...core, send }, mint('s1'), 'o', WEEKLY),
+    ).rejects.toThrow();
   });
 });

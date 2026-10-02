@@ -12,4 +12,11 @@ export * from './transport.js';
 export * from './auth.js';
 export * from './operations.js';
 export * from './rank.js';
-export { filterProblem, filterSize, type Filter } from '@todoer/specs';
+export {
+  WEEKDAYS,
+  filterProblem,
+  filterSize,
+  parseRrule,
+  type Filter,
+  type Weekday,
+} from '@todoer/specs';
