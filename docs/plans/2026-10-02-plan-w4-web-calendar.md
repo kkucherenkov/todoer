@@ -153,9 +153,10 @@ the client-shells design ("Departures in plan W4").
    `rank`.** Q13 lists the fields a copy carries, and `dueOn` is not among
    them. A copy of a subtask is a top-level task (open question 2): under a
    recurring parent a one-off copy would recur on the parent's axis (ADR
-   0009). The copy is created **before** the skip in the batch, so if the
-   server refuses the skip (the original was deleted elsewhere) the copy lives
-   on, as the design says it does, and no occurrence is lost.
+   0009). The copy is created **before** the skip in the batch, so a
+   batch that stops halfway leaves a copy and no lost occurrence. If the
+   original was deleted elsewhere, the server still applies the skip and the
+   copy lives on, as the design says it does; Undo is what refuses later.
 5. **Undo is refused in four cases:** the task is not a copy; the copy is not
    synced or has writes still queued, since a delete needs its exact
    `baseVersion` (W3's "not synced yet", open question 3); the copy has live

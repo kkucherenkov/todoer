@@ -129,7 +129,8 @@ answers, and can be done from the keyboard and on a touch screen.
 - A worker crash after `moveOccurrence` committed → the resend queues
   nothing and creates no second copy (FR-003, FR-006, T003, T004).
 - The original task deleted elsewhere before a queued move syncs → the skip
-  is refused and the copy lives on (FR-003, T003).
+  still applies, the copy lives on, and Undo is refused ("the original task
+  of <copy> is gone") (FR-003, T003).
 - A subtask's occurrence moved → a top-level copy, the skip on the parent's
   date (FR-003, T003).
 - Undo of a copy made offline → "not synced yet" (FR-004, T003, T007).
@@ -182,7 +183,7 @@ answers, and can be done from the keyboard and on a touch screen.
 - **Checkpoint:** the calendar is proven in Chromium and Firefox under the CSP.
 - [x] T008 [P] [FR-010] Filter tree edit helpers — plan Task 8 — `apps/web/app/utils/filterTree.ts`
 - [x] T009 [FR-011, FR-012] Filter-tree editor in the view form — plan Task 9 — `apps/web/app/components/FilterTree.vue`
-- [ ] T010 [FR-013] Docs, departures, full proof — plan Task 10 — `README.md`, `docs/specs/`
+- [x] T010 [FR-013] Docs, departures, full proof — plan Task 10 — `README.md`, `docs/specs/`
 
 ### Open questions
 

@@ -306,6 +306,36 @@ them at its top
    another gives each live view that names the loser one `set filter` with the
    winner's id, so a merge never drops rows from a view.
 
+Plan W4 (the web calendar and the filter tree) departs from this document and
+its own brief in eight places (departure 7, the week start, is recorded in the
+[client shells design](2026-10-01-client-shells-design.md#departures-in-plan-w4);
+the plan lists all nine at its top:
+[plan W4](../plans/2026-10-02-plan-w4-web-calendar.md#where-this-plan-departs-from-the-design-docs-and-the-brief)).
+
+1. **The filter selects tasks, not placements** (Q6). It runs once per task
+   with the facts of its current occurrence, as in a list and a board, so a
+   "Next 7 days" view in month mode shows a selected daily task past the
+   seventh day.
+2. **Which occurrences a calendar shows** (Q11). Open ones from the current
+   occurrence on; `done` ones and closed one-offs for 7 days, the board's
+   window; skipped ones never. Closed placements cannot be moved.
+3. **A recurring task's due placement is its own `dueOn`, once** (Q11), and
+   dragging it sets `dueOn`. Only scheduled placements stand for occurrences.
+4. **The copy has no `dueOn` and no `parentId`, and takes the original's
+   `rank`** (Q13). A copy of a subtask is a top-level one-off task. The copy
+   is the batch's first op and the skip its last. If the original was deleted
+   elsewhere the skip still applies and the copy lives on; Undo is what
+   refuses.
+5. **Undo is refused in four cases** (Q13): not a copy; the copy is unsynced or
+   has queued writes; it has live subtasks; the original is gone. Undo reopens
+   the occurrence only while it is still skipped.
+6. **Undo is reachable from the copy's drawer** ("Return to series"), not only
+   from the toast (Q13).
+8. **The tree is the view form's editor** (Q6); templates fill it and raw JSON
+   stays a toggle.
+9. **`filterSize` joins `@todoer/specs`** (Q6), so the editor's `nodes/256` and
+   `depth/8` come from the same count `filterProblem` refuses on.
+
 Plan W3 (the web screens) adds the departures below; the full list is under
 "Departures in plan W3" in the
 [client shells design](2026-10-01-client-shells-design.md#departures-in-plan-w3).
