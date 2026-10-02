@@ -174,7 +174,7 @@ answers, and can be done from the keyboard and on a touch screen.
 - [x] T002 [FR-002] Calendar placements — plan Task 2 — `packages/client-core/src/operations.ts`
 - [x] T003 [FR-003, FR-004] `moveOccurrence`, `undoMove` — plan Task 3 — `packages/client-core/src/operations.ts`
 - **Checkpoint:** client-core holds every W4 operation with Node tests, and the CLI is unchanged.
-- [ ] T004 [FR-005, FR-006] Span watches, placements, move commands — plan Task 4 — `apps/web/app/db/`
+- [x] T004 [FR-005, FR-006] Span watches, placements, move commands — plan Task 4 — `apps/web/app/db/`
 - **Checkpoint:** every calendar read and write exists behind the protocol.
 - [ ] T005 [P] [FR-007, FR-008] Grid date math, placement writes — plan Task 5 — `apps/web/app/utils/calendar.ts`
 - [ ] T006 [FR-007, FR-012] Calendar layout and navigation — plan Task 6 — `apps/web/app/components/CalendarView.vue`

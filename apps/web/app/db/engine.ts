@@ -3,6 +3,7 @@ import {
   adoptAccount,
   ALL_OPEN,
   boardTasks,
+  calendarTasks,
   catalog,
   ConflictError,
   deleteStatus,
@@ -12,6 +13,7 @@ import {
   liveTasks,
   localDate,
   mark,
+  moveOccurrence,
   moveTask,
   overlay,
   rankWrites,
@@ -23,12 +25,14 @@ import {
   setCompleting,
   taskDetails,
   UsageError,
+  undoMove,
   viewTasks,
   type Catalog,
   type Core,
   type CookieAuthApi,
   type CookieTokenSource,
   type Ranked,
+  type Span,
   type Store,
   type Transport,
   type ViewSpec,
@@ -56,7 +60,8 @@ export type EngineDeps = {
   publish: <T extends Topic>(topic: T, value: Topics[T]) => void;
 };
 
-type Watch = { view: string | null; task: string | null };
+type Watch = { view: string | null; task: string | null; span: Span | null };
+type ViewKey = { key: string | null; span: Span | null };
 
 /** A tick this soon after a sync is dropped (the cadence is 30 s). */
 const TICK_GAP_MS = 25_000;
@@ -143,27 +148,63 @@ export function createEngine({
   /** What a tab gets while no account is signed in: the replica still holds
    *  the last one's rows (signOut keeps it), and none of it is shown. */
   const NONE: Catalog = { views: [], statuses: [], projects: [], tags: [] };
-  const problemView = (key: string, problem: string) =>
+  /** A problem echoes the watched span: the tab keeps only its own. */
+  const problemView = (
+    key: string,
+    problem: string,
+    today: string,
+    span: Span | null,
+  ) =>
     publish('view', {
       key,
       layout: 'list',
       sort: 'manual',
       problem,
+      today,
+      span,
       items: [],
+      placements: [],
     });
 
-  const publishView = (key: string, cat: Catalog, today: string) => {
-    if (!open()) return problemView(key, 'signed-out');
+  const publishView = (
+    key: string,
+    span: Span | null,
+    cat: Catalog,
+    today: string,
+  ) => {
+    if (!open()) return problemView(key, 'signed-out', today, span);
     const spec = viewSpec(key, cat);
-    if (spec === undefined) return problemView(key, 'deleted');
+    if (spec === undefined) return problemView(key, 'deleted', today, span);
     const { layout, sort, problem } = spec;
-    publish('view', {
-      key,
-      layout,
-      sort,
-      problem,
-      items: problem === null ? items(spec, today) : [],
-    });
+    const base = { key, layout, sort, problem, today };
+    if (layout !== 'calendar') {
+      return publish('view', {
+        ...base,
+        span: null,
+        items: problem === null ? items(spec, today) : [],
+        placements: [],
+      });
+    }
+    // No span yet: the tab sends it with its next watch.
+    if (problem !== null || span === null) {
+      return publish('view', { ...base, span, items: [], placements: [] });
+    }
+    try {
+      publish('view', {
+        ...base,
+        span,
+        ...calendarTasks(store, today, spec, span),
+      });
+    } catch (error) {
+      if (!(error instanceof UsageError)) throw error;
+      publish('view', {
+        ...base,
+        problem: 'span',
+        span,
+        items: [],
+        placements: [],
+      });
+    }
   };
   const publishTask = (id: string, today: string) =>
     publish('task', {
@@ -187,16 +228,22 @@ export function createEngine({
   };
   const publishKeys = (
     cat: Catalog,
-    views: Iterable<string | null>,
+    views: Iterable<ViewKey>,
     tasks: Iterable<string | null>,
   ) => {
     const today = localDate(now());
-    for (const key of new Set(views)) {
-      if (key === null) continue;
+    // Two tabs on one calendar view with two spans each get theirs.
+    const unique = new Map<string, ViewKey & { key: string }>();
+    for (const { key, span } of views) {
+      if (key !== null) {
+        unique.set(`${key}:${span?.from}:${span?.to}`, { key, span });
+      }
+    }
+    for (const { key, span } of unique.values()) {
       guard(
         `view:${key}`,
-        () => publishView(key, cat, today),
-        () => problemView(key, 'unavailable'),
+        () => publishView(key, span, cat, today),
+        () => problemView(key, 'unavailable', today, span),
       );
     }
     for (const id of new Set(tasks)) {
@@ -225,7 +272,7 @@ export function createEngine({
         const all = [...watches.values()];
         publishKeys(
           cat,
-          all.map((w) => w.view),
+          all.map((w) => ({ key: w.view, span: w.span })),
           all.map((w) => w.task),
         );
       },
@@ -239,7 +286,11 @@ export function createEngine({
     guard(
       'watch',
       () =>
-        publishKeys(open() ? catalog(store) : NONE, [next.view], [next.task]),
+        publishKeys(
+          open() ? catalog(store) : NONE,
+          [{ key: next.view, span: next.span }],
+          [next.task],
+        ),
       () => undefined,
     );
   };
@@ -495,6 +546,17 @@ export function createEngine({
         return setCompleting(core, { opId }, w.id);
       case 'deleteStatus':
         return deleteStatus(core, { opId }, w.id);
+      // No note: the tab already knows the dates and the copy's id.
+      case 'moveOccurrence':
+        return moveOccurrence(
+          core,
+          { opId, id: w.id },
+          w.taskId,
+          w.occurrence,
+          w.to,
+        );
+      case 'undoMove':
+        return undoMove(core, { opId }, w.taskId);
     }
   };
 
@@ -532,7 +594,11 @@ export function createEngine({
       try {
         switch (command.kind) {
           case 'watch':
-            watch(tab, { view: command.view, task: command.task });
+            watch(tab, {
+              view: command.view,
+              task: command.task,
+              span: command.span ?? null,
+            });
             return OK;
           case 'signIn':
             return await serial(() => signIn(command.email, command.password));

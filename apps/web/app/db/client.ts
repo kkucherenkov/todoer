@@ -1,5 +1,6 @@
 // Imported, not auto-imported: the spec runs in plain Node.
 import { shallowRef, type ShallowRef } from 'vue';
+import type { Span } from '@todoer/client-core';
 import { id as mintId, opId as mintOpId } from './mint';
 import {
   CHANNEL,
@@ -15,7 +16,7 @@ import {
 /** A write as a screen asks for it: the ids are minted here, once. A create
  *  may name its own `id` (to open it right away). */
 export type Draft<W = Write> = W extends {
-  kind: 'add' | 'saveView' | 'saveStatus';
+  kind: 'add' | 'saveView' | 'saveStatus' | 'moveOccurrence';
 }
   ? Omit<W, 'opId' | 'id'> & { id?: string }
   : W extends Write
@@ -29,8 +30,9 @@ export type Db = {
   mint(draft: Draft): Write;
   /** Requests a write; a draft is minted first. A resend reuses the ids. */
   write(write: Draft | Write): Promise<Result>;
-  /** What this tab shows; publishes for other keys are dropped. */
-  watch(view: string | null, task: string | null): void;
+  /** What this tab shows; publishes for other keys, or for another span,
+   *  are dropped. */
+  watch(view: string | null, task: string | null, span?: Span | null): void;
   topics: { [T in Topic]: Readonly<ShallowRef<Topics[T] | undefined>> };
   /** A message from another build arrived: this tab or the leader is stale. */
   stale: Readonly<ShallowRef<boolean>>;
@@ -71,11 +73,14 @@ export function connect(
   const stale = shallowRef(false);
   const pending = new Map<number, Pending>();
   let lastId = 0;
-  let watching: Command & { kind: 'watch' } = {
+  let watching: Command & { kind: 'watch'; span: Span | null } = {
     kind: 'watch',
     view: null,
     task: null,
+    span: null,
   };
+  const sameSpan = (a: Span | null, b: Span | null) =>
+    a === b || (a?.from === b?.from && a?.to === b?.to);
   // Fire and forget: the next `ready` resends it, so nothing waits on it.
   const postWatch = (command: Command & { kind: 'watch' }) =>
     post({ type: 'request', tab, id: ++lastId, command });
@@ -108,7 +113,13 @@ export function connect(
           topics.view.value = topics.task.value = undefined;
         }
         // Keyed topics: another tab's keys reach this channel too.
-        if (m.topic === 'view' && m.value.key !== watching.view) return;
+        if (
+          m.topic === 'view' &&
+          (m.value.key !== watching.view ||
+            !sameSpan(m.value.span, watching.span))
+        ) {
+          return;
+        }
         if (m.topic === 'task' && m.value.id !== watching.task) return;
         return void ((topics[m.topic] as ShallowRef<unknown>).value = m.value);
       case 'violation':
@@ -120,7 +131,8 @@ export function connect(
 
   // A hidden page shows nothing; one restored from the back-forward cache
   // shows what it did. Absent in Node (the specs).
-  const hide = () => postWatch({ kind: 'watch', view: null, task: null });
+  const hide = () =>
+    postWatch({ kind: 'watch', view: null, task: null, span: null });
   const show = (e: PageTransitionEvent) => e.persisted && postWatch(watching);
   globalThis.addEventListener?.('pagehide', hide);
   globalThis.addEventListener?.('pageshow', show);
@@ -142,7 +154,8 @@ export function connect(
   const mint = (draft: Draft): Write =>
     (draft.kind === 'add' ||
     draft.kind === 'saveView' ||
-    draft.kind === 'saveStatus'
+    draft.kind === 'saveStatus' ||
+    draft.kind === 'moveOccurrence'
       ? { id: mintId(), ...draft, opId: mintOpId() }
       : { ...draft, opId: mintOpId() }) as Write;
 
@@ -150,10 +163,12 @@ export function connect(
     request,
     mint,
     write: (w) => request('opId' in w ? w : mint(w)),
-    watch(view, task) {
-      if (view !== watching.view) topics.view.value = undefined;
+    watch(view, task, span = null) {
+      if (view !== watching.view || !sameSpan(span, watching.span)) {
+        topics.view.value = undefined;
+      }
       if (task !== watching.task) topics.task.value = undefined;
-      watching = { kind: 'watch', view, task };
+      watching = { kind: 'watch', view, task, span };
       postWatch(watching);
     },
     topics,
