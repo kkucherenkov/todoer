@@ -1056,7 +1056,12 @@ export function calendarTasks(
   }
   const since = addDays(today, -closedDays);
   const all = tasks(store);
-  const marks = occurrences(store);
+  const marks = new Map(
+    occurrences(store).map((m) => [
+      JSON.stringify([m.taskId, m.occurrence ?? null]),
+      m,
+    ]),
+  );
   const inSpan = (d: unknown): d is string =>
     typeof d === 'string' && d >= span.from && d <= span.to;
   const items = selected(store, today, view, since);
@@ -1084,9 +1089,7 @@ export function calendarTasks(
         span.from,
         span.to,
       )) {
-        const mark = marks.find(
-          (m) => m.taskId === taskId && (m.occurrence ?? null) === date,
-        );
+        const mark = marks.get(JSON.stringify([taskId, date]));
         if (mark?.state === 'skipped') continue;
         if (mark?.state === 'done') {
           const at = (

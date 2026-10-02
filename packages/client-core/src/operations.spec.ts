@@ -1419,6 +1419,23 @@ describe('moveOccurrence and undoMove', () => {
     expect(on(store)).not.toContain(`d@${FROM}`);
   });
 
+  it('copies no link to a tag deleted locally', async () => {
+    const { store, srv, core } = setup();
+    srv.state.offline = true;
+    put(store, 'tag', {
+      id: 't-b',
+      name: 'b',
+      deletedAt: '2026-10-01T00:00:00Z',
+    });
+    await move(core);
+    expect(
+      store
+        .pending()
+        .filter((o) => o.table === 'task_tag')
+        .map((o) => o.id),
+    ).toEqual([taskTagId('c', 't-a')]);
+  });
+
   it('leaves null fields out of the copy', async () => {
     const { store, srv, core } = setup({
       notes: null,
