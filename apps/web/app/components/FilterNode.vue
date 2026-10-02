@@ -6,6 +6,7 @@ import {
   canAdd,
   canToggleNot,
   children,
+  options,
   remove,
   replace,
   setGroup,
@@ -53,13 +54,8 @@ const rows = computed<Catalog>(
   () => catalog.value ?? { views: [], statuses: [], projects: [], tags: [] },
 );
 
-/** The catalog's rows, plus the id when it names none: shown, never replaced. */
-function options(list: { id: string; name: string }[], value: string) {
-  const named = list.map((r) => ({ label: r.name, value: r.id }));
-  return value === '' || list.some((r) => r.id === value)
-    ? named
-    : [...named, { label: t('filterTree.unknown'), value }];
-}
+const choices = (list: { id: string; name: string }[], value: string) =>
+  options(list, value, t('filterTree.unknown'));
 
 const set = (leaf: Filter) => edit((r) => replace(r, core.value.path, leaf));
 const add = (what: LeafKind | 'and') =>
@@ -111,31 +107,31 @@ const FRESH = { none: undefined, offset: 0, date: '' } as const;
 
         <USelect
           v-if="'tag' in core.node"
-          :model-value="core.node.tag"
-          :items="options(rows.tags, core.node.tag)"
+          :model-value="core.node.tag.toLowerCase()"
+          :items="choices(rows.tags, core.node.tag)"
           :aria-label="$t('filterTree.add.tag')"
           :data-testid="`value-${id}`"
-          @update:model-value="set({ tag: $event })"
+          @update:model-value="set({ tag: $event.toLowerCase() })"
         />
         <USelect
           v-else-if="'status' in core.node"
-          :model-value="core.node.status"
-          :items="options(rows.statuses, core.node.status)"
+          :model-value="core.node.status.toLowerCase()"
+          :items="choices(rows.statuses, core.node.status)"
           :aria-label="$t('filterTree.add.status')"
           :data-testid="`value-${id}`"
-          @update:model-value="set({ status: $event })"
+          @update:model-value="set({ status: $event.toLowerCase() })"
         />
         <USelect
           v-else-if="'project' in core.node"
-          :model-value="core.node.project ?? NONE"
+          :model-value="core.node.project?.toLowerCase() ?? NONE"
           :items="[
             { label: $t('viewForm.noProject'), value: NONE },
-            ...options(rows.projects, core.node.project ?? ''),
+            ...choices(rows.projects, core.node.project ?? ''),
           ]"
           :aria-label="$t('filterTree.add.project')"
           :data-testid="`value-${id}`"
           @update:model-value="
-            set({ project: $event === NONE ? null : $event })
+            set({ project: $event === NONE ? null : $event.toLowerCase() })
           "
         />
         <UCheckboxGroup

@@ -14,6 +14,7 @@ import {
   canToggleNot,
   children,
   editable,
+  options,
   remove,
   replace,
   setGroup,
@@ -279,5 +280,19 @@ describe('canToggleNot', () => {
     const over = toggleNot(wide(254), []);
     expect(canToggleNot(append(over, [0], { tag: ID }), [])).toBe(true);
     expect(canToggleNot({ not: nest(8) }, [])).toBe(true);
+  });
+});
+
+describe('options', () => {
+  const rows = [{ id: ID.toUpperCase(), name: 'a' }];
+  it('lower-cases values and matches the id in any case', () => {
+    expect(options(rows, ID, 'unknown')).toEqual([{ label: 'a', value: ID }]);
+    expect(options(rows, ID.toUpperCase(), 'unknown')).toEqual([
+      { label: 'a', value: ID },
+    ]);
+  });
+  it('adds an id that names no row, but not a blank one', () => {
+    expect(options(rows, ID2, 'unknown')).toHaveLength(2);
+    expect(options(rows, '', 'unknown')).toHaveLength(1);
   });
 });

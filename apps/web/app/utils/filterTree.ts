@@ -151,6 +151,26 @@ export function blank(kind: LeafKind | 'and' | 'or', catalog: Catalog): Filter {
   }
 }
 
+/**
+ * Select items for a catalog list, values lower-cased like the ids a filter
+ * stores. An id that names no row is added under `unknownLabel`: shown, never
+ * replaced. '' (a blank leaf) adds nothing.
+ */
+export function options(
+  list: { id: string; name: string }[],
+  value: string,
+  unknownLabel: string,
+) {
+  const id = value.toLowerCase();
+  const named = list.map((r) => ({
+    label: r.name,
+    value: r.id.toLowerCase(),
+  }));
+  return id === '' || named.some((o) => o.value === id)
+    ? named
+    : [...named, { label: unknownLabel, value: id }];
+}
+
 /** Whether a child can be added to the group at `path` without passing the limits. */
 export function canAdd(root: Filter, path: Path): boolean {
   const { nodes, depth } = filterSize(root);

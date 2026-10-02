@@ -226,6 +226,7 @@ const dates = [
             variant="outline"
             color="neutral"
             size="sm"
+            :disabled="returning"
             @click="returnToSeries"
           >
             {{ $t('drawer.returnToSeries') }}
