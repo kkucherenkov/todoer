@@ -36,6 +36,9 @@ rebalancing pass that is itself an ordinary batch of `set` operations.
 `rankBetween` is a deterministic midpoint, so two offline insertions at one
 position get the same string instead of two different ones. Every sort ends in
 the id, which keeps the order total and stable. Every existing task has `'a0'`,
-so a move into a tie re-ranks the tied run: the rebalancing pass above, kept as
+so a move into a tie re-ranks the tied run (a key and the same key plus
+trailing zeros, such as `'a'` and `'a0'`, count as tied: no key fits between
+them): the rebalancing pass above, kept as
 small as the run. Generated keys never end in `'0'`, which would leave no room
-below them.
+below them. A generated key can still equal a legacy one's prefix, hence the
+rule above.

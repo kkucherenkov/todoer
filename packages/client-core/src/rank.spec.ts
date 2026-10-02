@@ -161,6 +161,35 @@ describe('rankWrites', () => {
     ]);
   });
 
+  it('treats a key and the same key plus trailing zeros as a tie', () => {
+    const o = [t('x', 'a'), t('y', 'a0')];
+    const w = rankWrites(o, 'm', 'x');
+    expect(apply(o, w, 'm').map((r) => r.id)).toEqual(['x', 'm', 'y']);
+    for (const r of w) expect(r.rank.endsWith('0')).toBe(false);
+  });
+
+  it('property: generated keys mixed with legacy a0 never throw', () => {
+    const rnd = mulberry32(99);
+    for (let round = 0; round < 300; round += 1) {
+      const keys = ['a0'];
+      for (let i = 0; i < 6; i += 1) {
+        const s = [...new Set(keys)].sort();
+        const k = Math.floor(rnd() * (s.length + 1));
+        keys.push(rankBetween(s[k - 1] ?? null, s[k] ?? null));
+        if (rnd() < 0.3) keys.push('a0');
+      }
+      const o = keys.sort().map((r, i) => t(`${i + 1}`.padStart(2, '0'), r));
+      const k = Math.floor(rnd() * (o.length + 1));
+      const w = rankWrites(o, 'm', k === 0 ? null : o[k - 1]!.id);
+      const got = apply(o, w, 'm').map((x) => x.id);
+      expect(got).toEqual([
+        ...o.slice(0, k).map((x) => x.id),
+        'm',
+        ...o.slice(k).map((x) => x.id),
+      ]);
+    }
+  });
+
   it('throws when after is not in ordered', () => {
     expect(() => rankWrites([t('1', 'a0')], 'm', 'zz')).toThrow();
   });

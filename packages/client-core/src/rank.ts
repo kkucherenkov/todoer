@@ -41,6 +41,11 @@ export function ranksBetween(
   ];
 }
 
+// Ranks `x` and `x0` hold no key between them, so they count as equal.
+const trim = (r: string): string => r.replace(/0+$/, '');
+const tied = (lower: string, upper: string): boolean =>
+  lower >= upper || trim(lower) === trim(upper);
+
 export type Ranked = { id: string; rank: string };
 
 /**
@@ -60,11 +65,11 @@ export function rankWrites(
     throw new Error(`rank anchor ${after} is not in the container`);
   const lower = ordered[g - 1]?.rank ?? null;
   const upper = ordered[g]?.rank ?? null;
-  if (lower === null || upper === null || lower < upper) {
+  if (lower === null || upper === null || !tied(lower, upper)) {
     return [{ id: moved, rank: rankBetween(lower, upper) }];
   }
   let j = g;
-  while (j < ordered.length && ordered[j]!.rank <= lower) j += 1;
+  while (j < ordered.length && tied(lower, ordered[j]!.rank)) j += 1;
   const ids = [moved, ...ordered.slice(g, j).map((t) => t.id)];
   const ranks = ranksBetween(lower, ordered[j]?.rank ?? null, ids.length);
   return ids.map((id, i) => ({ id, rank: ranks[i]! }));
