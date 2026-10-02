@@ -34,6 +34,7 @@ import {
   winner,
   resolveLabels,
 } from './labels.js';
+import { expand } from './expand.js';
 import { planMerge } from './merge.js';
 import { rankBetween, rankWrites, type Ranked } from './rank.js';
 import { liveTasks, overlay } from './overlay.js';
@@ -1012,6 +1013,99 @@ export function boardTasks(
   closedDays = 7,
 ): Item[] {
   return selected(store, today, view, addDays(today, -closedDays));
+}
+
+/** A span of calendar days, both inclusive. */
+export type Span = { from: string; to: string };
+/** The widest span a calendar asks for: six weeks. */
+export const MAX_SPAN_DAYS = 42;
+
+/** One day a task stands on (views Q11). */
+export type Placement = {
+  taskId: string;
+  date: string;
+  kind: 'scheduled' | 'due';
+  /** The occurrence a recurring task's scheduled placement stands for;
+   *  null for a one-off task and for every due placement. */
+  occurrence: string | null;
+  /** Closed within `closedDays` (departure 2): shown, not movable. */
+  closed: boolean;
+};
+export type Calendar = { items: Item[]; placements: Placement[] };
+
+/**
+ * The view's tasks placed on the days of `span`: the filter and sort of
+ * boardTasks (departure 1), then each task's placements. Placements are
+ * ordered by date, then by the view's order, then scheduled before due.
+ * `items` holds only tasks with a placement in the span. Throws UsageError
+ * for a span that is not two dates in order, or wider than MAX_SPAN_DAYS.
+ */
+export function calendarTasks(
+  store: Store,
+  today: string,
+  view: ViewSpec,
+  span: Span,
+  closedDays = 7,
+): Calendar {
+  const days = (Date.parse(span.to) - Date.parse(span.from)) / 86_400_000 + 1;
+  if (!isIsoDate(span.from) || !isIsoDate(span.to) || days < 1) {
+    throw new UsageError('span must be two dates, from on or before to');
+  }
+  if (days > MAX_SPAN_DAYS) {
+    throw new UsageError(`span is wider than ${MAX_SPAN_DAYS} days`);
+  }
+  const since = addDays(today, -closedDays);
+  const all = tasks(store);
+  const marks = occurrences(store);
+  const inSpan = (d: unknown): d is string =>
+    typeof d === 'string' && d >= span.from && d <= span.to;
+  const items = selected(store, today, view, since);
+  const placed = new Set<string>();
+  const placements = items.flatMap((item) => {
+    const taskId = String(item.id);
+    const found: Placement[] = [];
+    const put = (
+      date: string,
+      kind: Placement['kind'],
+      occurrence: string | null,
+      closed: boolean,
+    ) => found.push({ taskId, date, kind, occurrence, closed });
+    const recurrence = recurrenceOf(item, parentOf(all, item));
+    if (recurrence === null) {
+      if (inSpan(item.scheduledOn))
+        put(item.scheduledOn, 'scheduled', null, item.closed);
+      if (inSpan(item.dueOn)) put(item.dueOn, 'due', null, item.closed);
+    } else {
+      const state = stateOf(marks, taskId);
+      // The lower bound is a cost, not a behaviour: expand walks from
+      // dtstart either way, and an earlier open occurrence is dropped below.
+      for (const date of expand(
+        recurrence.rule,
+        recurrence.dtstart,
+        span.from,
+        span.to,
+      )) {
+        const s = state(date);
+        if (s === 'skipped') continue;
+        if (s === 'done') {
+          const at = (
+            marks.find((m) => m.taskId === taskId && m.occurrence === date)
+              ?.fieldTs as Record<string, string> | undefined
+          )?.state?.slice(0, 10);
+          if (at === undefined || at >= since)
+            put(date, 'scheduled', date, true);
+        } else if (item.occurrence !== null && date >= item.occurrence) {
+          put(date, 'scheduled', date, false);
+        }
+      }
+      if (inSpan(item.dueOn)) put(item.dueOn, 'due', null, false);
+    }
+    if (found.length > 0) placed.add(taskId);
+    return found;
+  });
+  // Stable: ties keep the view's order, then scheduled before due.
+  placements.sort((a, b) => a.date.localeCompare(b.date));
+  return { items: items.filter((i) => placed.has(String(i.id))), placements };
 }
 
 /** One task for the drawer: the row, labels, current occurrence, column,

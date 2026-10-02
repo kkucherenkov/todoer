@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import {
   taskOccurrenceId,
   taskTagId,
@@ -9,6 +9,7 @@ import {
   ALL_OPEN,
   add,
   boardTasks,
+  calendarTasks,
   catalog,
   deleteStatus,
   deleteView,
@@ -1118,5 +1119,192 @@ describe('views and statuses', () => {
       expect(store.pending()).toHaveLength(n);
     }
     expect(store.pending().length).toBeGreaterThan(0);
+  });
+});
+
+describe('calendarTasks', () => {
+  const WED = '2026-10-07';
+  const SPAN = { from: '2026-10-05', to: '2026-10-11' };
+  const daily = (extra: Record<string, unknown> = {}) =>
+    task('d', { rrule: 'FREQ=DAILY', dtstart: '2026-10-01', ...extra });
+  const markAs = (id: string, occurrence: string | null, extra = {}) =>
+    put(store, 'task_occurrence', {
+      id: `${id}-${occurrence}`,
+      taskId: id,
+      occurrence,
+      state: 'done',
+      ...extra,
+    });
+  const read = (view = ALL_OPEN, span = SPAN) =>
+    calendarTasks(store, WED, view, span);
+  const days = (kind?: string) =>
+    read()
+      .placements.filter((p) => kind === undefined || p.kind === kind)
+      .map((p) => p.date);
+  let store: Store;
+  beforeEach(() => {
+    store = openStore(':memory:');
+  });
+
+  it('places a one-off task on its scheduled and due days', () => {
+    put(
+      store,
+      'task',
+      task('a', { scheduledOn: '2026-10-08', dueOn: '2026-10-10' }),
+    );
+    const { placements, items } = read();
+    expect(placements).toEqual([
+      {
+        taskId: 'a',
+        date: '2026-10-08',
+        kind: 'scheduled',
+        occurrence: null,
+        closed: false,
+      },
+      {
+        taskId: 'a',
+        date: '2026-10-10',
+        kind: 'due',
+        occurrence: null,
+        closed: false,
+      },
+    ]);
+    expect(ids(items)).toEqual(['a']);
+  });
+
+  it('puts both placements on one day, scheduled first', () => {
+    put(
+      store,
+      'task',
+      task('a', { scheduledOn: '2026-10-08', dueOn: '2026-10-08' }),
+    );
+    expect(read().placements.map((p) => p.kind)).toEqual(['scheduled', 'due']);
+  });
+
+  it('shows a daily task from its current occurrence on', () => {
+    put(store, 'task', daily());
+    expect(days()).toEqual([
+      '2026-10-07',
+      '2026-10-08',
+      '2026-10-09',
+      '2026-10-10',
+      '2026-10-11',
+    ]);
+    expect(read().placements[0]).toMatchObject({
+      occurrence: WED,
+      closed: false,
+    });
+  });
+
+  it('shows a done occurrence closed while it is inside the window', () => {
+    put(store, 'task', daily());
+    markAs('d', '2026-10-06', {
+      fieldTs: { state: '2026-10-01T10:00:00.000Z' },
+    });
+    markAs('d', '2026-10-05', {
+      fieldTs: { state: '2026-09-29T10:00:00.000Z' },
+    });
+    expect(read().placements.filter((p) => p.closed)).toMatchObject([
+      { date: '2026-10-06', occurrence: '2026-10-06' },
+    ]);
+  });
+
+  it('counts a done occurrence still in the outbox as closed now', () => {
+    put(store, 'task', daily());
+    markAs('d', '2026-10-06');
+    expect(days()).toContain('2026-10-06');
+  });
+
+  it('hides a skipped occurrence', () => {
+    put(store, 'task', daily());
+    markAs('d', '2026-10-09', { state: 'skipped' });
+    expect(days()).not.toContain('2026-10-09');
+  });
+
+  it('gives a recurring task one due placement with no occurrence', () => {
+    put(store, 'task', daily({ dueOn: '2026-10-10' }));
+    expect(read().placements.filter((p) => p.kind === 'due')).toEqual([
+      {
+        taskId: 'd',
+        date: '2026-10-10',
+        kind: 'due',
+        occurrence: null,
+        closed: false,
+      },
+    ]);
+  });
+
+  it('places a subtask on its parent dates', () => {
+    put(store, 'task', daily());
+    put(store, 'task', task('s', { parentId: 'd' }));
+    expect(
+      read()
+        .placements.filter((p) => p.taskId === 's')
+        .map((p) => p.date),
+    ).toEqual([
+      '2026-10-07',
+      '2026-10-08',
+      '2026-10-09',
+      '2026-10-10',
+      '2026-10-11',
+    ]);
+  });
+
+  it('closes a one-off done inside the window and drops one outside', () => {
+    put(store, 'task', task('a', { scheduledOn: '2026-10-08' }));
+    put(store, 'task', task('b', { scheduledOn: '2026-10-08' }));
+    markAs('a', null, { fieldTs: { state: `${WED}T10:00:00.000Z` } });
+    markAs('b', null, { fieldTs: { state: '2026-09-29T10:00:00.000Z' } });
+    expect(read().placements).toMatchObject([{ taskId: 'a', closed: true }]);
+  });
+
+  it('selects tasks with the filter', () => {
+    put(store, 'task', daily());
+    expect(
+      read({
+        ...ALL_OPEN,
+        filter: { tag: '30000000-0000-4000-8000-000000000000' },
+      }).placements,
+    ).toEqual([]);
+  });
+
+  it('keeps every day of a recurring task under a today-only filter', () => {
+    put(store, 'task', daily());
+    const view = { ...ALL_OPEN, filter: { scheduled: { from: 0, to: 0 } } };
+    const span = { from: '2026-10-05', to: '2026-11-15' };
+    expect(read(view, span).placements.map((p) => p.date)).toHaveLength(40);
+  });
+
+  it('orders by date, then the view order', () => {
+    put(store, 'task', task('a', { rank: 'a1', scheduledOn: '2026-10-08' }));
+    put(store, 'task', task('b', { rank: 'a0', scheduledOn: '2026-10-08' }));
+    put(store, 'task', task('c', { rank: 'a2', scheduledOn: '2026-10-07' }));
+    expect(read().placements.map((p) => p.taskId)).toEqual(['c', 'b', 'a']);
+  });
+
+  it('lists only tasks with a placement in the span', () => {
+    put(store, 'task', task('in', { scheduledOn: '2026-10-08' }));
+    put(store, 'task', task('out', { scheduledOn: '2026-12-08' }));
+    expect(ids(read().items)).toEqual(['in']);
+  });
+
+  it.each([
+    { from: '2026-10-11', to: '2026-10-05' },
+    { from: '2026-10-01', to: '2026-11-12' },
+    { from: '2026-02-30', to: '2026-03-02' },
+  ])('refuses span %j', (span) => {
+    expect(() => read(ALL_OPEN, span)).toThrow(UsageError);
+  });
+
+  it('accepts a 42-day span', () => {
+    expect(() =>
+      read(ALL_OPEN, { from: '2026-10-01', to: '2026-11-11' }),
+    ).not.toThrow();
+  });
+
+  it('refuses an invalid filter', () => {
+    expect(() => read({ ...ALL_OPEN, filter: { nope: 1 } })).toThrow(
+      /invalid filter/,
+    );
   });
 });

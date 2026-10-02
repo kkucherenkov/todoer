@@ -171,7 +171,7 @@ answers, and can be done from the keyboard and on a touch screen.
 ### Steps
 
 - [x] T001 [FR-001] `filterSize` — plan Task 1 — `packages/specs/src/filter.ts`
-- [ ] T002 [FR-002] Calendar placements — plan Task 2 — `packages/client-core/src/operations.ts`
+- [x] T002 [FR-002] Calendar placements — plan Task 2 — `packages/client-core/src/operations.ts`
 - [ ] T003 [FR-003, FR-004] `moveOccurrence`, `undoMove` — plan Task 3 — `packages/client-core/src/operations.ts`
 - **Checkpoint:** client-core holds every W4 operation with Node tests, and the CLI is unchanged.
 - [ ] T004 [FR-005, FR-006] Span watches, placements, move commands — plan Task 4 — `apps/web/app/db/`
