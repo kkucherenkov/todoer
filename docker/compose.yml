@@ -5,10 +5,13 @@ services:
     image: postgres:18.1-alpine
     environment:
       POSTGRES_USER: todoer
-      POSTGRES_PASSWORD: todoer
+      # The default is for development. On the NAS set it (README): Postgres
+      # reads it once, when it first initialises the volume.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-todoer}
       POSTGRES_DB: todoer
+    # Loopback only: the developer's tools reach it, the network does not.
     ports:
-      - "5433:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5433}:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -29,7 +32,7 @@ services:
       postgres:
         condition: service_healthy
     environment:
-      DATABASE_URL: postgresql://todoer:todoer@postgres:5432/todoer
+      DATABASE_URL: postgresql://todoer:${POSTGRES_PASSWORD:-todoer}@postgres:5432/todoer
       # Not `:?`: compose interpolates every service, so a required variable
       # would break the developer's plain `up -d`. The app refuses to start
       # without it (AppConfig).

@@ -10,4 +10,4 @@
 .claude
 .superpowers
 .remember
-.env
+**/.env

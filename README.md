@@ -89,7 +89,7 @@ recurrence).
 | `apps/web/`                               | the web client, a Nuxt 4 SPA: the leader tab's worker runs `packages/client-core` on SQLite WASM; the backend serves the build |
 | `packages/client-core/`                   | the logic every client shares: replica, outbox, sync, overlay, recurrence, labels, merge, views, on a synchronous SQLite adapter |
 | `packages/specs/`                         | the OpenAPI document and the client generated from it                                                                      |
-| `Dockerfile`, `docker/compose.yml`        | the production image (backend + SPA) and compose: Postgres 18 on **5433**; `--profile app` adds the image on port **3000** |
+| `Dockerfile`, `docker/compose.yml`        | the production image (backend + SPA) and compose: Postgres 18 on **127.0.0.1:5433**; `--profile app` adds the image on port **3000** |
 | `scripts/`                                | the end-to-end proofs (`walking-skeleton.sh`, `outbox-e2e.sh`) run in CI, and their owner-aware helper `lib/fresh-user.sh` |
 | `docs/adr/`, `docs/specs/`, `docs/plans/` | decisions, design, plans                                                                                                   |
 | `specs/tasks/`                            | the task stack — one file per task, `active/` then `done/`                                                                 |
@@ -203,10 +203,11 @@ To run the production image on a NAS, see [Running on a NAS](#running-on-a-nas).
 
 One image carries the backend and the SPA, so web and API are the same
 version. The compose profile `app` adds it; the plain `up -d` still starts
-only Postgres. In a checkout on the NAS, put the variables in `docker/.env` (git-ignored; Compose
-reads it from the file's directory) or export them:
+only Postgres. In a checkout on the NAS, put the variables in `docker/.env`
+(git-ignored; Compose reads it from the file's directory) or export them:
 
 ```text
+POSTGRES_PASSWORD=<a password of your own>
 JWT_SECRET=<at least 32 characters>
 TRUST_PROXY=1
 APP_PORT=3000
@@ -220,13 +221,21 @@ The first account to register becomes the owner, so register it before anyone
 else can reach the instance. To update, run `git pull`, then the same `up -d
 --build`: the container restarts on the new image and applies pending
 migrations (it runs as a non-root user, listens on 3000 inside, and refuses to
-start without `JWT_SECRET`). Compose also publishes Postgres on 5433; drop that
-mapping on a shared host. Browsers cannot sign in over plain HTTP, so put an HTTPS proxy in
-front and set `TRUST_PROXY`; see [Serving the web client](#serving-the-web-client).
+start without `JWT_SECRET`).
+
+Set `POSTGRES_PASSWORD` in `docker/.env` before the first `up`: it defaults to
+the development value `todoer`, and Postgres reads it only when it creates the
+volume (to change it later, run `ALTER USER` inside the container). The database
+port is bound to `127.0.0.1` on the NAS itself and is not reachable from the
+network; the app talks to Postgres over the compose network.
+
+Browsers cannot sign in over plain HTTP, so put an HTTPS proxy in front and set
+`TRUST_PROXY`; see [Serving the web client](#serving-the-web-client).
 The image is built from the repository, not published to a registry.
 
 ### Browsers
-Browsers. Chromium and Firefox are tested in CI. Firefox skips one case, the
+
+Chromium and Firefox are tested in CI. Firefox skips one case, the
 return from offline to online, because Playwright's emulation fires no `online`
 event there; the app syncs on a manual "Sync now" after it. The blob-worker
 check is the guard fixture, not a separate test: a blob worker is refused under
