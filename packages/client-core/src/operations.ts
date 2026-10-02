@@ -1042,6 +1042,10 @@ export function catalog(store: Store): Catalog {
     (a, b) => compareStrings(a.rank, b.rank) || compareIds(a, b),
   );
   const completing = completingStatus(statusFacts(statuses));
+  const perStatus = new Map<unknown, number>();
+  for (const t of liveTasks(tasks(store))) {
+    perStatus.set(t.statusId, (perStatus.get(t.statusId) ?? 0) + 1);
+  }
   const version = (row: Row) =>
     typeof row.version === 'number' ? row.version : null;
   return {
@@ -1061,6 +1065,8 @@ export function catalog(store: Store): Catalog {
       rank: String(s.rank),
       color: typeof s.color === 'string' ? s.color : null,
       completing: s.id === completing,
+      /** Live tasks with this `statusId`: what deleting the status moves. */
+      tasks: perStatus.get(s.id) ?? 0,
       version: version(s),
     })),
     projects: liveProjects(projects(store))
@@ -1088,6 +1094,7 @@ export type Catalog = {
     rank: string;
     color: string | null;
     completing: boolean;
+    tasks: number;
     version: number | null;
   }[];
   projects: { id: string; name: string }[];

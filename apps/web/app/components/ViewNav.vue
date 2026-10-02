@@ -3,6 +3,7 @@ import type { NavigationMenuItem } from '@nuxt/ui';
 
 const { t } = useI18n();
 const catalog = useTopic('catalog');
+const creating = ref(false);
 
 // Literal names: the icon bundle is built by scanning the source.
 const ICONS: Record<string, string> = {
@@ -26,9 +27,21 @@ const items = computed<NavigationMenuItem[]>(() => [
 </script>
 
 <template>
-  <UNavigationMenu
-    orientation="vertical"
-    :items="items"
-    :aria-label="$t('nav.title')"
-  />
+  <div class="flex flex-col gap-2">
+    <UNavigationMenu
+      orientation="vertical"
+      :items="items"
+      :aria-label="$t('nav.title')"
+    />
+    <UButton
+      variant="ghost"
+      color="neutral"
+      icon="i-lucide-plus"
+      data-testid="new-view"
+      @click="creating = true"
+    >
+      {{ $t('viewForm.new') }}
+    </UButton>
+    <ViewForm v-model:open="creating" />
+  </div>
 </template>

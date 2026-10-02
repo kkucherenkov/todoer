@@ -70,6 +70,6 @@ const open = (item: Item) =>
         @open="open"
       />
     </div>
-    <ColumnsDialog v-model:open="editing" :items="items" />
+    <ColumnsDialog v-model:open="editing" />
   </div>
 </template>

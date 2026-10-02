@@ -342,6 +342,18 @@ describe('catalog', () => {
       ['20000000-0000-4000-8000-000000000000', true],
     ]);
   });
+
+  it('counts the live tasks on each status, as deleteStatus moves them', () => {
+    const store = boardStore();
+    put(store, 'task', task('a', { statusId: 's1' }));
+    put(store, 'task', task('b', { statusId: 's1' }));
+    put(store, 'task', task('c', { statusId: 's1', deletedAt: 'x' }));
+    put(store, 'task', task('d', { statusId: null }));
+    expect(catalog(store).statuses.map((s) => [s.id, s.tasks])).toEqual([
+      ['s1', 2],
+      ['20000000-0000-4000-8000-000000000000', 0],
+    ]);
+  });
 });
 
 describe('listTasks', () => {

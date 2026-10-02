@@ -103,10 +103,50 @@
     "name": "Column name",
     "makeCompleting": "Make completing",
     "delete": "Delete",
-    "confirm": "Delete “{name}”? Its tasks move to {first} ({count} on this board).",
+    "confirm": "Delete “{name}”? Its tasks move to {first} ({count}).",
     "confirmDelete": "Delete column",
     "cancel": "Cancel",
     "new": "New column",
     "add": "Add column"
+  },
+  "viewForm": {
+    "newTitle": "New view",
+    "editTitle": "Edit view",
+    "description": "A view shows the tasks its filter matches.",
+    "name": "Name",
+    "template": "Show",
+    "kinds": {
+      "today": "Today",
+      "overdue": "Overdue",
+      "next7": "Next 7 days",
+      "project": "Project…",
+      "tag": "Tag…",
+      "status": "Status…"
+    },
+    "pick": "Pick one.",
+    "noProject": "No project",
+    "raw": "Raw JSON",
+    "filter": "Filter",
+    "layout": "Layout",
+    "layouts": {
+      "list": "List",
+      "kanban": "Kanban",
+      "calendar": "Calendar"
+    },
+    "soon": "Comes later",
+    "sort": "Sort",
+    "sorts": {
+      "manual": "Manual",
+      "priority": "Priority",
+      "due": "Due date",
+      "scheduled": "Scheduled date"
+    },
+    "save": "Save",
+    "cancel": "Cancel",
+    "new": "New view",
+    "edit": "Edit",
+    "delete": "Delete",
+    "deleteTitle": "Delete “{name}”?",
+    "deleteBody": "The view goes away; its tasks stay."
   }
 }

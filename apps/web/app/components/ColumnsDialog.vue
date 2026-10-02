@@ -1,11 +1,10 @@
 <script setup lang="ts">
-import type { Catalog, Item } from '@todoer/client-core';
+import type { Catalog } from '@todoer/client-core';
 import type { Draft } from '~/db/client';
 
 type Status = Catalog['statuses'][number];
 
 const open = defineModel<boolean>('open', { required: true });
-const props = defineProps<{ items: Item[] }>();
 const db = useDb();
 const fail = useFail();
 const { t, locale } = useI18n();
@@ -41,12 +40,10 @@ const reorder = (i: number, to: 'up' | 'down') =>
 const deleting = ref<string | null>(null);
 /** Where the deleted column's tasks go (views Q8): the first other one. */
 const first = (s: Status) => statuses.value.find((x) => x.id !== s.id)?.name;
-// ponytail: counts this board's cards only; a filtered view undercounts
-// what deleteStatus moves. A per-status count in the catalog would be exact.
-const moving = (s: Status) => {
-  const n = props.items.filter((i) => i.column === s.id).length;
-  return t(`summary.tasks.${pluralForm(locale.value, n)}`, { n });
-};
+/** Every live task on the status, as deleteStatus moves them, not only the
+ *  cards the current (maybe filtered) board shows. */
+const moving = (s: Status) =>
+  t(`summary.tasks.${pluralForm(locale.value, s.tasks)}`, { n: s.tasks });
 async function remove(s: Status) {
   if (await run({ kind: 'deleteStatus', id: s.id })) deleting.value = null;
 }
