@@ -199,7 +199,7 @@ to before W3 ships.
 - [x] T004 [FR-005, FR-006, FR-007] Replay guard, `editTask`, `moveTask` — plan Task 4 — `packages/client-core/src/{store,operations}.ts`
 - [x] T005 [FR-008, FR-009] Views, statuses, seeds — plan Task 5 — `packages/client-core/src/operations.ts`
 - **Checkpoint:** client-core holds every W3 operation with Node tests, and the CLI is unchanged.
-- [ ] T006 [FR-010, FR-011, FR-012] Worker commands, watches, keyed topics — plan Task 6 — `apps/web/app/db/`
+- [x] T006 [FR-010, FR-011, FR-012] Worker commands, watches, keyed topics — plan Task 6 — `apps/web/app/db/`
 - **Checkpoint:** every screen's data and write exists behind the protocol.
 - [ ] T007 [FR-013, FR-014] Shell, navigation, sync state — plan Task 7 — `apps/web/app/components/`
 - [ ] T008 [FR-015] List layout — plan Task 8 — `apps/web/app/components/TaskList.vue`

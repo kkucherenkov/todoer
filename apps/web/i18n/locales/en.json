@@ -40,6 +40,7 @@
     "unreachable": "The server cannot be reached.",
     "signed-out": "Your session has ended. Sign in again.",
     "unavailable": "The local database did not answer.",
+    "invalid": "That cannot be done.",
     "unexpected": "Something went wrong."
   }
 }

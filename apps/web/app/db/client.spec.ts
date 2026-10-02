@@ -165,3 +165,65 @@ describe('connect', () => {
     );
   });
 });
+
+describe('watches and writes', () => {
+  const view = (key: string, title: string): FromWorker => ({
+    type: 'publish',
+    topic: 'view',
+    value: {
+      key,
+      layout: 'list',
+      sort: 'manual',
+      problem: null,
+      items: [{ title } as never],
+    },
+    build: BUILD,
+  });
+
+  it("keeps its own view key and drops another tab's", async () => {
+    const { seen, post } = fakeWorker();
+    db = connect(BUILD);
+    db.watch('v1', null);
+    await vi.waitFor(() =>
+      expect(
+        seen.some((m) => m.type === 'request' && m.command.kind === 'watch'),
+      ).toBe(true),
+    );
+    post(view('v1', 'mine'));
+    await vi.waitFor(() => expect(db!.topics.view.value?.key).toBe('v1'));
+    post(view('v2', 'theirs'));
+    post({
+      type: 'publish',
+      topic: 'summary',
+      value: { tasks: 9 },
+      build: BUILD,
+    });
+    await vi.waitFor(() =>
+      expect(db!.topics.summary.value).toEqual({ tasks: 9 }),
+    );
+    expect(db.topics.view.value?.items).toEqual([{ title: 'mine' }]);
+  });
+
+  it('on ready: the last watch first, then the pending write with the same ids', async () => {
+    const { seen, post } = fakeWorker();
+    db = connect(BUILD);
+    db.watch('v1', 't1');
+    void db.write({ kind: 'add', text: 'milk' });
+    const requests = () =>
+      seen.flatMap((m) => (m.type === 'request' ? [m.command] : []));
+    await vi.waitFor(() => expect(requests()).toHaveLength(2));
+    const [, sent] = requests();
+    expect(sent).toMatchObject({
+      kind: 'add',
+      opId: expect.any(String),
+      id: expect.any(String),
+    });
+    seen.length = 0;
+    post({ type: 'ready', build: BUILD });
+    await vi.waitFor(() => expect(requests()).toHaveLength(2));
+    expect(requests()).toEqual([
+      { kind: 'watch', view: 'v1', task: 't1' },
+      sent,
+    ]);
+  });
+});

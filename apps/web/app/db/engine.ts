@@ -1,22 +1,49 @@
 import {
+  add,
   adoptAccount,
+  ALL_OPEN,
+  boardTasks,
+  catalog,
+  ConflictError,
+  deleteStatus,
+  deleteView,
+  editTask,
   flush,
   liveTasks,
+  localDate,
+  mark,
+  moveTask,
   overlay,
+  rankWrites,
+  reconcile,
   RefusalError,
+  saveStatus,
+  saveView,
+  seedStatuses,
+  setCompleting,
+  taskDetails,
+  UsageError,
+  viewTasks,
+  type Catalog,
+  type Core,
   type CookieAuthApi,
   type CookieTokenSource,
+  type Ranked,
   type Store,
   type Transport,
+  type ViewSpec,
 } from '@todoer/client-core';
-import type {
-  Command,
-  Failure,
-  Result,
-  SyncReason,
-  ToWorker,
-  Topic,
-  Topics,
+import {
+  ALL,
+  type Command,
+  type Failure,
+  type Note,
+  type Result,
+  type SyncReason,
+  type ToWorker,
+  type Topic,
+  type Topics,
+  type Write,
 } from './protocol';
 
 export type EngineDeps = {
@@ -25,14 +52,20 @@ export type EngineDeps = {
   tokens: CookieTokenSource;
   send: Transport;
   now: () => Date;
+  newId: () => string;
   publish: <T extends Topic>(topic: T, value: Topics[T]) => void;
 };
+
+type Watch = { view: string | null; task: string | null };
 
 /** A tick this soon after a sync is dropped (the cadence is 30 s). */
 const TICK_GAP_MS = 25_000;
 
 const OK: Result = { ok: true };
-const fail = (kind: Failure['kind'], detail: string): Result => ({
+const fail = (
+  kind: Failure['kind'],
+  detail: string,
+): Result & { ok: false } => ({
   ok: false,
   failure: { kind, detail },
 });
@@ -41,7 +74,10 @@ const message = (error: unknown) =>
 
 /** What became of a command that threw: never a rejection (protocol). */
 function failure(error: unknown): Result {
-  if (error instanceof RefusalError) return fail('refused', error.message);
+  if (error instanceof UsageError) return fail('invalid', error.message);
+  if (error instanceof RefusalError || error instanceof ConflictError) {
+    return fail('refused', error.message);
+  }
   // fetch rejects with a TypeError offline, a DOMException on timeout.
   if (error instanceof TypeError || error instanceof DOMException) {
     return fail('unreachable', message(error));
@@ -60,6 +96,7 @@ export function createEngine({
   tokens,
   send,
   now,
+  newId,
   publish,
 }: EngineDeps) {
   let session: Topics['session'] = { state: 'restoring', reason: null };
@@ -81,6 +118,82 @@ export function createEngine({
       tasks: liveTasks(overlay('task', store.rows('task'), store.pending()))
         .length,
     });
+  };
+
+  // ── views: what each tab shows, recomputed after every change ─────────
+  // ponytail: a tab that died without its pagehide keeps its entry until the
+  // worker restarts; one entry per tab ever opened.
+  const watches = new Map<string, Watch>();
+
+  const viewSpec = (key: string, cat: Catalog) =>
+    key === ALL
+      ? { ...ALL_OPEN, problem: null }
+      : cat.views.find((v) => v.id === key);
+  const items = (spec: ViewSpec, today: string) =>
+    (spec.layout === 'kanban' ? boardTasks : viewTasks)(store, today, spec);
+
+  const publishView = (key: string, cat: Catalog, today: string) => {
+    const spec = viewSpec(key, cat);
+    if (spec === undefined) {
+      const deleted = { layout: 'list', sort: 'manual', problem: 'deleted' };
+      return publish('view', { key, ...deleted, items: [] });
+    }
+    const { layout, sort, problem } = spec;
+    publish('view', {
+      key,
+      layout,
+      sort,
+      problem,
+      items: problem === null ? items(spec, today) : [],
+    });
+  };
+  const publishTask = (id: string, today: string) =>
+    publish('task', { id, task: taskDetails(store, today, id) });
+
+  /** Every topic, recomputed: no caching (Review Focus 2). */
+  const publishAll = () => {
+    publishSync();
+    const cat = catalog(store);
+    publish('catalog', cat);
+    const today = localDate(now());
+    const all = [...watches.values()];
+    for (const key of new Set(all.map((w) => w.view))) {
+      if (key !== null) publishView(key, cat, today);
+    }
+    for (const id of new Set(all.map((w) => w.task))) {
+      if (id !== null) publishTask(id, today);
+    }
+  };
+
+  const watch = (tab: string, next: Watch) => {
+    if (next.view === null && next.task === null) watches.delete(tab);
+    else watches.set(tab, next);
+    const today = localDate(now());
+    if (next.view !== null) publishView(next.view, catalog(store), today);
+    if (next.task !== null) publishTask(next.task, today);
+  };
+
+  /** The core's ops publish after their enqueue commits and before the
+   *  network answers: a write shows at once, offline included. */
+  const core: Core = {
+    store,
+    send: (body) => {
+      publishAll();
+      return send(body);
+    },
+    now,
+    newId,
+  };
+
+  /**
+   * After a flush that reached the server: fold duplicate names (V1
+   * departure 6) and seed statuses on a replica that has none
+   * (departure 5), then send what that queued.
+   */
+  const afterReached = () => {
+    const merged = reconcile(core).length > 0;
+    const seeded = seedStatuses(core);
+    if (merged || seeded) void runSync('write');
   };
 
   /**
@@ -107,7 +220,8 @@ export function createEngine({
     publishSync({ running: true });
     const done: Partial<typeof sync> = { running: false };
     try {
-      const { synced } = await flush(store, send);
+      const { synced } = await flush(store, core.send);
+      if (synced) afterReached();
       Object.assign(done, {
         reached: synced,
         problem: null,
@@ -120,7 +234,8 @@ export function createEngine({
         done.problem = message(error);
       }
     }
-    publishSync(done);
+    sync = { ...sync, ...done };
+    publishAll();
   };
 
   const runSync = (reason: SyncReason): Promise<void> => {
@@ -216,26 +331,139 @@ export function createEngine({
     return OK;
   };
 
+  /** The rank writes for a drop after `after` (null: first) in `view`;
+   *  none unless the view sorts manual (departure 7). */
+  const dropRanks = (
+    w: Extract<Write, { kind: 'move' }>,
+  ): Ranked[] | undefined => {
+    if (w.after === undefined) return undefined;
+    const spec = viewSpec(w.view, catalog(store));
+    if (spec === undefined || spec.sort !== 'manual' || spec.problem !== null) {
+      return undefined;
+    }
+    const listed = items(spec, localDate(now()));
+    const column =
+      w.statusId !== undefined
+        ? w.statusId
+        : listed.find((i) => i.id === w.taskId)?.column;
+    const container = listed.filter(
+      (i) =>
+        i.id !== w.taskId && (spec.layout !== 'kanban' || i.column === column),
+    );
+    return rankWrites(
+      container.map((i) => ({ id: String(i.id), rank: String(i.rank) })),
+      w.taskId,
+      w.after,
+    );
+  };
+
+  /** What a mark or a drop did, for the toast; `next` is the recurring
+   *  task's occurrence that is current now. */
+  const noteFor = (
+    marked: 'done' | 'undo',
+    occurrence: string | null,
+    taskId: string,
+  ): Note => ({
+    marked,
+    occurrence,
+    next:
+      occurrence === null
+        ? null
+        : (taskDetails(store, localDate(now()), taskId)?.occurrence ?? null),
+  });
+
+  /** Each write is its core operation, with the tab's ids (departure 2). */
+  const apply = async (w: Write): Promise<{ synced: boolean; note?: Note }> => {
+    const { opId } = w;
+    switch (w.kind) {
+      case 'add':
+        return add(core, w.text, {}, { opId, id: w.id });
+      case 'mark': {
+        const r = await mark(core, w.mark, w.taskId, undefined, { opId });
+        return w.mark === 'skip' || r.closed !== undefined || r.marked === null
+          ? r
+          : { ...r, note: noteFor(w.mark, r.occurrence, w.taskId) };
+      }
+      case 'edit':
+        return editTask(core, { opId }, w.taskId, w.changes);
+      case 'move': {
+        const r = await moveTask(core, { opId }, w.taskId, {
+          ...(w.statusId === undefined ? {} : { statusId: w.statusId }),
+          ...(w.after === undefined ? {} : { ranks: dropRanks(w) }),
+        });
+        return r.marked === null
+          ? r
+          : { ...r, note: noteFor(r.marked, r.occurrence, w.taskId) };
+      }
+      case 'saveView':
+        return saveView(core, { opId, id: w.id }, w.fields);
+      case 'deleteView':
+        return deleteView(core, { opId }, w.id);
+      case 'saveStatus':
+        return saveStatus(
+          core,
+          { opId, id: w.id },
+          {
+            ...(w.name === undefined ? {} : { name: w.name }),
+            ...(w.after === undefined ? {} : { after: w.after }),
+          },
+        );
+      case 'setCompleting':
+        return setCompleting(core, { opId }, w.id);
+      case 'deleteStatus':
+        return deleteStatus(core, { opId }, w.id);
+    }
+  };
+
+  const write = async (w: Write): Promise<Result> => {
+    const { synced, note } = await apply(w);
+    if (synced) afterReached();
+    return note === undefined ? OK : { ok: true, note };
+  };
+
+  /** Until start settles the session is unknown, not signed out. */
+  const signedIn = async (): Promise<ReturnType<typeof fail> | undefined> => {
+    if (session.state === 'restoring') await chain;
+    if (session.state === 'restoring') {
+      return fail('unavailable', 'the session is still restoring');
+    }
+    return session.state === 'signed-in'
+      ? undefined
+      : fail('signed-out', 'not signed in');
+  };
+
   return {
     /** Restore the session from the cookie when the hint says one may exist. */
     start: (hint: boolean): Promise<void> => serial(() => start(hint)),
-    async handle(command: Command): Promise<Result> {
+    /** `tab` names the sender; only `watch` reads it. */
+    async handle(command: Command, tab = ''): Promise<Result> {
       try {
         switch (command.kind) {
+          case 'watch':
+            watch(tab, { view: command.view, task: command.task });
+            return OK;
           case 'signIn':
             return await serial(() => signIn(command.email, command.password));
           case 'signOut':
             return await serial(signOut);
-          case 'sync':
-            // Until start settles the session is unknown, not signed out.
-            if (session.state === 'restoring') await chain;
-            if (session.state === 'restoring') {
-              return fail('unavailable', 'the session is still restoring');
-            }
+          case 'sync': {
+            const refused = await signedIn();
+            if (refused?.failure.kind === 'unavailable') return refused;
             await runSync(command.reason);
             return session.state === 'signed-in'
               ? OK
               : fail('signed-out', 'not signed in');
+          }
+          default: {
+            const refused = await signedIn();
+            if (refused !== undefined) return refused;
+            try {
+              return await write(command);
+            } finally {
+              // Settled, refused or failed: the screens show what is true now.
+              publishAll();
+            }
+          }
         }
       } catch (error) {
         return failure(error);
@@ -245,7 +473,7 @@ export function createEngine({
     snapshot(): void {
       publish('engine', { state: 'ready', reason: null });
       publish('session', session);
-      publishSync();
+      publishAll();
     },
   };
 }
@@ -276,7 +504,7 @@ export function dispatcher(
     const key = `${m.tab}:${m.id}`;
     let run = runs.get(key);
     if (run === undefined) {
-      run = engine.handle(m.command);
+      run = engine.handle(m.command, m.tab);
       runs.set(key, run);
       void run.then(() => setTimeout(() => runs.delete(key), keepMs));
     }

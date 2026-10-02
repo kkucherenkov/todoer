@@ -5,6 +5,7 @@ import {
   httpTransport,
 } from '@todoer/client-core';
 import { openWasmStore } from '@todoer/client-core/sqlite-wasm';
+import { uuidv7 } from 'uuidv7';
 import { createEngine, dispatcher } from './engine';
 import { installOpfsPool, installPool } from './pool';
 import {
@@ -42,6 +43,7 @@ self.onmessage = async ({ data }: MessageEvent<Init>) => {
       tokens,
       send: httpTransport(config, tokens),
       now: () => new Date(),
+      newId: uuidv7,
       publish: (topic, value) =>
         post({ type: 'publish', topic, value } as Unstamped<FromWorker>),
     });
