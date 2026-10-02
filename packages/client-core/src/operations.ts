@@ -1391,6 +1391,25 @@ const deleteOp = (
   baseVersion: row.version,
 });
 
+/**
+ * A task a destructive op may cite by `version`: live, synced, and with no
+ * task op still queued for it, since a queued op would raise the server's
+ * version past the one sent (departure 3). Throws UsageError `no task <id>`
+ * or `<what> <id> is not synced yet`.
+ */
+function settledTask(
+  store: Store,
+  all: Row[],
+  id: string,
+  what: 'task' | 'subtask',
+): Row & { version: number } {
+  liveTask(all, id);
+  if (store.pending().some((op) => op.table === 'task' && op.id === id)) {
+    throw new UsageError(`${what} ${id} is not synced yet`);
+  }
+  return syncedRow(all, id, what);
+}
+
 /** Refuses a view without a `version` ("not synced yet"). Replay-safe. */
 export async function deleteView(
   core: Core,
@@ -1640,10 +1659,7 @@ export async function undoMove(
   ) {
     throw new UsageError(`task ${copyId} is not a moved occurrence`);
   }
-  if (store.pending().some((op) => op.table === 'task' && op.id === copyId)) {
-    throw new UsageError(`task ${copyId} is not synced yet`);
-  }
-  const row = syncedRow(all, copyId, 'task');
+  const row = settledTask(store, all, copyId, 'task');
   if (liveTasks(all).some((t) => t.parentId === copyId)) {
     throw new UsageError(`task ${copyId} has subtasks`);
   }
@@ -1677,4 +1693,30 @@ export async function undoMove(
       minted.opId,
     ),
   };
+}
+
+/**
+ * Deletes a task and its live subtasks (#391): one batch, each live
+ * subtask's `delete` (by id) before the parent's, each with the row's
+ * `version` as `baseVersion`. Every row must be settled. No undo.
+ * Replay-safe.
+ */
+export async function deleteTask(
+  core: Core,
+  minted: Minted,
+  taskId: string,
+): Promise<{ synced: boolean }> {
+  const done = await replayed(core, minted.opId);
+  if (done !== undefined) return done;
+  const { store } = core;
+  const all = tasks(store);
+  const parent = settledTask(store, all, taskId, 'task');
+  const subtasks = liveTasks(all)
+    .filter((t) => t.parentId === taskId)
+    .sort(compareIds)
+    .map((t) => settledTask(store, all, String(t.id), 'subtask'));
+  const ops = [...subtasks, parent].map((row) =>
+    deleteOp('task', row, core.newId),
+  );
+  return { synced: await submitOwn(core, ops, 'delete', minted.opId) };
 }

@@ -12,6 +12,7 @@ import {
   calendarTasks,
   catalog,
   deleteStatus,
+  deleteTask,
   deleteView,
   editTask,
   listTasks,
@@ -1605,5 +1606,115 @@ describe('moveOccurrence and undoMove', () => {
     expect((await undoMove(core, mint('u1'), 'c')).synced).toBe(true);
     expect(srv.sent).toHaveLength(sent);
     expect(store.pending()).toEqual([]);
+  });
+});
+
+describe('deleteTask', () => {
+  /** Offline, so the queue stays inspectable; `p` has live subtasks s1, s2. */
+  function family() {
+    const store = openStore(':memory:');
+    const srv = fakeServer();
+    srv.state.offline = true;
+    put(store, 'task', task('p', { version: 4 }));
+    put(store, 'task', task('s2', { parentId: 'p', version: 3 }));
+    put(store, 'task', task('s1', { parentId: 'p', version: 2 }));
+    put(
+      store,
+      'task',
+      task('s0', { parentId: 'p', version: 1, deletedAt: '2026-10-01' }),
+    );
+    return { store, srv, core: coreOf(store, srv.send) };
+  }
+  const pendingDeletes = (store: Store) =>
+    store
+      .pending()
+      .map((o) => [o.kind, o.id, 'baseVersion' in o && o.baseVersion]);
+
+  it('deletes live subtasks first, then the parent, at their versions', async () => {
+    const { store, core } = family();
+    expect((await deleteTask(core, mint('d1'), 'p')).synced).toBe(false);
+    expect(pendingDeletes(store)).toEqual([
+      ['delete', 's1', 2],
+      ['delete', 's2', 3],
+      ['delete', 'p', 4],
+    ]);
+    expect(store.pending()[0]?.opId).toBe('d1');
+    expect(ids(viewTasks(store, TODAY, ALL_OPEN))).toEqual([]);
+    for (const id of ['p', 's1', 's2']) {
+      expect(taskDetails(store, TODAY, id)).toBeNull();
+    }
+  });
+
+  it('deletes a subtask alone', async () => {
+    const { store, core } = family();
+    await deleteTask(core, mint('d1'), 's1');
+    expect(pendingDeletes(store)).toEqual([['delete', 's1', 2]]);
+    expect(taskDetails(store, TODAY, 'p')).not.toBeNull();
+  });
+
+  it('refuses what is not settled, queuing nothing', async () => {
+    const cases: [
+      string,
+      (c: ReturnType<typeof family>) => Promise<unknown> | void,
+      RegExp,
+    ][] = [
+      [
+        'p',
+        ({ store }) => put(store, 'task', task('p', { version: null })),
+        /task p is not synced yet/,
+      ],
+      [
+        'p',
+        ({ store }) =>
+          put(store, 'task', task('s2', { parentId: 'p', version: null })),
+        /subtask s2 is not synced yet/,
+      ],
+      [
+        'p',
+        ({ core }) => editTask(core, mint('e1'), 'p', { title: 'x' }),
+        /task p is not synced yet/,
+      ],
+      [
+        'p',
+        ({ core }) => editTask(core, mint('e1'), 's1', { priority: 2 }),
+        /subtask s1 is not synced yet/,
+      ],
+      ['nope', () => undefined, /no task nope/],
+      ['s0', () => undefined, /no task s0/],
+    ];
+    for (const [id, arrange, pattern] of cases) {
+      const ctx = family();
+      await arrange(ctx);
+      const queued = ctx.store.pending().length;
+      await expect(deleteTask(ctx.core, mint('d1'), id)).rejects.toThrow(
+        pattern,
+      );
+      expect(ctx.store.pending()).toHaveLength(queued);
+    }
+  });
+
+  it('syncs when online and replays without a second batch or "no task"', async () => {
+    const { store, srv, core } = family();
+    srv.state.offline = false;
+    expect((await deleteTask(core, mint('d1'), 'p')).synced).toBe(true);
+    const sent = srv.sent.length;
+    expect((await deleteTask(core, mint('d1'), 'p')).synced).toBe(true);
+    expect(srv.sent).toHaveLength(sent);
+    expect(store.pending()).toEqual([]);
+  });
+
+  it('leaves a moved copy alive, and refuses its undo', async () => {
+    const { store, core } = family();
+    put(store, 'task', {
+      ...task('c', { scheduledOn: '2026-10-10' }),
+      originTaskId: 'p',
+      originOccurrence: '2026-10-08',
+      version: 5,
+    });
+    await deleteTask(core, mint('d1'), 'p');
+    expect(ids(viewTasks(store, TODAY, ALL_OPEN))).toEqual(['c']);
+    await expect(undoMove(core, mint('u1'), 'c')).rejects.toThrow(
+      /original task of c is gone/,
+    );
   });
 });

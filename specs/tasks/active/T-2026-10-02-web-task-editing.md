@@ -164,7 +164,7 @@ answers, and is reachable from the keyboard.
 
 ### Steps
 
-- [ ] T001 [FR-001] `deleteTask` and the shared `settledRow` — plan Task 1 — `packages/client-core/src/operations.ts`
+- [x] T001 [FR-001] `deleteTask` and the shared `settledRow` — plan Task 1 — `packages/client-core/src/operations.ts`
 - [ ] T002 [FR-002, FR-003] Subtasks: `add` under a parent, drawer and item fields — plan Task 2 — `packages/client-core/src/operations.ts`
 - [ ] T003 [FR-004, FR-005] `ruleProblem`, `upcoming`, `setRecurrence` — plan Task 3 — `packages/client-core/src/occurrence.ts`, `operations.ts`
 - **Checkpoint:** client-core holds every W5 operation with Node tests, and the CLI is unchanged.
