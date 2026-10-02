@@ -11,3 +11,4 @@ export * from './sync.js';
 export * from './transport.js';
 export * from './auth.js';
 export * from './operations.js';
+export * from './rank.js';
