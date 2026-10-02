@@ -343,7 +343,7 @@ const dates = [
             />
           </div>
           <UButton
-            v-if="key === 'scheduledOn' && !task.parentId"
+            v-if="key === 'scheduledOn' && !task.parentId && movedFrom === null"
             variant="outline"
             color="neutral"
             size="sm"

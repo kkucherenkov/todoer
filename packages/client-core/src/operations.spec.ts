@@ -2051,6 +2051,21 @@ describe('setRecurrence', () => {
       ['s', () => undefined, WEEKLY, /a subtask repeats with its parent/],
       [
         'o',
+        (store) =>
+          put(
+            store,
+            'task',
+            task('o', {
+              version: 5,
+              originTaskId: 'd',
+              originOccurrence: '2026-10-05',
+            }),
+          ),
+        WEEKLY,
+        /a moved occurrence cannot repeat/,
+      ],
+      [
+        'o',
         (store) => put(store, 'task', task('o', { version: null })),
         WEEKLY,
         /task o is not synced yet/,

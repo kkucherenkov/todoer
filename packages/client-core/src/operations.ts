@@ -1797,8 +1797,9 @@ export type Rule = { rrule: string; dtstart: string };
  * occurrence. One-off → recurring: dtstart (when it differs), rrule,
  * scheduledOn null. Recurring → recurring: rrule, then dtstart, each when it
  * differs. Fields equal to the stored value are left out; an unchanged rule
- * queues nothing. Refuses a subtask, a rule ruleProblem refuses, and (when
- * anything would be written) a task that is not settled. Replay-safe.
+ * queues nothing. Refuses a subtask, a moved copy (a one-off by design), a
+ * rule ruleProblem refuses, and (when anything would be written) a task that
+ * is not settled. Replay-safe.
  */
 export async function setRecurrence(
   core: Core,
@@ -1813,6 +1814,11 @@ export async function setRecurrence(
   const task = liveTask(all, taskId);
   if (task.parentId !== null && task.parentId !== undefined) {
     throw new UsageError('a subtask repeats with its parent');
+  }
+  if (rule !== null && task.originTaskId != null) {
+    throw new UsageError(
+      'a moved occurrence cannot repeat — return it to its series first',
+    );
   }
   if (rule !== null) {
     const problem = ruleProblem(rule.rrule, rule.dtstart);

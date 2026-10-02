@@ -271,7 +271,8 @@ Settled by the maintainer on 2026-10-02, for plan W5
   recurring task one-off by clearing `rrule`. A rule write carries
   `baseVersion` (ADR 0004) and is refused with a reason while the row has no
   `version`. The form previews the next dates with the shared expander. A
-  subtask carries no rule (ADR 0009).
+  subtask carries no rule (ADR 0009), nor does a moved copy: it is a one-off,
+  and "Return to series" would delete it with its new series.
   - *Rejected: presets only.* The subset has rules no preset writes ("last
     working day of the month"), and a task carrying one could not be edited.
   - *Rejected: raw RRULE only.* Correct, and unusable for most people.
@@ -699,7 +700,7 @@ wider one, and the mode and anchor date live in the URL
 
 Plan W5 (task delete, subtasks and recurrence editing in the web,
 [`docs/plans/2026-10-02-plan-w5-web-task-editing.md`](../plans/2026-10-02-plan-w5-web-task-editing.md))
-fills in "Decisions for #414" in eleven places. No backend, CLI or contract
+fills in "Decisions for #414" in twelve places. No backend, CLI or contract
 change.
 
 1. **One-off and recurring switch tidy the date fields.** Recurring to one-off
@@ -734,6 +735,10 @@ change.
     item on a calendar chip, which already holds a button.
 11. **Delete lives in the drawer only.** An ended series keeps its rule editor
     enabled; its other fields stay read-only.
+12. **A moved copy cannot repeat.** The drawer hides "Repeat…" for a task with
+    `originTaskId` and `setRecurrence` refuses it ("a moved occurrence cannot
+    repeat — return it to its series first"). Clearing a rule stays allowed.
+    Fills in decision 1.
 
 ### Behaviour worth knowing in W5
 
