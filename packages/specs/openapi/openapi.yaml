@@ -87,6 +87,14 @@ components:
         invitation: { type: string, maxLength: 512 }
         transport: { $ref: "#/components/schemas/TokenTransport" }
 
+    RegistrationStatus:
+      type: object
+      required: [open]
+      properties:
+        # True exactly when POST /auth/register accepts a registration without
+        # an invitation: the instance has no users yet.
+        open: { type: boolean }
+
     # Absent when the refresh cookie carries the token. The body is still
     # required, and may be `{}`.
     RefreshRequest:
@@ -352,6 +360,30 @@ paths:
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
+        default:
+          description: unexpected error
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /auth/registration:
+    get:
+      operationId: getAuthRegistration
+      summary: Whether registration without an invitation is open
+      description: >-
+        `open` is true while the instance has no users, which is exactly when
+        `POST /auth/register` accepts a registration without an invitation: the
+        first account becomes the owner. A client shows a registration form
+        instead of sign-in on that answer. The answer is a hint, not a
+        reservation; a registration can still be refused with 403 when someone
+        else registered first.
+      security: []
+      responses:
+        "200":
+          description: the registration status
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/RegistrationStatus" }
         default:
           description: unexpected error
           content:
