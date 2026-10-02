@@ -180,7 +180,7 @@ answers, and can be done from the keyboard and on a touch screen.
 - [x] T006 [FR-007, FR-012] Calendar layout and navigation — plan Task 6 — `apps/web/app/components/CalendarView.vue`
 - [x] T007 [FR-008, FR-009, FR-012] Drag, "Move to date…", Undo, drawer — plan Task 7 — `apps/web/app/components/`, `apps/web/e2e/`
 - **Checkpoint:** the calendar is proven in Chromium and Firefox under the CSP.
-- [ ] T008 [P] [FR-010] Filter tree edit helpers — plan Task 8 — `apps/web/app/utils/filterTree.ts`
+- [x] T008 [P] [FR-010] Filter tree edit helpers — plan Task 8 — `apps/web/app/utils/filterTree.ts`
 - [ ] T009 [FR-011, FR-012] Filter-tree editor in the view form — plan Task 9 — `apps/web/app/components/FilterTree.vue`
 - [ ] T010 [FR-013] Docs, departures, full proof — plan Task 10 — `README.md`, `docs/specs/`
 
