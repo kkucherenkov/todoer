@@ -35,7 +35,7 @@ import {
   resolveLabels,
 } from './labels.js';
 import { planMerge } from './merge.js';
-import type { Ranked } from './rank.js';
+import { rankBetween, rankWrites, type Ranked } from './rank.js';
 import { liveTasks, overlay } from './overlay.js';
 import { planAdd } from './parse-quick-add.js';
 import { resolveRef, shortRef } from './ref.js';
@@ -221,8 +221,9 @@ function stateOf(marks: Row[], taskId: string): StateOf {
     )?.state;
 }
 
-function setTask(
-  task: Row,
+function setRow(
+  table: 'task' | 'view' | 'status',
+  row: Row,
   field: string,
   value: unknown,
   newId: () => string,
@@ -231,13 +232,21 @@ function setTask(
   return {
     opId: newId(),
     kind: 'set',
-    table: 'task',
-    id: String(task.id),
+    table,
+    id: String(row.id),
     field,
     value,
     ts,
   };
 }
+
+const setTask = (
+  task: Row,
+  field: string,
+  value: unknown,
+  newId: () => string,
+  ts: string,
+): OpSet => setRow('task', task, field, value, newId, ts);
 
 /** The statuses as `displayStatus` and `completingStatus` read them. */
 function statusFacts(statuses: Row[]): StatusRow[] {
@@ -245,6 +254,22 @@ function statusFacts(statuses: Row[]): StatusRow[] {
     id: String(s.id),
     rank: String(s.rank),
     completing: s.completing === true,
+  }));
+}
+
+/** The Inbox, Doing, Done creates (views Q9), shared with statusOps. */
+export function seedOps(newId: () => string, ts: string): OpCreate[] {
+  return [
+    { name: 'Inbox', rank: 'a0', completing: false },
+    { name: 'Doing', rank: 'a1', completing: false },
+    { name: 'Done', rank: 'a2', completing: true },
+  ].map((fields) => ({
+    opId: newId(),
+    kind: 'create',
+    table: 'status',
+    id: newId(),
+    fields,
+    ts,
   }));
 }
 
@@ -268,21 +293,7 @@ function statusOps(
       : [setTask(task, 'statusId', null, newId, ts)];
   }
   const live = statusFacts(statuses);
-  const seeded: OpCreate[] =
-    live.length > 0
-      ? []
-      : [
-          { name: 'Inbox', rank: 'a0', completing: false },
-          { name: 'Doing', rank: 'a1', completing: false },
-          { name: 'Done', rank: 'a2', completing: true },
-        ].map((fields) => ({
-          opId: newId(),
-          kind: 'create',
-          table: 'status',
-          id: newId(),
-          fields,
-          ts,
-        }));
+  const seeded = live.length > 0 ? [] : seedOps(newId, ts);
   const target = completingStatus([
     ...live,
     ...seeded.map((op) => ({
@@ -1123,4 +1134,279 @@ export function reconcile(core: Core): string[] {
     return merged;
   }
   return [];
+}
+
+export type ViewFields = {
+  name: string;
+  layout: 'list' | 'kanban' | 'calendar';
+  sort: 'manual' | 'priority' | 'due' | 'scheduled';
+  filter: unknown;
+};
+
+const LAYOUTS = ['list', 'kanban', 'calendar'];
+const SORTS = ['manual', 'priority', 'due', 'scheduled'];
+
+const byRank = (a: Row, b: Row) =>
+  compareStrings(a.rank, b.rank) || compareIds(a, b);
+
+/** A seen `opId` only flushes, before any validation. */
+async function replayed(core: Core, opId: string) {
+  if (!core.store.seen(opId)) return undefined;
+  return { synced: (await flush(core.store, core.send)).synced };
+}
+
+function submitOwn(core: Core, ops: Op[], command: string, opId: string) {
+  return submit(
+    core.store,
+    core.send,
+    withFirstId(ops, opId),
+    command,
+    opId,
+    core.now().getTime(),
+  );
+}
+
+/** A name no other live row of `rows` has, trimmed and non-empty. */
+function uniqueName(rows: Row[], id: string, name: string, what: string) {
+  const trimmed = requiredName(name, `${what} name`);
+  const key = nameKey(trimmed);
+  if (
+    rows.some(
+      (r) =>
+        r.id !== id && typeof r.name === 'string' && nameKey(r.name) === key,
+    )
+  ) {
+    throw new UsageError(`a ${what} named ${trimmed} already exists`);
+  }
+  return trimmed;
+}
+
+/**
+ * Create (id unknown) or update (one `set` per changed field) a view. A new
+ * view ranks after the last. Replay-safe.
+ */
+export async function saveView(
+  core: Core,
+  minted: Minted & { id: string },
+  fields: ViewFields,
+): Promise<{ synced: boolean }> {
+  const done = await replayed(core, minted.opId);
+  if (done !== undefined) return done;
+  const all = viewRows(core.store);
+  const live = notDeleted(all);
+  const existing = all.find((v) => v.id === minted.id);
+  if (existing !== undefined && existing.deletedAt !== null) {
+    throw new UsageError(`no view ${minted.id}`);
+  }
+  const name = uniqueName(live, minted.id, fields.name, 'view');
+  if (!LAYOUTS.includes(fields.layout)) {
+    throw new UsageError(`layout must be one of ${LAYOUTS.join(', ')}`);
+  }
+  if (!SORTS.includes(fields.sort)) {
+    throw new UsageError(`sort must be one of ${SORTS.join(', ')}`);
+  }
+  const problem = filterProblem(fields.filter);
+  if (problem !== null) throw new UsageError(problem);
+  const ts = core.now().toISOString();
+  const written = {
+    name,
+    layout: fields.layout,
+    sort: fields.sort,
+    filter: fields.filter,
+  };
+  const ops: Op[] =
+    existing === undefined
+      ? [
+          {
+            opId: core.newId(),
+            kind: 'create',
+            table: 'view',
+            id: minted.id,
+            fields: {
+              ...written,
+              rank: rankBetween(
+                ([...live].sort(byRank).at(-1)?.rank as string | undefined) ??
+                  null,
+                null,
+              ),
+            },
+            ts,
+          },
+        ]
+      : Object.entries(written)
+          .filter(([k, v]) => JSON.stringify(existing[k]) !== JSON.stringify(v))
+          .map(([k, v]) => setRow('view', existing, k, v, core.newId, ts));
+  return { synced: await submitOwn(core, ops, 'view', minted.opId) };
+}
+
+/** A delete's `baseVersion` is the row's version; an unsynced row has none. */
+function syncedRow(
+  rows: Row[],
+  id: string,
+  what: string,
+): Row & { version: number } {
+  const row = notDeleted(rows).find((r) => r.id === id);
+  if (row === undefined) throw new UsageError(`no ${what} ${id}`);
+  if (typeof row.version !== 'number') {
+    throw new UsageError(`${what} ${id} is not synced yet`);
+  }
+  return row as Row & { version: number };
+}
+
+const deleteOp = (
+  table: 'view' | 'status',
+  row: Row & { version: number },
+  newId: () => string,
+): Op => ({
+  opId: newId(),
+  kind: 'delete',
+  table,
+  id: String(row.id),
+  baseVersion: row.version,
+});
+
+/** Refuses a view without a `version` ("not synced yet"). Replay-safe. */
+export async function deleteView(
+  core: Core,
+  minted: Minted,
+  id: string,
+): Promise<{ synced: boolean }> {
+  const done = await replayed(core, minted.opId);
+  if (done !== undefined) return done;
+  const row = syncedRow(viewRows(core.store), id, 'view');
+  return {
+    synced: await submitOwn(
+      core,
+      [deleteOp('view', row, core.newId)],
+      'view',
+      minted.opId,
+    ),
+  };
+}
+
+/**
+ * Create (id unknown; ranks after `after`, or last) or rename and/or reorder
+ * (`after`: the status it follows; null: first). Names are nameKey-unique.
+ */
+export async function saveStatus(
+  core: Core,
+  minted: Minted & { id: string },
+  change: { name?: string; after?: string | null },
+): Promise<{ synced: boolean }> {
+  const done = await replayed(core, minted.opId);
+  if (done !== undefined) return done;
+  const all = statusRows(core.store);
+  const live = notDeleted(all);
+  const existing = all.find((s) => s.id === minted.id);
+  if (existing !== undefined && existing.deletedAt !== null) {
+    throw new UsageError(`no status ${minted.id}`);
+  }
+  const ts = core.now().toISOString();
+  const name =
+    change.name === undefined
+      ? undefined
+      : uniqueName(live, minted.id, change.name, 'status');
+  if (existing === undefined && name === undefined) {
+    throw new UsageError('status name must not be empty');
+  }
+  const ordered = live.filter((s) => s.id !== minted.id).sort(byRank);
+  const after =
+    change.after === undefined && existing === undefined
+      ? ((ordered.at(-1)?.id as string | undefined) ?? null)
+      : change.after;
+  if (after != null && !ordered.some((s) => s.id === after)) {
+    throw new UsageError(`no status ${after}`);
+  }
+  const ranks =
+    after === undefined
+      ? []
+      : rankWrites(
+          ordered.map((s) => ({ id: String(s.id), rank: String(s.rank) })),
+          minted.id,
+          after,
+        );
+  const ops: Op[] = [];
+  if (existing === undefined) {
+    const mine = ranks.find((r) => r.id === minted.id)!;
+    ops.push({
+      opId: core.newId(),
+      kind: 'create',
+      table: 'status',
+      id: minted.id,
+      fields: { name, rank: mine.rank, completing: false },
+      ts,
+    });
+  } else if (name !== undefined && name !== existing.name) {
+    ops.push(setRow('status', existing, 'name', name, core.newId, ts));
+  }
+  for (const { id, rank } of ranks) {
+    if (existing === undefined && id === minted.id) continue;
+    ops.push(setRow('status', { id }, 'rank', rank, core.newId, ts));
+  }
+  return { synced: await submitOwn(core, ops, 'status', minted.opId) };
+}
+
+/** `completing: true` on this one and false on every other that has it. */
+export async function setCompleting(
+  core: Core,
+  minted: Minted,
+  id: string,
+): Promise<{ synced: boolean }> {
+  const done = await replayed(core, minted.opId);
+  if (done !== undefined) return done;
+  const live = notDeleted(statusRows(core.store));
+  const target = live.find((s) => s.id === id);
+  if (target === undefined) throw new UsageError(`no status ${id}`);
+  const ts = core.now().toISOString();
+  const ops = live
+    .filter((s) => s.id !== id && s.completing === true)
+    .sort(compareIds)
+    .map((s) => setRow('status', s, 'completing', false, core.newId, ts));
+  if (target.completing !== true) {
+    ops.push(setRow('status', target, 'completing', true, core.newId, ts));
+  }
+  return { synced: await submitOwn(core, ops, 'status', minted.opId) };
+}
+
+/**
+ * One batch: `set statusId null` for every live task on the status, then
+ * `delete` (views Q8). Refuses the completing status, the last non-completing
+ * one, and one without a `version`. Replay-safe.
+ */
+export async function deleteStatus(
+  core: Core,
+  minted: Minted,
+  id: string,
+): Promise<{ synced: boolean }> {
+  const done = await replayed(core, minted.opId);
+  if (done !== undefined) return done;
+  const all = statusRows(core.store);
+  const row = syncedRow(all, id, 'status');
+  if (row.completing === true) {
+    throw new UsageError('the completing status cannot be deleted');
+  }
+  if (notDeleted(all).filter((s) => s.completing !== true).length < 2) {
+    throw new UsageError('the last open status cannot be deleted');
+  }
+  const ts = core.now().toISOString();
+  const ops: Op[] = [
+    ...liveTasks(tasks(core.store))
+      .filter((t) => t.statusId === id)
+      .sort(compareIds)
+      .map((t) => setTask(t, 'statusId', null, core.newId, ts)),
+    deleteOp('status', row, core.newId),
+  ];
+  return { synced: await submitOwn(core, ops, 'status', minted.opId) };
+}
+
+/** Queues seedOps when there is no live status; returns whether it did. */
+export function seedStatuses(core: Core): boolean {
+  const { store } = core;
+  return store.transaction(() => {
+    if (notDeleted(statusRows(store)).length > 0) return false;
+    for (const op of seedOps(core.newId, core.now().toISOString())) {
+      store.enqueue(op);
+    }
+    return true;
+  });
 }

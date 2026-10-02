@@ -10,10 +10,16 @@ import {
   add,
   boardTasks,
   catalog,
+  deleteStatus,
+  deleteView,
   editTask,
   listTasks,
   mark,
   moveTask,
+  saveStatus,
+  saveView,
+  seedStatuses,
+  setCompleting,
   submit,
   taskDetails,
   viewTasks,
@@ -766,5 +772,266 @@ describe('moveTask', () => {
     const again = await moveTask(core, mint('m1'), 'a', { statusId: DONE });
     expect(again.synced).toBe(false);
     expect(store.pending()).toHaveLength(queued);
+  });
+});
+
+describe('views and statuses', () => {
+  function offline(rows: Array<[string, Record<string, unknown>]> = []) {
+    const store = openStore(':memory:');
+    const srv = fakeServer();
+    srv.state.offline = true;
+    for (const [table, row] of rows) put(store, table, row);
+    return { store, core: coreOf(store, srv.send) };
+  }
+  const view = (id: string, extra: Record<string, unknown> = {}) =>
+    [
+      'view',
+      {
+        id,
+        name: id,
+        layout: 'list',
+        sort: 'manual',
+        filter: { and: [] },
+        rank: 'a0',
+        version: 1,
+        ...extra,
+      },
+    ] as [string, Record<string, unknown>];
+  const status = (id: string, extra: Record<string, unknown> = {}) =>
+    [
+      'status',
+      { id, name: id, rank: 'a0', completing: false, version: 1, ...extra },
+    ] as [string, Record<string, unknown>];
+  const fields: Parameters<typeof saveView>[2] = {
+    name: 'Work',
+    layout: 'kanban',
+    sort: 'priority',
+    filter: { and: [] },
+  };
+  const pendingOf = (store: Store, kind: string) =>
+    store.pending().filter((o) => o.kind === kind);
+
+  it('creates a view ranked after the last one', async () => {
+    const { store, core } = offline([view('v1', { rank: 'a5' })]);
+    await saveView(core, { opId: 'o1', id: 'v2' }, fields);
+    const [op] = store.pending();
+    expect(op).toMatchObject({
+      opId: 'o1',
+      kind: 'create',
+      table: 'view',
+      id: 'v2',
+      fields: { ...fields },
+    });
+    expect(op?.kind === 'create' && String(op.fields.rank) > 'a5').toBe(true);
+  });
+
+  it('writes one set for the one field an update changes', async () => {
+    const { store, core } = offline([view('v1')]);
+    await saveView(
+      core,
+      { opId: 'o1', id: 'v1' },
+      {
+        name: 'v1',
+        layout: 'list',
+        sort: 'due',
+        filter: { and: [] },
+      },
+    );
+    expect(store.pending()).toMatchObject([
+      {
+        opId: 'o1',
+        kind: 'set',
+        table: 'view',
+        id: 'v1',
+        field: 'sort',
+        value: 'due',
+      },
+    ]);
+  });
+
+  it('refuses a filter with a problem, a duplicate name, a bad layout or sort', async () => {
+    const { core, store } = offline([view('v1', { name: 'Work' })]);
+    await expect(
+      saveView(
+        core,
+        { opId: 'o1', id: 'v2' },
+        { ...fields, name: 'x', filter: { tag: 'Work' } },
+      ),
+    ).rejects.toThrow(UsageError);
+    await expect(
+      saveView(core, { opId: 'o2', id: 'v2' }, { ...fields, name: ' WORK ' }),
+    ).rejects.toThrow(UsageError);
+    await expect(
+      saveView(core, { opId: 'o3', id: 'v2' }, { ...fields, name: ' ' }),
+    ).rejects.toThrow(UsageError);
+    await expect(
+      saveView(
+        core,
+        { opId: 'o4', id: 'v2' },
+        { ...fields, layout: 'grid' as 'list' },
+      ),
+    ).rejects.toThrow(UsageError);
+    await expect(
+      saveView(
+        core,
+        { opId: 'o5', id: 'v2' },
+        { ...fields, sort: 'x' as 'due' },
+      ),
+    ).rejects.toThrow(UsageError);
+    expect(store.pending()).toEqual([]);
+  });
+
+  it('carries the filterProblem text in the refusal', async () => {
+    const { core } = offline();
+    await expect(
+      saveView(
+        core,
+        { opId: 'o1', id: 'v2' },
+        { ...fields, filter: { tag: 'Work' } },
+      ),
+    ).rejects.toThrow(/filter/i);
+  });
+
+  it('refuses to delete a view that is not synced yet and deletes a synced one with its version', async () => {
+    const { store, core } = offline([view('v1', { version: 3 })]);
+    await saveView(core, { opId: 'o0', id: 'v2' }, fields);
+    await expect(deleteView(core, { opId: 'o1' }, 'v2')).rejects.toThrow(
+      /not synced yet/,
+    );
+    await deleteView(core, { opId: 'o2' }, 'v1');
+    expect(pendingOf(store, 'delete')).toMatchObject([
+      { opId: 'o2', table: 'view', id: 'v1', baseVersion: 3 },
+    ]);
+  });
+
+  it('creates a status between neighbours and reorders to first', async () => {
+    const { store, core } = offline([
+      status('s1', { rank: 'a0' }),
+      status('s2', { rank: 'a1' }),
+    ]);
+    await saveStatus(
+      core,
+      { opId: 'o1', id: 'n' },
+      { name: 'Review', after: 's1' },
+    );
+    const [op] = store.pending();
+    const rank = op?.kind === 'create' ? String(op.fields.rank) : '';
+    expect(rank > 'a0' && rank < 'a1').toBe(true);
+    await saveStatus(core, { opId: 'o2', id: 's2' }, { after: null });
+    const last = store.pending().at(-1)!;
+    expect(last).toMatchObject({ kind: 'set', id: 's2', field: 'rank' });
+    expect(last.kind === 'set' && String(last.value) < 'a0').toBe(true);
+  });
+
+  it('refuses a status renamed to an existing name', async () => {
+    const { core } = offline([status('s1', { name: 'Todo' }), status('s2')]);
+    await expect(
+      saveStatus(core, { opId: 'o1', id: 's2' }, { name: ' todo' }),
+    ).rejects.toThrow(UsageError);
+  });
+
+  it('keeps exactly one completing status', async () => {
+    const { store, core } = offline([
+      status('s1', { completing: true }),
+      status('s2', { completing: true, rank: 'a1' }),
+      status('s3', { rank: 'a2' }),
+    ]);
+    await setCompleting(core, { opId: 'o1' }, 's3');
+    expect(sets(store, 'completing')).toEqual([
+      ['s1', false],
+      ['s2', false],
+      ['s3', true],
+    ]);
+  });
+
+  it('deletes a status in one batch after moving its tasks off it', async () => {
+    const { store, core } = offline([
+      status('s1'),
+      status('s2', { rank: 'a1' }),
+      status('s3', { rank: 'a2', completing: true }),
+      ['task', task('a', { statusId: 's2' })],
+      ['task', task('b', { statusId: 's2' })],
+      ['task', task('c', { statusId: 's2' })],
+      ['task', task('d', { statusId: 's1' })],
+    ]);
+    let submits = 0;
+    const real = store.transaction.bind(store);
+    store.transaction = ((fn: () => unknown) => {
+      submits += 1;
+      return real(fn);
+    }) as typeof store.transaction;
+    await deleteStatus(core, { opId: 'o1' }, 's2');
+    expect(submits).toBe(1);
+    expect(
+      store
+        .pending()
+        .map((o) => [o.kind, o.id, o.kind === 'set' ? o.value : 0]),
+    ).toEqual([
+      ['set', 'a', null],
+      ['set', 'b', null],
+      ['set', 'c', null],
+      ['delete', 's2', 0],
+    ]);
+  });
+
+  it('refuses to delete the completing, the last open or an unsynced status', async () => {
+    const { store, core } = offline([
+      status('s1'),
+      status('s2', { rank: 'a1', completing: true }),
+    ]);
+    await expect(deleteStatus(core, { opId: 'o1' }, 's2')).rejects.toThrow(
+      UsageError,
+    );
+    await expect(deleteStatus(core, { opId: 'o2' }, 's1')).rejects.toThrow(
+      UsageError,
+    );
+    put(store, 'status', {
+      id: 's4',
+      name: 'x',
+      rank: 'a2',
+      completing: false,
+      deletedAt: null,
+    });
+    await saveStatus(core, { opId: 'o3', id: 's5' }, { name: 'New' });
+    await expect(deleteStatus(core, { opId: 'o4' }, 's5')).rejects.toThrow(
+      /not synced yet/,
+    );
+  });
+
+  it('seeds Inbox, Doing, Done once, also over a tombstone', () => {
+    const { store, core } = offline([status('old', { deletedAt: 'x' })]);
+    expect(seedStatuses(core)).toBe(true);
+    expect(
+      store.pending().map((o) => o.kind === 'create' && o.fields),
+    ).toMatchObject([
+      { name: 'Inbox', completing: false },
+      { name: 'Doing', completing: false },
+      { name: 'Done', completing: true },
+    ]);
+    expect(seedStatuses(core)).toBe(false);
+    expect(store.pending()).toHaveLength(3);
+  });
+
+  it('replays every operation to nothing', async () => {
+    const { store, core } = offline([
+      view('v1'),
+      status('s1'),
+      status('s2', { rank: 'a1', completing: true }),
+      status('s3', { rank: 'a2' }),
+    ]);
+    const runs: Array<() => Promise<unknown>> = [
+      () => saveView(core, { opId: 'r1', id: 'v9' }, fields),
+      () => deleteView(core, { opId: 'r2' }, 'v1'),
+      () => saveStatus(core, { opId: 'r3', id: 's9' }, { name: 'New' }),
+      () => setCompleting(core, { opId: 'r4' }, 's3'),
+      () => deleteStatus(core, { opId: 'r5' }, 's1'),
+    ];
+    for (const run of runs) {
+      await run().catch(() => undefined);
+      const n = store.pending().length;
+      await run().catch(() => undefined);
+      expect(store.pending()).toHaveLength(n);
+    }
+    expect(store.pending().length).toBeGreaterThan(0);
   });
 });
