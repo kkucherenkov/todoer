@@ -1149,6 +1149,25 @@ const SORTS = ['manual', 'priority', 'due', 'scheduled'];
 const byRank = (a: Row, b: Row) =>
   compareStrings(a.rank, b.rank) || compareIds(a, b);
 
+/** Structural equality of JSON values; object key order does not matter. */
+function sameJson(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== 'object' || typeof b !== 'object' || !a || !b) return false;
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a);
+  return (
+    ka.length === Object.keys(b).length &&
+    ka.every(
+      (k) =>
+        k in b &&
+        sameJson(
+          (a as Record<string, unknown>)[k],
+          (b as Record<string, unknown>)[k],
+        ),
+    )
+  );
+}
+
 /** A seen `opId` only flushes, before any validation. */
 async function replayed(core: Core, opId: string) {
   if (!core.store.seen(opId)) return undefined;
@@ -1234,7 +1253,7 @@ export async function saveView(
           },
         ]
       : Object.entries(written)
-          .filter(([k, v]) => JSON.stringify(existing[k]) !== JSON.stringify(v))
+          .filter(([k, v]) => !sameJson(existing[k], v))
           .map(([k, v]) => setRow('view', existing, k, v, core.newId, ts));
   return { synced: await submitOwn(core, ops, 'view', minted.opId) };
 }

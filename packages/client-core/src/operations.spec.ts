@@ -904,6 +904,30 @@ describe('views and statuses', () => {
     ]);
   });
 
+  it('writes nothing for a view whose filter only reorders keys', async () => {
+    const filter = { scheduled: { from: 0, to: 3 } };
+    const { store, core } = offline([view('v1', { filter })]);
+    await saveView(
+      core,
+      { opId: 'o1', id: 'v1' },
+      {
+        name: 'v1',
+        layout: 'list',
+        sort: 'manual',
+        filter: { scheduled: { to: 3, from: 0 } },
+      },
+    );
+    expect(store.pending()).toEqual([]);
+  });
+
+  it('writes exactly one set name for a status rename', async () => {
+    const { store, core } = offline([status('s1')]);
+    await saveStatus(core, { opId: 'o1', id: 's1' }, { name: 'Todo' });
+    expect(store.pending()).toMatchObject([
+      { kind: 'set', id: 's1', field: 'name', value: 'Todo' },
+    ]);
+  });
+
   it('creates a status between neighbours and reorders to first', async () => {
     const { store, core } = offline([
       status('s1', { rank: 'a0' }),
@@ -979,12 +1003,20 @@ describe('views and statuses', () => {
       status('s1'),
       status('s2', { rank: 'a1', completing: true }),
     ]);
-    await expect(deleteStatus(core, { opId: 'o1' }, 's2')).rejects.toThrow(
-      UsageError,
-    );
     await expect(deleteStatus(core, { opId: 'o2' }, 's1')).rejects.toThrow(
-      UsageError,
+      /last open/,
     );
+    put(store, 'status', {
+      id: 's0',
+      name: 's0',
+      rank: 'a3',
+      completing: false,
+      version: 1,
+    });
+    await expect(deleteStatus(core, { opId: 'o1' }, 's2')).rejects.toThrow(
+      /completing/,
+    );
+    expect(store.pending()).toEqual([]);
     put(store, 'status', {
       id: 's4',
       name: 'x',
@@ -1027,9 +1059,9 @@ describe('views and statuses', () => {
       () => deleteStatus(core, { opId: 'r5' }, 's1'),
     ];
     for (const run of runs) {
-      await run().catch(() => undefined);
+      await run();
       const n = store.pending().length;
-      await run().catch(() => undefined);
+      await expect(run()).resolves.toBeDefined();
       expect(store.pending()).toHaveLength(n);
     }
     expect(store.pending().length).toBeGreaterThan(0);
