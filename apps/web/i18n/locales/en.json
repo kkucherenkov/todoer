@@ -90,5 +90,23 @@
     "invalidDate": "Use a date, YYYY-MM-DD.",
     "gone": "The task was deleted",
     "notFound": "This task no longer exists."
+  },
+  "kanban": {
+    "columns": "Columns",
+    "noColumns": "Columns appear after the first sync.",
+    "moveTo": "Move to",
+    "completing": "Completing column"
+  },
+  "columns": {
+    "title": "Columns",
+    "description": "Rename, reorder and choose the column that completes a task.",
+    "name": "Column name",
+    "makeCompleting": "Make completing",
+    "delete": "Delete",
+    "confirm": "Delete “{name}”? Its tasks move to {first} ({count} on this board).",
+    "confirmDelete": "Delete column",
+    "cancel": "Cancel",
+    "new": "New column",
+    "add": "Add column"
   }
 }

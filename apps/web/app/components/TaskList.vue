@@ -3,39 +3,20 @@ import type { Item } from '@todoer/client-core';
 
 const props = defineProps<{ view: string; sort: string; items: Item[] }>();
 const db = useDb();
-const toast = useToast();
 const route = useRoute();
 const router = useRouter();
-const { t } = useI18n();
 
 const manual = computed(() => props.sort === 'manual');
 const ids = computed(() => props.items.map((i) => String(i.id)));
 
 const fail = useFail();
-
-async function undo(taskId: string) {
-  const result = await db.write({ kind: 'mark', taskId, mark: 'undo' });
-  if (!result.ok) fail(result);
-}
+const marked = useMarked();
 
 async function mark(item: Item, mark: 'done' | 'skip') {
   const taskId = String(item.id);
   const result = await db.write({ kind: 'mark', taskId, mark });
   if (!result.ok) return fail(result);
-  const note = result.note;
-  toast.add({
-    title:
-      mark === 'skip'
-        ? t('list.skipped')
-        : note?.occurrence && note.next
-          ? t('list.doneRecurring', {
-              occurrence: note.occurrence,
-              next: note.next,
-            })
-          : t('list.done'),
-    description: String(item.title),
-    actions: [{ label: t('list.undo'), onClick: () => void undo(taskId) }],
-  });
+  marked(taskId, String(item.title), mark, result.note);
 }
 
 async function move(taskId: string, after: string | null) {

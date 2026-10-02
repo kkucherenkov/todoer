@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// The watched view, drawn by its layout. Task 10 adds the board.
+// The watched view, drawn by its layout.
 const view = useTopic('view');
 </script>
 
@@ -16,6 +16,12 @@ const view = useTopic('view');
     />
     <TaskList
       v-else-if="view?.layout === 'list'"
+      :view="view.key"
+      :sort="view.sort"
+      :items="view.items"
+    />
+    <KanbanBoard
+      v-else-if="view?.layout === 'kanban'"
       :view="view.key"
       :sort="view.sort"
       :items="view.items"

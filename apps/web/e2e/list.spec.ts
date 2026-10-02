@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { count, expect, test } from './fixtures';
+import { arrowTo, count, day, expect, test } from './fixtures';
 
 /** Opens a task by URL without a reload: the router follows a popstate. */
 const visit = (page: Page, task: string) =>
@@ -10,11 +10,6 @@ const visit = (page: Page, task: string) =>
 
 const rows = (page: Page) => page.getByTestId('task-row');
 const titles = (page: Page) => page.getByTestId('task-title').allTextContents();
-const day = (offset = 0) => {
-  const d = new Date();
-  d.setDate(d.getDate() + offset);
-  return d.toLocaleDateString('sv'); // YYYY-MM-DD, local
-};
 
 type Listed = {
   id: string;
@@ -92,13 +87,7 @@ test('list: quick-add, done, undo, reorder, recurring', async ({
   await rows(page).nth(0).getByRole('button', { name: 'Task actions' }).focus();
   await page.keyboard.press('Enter');
   const down = page.getByRole('menuitem', { name: 'Move down' });
-  for (
-    let i = 0;
-    i < 5 && !(await down.evaluate((e) => e === document.activeElement));
-    i++
-  ) {
-    await page.keyboard.press('ArrowDown');
-  }
+  await arrowTo(page, down);
   await page.keyboard.press('Enter');
   const moved = [dropped[1]!, dropped[0]!, dropped[2]!, dropped[3]!];
   await expect.poll(() => titles(page)).toEqual(moved);

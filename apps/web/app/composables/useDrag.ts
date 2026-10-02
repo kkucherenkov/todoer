@@ -4,6 +4,10 @@ export const DRAG_TYPE = 'application/x-todoer-task';
 /** `line` when the insertion line sits below the last row. */
 export const END = '';
 
+// dragover cannot read dataTransfer data, so the tab remembers its own; one
+// for every container, so a card can leave its column for another.
+let dragging: string | null = null;
+
 /**
  * Drag a row to a gap of `container` (rows carry `data-task-id`). The gap is
  * the pointer's Y against each row's midpoint, the dragged row excluded;
@@ -17,8 +21,6 @@ export function useDrag(
 ) {
   /** The id of the row the insertion line is drawn above; null: no line. */
   const line = ref<string | null>(null);
-  // dragover cannot read dataTransfer data, so the tab remembers its own.
-  let dragging: string | null = null;
 
   const gap = (y: number) => {
     const rows = [

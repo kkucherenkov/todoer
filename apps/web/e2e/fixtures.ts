@@ -2,6 +2,7 @@ import {
   test as base,
   expect,
   type APIRequestContext,
+  type Locator,
   type Page,
 } from '@playwright/test';
 import { execFile } from 'node:child_process';
@@ -270,3 +271,51 @@ export const count = (page: Page) => page.getByTestId('task-count');
 
 /** The placeholder's count, in English. */
 export const tasks = (n: number) => (n === 1 ? '1 task' : `${n} tasks`);
+
+/** A view the CLI cannot make but the API can: one `create view` op.
+ *  Returns its id. */
+export async function seedView(
+  request: APIRequestContext,
+  token: string,
+  name: string,
+  rank: string,
+  layout = 'kanban',
+): Promise<string> {
+  const id = crypto.randomUUID();
+  const response = await request.post('/api/v1/sync', {
+    headers: { authorization: `Bearer ${token}` },
+    data: {
+      since: 0,
+      ops: [
+        {
+          opId: crypto.randomUUID(),
+          kind: 'create',
+          table: 'view',
+          id,
+          fields: { name, layout, sort: 'manual', rank, filter: { and: [] } },
+          ts: new Date().toISOString(),
+        },
+      ],
+    },
+  });
+  expect(response.status(), `create view ${name}`).toBe(200);
+  return id;
+}
+
+/** A local date, YYYY-MM-DD, `offset` days from today. */
+export const day = (offset = 0) => {
+  const d = new Date();
+  d.setDate(d.getDate() + offset);
+  return d.toLocaleDateString('sv');
+};
+
+/** With a menu open, arrows down until `item` has the focus. */
+export async function arrowTo(page: Page, item: Locator) {
+  for (
+    let i = 0;
+    i < 8 && !(await item.evaluate((e) => e === document.activeElement));
+    i++
+  ) {
+    await page.keyboard.press('ArrowDown');
+  }
+}

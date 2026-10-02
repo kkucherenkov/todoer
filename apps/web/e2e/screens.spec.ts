@@ -1,36 +1,4 @@
-import { count, expect, test } from './fixtures';
-
-/** A view the CLI cannot make but the API can: one `create view` op. */
-async function seedView(
-  request: import('@playwright/test').APIRequestContext,
-  token: string,
-  name: string,
-  rank: string,
-) {
-  const response = await request.post('/api/v1/sync', {
-    headers: { authorization: `Bearer ${token}` },
-    data: {
-      since: 0,
-      ops: [
-        {
-          opId: crypto.randomUUID(),
-          kind: 'create',
-          table: 'view',
-          id: crypto.randomUUID(),
-          fields: {
-            name,
-            layout: 'kanban',
-            sort: 'manual',
-            rank,
-            filter: { and: [] },
-          },
-          ts: new Date().toISOString(),
-        },
-      ],
-    },
-  });
-  expect(response.status(), `create view ${name}`).toBe(200);
-}
+import { count, expect, seedView, test } from './fixtures';
 
 test('the sidebar lists views, and a sync that fails shows why', async ({
   page,
