@@ -2,12 +2,20 @@ import { parseRrule, WEEKDAYS, type Weekday } from '@todoer/client-core';
 import { weekday } from './calendar';
 
 export type Freq = 'DAILY' | 'WEEKLY' | 'MONTHLY' | 'YEARLY';
-export type Preset = { freq: Freq; interval: number; byDay: Weekday[] };
+/** `interval` is null while the field is empty. */
+export type Preset = {
+  freq: Freq;
+  interval: number | null;
+  byDay: Weekday[];
+};
 
 /** Canonical text: FREQ, INTERVAL only when > 1, BYDAY only for WEEKLY and
  *  in WEEKDAYS order. Weekly with no day gives `FREQ=WEEKLY…` with no BYDAY;
- *  the form never sends that (FR-010). */
-export function toRrule(p: Preset): string {
+ *  the form never sends that (FR-010). Null for an interval that is empty or
+ *  not a positive integer: the text would otherwise say 1 silently. */
+export function toRrule(p: Preset): string | null {
+  if (p.interval === null || !Number.isInteger(p.interval) || p.interval < 1)
+    return null;
   const out = [`FREQ=${p.freq}`];
   if (p.interval > 1) out.push(`INTERVAL=${p.interval}`);
   if (p.freq === 'WEEKLY' && p.byDay.length > 0)
@@ -39,4 +47,42 @@ export function blankPreset(dtstart: string): Preset {
     interval: 1,
     byDay: [WEEKDAYS[weekday(dtstart)] as Weekday],
   };
+}
+
+/** Known parser and `ruleProblem` reasons (English, from client-core and
+ *  specs) as an i18n key under `recurrence.problem` and its parameters. */
+const REASONS: Array<[RegExp, string, string[]]> = [
+  [/^malformed part: "(.*)"$/, 'malformed', ['part']],
+  [/^(\w+) is not supported: v1 has dates, never times/, 'time', ['key']],
+  [/^(\w+) is not supported$/, 'unsupported', ['key']],
+  [/^(\w+) appears twice$/, 'twice', ['key']],
+  [/^FREQ is required$/, 'freqRequired', []],
+  [/^FREQ=(.*) is not supported$/, 'freqUnsupported', ['value']],
+  [/^(\w+) must be a positive integer$/, 'positive', ['key']],
+  [/^(\w+): "(.*)" is out of range$/, 'outOfRange', ['key', 'item']],
+  [/^BYDAY: "(.*)" is not a weekday$/, 'notWeekday', ['item']],
+  [/^BYDAY: "(.*)" has an ordinal/, 'ordinal', ['item']],
+  [/^UNTIL must be a date/, 'untilDate', []],
+  [/^WKST: "(.*)" is not a weekday$/, 'wkst', ['value']],
+  [/^COUNT and UNTIL cannot both be set$/, 'countUntil', []],
+  [/^BYMONTHDAY cannot be used with FREQ=WEEKLY$/, 'monthdayWeekly', []],
+  [/^BYSETPOS needs another BY part/, 'setpos', []],
+  [/^the start must be a date/, 'startDate', []],
+  [/^this rule produces no date from (.*)$/, 'noDate', ['date']],
+];
+
+/** The i18n key and parameters for a known reason, else null (show the raw
+ *  text). */
+export function reasonKey(
+  reason: string,
+): { key: string; params: Record<string, string> } | null {
+  for (const [re, key, names] of REASONS) {
+    const m = re.exec(reason);
+    if (m)
+      return {
+        key: `recurrence.problem.${key}`,
+        params: Object.fromEntries(names.map((n, i) => [n, m[i + 1] ?? ''])),
+      };
+  }
+  return null;
 }

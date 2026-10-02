@@ -731,6 +731,9 @@ change.
    in `WEEKDAYS` order); any other rule, including `FREQ=WEEKLY` with no
    `BYDAY`, opens in the raw field unchanged. Monthly and Yearly repeat on the
    start date's day, so a rule from the 31st skips short months.
+    An empty or non-integer interval is a problem shown in the form, never
+    written as 1. Known parser reasons show translated (`recurrence.problem.*`),
+    the rest as the raw English text.
 10. **The parent link** is a link on a row and a card and an "Open parent" menu
     item on a calendar chip, which already holds a button.
 11. **Delete lives in the drawer only.** An ended series keeps its rule editor

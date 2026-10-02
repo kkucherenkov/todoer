@@ -7,7 +7,13 @@ import {
   type TaskDetails,
   type Weekday,
 } from '@todoer/client-core';
-import { blankPreset, presetOf, toRrule, type Freq } from '~/utils/recurrence';
+import {
+  blankPreset,
+  presetOf,
+  reasonKey,
+  toRrule,
+  type Freq,
+} from '~/utils/recurrence';
 
 const props = defineProps<{ open: boolean; task: TaskDetails }>();
 const emit = defineEmits<{ close: [] }>();
@@ -18,7 +24,7 @@ const { t, locale } = useI18n();
 
 type Mode = 'none' | Freq | 'custom';
 const mode = ref<Mode>('none');
-const interval = ref(1);
+const interval = ref<number | null>(1);
 const byDay = ref<Weekday[]>([]);
 const start = ref('');
 const text = ref('');
@@ -39,7 +45,7 @@ watch(
     mode.value = !rrule ? 'none' : preset ? preset.freq : 'custom';
     interval.value = (preset ?? blank).interval;
     byDay.value = preset?.byDay.length ? preset.byDay : blank.byDay;
-    text.value = rrule ?? toRrule(blank);
+    text.value = rrule ?? toRrule(blank) ?? '';
   },
   { immediate: true },
 );
@@ -58,11 +64,19 @@ const rule = computed(() =>
           byDay: byDay.value,
         }),
 );
+// The parser's and ruleProblem's reasons are English; known ones are
+// translated, the rest show as they are.
+const localized = (reason: string | null) => {
+  const known = reason === null ? null : reasonKey(reason);
+  return known ? t(known.key, known.params) : reason;
+};
 const problem = computed(() => {
-  if (rule.value === null) return null;
+  const r = rule.value;
+  if (mode.value === 'none') return null;
+  if (r === null) return t('recurrence.pickInterval');
   if (mode.value === 'WEEKLY' && byDay.value.length === 0)
     return t('recurrence.pickDay');
-  return ruleProblem(rule.value, start.value);
+  return localized(ruleProblem(r, start.value));
 });
 const dates = computed(() =>
   rule.value === null || problem.value !== null
@@ -108,7 +122,8 @@ const long = (date: string) =>
 // Leaving a preset for the raw field keeps the text the preset wrote.
 function pick(value: string) {
   const now = value as Mode;
-  if (now === 'custom' && isPreset.value) text.value = rule.value ?? '';
+  if (now === 'custom' && isPreset.value && rule.value !== null)
+    text.value = rule.value;
   mode.value = now;
 }
 
