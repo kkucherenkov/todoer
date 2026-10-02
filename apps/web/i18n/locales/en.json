@@ -28,8 +28,8 @@
     },
     "lastSynced": "Last synced {when}",
     "neverSynced": "Not synced yet",
-    "pending": "Pending: {n}",
-    "failed": "Failed: {n}",
+    "pending": "{n} waiting",
+    "failed": "{n} refused",
     "offline": "Offline",
     "syncNow": "Sync now",
     "signOut": "Sign out"
@@ -41,6 +41,17 @@
     "signed-out": "Your session has ended. Sign in again.",
     "unavailable": "The local database did not answer.",
     "invalid": "That cannot be done.",
-    "unexpected": "Something went wrong."
+    "unexpected": "Something went wrong.",
+    "syncProblem": "Sync refused"
+  },
+  "nav": {
+    "title": "Views",
+    "all": "All open",
+    "problem": "This view has a problem"
+  },
+  "view": {
+    "problem": "This view cannot be shown",
+    "deleted": "This view no longer exists.",
+    "soon": "Tasks appear here soon."
   }
 }

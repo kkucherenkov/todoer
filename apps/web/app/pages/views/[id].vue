@@ -1,5 +1,6 @@
 <script setup lang="ts">
-useWatch(() => 'all');
+const route = useRoute();
+useWatch(() => String(route.params.id));
 </script>
 
 <template>

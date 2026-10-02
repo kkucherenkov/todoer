@@ -113,10 +113,17 @@ export function createEngine({
   ) => publish('session', (session = { state, reason }));
   const publishSync = (changes: Partial<typeof sync> = {}) => {
     sync = { ...sync, ...changes };
-    publish('sync', { ...sync, ...store.counts() });
+    // The replica keeps the last account's rows and queue (signOut keeps
+    // them): their counters are not shown to anyone else.
+    const mine = session.state === 'signed-in';
+    publish('sync', {
+      ...sync,
+      ...(mine ? store.counts() : { pending: 0, failed: 0 }),
+    });
     publish('summary', {
-      tasks: liveTasks(overlay('task', store.rows('task'), store.pending()))
-        .length,
+      tasks: mine
+        ? liveTasks(overlay('task', store.rows('task'), store.pending())).length
+        : 0,
     });
   };
 

@@ -835,6 +835,24 @@ describe('a session that is not signed in', () => {
     expect(views('all').every((v) => v.items.length === 0)).toBe(true);
   });
 
+  it('shows no counters of the replica when signed out, and when restoring', async () => {
+    const srv = server(TODO, taskRow(1));
+    const e = await signedIn(srv);
+    store.enqueue(create('queued')); // a pending op of the account
+    e.snapshot();
+    expect(last('summary')).toEqual({ tasks: 2 });
+    expect(last('sync')).toMatchObject({ pending: 1 });
+    await e.handle({ kind: 'signOut' });
+    expect(last('summary')).toEqual({ tasks: 0 });
+    expect(last('sync')).toMatchObject({ pending: 0, failed: 0 });
+    // A fresh engine over the same replica, before its session is known.
+    const again = engine();
+    again.snapshot();
+    expect(last('session')?.state).toBe('restoring');
+    expect(last('summary')).toEqual({ tasks: 0 });
+    expect(last('sync')).toMatchObject({ pending: 0, failed: 0 });
+  });
+
   it('publishes nothing of the replica while the session restores', async () => {
     const srv = server(TODO, taskRow(1), viewRow(uuid(0x71)));
     await signedIn(srv); // fills the replica, then a fresh engine over it

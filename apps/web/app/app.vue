@@ -8,6 +8,10 @@ const uiLocale = computed(() => uiLocales[locale.value as 'en' | 'ru']);
 <template>
   <UApp :locale="uiLocale">
     <UpdatePrompt class="m-6 mb-0" />
-    <NuxtPage />
+    <AppGate>
+      <AppShell>
+        <NuxtPage />
+      </AppShell>
+    </AppGate>
   </UApp>
 </template>

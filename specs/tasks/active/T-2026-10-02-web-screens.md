@@ -201,7 +201,7 @@ to before W3 ships.
 - **Checkpoint:** client-core holds every W3 operation with Node tests, and the CLI is unchanged.
 - [x] T006 [FR-010, FR-011, FR-012] Worker commands, watches, keyed topics — plan Task 6 — `apps/web/app/db/`
 - **Checkpoint:** every screen's data and write exists behind the protocol.
-- [ ] T007 [FR-013, FR-014] Shell, navigation, sync state — plan Task 7 — `apps/web/app/components/`
+- [x] T007 [FR-013, FR-014] Shell, navigation, sync state — plan Task 7 — `apps/web/app/components/`
 - [ ] T008 [FR-015] List layout — plan Task 8 — `apps/web/app/components/TaskList.vue`
 - [ ] T009 [FR-016] Task drawer — plan Task 9 — `apps/web/app/components/TaskDrawer.vue`
 - [ ] T010 [FR-017, FR-018] Kanban and columns — plan Task 10 — `apps/web/app/components/KanbanBoard.vue`

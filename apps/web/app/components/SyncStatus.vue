@@ -1,10 +1,8 @@
 <script setup lang="ts">
-import type { Db } from '~/db/client';
-
-const { db } = defineProps<{ db: Db }>();
+const db = useDb();
 const { locale, t } = useI18n();
-const summary = computed(() => db.topics.summary.value);
-const sync = computed(() => db.topics.sync.value);
+const summary = useTopic('summary');
+const sync = useTopic('sync');
 
 // The relative time must age without a new publish.
 const now = ref(Date.now());
@@ -34,9 +32,9 @@ const lastSynced = computed(() => {
 </script>
 
 <template>
-  <section class="flex max-w-sm flex-col gap-3">
-    <p class="text-3xl font-semibold" data-testid="task-count">{{ tasks }}</p>
-    <p class="text-sm" data-testid="last-synced">{{ lastSynced }}</p>
+  <section class="flex w-full flex-col gap-2">
+    <p class="text-lg font-semibold" data-testid="task-count">{{ tasks }}</p>
+    <p class="text-xs" data-testid="last-synced">{{ lastSynced }}</p>
     <div class="flex flex-wrap gap-2">
       <UBadge
         v-if="sync?.reached === false"
@@ -45,19 +43,26 @@ const lastSynced = computed(() => {
       >
         {{ $t('summary.offline') }}
       </UBadge>
-      <UBadge color="neutral" variant="subtle" data-testid="pending">
-        {{ $t('summary.pending', { n: sync?.pending ?? 0 }) }}
+      <UBadge
+        v-if="sync?.pending"
+        color="neutral"
+        variant="subtle"
+        data-testid="pending"
+      >
+        {{ $t('summary.pending', { n: sync.pending }) }}
       </UBadge>
       <UBadge
-        :color="sync?.failed ? 'error' : 'neutral'"
+        v-if="sync?.failed && sync.reached !== false && !sync.problem"
+        color="error"
         variant="subtle"
         data-testid="failed"
       >
-        {{ $t('summary.failed', { n: sync?.failed ?? 0 }) }}
+        {{ $t('summary.failed', { n: sync.failed }) }}
       </UBadge>
     </div>
     <div class="flex gap-2">
       <UButton
+        size="sm"
         :loading="sync?.running"
         data-testid="sync-now"
         @click="db.request({ kind: 'sync', reason: 'manual' })"
@@ -65,6 +70,7 @@ const lastSynced = computed(() => {
         {{ $t('summary.syncNow') }}
       </UButton>
       <UButton
+        size="sm"
         variant="outline"
         data-testid="sign-out"
         @click="db.request({ kind: 'signOut' })"
