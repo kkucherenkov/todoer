@@ -33,6 +33,10 @@ export type RegisterRequest = {
   transport?: TokenTransport;
 };
 
+export type RegistrationStatus = {
+  open: boolean;
+};
+
 export type RefreshRequest = {
   refreshToken?: string;
 };
@@ -248,6 +252,33 @@ export type PostAuthLoginResponses = {
 
 export type PostAuthLoginResponse =
   PostAuthLoginResponses[keyof PostAuthLoginResponses];
+
+export type GetAuthRegistrationData = {
+  body?: never;
+  path?: never;
+  query?: never;
+  url: '/auth/registration';
+};
+
+export type GetAuthRegistrationErrors = {
+  /**
+   * unexpected error
+   */
+  default: Problem;
+};
+
+export type GetAuthRegistrationError =
+  GetAuthRegistrationErrors[keyof GetAuthRegistrationErrors];
+
+export type GetAuthRegistrationResponses = {
+  /**
+   * the registration status
+   */
+  200: RegistrationStatus;
+};
+
+export type GetAuthRegistrationResponse =
+  GetAuthRegistrationResponses[keyof GetAuthRegistrationResponses];
 
 export type PostAuthRegisterData = {
   body: RegisterRequest;
