@@ -1863,3 +1863,50 @@ export async function setRecurrence(
   }));
   return { synced: await submitOwn(core, ops, 'rule', minted.opId) };
 }
+
+/**
+ * Indents a task under `parentId`, or outdents it (null): one
+ * `set parentId`. Refuses, before queuing anything, what the server refuses:
+ * a task as its own parent, a parent that has one (the two-level rule and
+ * every cycle), a task with live subtasks, and a recurring task under a
+ * parent (a subtask repeats with its parent, ADR 0009). A tombstoned subtask
+ * does not count. An unchanged parent queues nothing. Replay-safe.
+ */
+export async function reparent(
+  core: Core,
+  minted: Minted,
+  taskId: string,
+  parentId: string | null,
+): Promise<{ synced: boolean }> {
+  const done = await replayed(core, minted.opId);
+  if (done !== undefined) return done;
+  const all = tasks(core.store);
+  const task = liveTask(all, taskId);
+  if (parentId !== null) {
+    if (parentId === taskId) {
+      throw new UsageError('a task cannot be its own parent');
+    }
+    if (typeof liveTask(all, parentId).parentId === 'string') {
+      throw new UsageError('a subtask cannot have subtasks');
+    }
+    if (liveTasks(all).some((t) => t.parentId === taskId)) {
+      throw new UsageError('a task with subtasks cannot become a subtask');
+    }
+    if (typeof task.rrule === 'string') {
+      throw new UsageError('a recurring task cannot become a subtask');
+    }
+  }
+  const ops =
+    (task.parentId ?? null) === parentId
+      ? []
+      : [
+          setTask(
+            task,
+            'parentId',
+            parentId,
+            core.newId,
+            core.now().toISOString(),
+          ),
+        ];
+  return { synced: await submitOwn(core, ops, 'reparent', minted.opId) };
+}
