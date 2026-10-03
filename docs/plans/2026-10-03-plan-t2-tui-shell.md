@@ -1607,15 +1607,15 @@ export function useTaskKeys({
         initial={lineOf(current)}
         onCancel={idle}
         onSubmit={(line) => {
-          idle();
           const changes = lineChanges(current, line);
-          if (Object.keys(changes).length === 0) return;
+          if (Object.keys(changes).length === 0) return idle();
+          // Open until the write is taken: a refusal keeps the text.
           void write((newId) => ({
             kind: 'edit',
             opId: newId(),
             taskId: String(current.id),
             changes,
-          }));
+          })).then((r) => r.ok && idle());
         }}
       />
     ) : mode === 'status' ? (
@@ -1688,13 +1688,13 @@ export function FlatList({ view, active, open }: PaneProps) {
           initial=""
           onCancel={() => setAdding(false)}
           onSubmit={(text) => {
-            setAdding(false);
+            // Open until the write is taken: a refusal keeps the text.
             void write((newId) => ({
               kind: 'add',
               opId: newId(),
               id: newId(),
               text,
-            }));
+            })).then((r) => r.ok && setAdding(false));
           }}
         />
       ) : null}
@@ -1702,6 +1702,11 @@ export function FlatList({ view, active, open }: PaneProps) {
   );
 }
 ```
+
+Every `LineInput` in the TUI follows this rule: it closes when its write is
+taken (`result.ok`, offline included, since a queued write is taken) and
+stays open with the typed text on a refusal, whose reason the status line
+shows (web redesign proposal: an error does not clear the input).
 
 Add to `apps/tui/src/app.spec.tsx`:
 
@@ -2144,11 +2149,6 @@ packages and the image"; add a row after `apps/cli`:
 
 and in the `packages/client-core` row, mention that `./node-sqlite` also
 holds `openReplica` and `readConfig`, shared by the CLI and the TUI.
-
-`docs/specs/2026-10-03-tui-client-design.md`, Routine choices, **Layout**:
-replace "A sidebar with views, projects and tags" with "A sidebar with the
-views" and add: "Projects and tags are filters, and a filter is a view: they
-reach the sidebar with views CRUD, after v1."
 
 Run: `pnpm exec prettier --check .claude docs apps/tui`
 Expected: clean.

@@ -23,6 +23,7 @@ keys, changing status).
 
 ## Global Constraints
 
+- A `LineInput` closes only when its write is taken (`result.ok`; a queued offline write counts) and stays open with the typed text on a refusal: `onSubmit={(t) => void write(…).then((r) => r.ok && close())}`, never `close()` before the write (shell plan, rule after `flat-list.tsx`).
 - Requires plan T2 (the shell) merged. Rebase on `origin/main` first.
 - This plan owns `apps/tui/src/board.tsx` (replace the stub wholesale),
   `apps/tui/src/board-columns.ts` and their specs. Edit no other source
@@ -55,7 +56,8 @@ keys, changing status).
 
 Create `specs/tasks/active/T-2026-10-03-tui-board.md` from the template:
 
-- **FR-001** one column per status in rank order; cards by the view's order
+- **FR-001** one column per status in rank order; cards by the view's
+  order; a subtask's card names its parent (`parent › title`)
 - **FR-002** `h`/`l` change column, `j`/`k` the card
 - **FR-003** `H`/`L` move the card to the neighbouring column; into the
   completing column it is marked done and the status line says so
@@ -437,6 +439,9 @@ export function BoardPane({ view, active, open }: PaneProps) {
                   inverse={active && i === c && r === Math.min(row, cards.length - 1)}
                   dimColor={item.closed}
                 >
+                  {/* A subtask is its own card, linked to its parent
+                      (web redesign proposal, hierarchy). */}
+                  {item.parentTitle === null ? '' : `${item.parentTitle} › `}
                   {String(item.title)}
                 </Text>
               ))}

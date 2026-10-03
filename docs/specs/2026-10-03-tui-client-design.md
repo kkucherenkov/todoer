@@ -144,14 +144,23 @@ a sign-in screen, the mouse.
 
 ## Routine choices
 
-- **Layout.** A sidebar with views, projects and tags beside the main pane,
-  and a status bar below. Under 80 columns the sidebar hides and `v` opens a
-  view picker. The view's `layout` picks the list or the board, as on the web.
+- **Layout.** A sidebar with the views beside the main pane, and a status bar
+  below. Under 80 columns the sidebar hides and `v` opens a view picker. The
+  view's `layout` picks the list or the board, as on the web. Projects and
+  tags are filters, and a filter is a view: they reach the sidebar with views
+  CRUD. Built-in presets the web adds ("Today", "Upcoming" in the web
+  redesign proposal) belong in the client core beside `ALL_OPEN`, so the TUI
+  lists them without code of its own.
 - **The outline.** Built in the TUI from the view's flat `Item[]`. A subtask
   nests under its parent when the parent is listed. One whose parent is
   filtered out stands at the top level with a `parent ›` prefix, as on the
-  web. Fold state lives in memory. A parent shows a progress bar of its
-  subtasks; a folded one also shows `+N`.
+  web; there are no duplicates. Fold state lives in memory. A parent shows
+  `done/total` and a bar over all its live subtasks, closed ones included,
+  from `Item.subtasks` (plan T1b): a view of open tasks lists no closed
+  subtasks, so the TUI cannot count them itself. A folded parent also shows
+  `+N`. Completing a subtask does not complete its parent.
+- **The board's cards.** A subtask is a card of its own, named
+  `parent › title`.
 - **Keys.** Arrow keys and vim keys both work.
 
   | Key | List | Board |
@@ -174,7 +183,9 @@ a sign-in screen, the mouse.
 
 - **Editing a line.** The line opens as `title @tags #project pN` and is read
   back with `parseQuickAdd`; the difference becomes one `editTask`. Adding and
-  editing share that grammar.
+  editing share that grammar. An input closes when its write is taken (a
+  queued offline write is) and keeps the typed text on a refusal, whose
+  reason the status bar shows.
 - **The details panel.** At the right from 120 columns, full screen below.
   Each field saves on its own as one `editTask` (or `setRecurrence`), with no
   Save step. Dates are `YYYY-MM-DD`, empty clears, and an unparsable value is
@@ -212,12 +223,14 @@ a sign-in screen, the mouse.
 | --- | --- | --- |
 | T0 | Move the engine and its types into the client core; the web changes only imports. | The moved `engine.spec.ts`, the web's unit tests and Playwright pass untouched. |
 | T1 | `reparent` and its write kind; a test of two stores flushing one file. | Each rule has a failing-first spec; the concurrency test passes. |
-| T2 | `apps/tui`: session adapter, cadence, sidebar, outline, keys, add, edit in place, done, skip, delete, indent. | Render scenarios pass; the walking-skeleton flow works by hand against a live backend. |
-| T3 | Board, status picker, details panel, statuses screen. | Render scenarios for each; documents updated. |
+| T1b | `Item.subtasks`: `done/total` over a task's live subtasks. | It agrees with `taskDetails`' checklist. |
+| T2 | `apps/tui`'s shell: session adapter, cadence, sidebar, a flat list, the shared task keys, line codec, status picker, one stub file per T3 plan. | Render scenarios pass; the walking-skeleton flow works by hand against a live backend. |
+| T3a–d | Outline, board, details screen, statuses screen; each replaces one stub. | Render scenarios for each; documents updated. |
 
-Each plan is built in its own worktree. T0 also adds ADR 0018 (the engine
-lives in the client core; the TUI is the fourth client) and T2 adds the TUI
-to the stack table in `.claude/CLAUDE.md`.
+Each plan is built in its own worktree. T0 and T1 run in parallel, then T1b
+and T2, then the four T3 plans in parallel. T0 also adds ADR 0018 (the
+engine lives in the client core; the TUI is the fourth client) and T2 adds
+the TUI to the stack table in `.claude/CLAUDE.md`.
 
 ## Risks
 
@@ -240,6 +253,9 @@ to the stack table in `.claude/CLAUDE.md`.
 - **A sign-in screen.** The session adapter can already save a login; only
   the screen is missing.
 - **The mouse.**
+- **A parent's subtasks outside the filter.** The web redesign proposal lets
+  expanding a parent reveal its subtasks the filter leaves out; the outline
+  shows only listed ones, and `e` lists them all.
 
 ## Open threads
 

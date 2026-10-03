@@ -21,8 +21,9 @@ the outline, keys).
 
 ## Global Constraints
 
-- Requires plan T2 (the shell) and plan T1 Task 3 (the engine's `reparent`
-  write) merged. Rebase on `origin/main` first; if
+- A `LineInput` closes only when its write is taken (`result.ok`; a queued offline write counts) and stays open with the typed text on a refusal: `onSubmit={(t) => void write(…).then((r) => r.ok && close())}`, never `close()` before the write (shell plan, rule after `flat-list.tsx`).
+- Requires plan T2 (the shell), plan T1 Task 3 (the engine's `reparent`
+  write) and plan T1b (`Item.subtasks`) merged. Rebase on `origin/main` first; if
   `packages/client-core/src/engine-protocol.ts` has no `'reparent'` kind,
   stop and tell the coordinator.
 - This plan owns `apps/tui/src/outline.tsx` (replace the stub wholesale),
@@ -415,12 +416,13 @@ import { useWrite } from './use-write.js';
 
 const BAR = 8;
 
-/** `▓▓▓░░` for done/total subtasks; listed subtasks only (open ones, and
- *  closed ones a view still lists). */
-const bar = (row: OutlineRow) => {
-  if (row.children === 0) return '';
-  const done = Math.round(((row.children - row.open) / row.children) * BAR);
-  return `${'▓'.repeat(done)}${'░'.repeat(BAR - done)}`;
+/** `▓▓▓░░ 3/5` from the core's count of every live subtask (plan T1b), not
+ *  only the ones this view lists. */
+const bar = (item: Item) => {
+  const p = item.subtasks;
+  if (p === null || p.total === 0) return '';
+  const done = Math.round((p.done / p.total) * BAR);
+  return `${'▓'.repeat(done)}${'░'.repeat(BAR - done)} ${p.done}/${p.total}`;
 };
 
 const labels = (item: Item) =>
@@ -530,7 +532,7 @@ export function OutlinePane({ view, active, open }: PaneProps) {
               {r.folded ? <Text dimColor>{`  +${r.children}`}</Text> : null}
             </Text>
             <Text dimColor>
-              {labels(r.item)} {bar(r)}
+              {labels(r.item)} {bar(r.item)}
             </Text>
           </Box>
         );
@@ -592,19 +594,12 @@ the task spec (design Risks: terminal differences).
 
 ### Task 4: Documents, gates, PR
 
-- [ ] **Step 1: Design doc**
-
-In `docs/specs/2026-10-03-tui-client-design.md`, Routine choices, **The
-outline**: the progress bar counts the subtasks the view lists (a view of
-open tasks lists no closed ones, so its bar shows only how many are left).
-Write that sentence there.
-
-- [ ] **Step 2: Gates**
+- [ ] **Step 1: Gates**
 
 Run: `pnpm -w exec turbo run build typecheck test --filter=@todoer/tui... && pnpm lint`
 Expected: green.
 
-- [ ] **Step 3: Close the task spec, changelog, PR**
+- [ ] **Step 2: Close the task spec, changelog, PR**
 
 Tick, `Status: done`, `Completed`, `Result`; `git add`; `git mv` to
 `specs/tasks/done/`.

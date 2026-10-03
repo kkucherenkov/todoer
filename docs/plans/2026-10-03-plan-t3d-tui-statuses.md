@@ -21,6 +21,7 @@ tasks to the first status, in the same batch — the core does that).
 
 ## Global Constraints
 
+- A `LineInput` closes only when its write is taken (`result.ok`; a queued offline write counts) and stays open with the typed text on a refusal: `onSubmit={(t) => void write(…).then((r) => r.ok && close())}`, never `close()` before the write (shell plan, rule after `flat-list.tsx`).
 - Requires plan T2 (the shell) merged. Rebase on `origin/main` first.
 - This plan owns `apps/tui/src/statuses.tsx` (replace the stub wholesale)
   and `apps/tui/src/statuses.spec.tsx`. Edit no other source file; the
