@@ -189,7 +189,8 @@ a sign-in screen, the mouse.
   editing share that grammar. An input closes when its write is taken (a
   queued offline write is) and keeps the typed text on a refusal, whose
   reason the status bar shows.
-- **The details panel.** At the right from 120 columns, full screen below.
+- **The details panel.** It takes the main pane; a side-by-side layout from
+  120 columns is deferred.
   Each field saves on its own as one `editTask` (or `setRecurrence`), with no
   Save step. Dates are `YYYY-MM-DD`, empty clears, and an unparsable value is
   reported on the field and not saved. Recurrence offers presets (daily,
