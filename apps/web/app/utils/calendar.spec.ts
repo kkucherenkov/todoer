@@ -7,7 +7,6 @@ import {
   placeWrite,
   shift,
   weekday,
-  type Mode,
 } from './calendar';
 
 const zone = process.env.TZ;
@@ -120,7 +119,7 @@ describe('fromQuery', () => {
     {},
   ])('falls back to week at today for %j', (query) => {
     expect(fromQuery(query, today)).toEqual({
-      mode: 'week' as Mode,
+      mode: 'week',
       at: today,
     });
   });

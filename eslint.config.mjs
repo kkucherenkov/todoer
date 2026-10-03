@@ -3,6 +3,7 @@ import js from '@eslint/js';
 import { builtinModules } from 'node:module';
 import { defineConfig } from 'eslint/config';
 import tseslint from 'typescript-eslint';
+import withNuxt from './apps/web/.nuxt/eslint.config.mjs';
 
 export default defineConfig(
   {
@@ -65,9 +66,9 @@ export default defineConfig(
       'no-restricted-globals': ['error', 'Buffer', 'process'],
     },
   },
-  // Nuxt's auto-imports live in generated .nuxt/ types that ESLint's project
-  // service cannot see: syntax rules only (typecheck is vue-tsc's job).
-  { files: ['apps/web/**'], extends: [tseslint.configs.disableTypeChecked] },
+  // The web's Vue parser, Vue and Nuxt rules come from @nuxt/eslint, whose
+  // generated config globs relative to the web (`app/pages/**`).
+  { basePath: 'apps/web', extends: [await withNuxt()] },
   // Moved from the web unchanged (ADR 0018), so it keeps the web's rules
   // until it is rewritten against the type-checked ones.
   {

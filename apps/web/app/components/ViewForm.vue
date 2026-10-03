@@ -1,6 +1,10 @@
 <script setup lang="ts">
-import { filterProblem, type Catalog, type Filter } from '@todoer/client-core';
-import type { ViewFields } from '@todoer/client-core';
+import {
+  filterProblem,
+  type Catalog,
+  type Filter,
+  type ViewFields,
+} from '@todoer/client-core';
 import { editable } from '~/utils/filterTree';
 import { filterOf, type Template } from '~/utils/templates';
 

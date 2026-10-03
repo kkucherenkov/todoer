@@ -39,7 +39,8 @@ watch(
     if (!open) return;
     const { rrule, dtstart, scheduledOn } = props.task;
     today.value = localDate(new Date());
-    start.value = String(dtstart ?? scheduledOn ?? today.value);
+    start.value =
+      dtstart ?? (typeof scheduledOn === 'string' ? scheduledOn : today.value);
     const blank = blankPreset(start.value);
     const preset = rrule ? presetOf(rrule) : blankPreset(start.value);
     mode.value = !rrule ? 'none' : preset ? preset.freq : 'custom';

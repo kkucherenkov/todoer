@@ -152,12 +152,12 @@ export function connect(
   }
 
   const mint = (draft: Draft): Write =>
-    (draft.kind === 'add' ||
+    draft.kind === 'add' ||
     draft.kind === 'saveView' ||
     draft.kind === 'saveStatus' ||
     draft.kind === 'moveOccurrence'
       ? { id: mintId(), ...draft, opId: mintOpId() }
-      : { ...draft, opId: mintOpId() }) as Write;
+      : { ...draft, opId: mintOpId() };
 
   return {
     request,

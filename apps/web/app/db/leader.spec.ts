@@ -162,15 +162,10 @@ describe('lead', () => {
 
   it('counts a Worker constructor that throws as a failure, not a dead lock', () => {
     let tries = 0;
-    vi.stubGlobal(
-      'Worker',
-      class {
-        constructor() {
-          tries++;
-          throw new Error('SecurityError: worker blocked');
-        }
-      },
-    );
+    vi.stubGlobal('Worker', function () {
+      tries++;
+      throw new Error('SecurityError: worker blocked');
+    });
     lead('b1', () => true);
     grant();
     vi.advanceTimersByTime(500 + 1000);

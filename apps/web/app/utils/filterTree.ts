@@ -9,7 +9,7 @@ export type LeafKind =
 /** What FilterTree gives its nodes: the root, and the one way to change it. */
 export type TreeContext = {
   root: ComputedRef<Filter>;
-  edit(fn: (root: Filter) => Filter): void;
+  edit: (fn: (root: Filter) => Filter) => void;
 };
 export const TREE: InjectionKey<TreeContext> = Symbol('filterTree');
 

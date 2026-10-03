@@ -4,9 +4,10 @@ import type { SyncReason } from '@todoer/client-core';
 
 // Fake document and window: an EventTarget each, plus the one field read.
 const setup = () => {
-  const doc = Object.assign(new EventTarget(), {
-    visibilityState: 'visible' as DocumentVisibilityState,
-  });
+  const doc = Object.assign<
+    EventTarget,
+    { visibilityState: DocumentVisibilityState }
+  >(new EventTarget(), { visibilityState: 'visible' });
   const win = new EventTarget();
   const sent: SyncReason[] = [];
   const clock = { at: 0 };

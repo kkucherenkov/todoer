@@ -388,10 +388,11 @@ A route that is not in `packages/specs/openapi/openapi.yaml` does not exist.
 - Pull requests only; the PR title is a Conventional Commit and CI checks it.
 - Every decision that would otherwise be re-argued gets an ADR in `docs/adr/`.
 - One file per task under `specs/tasks/active/`, moved to `done/` when it ships.
-- `pnpm lint` runs type-aware ESLint in every package, then Prettier; CI runs
-  it as `Lint`. `pnpm format` fixes the formatting. Markdown is left to its
-  author: Prettier rewrites emphasis and fenced code, which is churn in ADRs
-  and plans that are records.
+- `pnpm lint` runs type-aware ESLint in every package, the web's `.vue` files
+  included (through `@nuxt/eslint`), then Prettier; CI runs it as `Lint`.
+  `pnpm format` fixes the formatting. Markdown is left to its author: Prettier
+  rewrites emphasis and fenced code, which is churn in ADRs and plans that are
+  records.
 - `.git-blame-ignore-revs` lists formatting-only commits. GitHub skips them in
   blame on its own; locally, run
   `git config blame.ignoreRevsFile .git-blame-ignore-revs` once.

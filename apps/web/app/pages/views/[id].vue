@@ -35,40 +35,44 @@ async function remove() {
 </script>
 
 <template>
-  <div v-if="view" class="mb-3 flex justify-end gap-2">
-    <UButton
-      variant="ghost"
-      color="neutral"
-      icon="i-lucide-pencil"
-      data-testid="edit-view"
-      @click="editing = true"
-    >
-      {{ $t('viewForm.edit') }}
-    </UButton>
-    <UButton
-      variant="ghost"
-      color="error"
-      icon="i-lucide-trash-2"
-      data-testid="delete-view"
-      @click="deleting = true"
-    >
-      {{ $t('viewForm.delete') }}
-    </UButton>
-    <ViewForm v-model:open="editing" :view="view" />
-    <UModal
-      v-model:open="deleting"
-      :title="$t('viewForm.deleteTitle', { name: view.name })"
-      :description="$t('viewForm.deleteBody')"
-    >
-      <template #footer>
-        <UButton variant="ghost" color="neutral" @click="deleting = false">
-          {{ $t('viewForm.cancel') }}
-        </UButton>
-        <UButton color="error" data-testid="confirm-delete" @click="remove">
-          {{ $t('viewForm.delete') }}
-        </UButton>
-      </template>
-    </UModal>
+  <div class="contents">
+    <!-- One root, as Nuxt pages need; `contents` keeps both children in the
+         panel's flex column, laid out as before. -->
+    <div v-if="view" class="mb-3 flex justify-end gap-2">
+      <UButton
+        variant="ghost"
+        color="neutral"
+        icon="i-lucide-pencil"
+        data-testid="edit-view"
+        @click="editing = true"
+      >
+        {{ $t('viewForm.edit') }}
+      </UButton>
+      <UButton
+        variant="ghost"
+        color="error"
+        icon="i-lucide-trash-2"
+        data-testid="delete-view"
+        @click="deleting = true"
+      >
+        {{ $t('viewForm.delete') }}
+      </UButton>
+      <ViewForm v-model:open="editing" :view="view" />
+      <UModal
+        v-model:open="deleting"
+        :title="$t('viewForm.deleteTitle', { name: view.name })"
+        :description="$t('viewForm.deleteBody')"
+      >
+        <template #footer>
+          <UButton variant="ghost" color="neutral" @click="deleting = false">
+            {{ $t('viewForm.cancel') }}
+          </UButton>
+          <UButton color="error" data-testid="confirm-delete" @click="remove">
+            {{ $t('viewForm.delete') }}
+          </UButton>
+        </template>
+      </UModal>
+    </div>
+    <ViewBody />
   </div>
-  <ViewBody />
 </template>

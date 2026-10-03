@@ -122,7 +122,7 @@ export const test = base.extend<
     /** The same, with the browser signed in through the worker's session. */
     account: Account;
     cli: (token: string, ...args: string[]) => Promise<string>;
-    guard: void;
+    guard: undefined;
   },
   { user: User }
 >({
@@ -224,7 +224,7 @@ export const test = base.extend<
       context.on('request', (r) => {
         if (new URL(r.url()).origin !== origin) foreign.push(r.url());
       });
-      await use();
+      await use(undefined);
       // The browser logs every violation to the console as well, so a page
       // closed before this point is covered by the collector above.
       for (const page of context.pages()) {

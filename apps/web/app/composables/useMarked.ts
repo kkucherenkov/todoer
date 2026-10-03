@@ -22,14 +22,12 @@ export function useMarked() {
       actions: [
         {
           label: t('list.undo'),
-          onClick: async () => {
-            const result = await db.write({
-              kind: 'mark',
-              taskId,
-              mark: 'undo',
-            });
-            if (!result.ok) fail(result);
-          },
+          onClick: () =>
+            void db
+              .write({ kind: 'mark', taskId, mark: 'undo' })
+              .then((result) => {
+                if (!result.ok) fail(result);
+              }),
         },
       ],
     });

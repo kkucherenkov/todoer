@@ -76,8 +76,8 @@ const range = computed(
 const boundKind = (b: Bound) =>
   b === undefined ? 'none' : typeof b === 'number' ? 'offset' : 'date';
 function setBound(side: 'from' | 'to', value: Bound) {
-  const next = { ...range.value, [side]: value };
-  if (value === undefined) delete next[side];
+  const { [side]: _dropped, ...rest } = range.value;
+  const next = value === undefined ? rest : { ...range.value, [side]: value };
   set({ [kind.value]: next } as Filter);
 }
 const FRESH = { none: undefined, offset: 0, date: '' } as const;

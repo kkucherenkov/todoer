@@ -79,12 +79,12 @@ async function move(p: Placement, to: string) {
     actions: [
       {
         label: t('list.undo'),
-        onClick: async () => {
-          const undone = await db.write(
-            plan.undo(minted as Parameters<typeof plan.undo>[0]),
-          );
-          if (!undone.ok) fail(undone);
-        },
+        onClick: () =>
+          void db
+            .write(plan.undo(minted as Parameters<typeof plan.undo>[0]))
+            .then((undone) => {
+              if (!undone.ok) fail(undone);
+            }),
       },
     ],
   });

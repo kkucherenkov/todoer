@@ -501,6 +501,10 @@ lint needs Nuxt's generated project references, and linting `.vue` needs
 `apps/web/e2e/tsconfig.json`, which the web's `typecheck` runs after
 `nuxt typecheck`, since Nuxt's references do not include them.
 
+_Closed by `T-2026-10-03-web-strict-types`:_ `@nuxt/eslint` lints `.ts` and
+`.vue` with the type-checked rules of every other package, and Nuxt's
+contexts compile with `exactOptionalPropertyTypes`.
+
 **4. A signed-out tab does not try a cookie refresh.** The tab keeps a one-bit
 hint in `localStorage` (`todoer.session`), set when the session topic says
 signed-in and cleared when it says signed-out. The leader passes the hint to the
