@@ -2,7 +2,9 @@
 
 - Created: 2026-10-03
 - Owner: claude
-- Status: in-progress
+- Status: done
+- Completed: 2026-10-03
+- Result: https://github.com/kkucherenkov/todoer/pull/35
 - Blockers: —
 - Spec: docs/specs/2026-10-03-tui-client-design.md (Q7, Routine choices:
   keys, changing status)
@@ -55,19 +57,19 @@ and within them from the keyboard.
 - **SC-001** Against a live backend, a card moved across and within columns,
   into the completing column and back, and a card added to a column, each
   show the same in `todoer list`
-- [ ] every FR has a test that failed before the code made it pass
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] every FR has a test that failed before the code made it pass
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 
-- [ ] T001 [FR-001] [FR-007] columns, the visible window, the in-column
+- [x] T001 [FR-001] [FR-007] columns, the visible window, the in-column
       anchor — plan Task 1
-- [ ] T002 [FR-001]–[FR-007] the board pane — plan Task 2
-- [ ] T003 by hand against a live backend — plan Task 3
-- [ ] T004 documents, gates, PR — plan Task 4
+- [x] T002 [FR-001]–[FR-007] the board pane — plan Task 2
+- [x] T003 by hand against a live backend — plan Task 3
+- [x] T004 documents, gates, PR — plan Task 4
 - **Checkpoint:** a kanban view renders as a board and its cards move
 
 ### Departures from the plan
