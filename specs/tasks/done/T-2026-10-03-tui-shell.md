@@ -4,6 +4,7 @@
 - Owner: claude
 - Status: done
 - Completed: 2026-10-03
+- Result: https://github.com/kkucherenkov/todoer/pull/31
 - Blockers: —
 - Spec: docs/specs/2026-10-03-tui-client-design.md (Q1, Q3, Q5)
 - Plan: docs/plans/2026-10-03-plan-t2-tui-shell.md
