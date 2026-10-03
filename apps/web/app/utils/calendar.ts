@@ -1,6 +1,5 @@
-import type { Item, Placement, Span } from '@todoer/client-core';
+import type { Item, Placement, Span, Write } from '@todoer/client-core';
 import type { Draft } from '../db/client';
-import type { Write } from '../db/protocol';
 
 export type Mode = 'week' | 'month';
 

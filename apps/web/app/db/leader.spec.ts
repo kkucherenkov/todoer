@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { lead } from './leader';
-import { LEADER_LOCK, type Topics } from './protocol';
+import type { Topics } from '@todoer/client-core';
+import { LEADER_LOCK } from './protocol';
 
 class FakeWorker {
   static all: FakeWorker[] = [];

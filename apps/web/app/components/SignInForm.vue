@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import type { Db } from '~/db/client';
-import type { Failure } from '~/db/protocol';
+import type { Failure } from '@todoer/client-core';
 
 const { db } = defineProps<{ db: Db }>();
 const form = reactive({ email: '', password: '' });

@@ -1,6 +1,5 @@
 import type { Db } from '~/db/client';
-import type { Span } from '@todoer/client-core';
-import type { Topic, Topics } from '~/db/protocol';
+import type { Span, Topic, Topics } from '@todoer/client-core';
 
 /** The tab's database. Non-null under AppGate, which owns the insecure case. */
 export const useDb = () => useNuxtApp().$db as Db;

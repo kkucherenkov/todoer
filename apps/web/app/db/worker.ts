@@ -1,20 +1,17 @@
 import sqlite3InitModule from '@sqlite.org/sqlite-wasm';
 import {
   cookieTokenSource,
+  createEngine,
+  dispatcher,
   httpCookieAuthApi,
   httpTransport,
+  type FromWorker,
+  type ToWorker,
 } from '@todoer/client-core';
 import { openWasmStore } from '@todoer/client-core/sqlite-wasm';
 import { uuidv7 } from 'uuidv7';
-import { createEngine, dispatcher } from './engine';
 import { installOpfsPool, installPool } from './pool';
-import {
-  CHANNEL,
-  type Fatal,
-  type FromWorker,
-  type Init,
-  type ToWorker,
-} from './protocol';
+import { CHANNEL, type Fatal, type Init } from './protocol';
 
 // The app's lib set includes DOM, which types `self` as a Window.
 declare const self: DedicatedWorkerGlobalScope;

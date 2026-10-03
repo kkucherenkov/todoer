@@ -1,4 +1,4 @@
-import type { Result } from '~/db/protocol';
+import type { Result } from '@todoer/client-core';
 
 /** Shows a refused write as a toast; the kind picks the words. */
 export function useFail() {

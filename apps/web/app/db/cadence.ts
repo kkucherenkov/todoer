@@ -1,4 +1,4 @@
-import type { SyncReason } from './protocol';
+import type { SyncReason } from '@todoer/client-core';
 
 /**
  * Q14's triggers that live in a tab: every 30 s while visible, on regained
