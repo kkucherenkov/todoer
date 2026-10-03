@@ -19,6 +19,7 @@ import {
   mark,
   moveOccurrence,
   moveTask,
+  reparent,
   saveStatus,
   saveView,
   seedStatuses,
@@ -2133,5 +2134,84 @@ describe('setRecurrence', () => {
     await expect(
       setRecurrence({ ...core, send }, mint('s1'), 'o', WEEKLY),
     ).rejects.toThrow();
+  });
+});
+
+describe('reparent', () => {
+  /** Offline, so the queue stays inspectable. `a`, `b` top level; `p` has
+   *  live subtask `s` and tombstoned `z`; `r` repeats; `t` has tombstoned
+   *  subtask `y` only. */
+  function outline() {
+    const store = openStore(':memory:');
+    const srv = fakeServer();
+    srv.state.offline = true;
+    put(store, 'task', task('a'));
+    put(store, 'task', task('b'));
+    put(store, 'task', task('p'));
+    put(store, 'task', task('s', { parentId: 'p' }));
+    put(store, 'task', task('z', { parentId: 'p', deletedAt: '2026-10-01' }));
+    put(store, 'task', task('t'));
+    put(store, 'task', task('y', { parentId: 't', deletedAt: '2026-10-01' }));
+    put(
+      store,
+      'task',
+      task('r', { rrule: 'FREQ=DAILY', dtstart: '2026-10-01' }),
+    );
+    return { store, core: coreOf(store, srv.send) };
+  }
+  const parents = (store: Store) => sets(store, 'parentId');
+
+  it('indents with one set parentId carrying the minted opId', async () => {
+    const { store, core } = outline();
+    expect((await reparent(core, mint('r1'), 'b', 'a')).synced).toBe(false);
+    expect(parents(store)).toEqual([['b', 'a']]);
+    expect(store.pending()[0]?.opId).toBe('r1');
+    const listed = viewTasks(store, TODAY, ALL_OPEN);
+    expect(listed.find((i) => i.id === 'b')?.parentTitle).toBe('a');
+  });
+
+  it('outdents with one set parentId null', async () => {
+    const { store, core } = outline();
+    await reparent(core, mint('r1'), 's', null);
+    expect(parents(store)).toEqual([['s', null]]);
+  });
+
+  it('queues nothing when the parent is already that one', async () => {
+    const { store, core } = outline();
+    await reparent(core, mint('r1'), 's', 'p');
+    await reparent(core, mint('r2'), 'a', null);
+    expect(store.pending()).toEqual([]);
+  });
+
+  it('lets a task whose only subtasks are deleted become a subtask', async () => {
+    const { store, core } = outline();
+    await reparent(core, mint('r1'), 't', 'a');
+    expect(parents(store)).toEqual([['t', 'a']]);
+  });
+
+  it('refuses what the server refuses, queuing nothing', async () => {
+    const cases: [string, string, RegExp][] = [
+      ['a', 'a', /cannot be its own parent/],
+      ['b', 's', /a subtask cannot have subtasks/],
+      ['p', 'a', /a task with subtasks cannot become a subtask/],
+      ['r', 'a', /a recurring task cannot become a subtask/],
+      ['nope', 'a', /no task nope/],
+      ['a', 'nope', /no task nope/],
+      ['z', 'a', /no task z/],
+    ];
+    for (const [id, parentId, pattern] of cases) {
+      const { store, core } = outline();
+      await expect(reparent(core, mint('r1'), id, parentId)).rejects.toThrow(
+        pattern,
+      );
+      expect(store.pending()).toEqual([]);
+    }
+  });
+
+  it('a resend of the same opId only flushes', async () => {
+    const { store, core } = outline();
+    await reparent(core, mint('r1'), 'b', 'a');
+    await reparent(core, mint('r1'), 'b', 'a');
+    expect(parents(store)).toEqual([['b', 'a']]);
   });
 });
