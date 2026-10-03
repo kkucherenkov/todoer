@@ -101,6 +101,15 @@ State on `main` (a057d2d), measured before the change:
    context**, so the project service finds it; `tsc -p e2e` no longer
    compiles it, `nuxt typecheck` does.
 
+5. **CI `Web e2e` is red after merging `main` at 50d8676**, on one test:
+   `shell.spec.ts` "a reload restores the session through the cookie"
+   (chromium), no `/auth/refresh` where one is expected, 4 of 4 attempts.
+   It is the reload race of `T-2026-10-03-fix-e2e-refresh-race`; it does
+   not reproduce locally (35/35 repeated, 34/34 chromium with `CI=1` on a
+   fresh database), and this change touches nothing in the session or the
+   leader. The race is handed to `fix/reload-stale-snapshot`, with this
+   branch as its CI reproducer. `Web e2e` is not a required gate.
+
 ### Open questions
 
 —
