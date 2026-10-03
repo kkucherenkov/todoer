@@ -2,8 +2,18 @@ import { describe, expect, it } from 'vitest';
 import type { Catalog, Item } from '@todoer/client-core';
 import { columns, moveAfterIn, visible } from './board-columns.js';
 
-const item = (id: string, column: string | null): Item =>
-  ({ id, title: id, column, closed: false, tags: [], project: null }) as Item;
+const item = (id: string, column: string | null): Item => ({
+  id,
+  ref: id,
+  title: id,
+  column,
+  closed: false,
+  parentTitle: null,
+  occurrence: null,
+  status: null,
+  tags: [],
+  project: null,
+});
 const status = (
   id: string,
   completing = false,

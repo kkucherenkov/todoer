@@ -72,6 +72,33 @@ and within them from the keyboard.
 
 ### Departures from the plan
 
+1. The specs' kanban view filters `{ and: [] }`: `filterProblem` rejects the
+   plan's `{ all: [] }` (the plan allowed for this).
+2. The plan's `l`, `L` after the first `L` moved the cursor to the empty
+   Done column, so nothing reached Done. The spec presses `L` twice, then
+   `H` to undo.
+3. `o`'s input closes when the add is taken and keeps the text on a refusal;
+   the plan closed it before the write. The `move` into a later column
+   follows a taken add.
+4. The cursor follows a card it moved or added (`follow`): the plan kept the
+   row, which after `L`, `J` or an add points at another card.
+5. The cursor's card is marked `▸ ` as well as inverse: without colour (the
+   test renderer, `NO_COLOR`) Ink drops inverse and the cursor vanished.
+6. With no statuses the plan's `target.id === null` branch could not run:
+   the one null column has no neighbour. `H`/`L` say there is nowhere to
+   move when the current column is the null one.
+7. The columns that fit count the pane's border and padding (4) and the
+   sidebar (22, from 80 columns), and the last column's margin; the plan
+   subtracted 24 or 2.
+8. `moveAfterIn`'s comment explains the anchor itself instead of pointing at
+   the outline plan's `moveAfter`, which is not on this branch.
+9. The columns spec builds a whole `Item`: the plan's cast of a partial one
+   fails `tsc` (TS2352).
+10. More tests than the plan's: `h`/`l`/`j`/`k`, the subtask's card, `J`/`K`
+    in a manual view and a sorted one, a refused add, `m`, the scroll. The
+    no-statuses board is tested on `columns` only: the engine seeds three
+    statuses on a first sync, so the kit cannot render it (shell departure 8).
+
 ### Open questions
 
 None.
