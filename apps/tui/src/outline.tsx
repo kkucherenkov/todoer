@@ -2,7 +2,12 @@ import { Box, Text, useInput } from 'ink';
 import { useState } from 'react';
 import type { Item } from '@todoer/client-core';
 import { useTui } from './context.js';
-import { indentTarget, moveAfter, outline } from './outline-tree.js';
+import {
+  indentTarget,
+  insertAfter,
+  moveAfter,
+  outline,
+} from './outline-tree.js';
 import type { PaneProps } from './screens.js';
 import { useTaskKeys } from './task-keys.js';
 import { LineInput } from './ui/line-input.js';
@@ -32,8 +37,9 @@ const labels = (item: Item) =>
 /**
  * The list layout: top-level tasks with their listed subtasks nested under
  * them. `h`/`l` fold, `Tab`/`Shift-Tab` re-parent, `J`/`K` move among
- * siblings (manual views only), `o`/`O` add a task or a subtask; the shared
- * task keys come from `useTaskKeys`.
+ * siblings (manual views only), `o`/`O` add a task or a subtask below the
+ * cursor (where the sort puts it in a sorted view); the shared task keys come
+ * from `useTaskKeys`.
  */
 export function OutlinePane({ view, active, open }: PaneProps) {
   const { status } = useTui();
@@ -42,7 +48,11 @@ export function OutlinePane({ view, active, open }: PaneProps) {
   // The cursor follows its task across a move or a re-parent; when the task
   // leaves the view (done, deleted) it stays at the same place.
   const [cursor, setCursor] = useState<{ at: number; id?: string }>({ at: 0 });
-  const [adding, setAdding] = useState<null | { parentId?: string }>(null);
+  // `after`: the task the new one follows (manual views only).
+  const [adding, setAdding] = useState<null | {
+    parentId?: string;
+    after?: string;
+  }>(null);
   const rows = outline(view.items, folded);
   const found = rows.findIndex((r) => r.item.id === cursor.id);
   const at = found >= 0 ? found : Math.min(cursor.at, rows.length - 1);
@@ -89,6 +99,11 @@ export function OutlinePane({ view, active, open }: PaneProps) {
     }));
   };
 
+  const below = (sub: boolean) =>
+    row === undefined || view.sort !== 'manual'
+      ? {}
+      : { after: insertAfter(view.items, row.item, sub) };
+
   useInput(
     (input, key) => {
       // Pin the cursor to the task under it before the key acts on it.
@@ -101,13 +116,13 @@ export function OutlinePane({ view, active, open }: PaneProps) {
       } else if (input === 'k' || (key.upArrow && !key.meta)) {
         go(at - 1);
       } else if (input === 'o') {
-        setAdding({});
+        setAdding(below(false));
       } else if (row === undefined) {
         return;
       } else if (input === 'O') {
         const parentId =
           row.depth === 0 ? String(row.item.id) : String(row.item.parentId);
-        setAdding({ parentId });
+        setAdding({ parentId, ...below(true) });
       } else if (input === 'h' || key.leftArrow) {
         if (row.children > 0) fold(String(row.item.id), true);
       } else if (input === 'l' || key.rightArrow) {
@@ -172,15 +187,33 @@ export function OutlinePane({ view, active, open }: PaneProps) {
           initial=""
           onCancel={() => setAdding(null)}
           onSubmit={(text) => {
-            const { parentId } = adding;
-            // Open until the write is taken: a refusal keeps the text.
-            void write((newId) => ({
-              kind: 'add',
-              opId: newId(),
-              id: newId(),
-              text,
-              ...(parentId === undefined ? {} : { parentId }),
-            })).then((r) => r.ok && setAdding(null));
+            const { parentId, after } = adding;
+            let id = '';
+            // Open until the write is taken: a refusal keeps the text. The
+            // engine ranks an add first, so a `move` puts it below the
+            // cursor; refused, the task stays where the add put it.
+            void write((newId) => {
+              id = newId();
+              return {
+                kind: 'add',
+                opId: newId(),
+                id,
+                text,
+                ...(parentId === undefined ? {} : { parentId }),
+              };
+            }).then(async (r) => {
+              if (!r.ok) return;
+              setAdding(null);
+              setCursor({ at, id });
+              if (after === undefined) return;
+              await write((newId) => ({
+                kind: 'move',
+                opId: newId(),
+                taskId: id,
+                view: view.key,
+                after,
+              }));
+            });
           }}
         />
       )}

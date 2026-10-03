@@ -89,3 +89,21 @@ export function moveAfter(
   const next = siblings[k + 1];
   return next === undefined ? undefined : String(next.id);
 }
+
+/**
+ * The `after` anchor that puts a new task right below `at`, for a `move`
+ * that follows the add. Ranks are global and the outline nests subtasks
+ * whatever their rank (see `moveAfter`), so a new top-level task follows
+ * `at`'s top-level task itself and still shows after its whole group; one of
+ * the group's own subtasks ranked after the next top-level task would put it
+ * past that task. With `sub`, a subtask of the group: after `at` when it is
+ * a subtask, else after the last one (the parent itself when there is none).
+ */
+export function insertAfter(items: Item[], at: Item, sub: boolean): string {
+  const parentOf = parentsOf(items);
+  const top = parentOf(at) ?? String(at.id);
+  if (!sub) return top;
+  if (top !== String(at.id)) return String(at.id);
+  const last = items.filter((i) => parentOf(i) === top).at(-1);
+  return last === undefined ? top : String(last.id);
+}

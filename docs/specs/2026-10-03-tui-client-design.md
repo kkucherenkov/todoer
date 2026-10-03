@@ -174,7 +174,7 @@ a sign-in screen, the mouse.
   | `J` `K` `Alt-↑` `Alt-↓` | move the task (manual sort only) | move in the column |
   | `H` `L` | — | move to the neighbouring column |
   | `Tab` `Shift-Tab` | indent under the nearest top-level task above, outdent | — |
-  | `o` `O` | new task below, new subtask | new task in the column |
+  | `o` `O` | new task below, new subtask below | new task below the card |
   | `Enter` `i` | edit the line in place | edit the line in place |
   | `x` `Space` | done, undo | done, undo |
   | `s` | skip a recurring occurrence | skip |
@@ -185,6 +185,9 @@ a sign-in screen, the mouse.
   | `[` `]` `v` | previous, next view, view picker | the same |
   | `r` `?` `q` | sync now, help, quit | the same |
 
+  "Below" holds in a manual view: a `move` anchored on the cursor follows the
+  add. A view with another sort places the new task by that sort.
+
 - **Editing a line.** The line opens as `title @tags #project pN` and is read
   back with `parseQuickAdd`; the difference becomes one `editTask`. Adding and
   editing share that grammar. An input closes when its write is taken (a
@@ -194,7 +197,7 @@ a sign-in screen, the mouse.
   120 columns is deferred.
   Each field saves on its own as one `editTask` (or `setRecurrence`), with no
   Save step. Dates are `YYYY-MM-DD`, empty clears, and an unparsable value is
-  reported on the field and not saved. Recurrence offers presets (daily,
+  reported on the status line and not saved. Recurrence offers presets (daily,
   weekdays, weekly on a day, monthly on a date, none) and a raw RRULE checked
   with `parseRrule`; it is disabled for a subtask. Notes open in `$EDITOR`
   (`vi` when unset) with Ink suspended.
