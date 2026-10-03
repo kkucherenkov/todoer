@@ -1,17 +1,17 @@
 // Imported, not auto-imported: the spec runs in plain Node.
 import { shallowRef, type ShallowRef } from 'vue';
-import type { Span } from '@todoer/client-core';
+import type {
+  Command,
+  FromWorker,
+  Result,
+  Span,
+  ToWorker,
+  Topic,
+  Topics,
+  Write,
+} from '@todoer/client-core';
 import { id as mintId, opId as mintOpId } from './mint';
-import {
-  CHANNEL,
-  type Command,
-  type Write,
-  type FromWorker,
-  type Result,
-  type ToWorker,
-  type Topic,
-  type Topics,
-} from './protocol';
+import { CHANNEL } from './protocol';
 
 /** A write as a screen asks for it: the ids are minted here, once. A create
  *  may name its own `id` (to open it right away). */

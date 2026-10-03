@@ -1,19 +1,16 @@
 import sqlite3InitModule, { type Sqlite3Static } from '@sqlite.org/sqlite-wasm';
 import {
-  ALL_OPEN,
   cookieTokenSource,
-  httpTransport,
-  localDate,
-  RefusalError,
-  viewTasks,
-  type AccessGrant,
   type CookieAuthApi,
   type CookieTokenSource,
-  type Store,
-  taskDetails,
-  type Transport,
-} from '@todoer/client-core';
-import { openWasmStore } from '@todoer/client-core/sqlite-wasm';
+} from './auth.js';
+import { localDate } from './occurrence.js';
+import { ALL_OPEN, taskDetails, viewTasks } from './operations.js';
+import { RefusalError } from './protocol.js';
+import type { AccessGrant, Store } from './store.js';
+import type { Transport } from './sync.js';
+import { httpTransport } from './transport.js';
+import { openWasmStore } from './sqlite-wasm.js';
 import {
   afterEach,
   beforeAll,
@@ -23,12 +20,12 @@ import {
   it,
   vi,
 } from 'vitest';
-import { createEngine, dispatcher, type Engine } from './engine';
-import type { Result, ToWorker, Topic, Topics } from './protocol';
+import { createEngine, dispatcher, type Engine } from './engine.js';
+import type { Result, ToWorker, Topic, Topics } from './engine-protocol.js';
 
 // A spy that calls through, so one test can make a computation throw.
-vi.mock('@todoer/client-core', async (original) => {
-  const actual = await original<typeof import('@todoer/client-core')>();
+vi.mock('./operations.js', async (original) => {
+  const actual = await original<typeof import('./operations.js')>();
   return { ...actual, taskDetails: vi.fn(actual.taskDetails) };
 });
 

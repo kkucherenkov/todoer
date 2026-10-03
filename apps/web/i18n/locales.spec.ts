@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { FAILURE_KINDS } from '../app/db/protocol';
+import { FAILURE_KINDS } from '@todoer/client-core';
 import { pluralForm } from '../app/utils/plural';
 
 type Tree = { [key: string]: string | Tree };

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { FormError } from '@nuxt/ui';
 import type { Db } from '~/db/client';
-import type { Failure } from '~/db/protocol';
+import type { Failure } from '@todoer/client-core';
 
 // Shown only while the instance has no users: this account becomes the owner.
 const { db } = defineProps<{ db: Db }>();

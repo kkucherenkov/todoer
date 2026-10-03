@@ -68,6 +68,12 @@ export default defineConfig(
   // Nuxt's auto-imports live in generated .nuxt/ types that ESLint's project
   // service cannot see: syntax rules only (typecheck is vue-tsc's job).
   { files: ['apps/web/**'], extends: [tseslint.configs.disableTypeChecked] },
+  // Moved from the web unchanged (ADR 0018), so it keeps the web's rules
+  // until it is rewritten against the type-checked ones.
+  {
+    files: ['packages/client-core/src/engine.spec.ts'],
+    extends: [tseslint.configs.disableTypeChecked],
+  },
   // Config files outside every tsconfig: syntax rules only.
   { files: ['**/*.{js,mjs}'], extends: [tseslint.configs.disableTypeChecked] },
 );

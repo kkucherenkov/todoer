@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import type { TaskChanges } from '@todoer/client-core';
-import { ALL } from '~/db/protocol';
+import { ALL, type TaskChanges } from '@todoer/client-core';
 
 const db = useDb();
 const open = useOpenTask();

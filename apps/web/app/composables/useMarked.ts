@@ -1,4 +1,4 @@
-import type { Note } from '~/db/protocol';
+import type { Note } from '@todoer/client-core';
 
 /** The toast after a mark, or a drop into the completing column, with an
  *  Undo that is a new `mark undo`. A recurring task's names both dates. */

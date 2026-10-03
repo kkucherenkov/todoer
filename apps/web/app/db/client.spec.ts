@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { connect, type Db } from './client';
-import type { Span } from '@todoer/client-core';
-import { CHANNEL, type FromWorker, type ToWorker } from './protocol';
+import type { FromWorker, Span, ToWorker } from '@todoer/client-core';
+import { CHANNEL } from './protocol';
 
 const BUILD = 'b1';
 const pause = (ms = 10) => new Promise((resolve) => setTimeout(resolve, ms));

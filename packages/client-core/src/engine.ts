@@ -1,45 +1,8 @@
 import {
-  add,
   adoptAccount,
-  ALL_OPEN,
-  boardTasks,
-  calendarTasks,
-  catalog,
-  ConflictError,
-  deleteStatus,
-  deleteTask,
-  deleteView,
-  editTask,
-  flush,
-  liveTasks,
-  localDate,
-  mark,
-  moveOccurrence,
-  moveTask,
-  overlay,
-  rankWrites,
-  reconcile,
-  RefusalError,
-  saveStatus,
-  saveView,
-  seedStatuses,
-  setCompleting,
-  setRecurrence,
-  taskDetails,
-  UsageError,
-  undoMove,
-  viewTasks,
-  type AccessGrant,
-  type Catalog,
-  type Core,
   type CookieAuthApi,
   type CookieTokenSource,
-  type Ranked,
-  type Span,
-  type Store,
-  type Transport,
-  type ViewSpec,
-} from '@todoer/client-core';
+} from './auth.js';
 import {
   ALL,
   type Command,
@@ -51,12 +14,54 @@ import {
   type Topic,
   type Topics,
   type Write,
-} from './protocol';
+} from './engine-protocol.js';
+import { localDate } from './occurrence.js';
+import {
+  add,
+  ALL_OPEN,
+  boardTasks,
+  calendarTasks,
+  catalog,
+  deleteStatus,
+  deleteTask,
+  deleteView,
+  editTask,
+  mark,
+  moveOccurrence,
+  moveTask,
+  reconcile,
+  saveStatus,
+  saveView,
+  seedStatuses,
+  setCompleting,
+  setRecurrence,
+  taskDetails,
+  undoMove,
+  viewTasks,
+  type Catalog,
+  type Core,
+  type Span,
+  type ViewSpec,
+} from './operations.js';
+import { liveTasks, overlay } from './overlay.js';
+import { ConflictError, RefusalError, UsageError } from './protocol.js';
+import { rankWrites, type Ranked } from './rank.js';
+import type { AccessGrant, Store } from './store.js';
+import { flush, type Transport } from './sync.js';
+
+/** What the engine calls on the session API: login, register, logout. The
+ *  web passes its cookie API; another client adapts its own. */
+export type EngineAuth = Pick<CookieAuthApi, 'login' | 'register' | 'logout'>;
+/** What the engine calls on the token holder. */
+export type EngineTokens = Pick<
+  CookieTokenSource,
+  'current' | 'renew' | 'adopt' | 'signedIn'
+>;
 
 export type EngineDeps = {
   store: Store;
-  auth: CookieAuthApi;
-  tokens: CookieTokenSource;
+  auth: EngineAuth;
+  tokens: EngineTokens;
   send: Transport;
   now: () => Date;
   newId: () => string;
@@ -527,9 +532,10 @@ export function createEngine({
       case 'edit':
         return editTask(core, { opId }, w.taskId, w.changes);
       case 'move': {
+        const ranks = dropRanks(w);
         const r = await moveTask(core, { opId }, w.taskId, {
           ...(w.statusId === undefined ? {} : { statusId: w.statusId }),
-          ...(w.after === undefined ? {} : { ranks: dropRanks(w) }),
+          ...(ranks === undefined ? {} : { ranks }),
         });
         return r.marked === null
           ? r

@@ -1,10 +1,5 @@
-import {
-  CHANNEL,
-  LEADER_LOCK,
-  type Fatal,
-  type Init,
-  type Topics,
-} from './protocol';
+import type { Topics } from '@todoer/client-core';
+import { CHANNEL, LEADER_LOCK, type Fatal, type Init } from './protocol';
 
 const WINDOW_MS = 60_000;
 const MAX_FAILURES = 3;
