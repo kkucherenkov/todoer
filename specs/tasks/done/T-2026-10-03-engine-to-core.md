@@ -2,7 +2,8 @@
 
 - Created: 2026-10-03
 - Owner: claude
-- Status: in-progress
+- Status: done
+- Completed: 2026-10-03
 - Blockers: —
 - Spec: [docs/specs/2026-10-03-tui-client-design.md](../../../docs/specs/2026-10-03-tui-client-design.md) (Q4)
 - Plan: [docs/plans/2026-10-03-plan-t0-engine-to-core.md](../../../docs/plans/2026-10-03-plan-t0-engine-to-core.md)
@@ -39,19 +40,21 @@ before the TUI is written, instead of being copied.
 
 - **SC-001** `engine.spec.ts` runs green in `packages/client-core`
 - **SC-002** the web's unit tests and the Playwright suite pass
-- [ ] every FR has a test that failed before the code made it pass (a move:
-      the moved spec is that test; it fails while imports are broken)
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] every FR has a test that failed before the code made it pass (a move:
+      the moved spec is that test; it fails while imports are broken).
+      FR-002 is a type narrowing: the typecheck proves it, where `worker.ts`
+      passes the cookie API and token source as `EngineAuth`/`EngineTokens`
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 
-- [ ] T001 [FR-001] [FR-003] move engine, spec and types — plan Task 1
-- [ ] T002 [FR-002] narrow `auth` and `tokens` — plan Task 1
-- [ ] T003 documents: ADR 0018, design Q4, CLAUDE.md — plan Task 2
-- [ ] T004 full gates and Playwright — plan Task 3
+- [x] T001 [FR-001] [FR-003] move engine, spec and types — plan Task 1
+- [x] T002 [FR-002] narrow `auth` and `tokens` — plan Task 1
+- [x] T003 documents: ADR 0018, design Q4, CLAUDE.md — plan Task 2
+- [x] T004 full gates and Playwright — plan Task 3
 - **Checkpoint:** the web runs on the engine from the core
 
 ### Departures from the plan

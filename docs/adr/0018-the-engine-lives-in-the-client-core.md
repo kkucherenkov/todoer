@@ -20,7 +20,8 @@ session and the TUI's stored session both satisfy. The web keeps only the
 names of its browser transport: the channel, the leader lock, and the
 worker's init and fatal messages.
 
-The TUI is the fourth client: the CLI, the web, the TUI and, later, Flutter.
+The TUI is the fourth planned client, after the web, Flutter (ADR 0015) and
+the CLI.
 
 ## Consequences
 
@@ -32,4 +33,4 @@ The dispatcher moved too, though only the web uses it: it has no browser
 dependency, and moving it kept the engine's spec whole.
 
 `engine.spec.ts` still lints under the web's syntax-only rules
-(`eslint.config.mjs`); it moved with its imports changed and nothing else.
+(`eslint.config.mjs`); it moved with only its imports and its mocked module changed.

@@ -27,7 +27,7 @@ a TUI needs its own replica, outbox, replay and recurrence expansion
 (`2026-09-25-domain-and-sync-design.md`, Deferred). Plan W0 paid that cost by
 moving all of it into `@todoer/client-core`. What a long-lived client still
 lacks is the loop around the core: when to sync, what to recompute, how a
-write's result reaches the screen. The web client has that loop in
+write's result reaches the screen. The web client had that loop in
 `apps/web/app/db/engine.ts`; the CLI does not need one, because each of its
 invocations is one command.
 
