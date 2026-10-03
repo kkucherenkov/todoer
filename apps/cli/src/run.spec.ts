@@ -14,7 +14,7 @@ import {
   type Transport,
 } from '@todoer/client-core';
 import { run, type Deps } from './run.js';
-import { openStore } from './store.js';
+import { openReplica } from '@todoer/client-core/node-sqlite';
 
 const stores: Store[] = [];
 
@@ -23,7 +23,7 @@ afterEach(() => {
 });
 
 function deps(send: Transport): Deps {
-  const store = openStore(':memory:');
+  const store = openReplica(':memory:');
   stores.push(store);
   let n = 0;
   const now = () => new Date('2026-09-26T10:00:00.000Z');
@@ -1972,8 +1972,8 @@ describe('login and logout', () => {
       const dir = mkdtempSync(join(tmpdir(), 'todoer-run-'));
       try {
         const [a, b] = [
-          openStore(join(dir, 'todoer.db')),
-          openStore(join(dir, 'todoer.db')),
+          openReplica(join(dir, 'todoer.db')),
+          openReplica(join(dir, 'todoer.db')),
         ];
         stores.push(a, b);
         const d = hexDeps(unreachable);

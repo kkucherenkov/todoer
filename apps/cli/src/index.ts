@@ -8,10 +8,9 @@ import {
   tokenSource,
   UsageError,
 } from '@todoer/client-core';
-import { readConfig } from './config.js';
+import { openReplica, readConfig } from '@todoer/client-core/node-sqlite';
 import { readPassword } from './password.js';
 import { run } from './run.js';
-import { openStore } from './store.js';
 import { HELP, wantsHelp } from './usage.js';
 
 async function main(): Promise<number> {
@@ -21,7 +20,7 @@ async function main(): Promise<number> {
     return 0;
   }
   const config = readConfig(process.env);
-  const store = openStore(config.dbPath);
+  const store = openReplica(config.dbPath);
   try {
     const auth = httpAuthApi(config);
     const now = () => new Date();
