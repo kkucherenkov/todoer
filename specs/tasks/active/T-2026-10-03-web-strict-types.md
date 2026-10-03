@@ -4,6 +4,7 @@
 - Owner: claude
 - Status: in-progress
 - Blockers: —
+- Result: https://github.com/kkucherenkov/todoer/pull/30
 - Spec: maintainer request, 2026-10-03 — strict TypeScript everywhere;
   `@nuxt/eslint` chosen by the maintainer
 - Plan: [docs/plans/2026-10-03-plan-web-strict-types.md](../../../docs/plans/2026-10-03-plan-web-strict-types.md)
@@ -62,12 +63,12 @@ State on `main` (a057d2d), measured before the change:
 - **SC-001** `pnpm lint` passes with type-aware rules on `apps/web/**/*.{ts,vue}`
 - **SC-002** `pnpm --filter @todoer/web typecheck` passes with the stricter flags
 - **SC-003** web unit tests and the Playwright suite pass
-- [ ] every FR has a test that failed before the code made it pass — the lint
+- [x] every FR has a test that failed before the code made it pass — the lint
       and typecheck runs are the tests: both fail on `main`'s code with this
       configuration (26 lint errors, 3 type errors)
 - [ ] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
+- [x] no document still asserts the behaviour this task replaced
 - [ ] dnote changelog line
 
 ### Steps
