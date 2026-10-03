@@ -2,7 +2,9 @@
 
 - Created: 2026-10-03
 - Owner: claude
-- Status: in-progress
+- Status: done
+- Completed: 2026-10-03
+- Result: https://github.com/kkucherenkov/todoer/pull/34
 - Blockers: —
 - Spec: docs/specs/2026-10-03-tui-client-design.md (Q6, Routine choices: the
   outline, keys)
