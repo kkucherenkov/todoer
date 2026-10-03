@@ -2137,6 +2137,42 @@ describe('setRecurrence', () => {
   });
 });
 
+describe('subtask progress', () => {
+  function family() {
+    const store = openStore(':memory:');
+    put(store, 'task', task('p'));
+    put(store, 'task', task('s1', { parentId: 'p' }));
+    put(store, 'task', task('s2', { parentId: 'p' }));
+    put(store, 'task', task('s3', { parentId: 'p', deletedAt: '2026-10-01' }));
+    put(store, 'task', task('lone'));
+    return store;
+  }
+  const progress = (store: Store, id: string) =>
+    viewTasks(store, TODAY, ALL_OPEN).find((i) => i.id === id)?.subtasks;
+
+  it('counts live subtasks and those closed', () => {
+    const store = family();
+    expect(progress(store, 'p')).toEqual({ done: 0, total: 2 });
+    closeAt(store, 's1', TODAY);
+    expect(progress(store, 'p')).toEqual({ done: 1, total: 2 });
+  });
+
+  it('is null without live subtasks', () => {
+    expect(progress(family(), 'lone')).toBeNull();
+  });
+
+  it('agrees with taskDetails’ checklist', () => {
+    const store = family();
+    closeAt(store, 's2', TODAY);
+    const checklist = taskDetails(store, TODAY, 'p')?.subtasks ?? [];
+    expect({
+      done: checklist.filter((s) => s.closed).length,
+      total: checklist.length,
+    }).toEqual(progress(store, 'p'));
+    expect(progress(store, 'p')).toEqual({ done: 1, total: 2 });
+  });
+});
+
 describe('reparent', () => {
   /** Offline, so the queue stays inspectable. `a`, `b` top level; `p` has
    *  live subtask `s` and tombstoned `z`; `r` repeats; `t` has tombstoned
