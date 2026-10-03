@@ -231,7 +231,8 @@ already answers it, and the TUI follows the core:
   a default at creation, not inheritance: `editTask` can set another
   project later, `reparent` leaves the project as it is, and nothing changes
   a subtask's project when its parent's changes. The proposal's "no implicit
-  project inheritance" holds for later changes, not for this default.
+  project inheritance" holds for later changes, not for this default; the
+  maintainer kept the default (2026-10-03).
 - **Deleting a parent.** `deleteTask` deletes the parent with its live
   subtasks in one batch (#391). That is the one cascade the core has.
 - **A subtask's status.** Its own `statusId`; moving its card never touches
