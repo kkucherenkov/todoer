@@ -18,8 +18,9 @@ const create = (opId: string): Op => ({
 
 /**
  * A server as far as these tests need one: an opId applies once (ADR 0005)
- * and every later sight of it answers `applied` again; each applied create
- * gets the next seq; a pull returns the rows after `since`. Each answer
+ * and every later sight of it answers `duplicate`, as the backend's `replay`
+ * does; each applied create gets the next seq; a pull returns the rows after
+ * `since`. Each answer
  * waits a tick, so two flushes started together are in flight together.
  */
 function server() {
@@ -27,10 +28,11 @@ function server() {
   const changes: Change[] = [];
   const send: Transport = async (request: SyncRequest) => {
     await new Promise((resolve) => setTimeout(resolve, 5));
-    for (const op of request.ops) {
+    const results = request.ops.map((op) => {
       const seen = arrivals.get(op.opId) ?? 0;
       arrivals.set(op.opId, seen + 1);
-      if (seen === 0 && op.kind === 'create') {
+      if (seen > 0) return { opId: op.opId, status: 'duplicate' as const };
+      if (op.kind === 'create') {
         changes.push({
           table: op.table,
           id: op.id,
@@ -38,14 +40,12 @@ function server() {
           row: { id: op.id, ...op.fields, deletedAt: null },
         });
       }
-    }
+      return { opId: op.opId, status: 'applied' as const };
+    });
     return new Response(
       JSON.stringify({
         cursor: changes.length,
-        results: request.ops.map((op) => ({
-          opId: op.opId,
-          status: 'applied',
-        })),
+        results,
         changes: changes.filter((c) => c.seq > request.since),
       }),
       { status: 200, headers: { 'content-type': 'application/json' } },
@@ -80,6 +80,14 @@ describe('two stores on one replica file', () => {
     await Promise.all([flush(a, srv.send), flush(b, srv.send)]);
 
     expect([...srv.arrivals.keys()].sort()).toEqual(['from-a', 'from-b']);
+    // flush takes no lock, so both stores may send the shared outbox; the
+    // server's opId guard applies each op once and answers `duplicate` after.
+    for (const sent of srv.arrivals.values())
+      expect(sent).toBeLessThanOrEqual(2);
+    expect(srv.changes.map((c) => c.id).sort()).toEqual([
+      'task-from-a',
+      'task-from-b',
+    ]);
     expect(a.pending()).toEqual([]);
     expect(b.pending()).toEqual([]);
     const ids = (s: Store) =>
