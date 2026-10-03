@@ -135,7 +135,10 @@ or at all where it needs those APIs. The README must say so.
 that access is exclusive. One tab wins a Web Lock and runs the worker with
 SQLite and sync. Other tabs send commands and receive results over
 `BroadcastChannel`. When the leader closes, the lock passes to the next tab,
-which starts its own worker.
+which starts its own worker. The leader terminates its worker on `pagehide`,
+so a worker that outlives its page never answers the next one; a reload is
+the next one too, and showed the shell from the old worker's snapshot before
+its own worker restored the session.
 
 **Rejected.**
 
