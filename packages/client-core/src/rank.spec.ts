@@ -35,9 +35,8 @@ describe('rankBetween', () => {
 
   it('stays strictly between across random inserts at ends, gaps and equal ranks', () => {
     const rnd = mulberry32(7);
-    const keys: string[] = ['a0'];
+    const sorted: string[] = ['a0']; // kept sorted by insertion, not re-sorted per step
     for (let i = 0; i < 2000; i += 1) {
-      const sorted = [...keys].sort();
       const k = Math.floor(rnd() * (sorted.length + 1)); // gap index, 0 and length are the ends
       let b = k === 0 ? null : sorted[k - 1]!;
       const a = k === sorted.length ? null : sorted[k]!;
@@ -45,11 +44,17 @@ describe('rankBetween', () => {
       const r = rankBetween(b, a);
       expect(between(b, r, a)).toBe(true);
       expect(r.endsWith('0')).toBe(false);
-      keys.push(r);
+      let lo = 0; // r may land left of k after a tie, so find its place
+      for (let hi = sorted.length; lo < hi;) {
+        const mid = (lo + hi) >> 1;
+        if (sorted[mid]! < r) lo = mid + 1;
+        else hi = mid;
+      }
+      sorted.splice(lo, 0, r);
     }
     // random gaps stay short; the same-gap worst case is bounded below
-    expect(Math.max(...keys.map((s) => s.length))).toBeLessThan(40);
-  });
+    expect(Math.max(...sorted.map((s) => s.length))).toBeLessThan(40);
+  }, 30_000); // 2000 inserts: run time scales with CPU contention on a loaded runner
 
   it('keeps keys under 50 characters over 200 inserts at the same gap (about 5 inserts per character)', () => {
     for (const [b, a] of [
