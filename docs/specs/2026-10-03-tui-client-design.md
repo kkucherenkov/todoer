@@ -217,6 +217,33 @@ a sign-in screen, the mouse.
 - **Text input.** `ink-text-input` if it supports Ink 8; otherwise a small
   input of our own. Decided in T2.
 
+## Alignment with the web redesign
+
+`docs/proposals/2026-10-03-web-ux-redesign.md` ("Синхронизация с TUI") asks
+both clients for the same semantics. Where it left a question, the core
+already answers it, and the TUI follows the core:
+
+- **Completing a parent.** No cascade either way (ADR 0009): completing the
+  parent leaves its subtasks open, completing every subtask leaves the
+  parent open, and the parent shows derived progress.
+- **A subtask's project.** `add` with a parent gives the new subtask the
+  parent's project unless the text names one (`operations.ts`, `add`). It is
+  a default at creation, not inheritance: `editTask` can set another
+  project later, `reparent` leaves the project as it is, and nothing changes
+  a subtask's project when its parent's changes. The proposal's "no implicit
+  project inheritance" holds for later changes, not for this default.
+- **Deleting a parent.** `deleteTask` deletes the parent with its live
+  subtasks in one batch (#391). That is the one cascade the core has.
+- **A subtask's status.** Its own `statusId`; moving its card never touches
+  the parent's.
+- **Progress and subtasks outside the filter.** `Item.subtasks` counts every
+  live subtask (plan T1b); `taskDetails` lists them all (the TUI's `e`). The
+  view's own count is never mixed with either.
+- **Layout.** The TUI draws the saved `view.layout` and has no override in
+  v1. A client that lets a person switch list and board in place keeps that
+  choice to itself and never writes it to the view.
+- **Reparent.** Both clients use the core's `reparent` write and its checks.
+
 ## Plans
 
 | Plan | Pull request | Done when |
