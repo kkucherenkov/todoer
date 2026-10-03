@@ -14,7 +14,8 @@ const COLUMN = 22;
 /**
  * The kanban layout: one column per status, the engine's `boardTasks` (the
  * completing column holds the tasks closed in the last seven days). `H`/`L`
- * move a card across columns, `J`/`K` within one in a manual view.
+ * move a card across columns, `J`/`K` within one in a manual view, `o` adds
+ * a card below the current one (where the sort puts it in a sorted view).
  */
 export function BoardPane({ view, active, open }: PaneProps) {
   const { topics, status } = useTui();
@@ -164,11 +165,17 @@ export function BoardPane({ view, active, open }: PaneProps) {
           initial=""
           onCancel={() => setAdding(false)}
           onSubmit={(text) => {
-            const statusId = cols[c]?.id ?? null;
+            const statusId = c === 0 ? null : (cols[c]?.id ?? null);
+            const after =
+              view.sort === 'manual' && current !== undefined
+                ? String(current.id)
+                : undefined;
             let id = '';
             // Open until the add is taken: a refusal keeps the text. A task
             // with no status shows in the first column (`displayStatus`), so
-            // elsewhere a `move` follows the add.
+            // elsewhere a `move` follows the add; it also puts the card below
+            // the current one, which the engine ranks within `statusId`'s
+            // column.
             void write((newId) => {
               id = newId();
               return { kind: 'add', opId: newId(), id, text };
@@ -176,13 +183,14 @@ export function BoardPane({ view, active, open }: PaneProps) {
               if (!added.ok) return;
               setAdding(false);
               setFollow(id);
-              if (statusId === null || c === 0) return;
+              if (statusId === null && after === undefined) return;
               await write((newId) => ({
                 kind: 'move',
                 opId: newId(),
                 taskId: id,
                 view: view.key,
-                statusId,
+                ...(statusId === null ? {} : { statusId }),
+                ...(after === undefined ? {} : { after }),
               }));
             });
           }}

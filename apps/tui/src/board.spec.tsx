@@ -131,6 +131,37 @@ describe('BoardPane', () => {
     expect(cursor(t)).toContain('gamma');
   });
 
+  it('inserts with o right below the current card in a manual view', async () => {
+    const t = await open({
+      tasks: [
+        task('alpha', 'todo', 'a0'),
+        task('beta', 'todo', 'a1'),
+        task('delta', 'doing', 'a0'),
+        task('eps', 'doing', 'a1'),
+      ],
+    });
+    const rank = (title: string) =>
+      String(t.store.rows('task').find((r) => r.title === title)?.rank);
+    await t.press('o', 'gamma', KEY.enter);
+    expect(rank('alpha') < rank('gamma') && rank('gamma') < rank('beta')).toBe(
+      true,
+    );
+    expect(cursor(t)).toContain('gamma');
+    await t.press('l', 'o', 'zeta', KEY.enter);
+    expect(rank('delta') < rank('zeta') && rank('zeta') < rank('eps')).toBe(
+      true,
+    );
+    expect(cursor(t)).toContain('zeta');
+  });
+
+  it('sends only the add in a view that sorts itself', async () => {
+    const t = await open({ sort: 'priority' });
+    await t.press('o', 'gamma', KEY.enter);
+    expect(
+      t.server.sent.filter((op) => op.kind === 'set' && op.field === 'rank'),
+    ).toEqual([]);
+  });
+
   it('keeps the new card’s text when the add is refused', async () => {
     const t = await open();
     await t.press('o', '   ', KEY.enter);

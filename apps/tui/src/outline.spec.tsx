@@ -99,12 +99,13 @@ describe('OutlinePane', () => {
     expect(t.lastFrame()).toMatch(/nothing above to indent under/);
   });
 
-  it('adds a task with o and a subtask with O', async () => {
+  it('adds a task with o and a subtask of it with O', async () => {
     const t = await open(task('alpha', 'a0'));
     await t.press('o', 'solo', KEY.enter, 'O', 'child', KEY.enter);
     const rows = t.store.rows('task');
-    expect(rows.find((r) => r.title === 'solo')?.parentId ?? null).toBeNull();
-    expect(rows.find((r) => r.title === 'child')?.parentId).toBe(id('alpha'));
+    const solo = rows.find((r) => r.title === 'solo');
+    expect(solo?.parentId ?? null).toBeNull();
+    expect(rows.find((r) => r.title === 'child')?.parentId).toBe(solo?.id);
   });
 
   it('adds a sibling with O on a subtask', async () => {
@@ -112,6 +113,67 @@ describe('OutlinePane', () => {
     await t.press('j', 'O', 'second', KEY.enter);
     const second = t.store.rows('task').find((r) => r.title === 'second');
     expect(second?.parentId).toBe(id('alpha'));
+  });
+
+  it('inserts with o below the cursor’s whole group and moves the cursor to it', async () => {
+    const t = await open(
+      task('alpha', 'a0'),
+      task('beta', 'a1'),
+      task('a1', 'a2', 'alpha'),
+    );
+    await t.press('o', 'new', KEY.enter);
+    const [alpha, a1, fresh, beta] = order(
+      t.lastFrame(),
+      'alpha',
+      'a1',
+      'new',
+      'beta',
+    );
+    expect([a1, fresh, beta]).toEqual([alpha! + 1, alpha! + 2, alpha! + 3]);
+    await t.press('d', 'd');
+    expect(t.lastFrame()).toContain('delete "new"?');
+  });
+
+  it('inserts with o on a subtask a top-level task after its parent’s group', async () => {
+    const t = await open(
+      task('alpha', 'a0'),
+      task('beta', 'a1'),
+      task('a1', 'a2', 'alpha'),
+      task('a2', 'a3', 'alpha'),
+    );
+    await t.press('j', 'o', 'new', KEY.enter);
+    const [a2, fresh, beta] = order(t.lastFrame(), 'a2', 'new', 'beta');
+    expect([fresh, beta]).toEqual([a2! + 1, a2! + 2]);
+    const row = t.store.rows('task').find((r) => r.title === 'new');
+    expect(row?.parentId ?? null).toBeNull();
+  });
+
+  it('inserts with O after the subtask under the cursor, else last', async () => {
+    const t = await open(
+      task('alpha', 'a0'),
+      task('beta', 'a1'),
+      task('a1', 'a2', 'alpha'),
+      task('a2', 'a3', 'alpha'),
+    );
+    await t.press('j', 'O', 'mid', KEY.enter);
+    const [a1, mid, a2] = order(t.lastFrame(), 'a1', 'mid', 'a2');
+    expect([mid, a2]).toEqual([a1! + 1, a1! + 2]);
+    await t.press('d', 'd');
+    expect(t.lastFrame()).toContain('delete "mid"?');
+    await t.press('n', 'k', 'k', 'O', 'end', KEY.enter);
+    const [last, end, beta] = order(t.lastFrame(), 'a2', 'end', 'beta');
+    expect([end, beta]).toEqual([last! + 1, last! + 2]);
+  });
+
+  it('leaves placing a new task to the sort in a view that sorts itself', async () => {
+    const t = await open(byPriority, task('alpha', 'a0'), task('beta', 'a1'));
+    await t.press(']', 'o', 'new', KEY.enter);
+    expect(
+      t.server.sent.filter((op) => op.kind === 'set' && op.field === 'rank'),
+    ).toEqual([]);
+    // Where the engine put it, not below the cursor.
+    const [fresh, alpha] = order(t.lastFrame(), 'new', 'alpha');
+    expect(fresh).toBeLessThan(alpha!);
   });
 
   it('keeps the typed subtask open when the add is refused', async () => {
