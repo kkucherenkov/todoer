@@ -111,7 +111,12 @@ describe('lead', () => {
     expect(worker!.url.pathname).toMatch(/\/worker\.ts$/);
     expect(worker!.options).toEqual({ type: 'module', name: 'todoer-db' });
     expect(worker!.posted).toEqual([
-      { type: 'init', build: 'b1', leader: expect.any(String), hint: false },
+      {
+        type: 'init',
+        build: 'b1',
+        leader: expect.any(String) as string,
+        hint: false,
+      },
     ]);
     expect(engine()).toEqual([{ state: 'starting', reason: null }]);
     expect(broadcast.every((m) => m.build === 'b1')).toBe(true);
