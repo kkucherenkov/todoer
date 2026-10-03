@@ -172,7 +172,7 @@ a sign-in screen, the mouse.
   | `h` `l` `←` `→` | fold, unfold | neighbouring column |
   | `J` `K` `Alt-↑` `Alt-↓` | move the task (manual sort only) | move in the column |
   | `H` `L` | — | move to the neighbouring column |
-  | `Tab` `Shift-Tab` | indent under the previous task, outdent | — |
+  | `Tab` `Shift-Tab` | indent under the nearest top-level task above, outdent | — |
   | `o` `O` | new task below, new subtask | new task in the column |
   | `Enter` `i` | edit the line in place | edit the line in place |
   | `x` `Space` | done, undo | done, undo |
@@ -278,7 +278,10 @@ the TUI to the stack table in `.claude/CLAUDE.md`.
 - **The engine move (T0).** The web's most central file moves. The proof is
   the same as W0's: nothing changes, every existing test passes untouched.
 - **Terminal differences.** `Alt-↑` and `Shift-Tab` arrive differently across
-  terminals. The vim keys (`J`, `K`) are the fallback that always works.
+  terminals. The vim keys (`J`, `K`) are the fallback that always works. The
+  outline also takes a bare `\e[Z` as `Shift-Tab`, for terminals that send
+  it without Ink reporting `shift`; under tmux on macOS both `Shift-Tab` and
+  `Alt-↑`/`Alt-↓` work.
 
 ## Deferred
 

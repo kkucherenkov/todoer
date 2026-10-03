@@ -60,11 +60,11 @@ stub with that outline.
 
 - **SC-001** In `todoer-tui` against a live backend a person folds, indents,
   outdents, moves and adds a subtask, and `todoer list` shows the same nesting
-- [ ] every FR has a test that failed before the code made it pass
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] every FR has a test that failed before the code made it pass
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 
@@ -72,8 +72,8 @@ stub with that outline.
       move anchor — `apps/tui/src/outline-tree.ts` (plan Task 1)
 - [x] T002 [FR-001]–[FR-006] the outline pane — `apps/tui/src/outline.tsx`
       (plan Task 2)
-- [ ] T003 by-hand run against a live backend (plan Task 3)
-- [ ] T004 documents, gates, PR (plan Task 4)
+- [x] T003 by-hand run against a live backend (plan Task 3)
+- [x] T004 documents, gates, PR (plan Task 4)
 - **Checkpoint:** the list layout is the outline; board, details and statuses
   plans are untouched
 
@@ -105,6 +105,22 @@ stub with that outline.
 8. More tests than the plan's: `o`, `O` on a subtask adds a sibling, a refused
    `O` keeps its text, `Tab` on the first row, `J` in a sorted view writes
    nothing, `Alt-↓`/`Alt-↑`, and `x` on a subtask row (FR-006).
+
+9. `todoer list` prints no nesting, so the by-hand check compared
+   `todoer list --json`'s `parentId` instead.
+
+### By-hand run (plan Task 3)
+
+Backend built from this branch on port 3101 against a fresh
+`todoer_tui_outline` database, a scratch `HOME`, a user registered over HTTP
+and `todoer login` done; three tasks added with the CLI. `todoer-tui` in a
+110×20 tmux pane (macOS): `Tab` put `milk` and then `laundry` under
+`groceries` (bar `0/1`, then `0/2`); `h` folded it to `▸ groceries  +2`, `l`
+unfolded; `Shift-Tab` (tmux sends `\e[Z`) made `milk` top-level again. `K`,
+`J`, `Alt-↑` and `Alt-↓` each moved `milk` past the `groceries` block, the
+cursor staying on `milk`. `O` on `laundry` added `eggs` under `groceries`;
+`x` completed a task. `todoer list --json` then showed `laundry` and `eggs`
+with `groceries` as their parent.
 
 ### Open questions
 
