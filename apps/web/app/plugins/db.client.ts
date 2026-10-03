@@ -36,5 +36,5 @@ export default defineNuxtPlugin(() => {
   });
   // A sync that fails reports through the sync topic; the reply adds nothing.
   startCadence((reason) => void db.request({ kind: 'sync', reason }));
-  return { provide: { db: db as Db | null } };
+  return { provide: { db } };
 });

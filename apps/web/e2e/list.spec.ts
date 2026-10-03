@@ -5,7 +5,9 @@ import { arrowTo, count, day, expect, test } from './fixtures';
 const visit = (page: Page, task: string) =>
   page.evaluate((id) => {
     history.pushState(history.state, '', `/?task=${id}`);
-    dispatchEvent(new PopStateEvent('popstate', { state: history.state }));
+    dispatchEvent(
+      new PopStateEvent('popstate', { state: history.state as unknown }),
+    );
   }, task);
 
 const rows = (page: Page) => page.getByTestId('task-row');

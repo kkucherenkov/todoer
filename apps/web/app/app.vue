@@ -2,7 +2,7 @@
 import * as uiLocales from '@nuxt/ui/locale';
 
 const { locale } = useI18n();
-const uiLocale = computed(() => uiLocales[locale.value as 'en' | 'ru']);
+const uiLocale = computed(() => uiLocales[locale.value]);
 </script>
 
 <template>

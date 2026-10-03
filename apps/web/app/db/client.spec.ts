@@ -330,8 +330,8 @@ describe('watches and writes', () => {
       to: '2026-10-06',
     });
     expect(w).toMatchObject({
-      id: expect.any(String),
-      opId: expect.any(String),
+      id: expect.any(String) as string,
+      opId: expect.any(String) as string,
     });
     await db.write(w);
     void db.write(w);
@@ -377,8 +377,8 @@ describe('watches and writes', () => {
     const [, sent] = requests();
     expect(sent).toMatchObject({
       kind: 'add',
-      opId: expect.any(String),
-      id: expect.any(String),
+      opId: expect.any(String) as string,
+      id: expect.any(String) as string,
     });
     seen.length = 0;
     post({ type: 'ready', build: BUILD });

@@ -1,5 +1,9 @@
-import { expect, request, type APIRequestContext } from '@playwright/test';
-import type { FullConfig } from '@playwright/test';
+import {
+  expect,
+  request,
+  type APIRequestContext,
+  type FullConfig,
+} from '@playwright/test';
 
 export type Tokens = { accessToken: string; refreshToken: string };
 

@@ -43,7 +43,11 @@ const server = computed(() => {
     tags: k.tags,
     priority: Number(k.priority),
     // A recurring task is scheduled by its current occurrence.
-    scheduledOn: String((k.rrule ? k.occurrence : k.scheduledOn) ?? ''),
+    scheduledOn: k.rrule
+      ? (k.occurrence ?? '')
+      : typeof k.scheduledOn === 'string'
+        ? k.scheduledOn
+        : '',
     dueOn: typeof k.dueOn === 'string' ? k.dueOn : '',
     statusId: k.column ?? '',
   };
@@ -65,7 +69,8 @@ for (const key of Object.keys(draft) as (keyof Draft)[]) {
   watch(
     () => JSON.stringify(server.value?.[key]),
     (json) =>
-      json !== undefined && Object.assign(draft, { [key]: JSON.parse(json) }),
+      json !== undefined &&
+      Object.assign(draft, { [key]: JSON.parse(json) as Draft[typeof key] }),
     { immediate: true },
   );
 }

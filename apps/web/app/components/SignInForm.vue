@@ -30,7 +30,9 @@ async function submit() {
       variant="subtle"
       data-testid="sign-in-error"
       :title="$t(`errors.${kind}`)"
-      :description="failure?.detail"
+      v-bind="
+        failure?.detail === undefined ? {} : { description: failure.detail }
+      "
     />
     <UFormField :label="$t('signIn.email')" name="email">
       <UInput

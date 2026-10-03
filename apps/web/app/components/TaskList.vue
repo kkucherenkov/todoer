@@ -40,7 +40,11 @@ const open = (item: Item) =>
   router.push({ query: { ...route.query, task: String(item.id) } });
 
 const container = ref<HTMLElement | null>(null);
-const drag = useDrag(container, move, () => manual.value);
+const drag = useDrag(
+  container,
+  (taskId, after) => void move(taskId, after),
+  () => manual.value,
+);
 </script>
 
 <template>

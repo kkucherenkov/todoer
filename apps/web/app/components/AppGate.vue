@@ -44,7 +44,7 @@ watch(
       variant="subtle"
       data-testid="engine-failed"
       :title="$t('failed.title')"
-      :description="engine.reason ?? undefined"
+      v-bind="engine.reason === null ? {} : { description: engine.reason }"
       :actions="[{ label: $t('failed.reload'), onClick: reload }]"
     />
     <div

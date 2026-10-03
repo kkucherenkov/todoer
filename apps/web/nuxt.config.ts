@@ -1,11 +1,23 @@
 export default defineNuxtConfig({
   compatibilityDate: '2026-10-01',
   ssr: false,
-  modules: ['@nuxt/ui', '@nuxtjs/i18n', '@vite-pwa/nuxt'],
+  modules: ['@nuxt/eslint', '@nuxt/ui', '@nuxtjs/i18n', '@vite-pwa/nuxt'],
   css: ['~/assets/css/main.css'],
   // The backend caches /_nuxt/ as immutable and everything else as no-cache
   // (W1 notes): stated, not defaulted, so a change here is a visible one.
   app: { buildAssetsDir: '/_nuxt/' },
+  // The repo's strictness (tsconfig.base.json) in every context Nuxt
+  // generates; strict and noUncheckedIndexedAccess are already its defaults.
+  // The config files join the node context so ESLint's project service and
+  // `nuxt typecheck` see them.
+  typescript: {
+    tsConfig: { compilerOptions: { exactOptionalPropertyTypes: true } },
+    sharedTsConfig: { compilerOptions: { exactOptionalPropertyTypes: true } },
+    nodeTsConfig: {
+      compilerOptions: { exactOptionalPropertyTypes: true },
+      include: ['../vitest.config.ts', '../playwright.config.ts'],
+    },
+  },
   // 3000 is the backend's default.
   devServer: { port: 3001 },
   // One origin in development too (Q9): the cookie's Path is /api/v1/auth.
@@ -47,7 +59,9 @@ export default defineNuxtConfig({
       // only to Accept: text/html, which a precache fetch does not send: the
       // 404 fails the install. Keep the entry as /index.html (served for any
       // Accept) so it matches navigateFallback.
-      manifestTransforms: [async (manifest) => ({ manifest, warnings: [] })],
+      manifestTransforms: [
+        (manifest) => Promise.resolve({ manifest, warnings: [] }),
+      ],
       maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // sqlite3.wasm is ~0.9 MB
       cleanupOutdatedCaches: true,
       navigateFallback: '/index.html',

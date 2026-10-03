@@ -63,7 +63,7 @@ const lastSynced = computed(() => {
     <div class="flex gap-2">
       <UButton
         size="sm"
-        :loading="sync?.running"
+        :loading="sync?.running ?? false"
         data-testid="sync-now"
         @click="db.request({ kind: 'sync', reason: 'manual' })"
       >
