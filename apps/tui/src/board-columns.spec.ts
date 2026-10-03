@@ -9,6 +9,7 @@ const item = (id: string, column: string | null): Item => ({
   column,
   closed: false,
   parentTitle: null,
+  subtasks: null,
   occurrence: null,
   status: null,
   tags: [],
