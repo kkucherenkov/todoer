@@ -99,6 +99,24 @@ and within them from the keyboard.
     no-statuses board is tested on `columns` only: the engine seeds three
     statuses on a first sync, so the kit cannot render it (shell departure 8).
 
+### By-hand run (plan Task 3)
+
+Backend built from this branch on port 3102 against a fresh
+`todoer_tui_board` database, a scratch `HOME`, a user registered over HTTP
+and `todoer login` done; five statuses (the last completing) and a manual
+kanban view `Board` posted to `/sync`. `todoer-tui` in a 110×24 PTY: `]`
+opened the board with `columns 1–3 of 5`. `L` moved `alpha` to Doing and
+the cursor went with it; `L` on into Done scrolled to `columns 3–5 of 5`
+and the status line read `marked done`; `H` read `marked undo` and left it
+in Blocked. `J` put `beta` below `gamma`; `l`, `o`, `delta`, Enter added
+`delta` to Doing. `todoer list` showed `alpha` Blocked, `delta` Doing,
+`gamma` and `beta` To do. At 60 columns the sidebar hid and two columns
+fit, `columns 2–3 of 5`.
+
+Surprising, outside this task: at 60 columns the shell's status bar runs
+the status into the hints (`syncej/k move`) and wraps the hints onto a
+second line.
+
 ### Open questions
 
 None.
