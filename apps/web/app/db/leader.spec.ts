@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { lead } from './leader';
 import type { Topics } from '@todoer/client-core';
-import { LEADER_LOCK } from './protocol';
+import { LEADER_LOCK, leaderLock } from './protocol';
 
 class FakeWorker {
   static all: FakeWorker[] = [];
@@ -29,7 +29,12 @@ class FakeWorker {
 }
 
 /** Every message any channel object posted, in order. */
-let broadcast: { topic?: string; value?: unknown; build?: string }[];
+let broadcast: {
+  topic?: string;
+  value?: unknown;
+  build?: string;
+  leader?: string;
+}[];
 class FakeChannel {
   constructor(readonly name: string) {}
   postMessage(m: (typeof broadcast)[number]) {
@@ -42,13 +47,18 @@ class FakeChannel {
 let listeners: Map<string, (e: { persisted: boolean }) => void>;
 let grant: () => void;
 let lockName: string | undefined;
+/** The leader's own lock: nobody else asks for its name, so it is granted
+ *  at once. */
+let ownLock: string | undefined;
+let ownReleased = false;
 let held: Promise<unknown> | undefined;
 
 beforeEach(() => {
   vi.useFakeTimers();
   FakeWorker.all = [];
   broadcast = [];
-  lockName = held = undefined;
+  lockName = ownLock = held = undefined;
+  ownReleased = false;
   listeners = new Map();
   vi.stubGlobal(
     'addEventListener',
@@ -61,6 +71,10 @@ beforeEach(() => {
     locks: {
       // Queues like the real one: the callback runs once the lock is granted.
       request(name: string, callback: () => Promise<unknown>) {
+        if (name !== LEADER_LOCK) {
+          ownLock = name;
+          return callback().then(() => (ownReleased = true));
+        }
         lockName = name;
         return new Promise((resolve) => {
           grant = () => {
@@ -97,10 +111,31 @@ describe('lead', () => {
     expect(worker!.url.pathname).toMatch(/\/worker\.ts$/);
     expect(worker!.options).toEqual({ type: 'module', name: 'todoer-db' });
     expect(worker!.posted).toEqual([
-      { type: 'init', build: 'b1', hint: false },
+      {
+        type: 'init',
+        build: 'b1',
+        leader: expect.any(String) as string,
+        hint: false,
+      },
     ]);
     expect(engine()).toEqual([{ state: 'starting', reason: null }]);
     expect(broadcast.every((m) => m.build === 'b1')).toBe(true);
+  });
+
+  // A worker outlives its page for a moment: a tab tells it from the next
+  // leader's by this lock, which the page released (client.ts).
+  it('holds a lock named after its id, and stamps the id on all it posts', () => {
+    lead('b1', () => true);
+    expect(ownLock).toBeUndefined();
+    grant();
+    const { leader } = FakeWorker.all[0]!.posted[0] as { leader: string };
+    expect(ownLock).toBe(leaderLock(leader));
+    FakeWorker.all[0]!.fatal('no OPFS');
+    vi.advanceTimersByTime(500);
+    // The respawned worker is the same leader's.
+    expect(FakeWorker.all[1]!.posted[0]).toMatchObject({ leader });
+    expect(broadcast.length).toBeGreaterThan(1);
+    expect(broadcast.every((m) => m.leader === leader)).toBe(true);
   });
 
   it('never settles the lock callback while the tab lives', async () => {
@@ -170,18 +205,21 @@ describe('lead', () => {
 
   // A reload's old worker outlived its document and answered the new tab's
   // hello: the new tab showed the shell before its own worker signed in.
-  it('terminates the worker when the page is discarded', () => {
+  it('terminates the worker and lets go of its own lock when the page is discarded', async () => {
     lead('b1', () => true);
     grant();
     listeners.get('pagehide')?.({ persisted: false });
     expect(FakeWorker.all[0]!.terminated).toBe(true);
+    await vi.waitFor(() => expect(ownReleased).toBe(true));
   });
 
-  it('keeps the worker of a page entering the back-forward cache', () => {
+  it('keeps the worker and its own lock of a page entering the back-forward cache', async () => {
     lead('b1', () => true);
     grant();
     listeners.get('pagehide')?.({ persisted: true });
     expect(FakeWorker.all[0]!.terminated).toBe(false);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(ownReleased).toBe(false);
   });
 
   it('counts a Worker constructor that throws as a failure, not a dead lock', () => {

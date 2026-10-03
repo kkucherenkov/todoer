@@ -92,7 +92,8 @@ types, `EngineAuth` and `EngineTokens`, which `CookieAuthApi` and
 `CookieTokenSource` already satisfy. The dispatcher and the worker's message
 types (`ToWorker`, `FromWorker`) move too: they have no browser dependency,
 and the engine's spec tests the dispatcher. The web keeps only the names of
-its browser transport: `CHANNEL`, `LEADER_LOCK`, `Init`, `Fatal`.
+its browser transport: `CHANNEL`, `LEADER_LOCK`, `leaderLock`, `Init`,
+`Fatal`, and `FromLeader`, the core's message stamped with its leader's id.
 `engine.spec.ts` moves with the engine, with only its imports and its mocked
 module changed (ADR 0018).
 
