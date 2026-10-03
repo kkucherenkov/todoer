@@ -9,3 +9,5 @@ pnpm-lock.yaml
 playwright-report/
 test-results/
 apps/web/dist
+# Immutable Open Design source snapshot; hashes in export-manifest.json.
+docs/design/mockups/

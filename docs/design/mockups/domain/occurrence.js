@@ -1,0 +1,149 @@
+// Read-only source snapshot: packages/client-core/src/occurrence.ts. Type erasure only; local fixture use.
+(()=>{window.TodoerDomain ||= {};
+const {addDays, isIsoDate, parseRrule,}=window.TodoerDomain;
+const {expand}=window.TodoerDomain;
+                                      
+
+/** How far ahead the next open occurrence is looked for; also how far ahead
+ *  `add --rrule` checks for a rule producing nothing at all (M5). */
+// ponytail: ten years; a rule sparser than that shows as ended.
+const HORIZON_DAYS = 3660;
+/** How many upcoming occurrences are checked for one that is still open. */
+const LOOKAHEAD = 100;
+const CLOSED                       = new Set(['done', 'skipped']);
+
+/** The caller's calendar date, `YYYY-MM-DD` — local, not UTC (ADR 0010). */
+function localDate(now      )         {
+  const pad = (n        , width        )         =>
+    String(n).padStart(width, '0');
+  return `${pad(now.getFullYear(), 4)}-${pad(now.getMonth() + 1, 2)}-${pad(now.getDate(), 2)}`;
+}
+
+                                                          
+
+/**
+ * A task's rule and anchor — its own, or its parent's for a subtask, which
+ * lives on the parent's occurrence axis (ADR 0009). `null` for a one-off
+ * task. The server refuses a rule it cannot parse (plan C2), so one arriving
+ * here is a bug worth failing loudly on, not a task to show wrongly.
+ */
+function recurrenceOf(
+  task     ,
+  parent                 ,
+)                    {
+  const isSubtask = task.parentId !== null && task.parentId !== undefined;
+  const owner = isSubtask && parent !== undefined ? parent : task;
+  const { rrule, dtstart } = owner;
+  if (rrule === null || rrule === undefined) return null;
+  if (typeof rrule !== 'string' || typeof dtstart !== 'string') {
+    throw new Error(
+      `task ${String(owner.id)} has a rule without a readable dtstart`,
+    );
+  }
+  const parsed = parseRrule(rrule);
+  if (!parsed.ok) {
+    throw new Error(
+      `task ${String(owner.id)} has a rule this client cannot expand: ${parsed.error}`,
+    );
+  }
+  return { rule: parsed.rule, dtstart };
+}
+
+/** A task occurrence's `state` for one date (`null`: a one-off task), or
+ *  `undefined` when there is no row. */
+                                                             
+
+/**
+ * The occurrence `list` shows and `done`/`skip` act on (plan C design, Q11):
+ * the latest one on or before today while it is open, otherwise the first
+ * open one after today (plan C1, departure 2). `null` when there is none — a
+ * one-off task done or skipped, or a rule that has run out.
+ */
+function currentOccurrence(
+  recurrence                   ,
+  stateOf         ,
+  today        ,
+)                                       {
+  if (recurrence === null) {
+    return CLOSED.has(stateOf(null)) ? null : { occurrence: null };
+  }
+  const { rule, dtstart } = recurrence;
+  const latest = expand(rule, dtstart, dtstart, today).at(-1);
+  if (latest !== undefined && !CLOSED.has(stateOf(latest))) {
+    return { occurrence: latest };
+  }
+  const next = expand(
+    rule,
+    dtstart,
+    addDays(today, 1),
+    addDays(today, HORIZON_DAYS),
+    LOOKAHEAD,
+  ).find((occurrence) => !CLOSED.has(stateOf(occurrence)));
+  return next === undefined ? null : { occurrence: next };
+}
+
+/** Whether the rule produces `date` — what `--on` must name. */
+function isOccurrence(recurrence            , date        )          {
+  return expand(recurrence.rule, recurrence.dtstart, date, date).length === 1;
+}
+
+/**
+ * What a plain `undo` reopens: the task's latest done or skipped occurrence
+ * by date (plan C1, departure 1). Read from `state` alone — a `completedAt`
+ * can outlive the state that set it under per-field LWW ("Notes for C1").
+ */
+function latestClosed(
+  occurrences       ,
+  taskId        ,
+)                                       {
+  const closed = occurrences
+    .filter((row) => row.taskId === taskId && CLOSED.has(row.state))
+    .map((row) => (typeof row.occurrence === 'string' ? row.occurrence : null))
+    .sort((a, b) => (a ?? '').localeCompare(b ?? ''));
+  const last = closed.at(-1);
+  return last === undefined ? null : { occurrence: last };
+}
+
+/**
+ * Why `rrule` from `dtstart` cannot be a task's rule, or null: the parser's
+ * message, a start that is not a date ("the start must be a date,
+ * YYYY-MM-DD"), or a rule that produces no date within HORIZON_DAYS of its
+ * start ("this rule produces no date from <dtstart>"). The one check the
+ * form and setRecurrence share (departure 4).
+ */
+function ruleProblem(rrule        , dtstart        )                {
+  const parsed = parseRrule(rrule);
+  if (!parsed.ok) return parsed.error;
+  if (!isIsoDate(dtstart)) return 'the start must be a date, YYYY-MM-DD';
+  const first = expand(
+    parsed.rule,
+    dtstart,
+    dtstart,
+    addDays(dtstart, HORIZON_DAYS),
+    1,
+  );
+  return first.length === 0
+    ? `this rule produces no date from ${dtstart}`
+    : null;
+}
+
+/** The first `n` dates of a rule on or after `from` (and on or after
+ *  `dtstart`), within HORIZON_DAYS of `from`; [] when ruleProblem refuses it. */
+function upcoming(
+  rrule        ,
+  dtstart        ,
+  from        ,
+  n = 5,
+)           {
+  const parsed = parseRrule(rrule);
+  if (ruleProblem(rrule, dtstart) !== null || !parsed.ok) return [];
+  return expand(
+    parsed.rule,
+    dtstart,
+    from < dtstart ? dtstart : from,
+    addDays(from, HORIZON_DAYS),
+    n,
+  );
+}
+
+Object.assign(window.TodoerDomain,{HORIZON_DAYS,localDate,recurrenceOf,currentOccurrence,isOccurrence,latestClosed,ruleProblem,upcoming});})();

@@ -1,0 +1,155 @@
+/*
+ * todoer design tokens, compiled from docs/design/DESIGN.md.
+ *
+ * Two audiences:
+ *   - Open Design: the `todoer` design system's tokens.css is a copy of this
+ *     file, and mockup HTML links a copy to render the real palette without
+ *     Nuxt.
+ *   - The reconcile step: the --ui-* names are Nuxt UI 4's own variables, so a
+ *     value here maps 1:1 to app.config.ts (palette names) or main.css
+ *     (shade overrides). See docs/design/open-design/README.md.
+ *
+ * Values are resolved literals (Tailwind 4's oklch palette). In the app they
+ * are not written by hand: Nuxt UI derives them from app.config.ts, and
+ * main.css only moves the light shades (see DESIGN.md, "Colour").
+ *
+ * Dark mode is the `.dark` class, as Nuxt UI's colour mode sets it on <html>;
+ * it works on any element, so a mockup can show both themes side by side.
+ */
+
+:root {
+  /* Accent and semantic colours, light: primary indigo-600, success
+     green-800, info sky-700, warning amber-800, error red-700. */
+  --ui-primary: oklch(51.1% 0.262 276.966);
+  --ui-secondary: oklch(55.2% 0.016 285.938); /* zinc-500, unused */
+  --ui-success: oklch(44.8% 0.119 151.328);
+  --ui-info: oklch(50% 0.134 242.749);
+  --ui-warning: oklch(47.3% 0.137 46.201);
+  --ui-error: oklch(50.5% 0.213 27.518);
+
+  /* Neutral roles on zinc, Nuxt UI defaults. */
+  --ui-text-dimmed: oklch(70.5% 0.015 286.067); /* zinc-400 */
+  --ui-text-muted: oklch(55.2% 0.016 285.938); /* zinc-500 */
+  --ui-text-toned: oklch(44.2% 0.017 285.786); /* zinc-600 */
+  --ui-text: oklch(37% 0.013 285.805); /* zinc-700 */
+  --ui-text-highlighted: oklch(21% 0.006 285.885); /* zinc-900 */
+  --ui-text-inverted: #fff;
+  --ui-bg: #fff;
+  --ui-bg-muted: oklch(98.5% 0 0); /* zinc-50 */
+  --ui-bg-elevated: oklch(96.7% 0.001 286.375); /* zinc-100 */
+  --ui-bg-accented: oklch(92% 0.004 286.32); /* zinc-200 */
+  --ui-bg-inverted: oklch(21% 0.006 285.885); /* zinc-900 */
+  --ui-border: oklch(92% 0.004 286.32); /* zinc-200 */
+  --ui-border-muted: oklch(92% 0.004 286.32); /* zinc-200 */
+  --ui-border-accented: oklch(87.1% 0.006 286.286); /* zinc-300 */
+  --ui-border-inverted: oklch(21% 0.006 285.885); /* zinc-900 */
+
+  /* Shape and layout, Nuxt UI defaults. */
+  --ui-radius: 0.25rem;
+  --ui-header-height: 4rem;
+  --ui-container: 80rem;
+
+  /* Tailwind 4's default stacks: the system font, no web font. */
+  --font-sans:
+    ui-sans-serif, system-ui, sans-serif, 'Apple Color Emoji', 'Segoe UI Emoji',
+    'Segoe UI Symbol', 'Noto Color Emoji';
+  --font-mono:
+    ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
+    'Courier New', monospace;
+
+  /* Tailwind's radii as Nuxt UI derives them from --ui-radius. */
+  --radius-sm: var(--ui-radius);
+  --radius-md: calc(var(--ui-radius) * 1.5);
+  --radius-lg: calc(var(--ui-radius) * 2);
+  --radius-pill: 9999px;
+
+  /* Tailwind's type scale, the steps DESIGN.md uses. */
+  --text-xs: 0.75rem;
+  --text-sm: 0.875rem;
+  --text-base: 1rem;
+  --text-lg: 1.125rem;
+  --text-xl: 1.25rem;
+  --text-2xl: 1.5rem;
+  --text-3xl: 1.875rem;
+  --text-4xl: 2.25rem;
+  --leading-body: 1.5;
+  --leading-tight: 1.25;
+  --tracking-display: 0;
+
+  /* Tailwind's 4 px spacing scale. */
+  --space-1: 0.25rem;
+  --space-2: 0.5rem;
+  --space-3: 0.75rem;
+  --space-4: 1rem;
+  --space-5: 1.25rem;
+  --space-6: 1.5rem;
+  --space-8: 2rem;
+  --space-12: 3rem;
+
+  /* Motion: Tailwind's transition default and Nuxt UI's overlay timing. */
+  --motion-fast: 150ms;
+  --motion-base: 200ms;
+  --ease-standard: cubic-bezier(0.4, 0, 0.2, 1);
+
+  /*
+   * Open Design's shared token slots, as aliases of the Nuxt UI names, so
+   * the tool's generic prompts and checks find what they expect. Generated
+   * code uses the --ui-* names, never these.
+   */
+  --bg: var(--ui-bg);
+  --surface: var(--ui-bg-elevated);
+  --surface-warm: var(--surface);
+  --fg: var(--ui-text-highlighted);
+  --fg-2: var(--ui-text);
+  --muted: var(--ui-text-muted);
+  --meta: var(--ui-text-dimmed);
+  --border: var(--ui-border);
+  --border-soft: var(--ui-border-muted);
+  --accent: var(--ui-primary);
+  --accent-on: var(--ui-text-inverted);
+  --accent-hover: color-mix(in oklab, var(--ui-primary) 75%, transparent);
+  --accent-active: color-mix(in oklab, var(--ui-primary) 75%, transparent);
+  --success: var(--ui-success);
+  --warn: var(--ui-warning);
+  --danger: var(--ui-error);
+  --font-display: var(--font-sans);
+  --font-body: var(--font-sans);
+  --elev-flat: none;
+  --elev-ring: 0 0 0 1px var(--ui-border);
+  --elev-raised:
+    0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --focus-ring: 0 0 0 2px var(--ui-primary);
+  --container-max: var(--ui-container);
+  --container-gutter-desktop: 1.5rem;
+  --container-gutter-tablet: 1rem;
+  --container-gutter-phone: 1rem;
+  --section-y-desktop: 1.5rem;
+  --section-y-tablet: 1rem;
+  --section-y-phone: 1rem;
+}
+
+.dark {
+  /* Accent and semantic colours, dark: shade 400, Nuxt UI's default. */
+  --ui-primary: oklch(67.3% 0.182 276.935);
+  --ui-secondary: oklch(70.5% 0.015 286.067); /* zinc-400, unused */
+  --ui-success: oklch(79.2% 0.209 151.711);
+  --ui-info: oklch(74.6% 0.16 232.661);
+  --ui-warning: oklch(82.8% 0.189 84.429);
+  --ui-error: oklch(70.4% 0.191 22.216);
+
+  --ui-text-dimmed: oklch(55.2% 0.016 285.938); /* zinc-500 */
+  --ui-text-muted: oklch(70.5% 0.015 286.067); /* zinc-400 */
+  --ui-text-toned: oklch(87.1% 0.006 286.286); /* zinc-300 */
+  --ui-text: oklch(92% 0.004 286.32); /* zinc-200 */
+  --ui-text-highlighted: #fff;
+  --ui-text-inverted: oklch(21% 0.006 285.885); /* zinc-900 */
+  --ui-bg: oklch(21% 0.006 285.885); /* zinc-900 */
+  --ui-bg-muted: oklch(27.4% 0.006 286.033); /* zinc-800 */
+  --ui-bg-elevated: oklch(27.4% 0.006 286.033); /* zinc-800 */
+  --ui-bg-accented: oklch(37% 0.013 285.805); /* zinc-700 */
+  --ui-bg-inverted: #fff;
+  --ui-border: oklch(27.4% 0.006 286.033); /* zinc-800 */
+  --ui-border-muted: oklch(37% 0.013 285.805); /* zinc-700 */
+  --ui-border-accented: oklch(37% 0.013 285.805); /* zinc-700 */
+  --ui-border-inverted: #fff;
+}

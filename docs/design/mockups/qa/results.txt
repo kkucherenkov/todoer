@@ -1,0 +1,188 @@
+PASS calendar.vue parse
+PASS calendar.vue script + template compile
+PASS view-form.vue parse
+PASS view-form.vue script + template compile
+PASS gate.vue parse
+PASS gate.vue script + template compile
+PASS task-dialogs.vue parse
+PASS task-dialogs.vue script + template compile
+PASS references/CalendarDay.vue parse
+PASS references/CalendarDay.vue script + template compile
+PASS references/DeleteTaskDialog.vue parse
+PASS references/DeleteTaskDialog.vue script + template compile
+PASS references/DeleteViewDialog.vue parse
+PASS references/DeleteViewDialog.vue script + template compile
+PASS references/FilterNode.vue parse
+PASS references/FilterNode.vue script + template compile
+PASS references/FilterTree.vue parse
+PASS references/FilterTree.vue script + template compile
+PASS references/LocaleSwitch.vue parse
+PASS references/LocaleSwitch.vue script + template compile
+PASS references/MoveDateDialog.vue parse
+PASS references/MoveDateDialog.vue script + template compile
+PASS references/PlacementChip.vue parse
+PASS references/PlacementChip.vue script + template compile
+PASS references/RegisterForm.vue parse
+PASS references/RegisterForm.vue script + template compile
+PASS references/SignInForm.vue parse
+PASS references/SignInForm.vue script + template compile
+PASS en/light locale/theme
+PASS en/light October month
+PASS en/light scheduled vs due
+PASS en/light due move preserves scheduled
+PASS en/light date Undo
+PASS en/light occurrence-only copy
+PASS en/light occurrence Undo
+PASS en/light completed occurrence placement
+PASS en/light mark Undo
+PASS en/light skipped occurrence absent
+PASS en/light closed not movable
+PASS en/light menu focuses item
+PASS en/light menu Escape return focus
+PASS en/light keyboard move dialog
+PASS en/light dialog cancel return focus
+PASS en/light saved view create
+PASS en/light invalid JSON preserved
+PASS en/light refused view stays open
+PASS en/light retry view
+PASS en/light layout transient
+PASS en/light delete view leaves tasks
+PASS en/light invalid recurrence
+PASS en/light rule refusal preserves draft
+PASS en/light rule saved
+PASS en/light child cannot repeat independently
+PASS en/light delete initial focus Cancel
+PASS en/light cancel leaves children
+PASS en/light refused delete retained
+PASS en/light delete parent + children
+PASS en/dark locale/theme
+PASS en/dark October month
+PASS en/dark scheduled vs due
+PASS en/dark due move preserves scheduled
+PASS en/dark date Undo
+PASS en/dark occurrence-only copy
+PASS en/dark occurrence Undo
+PASS en/dark completed occurrence placement
+PASS en/dark mark Undo
+PASS en/dark skipped occurrence absent
+PASS en/dark closed not movable
+PASS en/dark menu focuses item
+PASS en/dark menu Escape return focus
+PASS en/dark keyboard move dialog
+PASS en/dark dialog cancel return focus
+PASS en/dark saved view create
+PASS en/dark invalid JSON preserved
+PASS en/dark refused view stays open
+PASS en/dark retry view
+PASS en/dark layout transient
+PASS en/dark delete view leaves tasks
+PASS en/dark invalid recurrence
+PASS en/dark rule refusal preserves draft
+PASS en/dark rule saved
+PASS en/dark child cannot repeat independently
+PASS en/dark delete initial focus Cancel
+PASS en/dark cancel leaves children
+PASS en/dark refused delete retained
+PASS en/dark delete parent + children
+PASS ru/light locale/theme
+PASS ru/light October month
+PASS ru/light scheduled vs due
+PASS ru/light due move preserves scheduled
+PASS ru/light date Undo
+PASS ru/light occurrence-only copy
+PASS ru/light occurrence Undo
+PASS ru/light completed occurrence placement
+PASS ru/light mark Undo
+PASS ru/light skipped occurrence absent
+PASS ru/light closed not movable
+PASS ru/light menu focuses item
+PASS ru/light menu Escape return focus
+PASS ru/light keyboard move dialog
+PASS ru/light dialog cancel return focus
+PASS ru/light saved view create
+PASS ru/light invalid JSON preserved
+PASS ru/light refused view stays open
+PASS ru/light retry view
+PASS ru/light layout transient
+PASS ru/light delete view leaves tasks
+PASS ru/light invalid recurrence
+PASS ru/light rule refusal preserves draft
+PASS ru/light rule saved
+PASS ru/light child cannot repeat independently
+PASS ru/light delete initial focus Cancel
+PASS ru/light cancel leaves children
+PASS ru/light refused delete retained
+PASS ru/light delete parent + children
+PASS ru/dark locale/theme
+PASS ru/dark October month
+PASS ru/dark scheduled vs due
+PASS ru/dark due move preserves scheduled
+PASS ru/dark date Undo
+PASS ru/dark occurrence-only copy
+PASS ru/dark occurrence Undo
+PASS ru/dark completed occurrence placement
+PASS ru/dark mark Undo
+PASS ru/dark skipped occurrence absent
+PASS ru/dark closed not movable
+PASS ru/dark menu focuses item
+PASS ru/dark menu Escape return focus
+PASS ru/dark keyboard move dialog
+PASS ru/dark dialog cancel return focus
+PASS ru/dark saved view create
+PASS ru/dark invalid JSON preserved
+PASS ru/dark refused view stays open
+PASS ru/dark retry view
+PASS ru/dark layout transient
+PASS ru/dark delete view leaves tasks
+PASS ru/dark invalid recurrence
+PASS ru/dark rule refusal preserves draft
+PASS ru/dark rule saved
+PASS ru/dark child cannot repeat independently
+PASS ru/dark delete initial focus Cancel
+PASS ru/dark cancel leaves children
+PASS ru/dark refused delete retained
+PASS ru/dark delete parent + children
+PASS ux.html entry loads
+PASS view-form.html entry loads
+PASS task-dialogs.html entry loads
+PASS states.html entry loads
+PASS offline accepts local move + queue
+PASS recovery clears fixture queue
+PASS refused recovery
+PASS hierarchy regression no duplicate rows
+PASS hierarchy fold does not change count
+PASS gate dummy-only en/light
+PASS gate accepted links UX en/light
+PASS register accepted en/light
+PASS confirmation mismatch en/light
+PASS gate refusal en/light
+PASS gate dummy-only en/dark
+PASS gate accepted links UX en/dark
+PASS register accepted en/dark
+PASS confirmation mismatch en/dark
+PASS gate refusal en/dark
+PASS gate dummy-only ru/light
+PASS gate accepted links UX ru/light
+PASS register accepted ru/light
+PASS confirmation mismatch ru/light
+PASS gate refusal ru/light
+PASS gate dummy-only ru/dark
+PASS gate accepted links UX ru/dark
+PASS register accepted ru/dark
+PASS confirmation mismatch ru/dark
+PASS gate refusal ru/dark
+PASS separate state calendar-empty
+PASS calendar empty DOM
+PASS separate state calendar-loading
+PASS calendar loading DOM
+PASS separate state queued
+PASS separate state recovery
+PASS separate state offline
+PASS separate state refused
+PASS state review storage isolated
+PASS saved priority sort
+PASS saved due sort
+PASS layout does not mutate task data
+PASS delete has no Undo
+TOTAL 186 assertions passed
+[1003/214006.688214:ERROR:electron/shell/common/mac/codesign_util.cc:79] task_name_for_pid: (os/kern) failure (5)

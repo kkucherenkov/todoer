@@ -1,0 +1,13 @@
+import fs from 'node:fs';
+import path from 'node:path';
+const source='/Users/kkucherenkov/orca/todoer/apps/web/.nuxt';
+const config=JSON.parse(fs.readFileSync(source+'/tsconfig.app.json','utf8'));
+const options=config.compilerOptions;
+for(const key of Object.keys(options.paths))options.paths[key]=options.paths[key].map(p=>path.resolve(source,p));
+options.paths['@todoer/client-core']=['/Users/kkucherenkov/orca/todoer/packages/client-core/src/index.ts'];
+options.paths['@nuxt/ui']=['/Users/kkucherenkov/orca/todoer/apps/web/node_modules/@nuxt/ui'];
+options.paths['vue']=['/Users/kkucherenkov/orca/todoer/apps/web/node_modules/vue'];
+options.noEmit=true;options.incremental=false;options.skipLibCheck=true;delete options.tsBuildInfoFile;
+const files=['calendar.vue','gate.vue','view-form.vue','task-dialogs.vue',...fs.readdirSync('references').filter(x=>x.endsWith('.vue')).map(x=>'references/'+x)].map(p=>path.resolve(p));
+const declarations=['nuxt.d.ts','components.d.ts','types/imports.d.ts','types/plugins.d.ts','types/vue-shim.d.ts'].map(p=>source+'/'+p).filter(fs.existsSync);
+fs.writeFileSync('qa/tsconfig.json',JSON.stringify({compilerOptions:options,files:[...files,...declarations],vueCompilerOptions:{strictTemplates:true,checkUnknownProps:false}},null,2));

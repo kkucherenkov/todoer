@@ -1,0 +1,17 @@
+[
+  {
+    "name": "dom-and-vue-compile",
+    "command": "\"$OD_NODE_BIN\" qa/check.mjs",
+    "exit": 0
+  },
+  {
+    "name": "static",
+    "command": "\"$OD_NODE_BIN\" qa/static-check.mjs",
+    "exit": 0
+  },
+  {
+    "name": "vue-typecheck",
+    "command": "\"$OD_NODE_BIN\" qa/typecheck.mjs; \"$OD_NODE_BIN\" /Users/kkucherenkov/orca/todoer/node_modules/.pnpm/vue-tsc@3.3.11_typescript@5.9.3/node_modules/vue-tsc/bin/vue-tsc.js -p qa/tsconfig.json --noEmit",
+    "exit": 0
+  }
+]

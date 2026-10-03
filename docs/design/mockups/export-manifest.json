@@ -1,0 +1,361 @@
+{
+  "project": "todoer-redesign-8bd9",
+  "exportedOn": "2026-10-03",
+  "runs": [
+    "0b0bb92c-103f-42d6-b180-46adcbe57476",
+    "57bed88d-256b-4817-951e-3f93e1998e58"
+  ],
+  "files": [
+    {
+      "path": "QA.md",
+      "bytes": 21310,
+      "sha256": "39a725ae40c86fb4bc76eb0c05687b3a98a6a906e4458b62bf32a9caf824087a"
+    },
+    {
+      "path": "UX.md",
+      "bytes": 21541,
+      "sha256": "0d60aaef7d372b701859ed5db950b9cd4cc35030a971d5a7fdec1deea1214c6f"
+    },
+    {
+      "path": "calendar.html",
+      "bytes": 9011,
+      "sha256": "a98464c2bbd6f146cfbd79db24df75f9f81458213c6ca8a101ad0507c8bf05b2"
+    },
+    {
+      "path": "calendar.vue",
+      "bytes": 6013,
+      "sha256": "0a6ec6e86718b627ef2fadfa88751064094354e0735030d732fba8c93e57f568"
+    },
+    {
+      "path": "domain/calendar.js",
+      "bytes": 3609,
+      "sha256": "4f13339dff513217057d570f99da6128a1caec090da907b5bf0ea369d756bba7"
+    },
+    {
+      "path": "domain/dates.js",
+      "bytes": 1048,
+      "sha256": "e9ab517c05386863ab5699627609a61f3fa68e16e8e1b606837b9cbc3635e9d5"
+    },
+    {
+      "path": "domain/expand.js",
+      "bytes": 6968,
+      "sha256": "cf0b2fd595b6511cba0399fae03f92c24925411099364fd99002e0e4d15cfdf2"
+    },
+    {
+      "path": "domain/filter.js",
+      "bytes": 8202,
+      "sha256": "ddfc2e07e837a91b641d0da5d831406b0dba11361006ed0947da5af80ba81fa8"
+    },
+    {
+      "path": "domain/filterTree.js",
+      "bytes": 6493,
+      "sha256": "342999b1ac5c01d5de5adee3840a3c6864c516a5b0c76ee1a939d48fffbaa6a7"
+    },
+    {
+      "path": "domain/labels.js",
+      "bytes": 16392,
+      "sha256": "47f08e8b2273535fd568642dc7db3f2d85fb9fadb0276ec601143cc555591051"
+    },
+    {
+      "path": "domain/occurrence.js",
+      "bytes": 5530,
+      "sha256": "b64e1821644b3cc9b9c75957c67e5c9c64193d3f04c502256ff9733c4370cfeb"
+    },
+    {
+      "path": "domain/recurrence.js",
+      "bytes": 3735,
+      "sha256": "898ffb5c70c6a4b05cadd43a6853b539f4603963725ca1b073ccac792bd56d33"
+    },
+    {
+      "path": "domain/rrule.js",
+      "bytes": 6078,
+      "sha256": "12909dabe9c26ff331409ff34484696f1eb6099f70d54d51b810de9e1277104e"
+    },
+    {
+      "path": "domain/templates.js",
+      "bytes": 1097,
+      "sha256": "0bc5622e67f82f2193dce29322a24c4e3ee9246d38dc3b805393ee541cfbd53c"
+    },
+    {
+      "path": "gate.html",
+      "bytes": 1646,
+      "sha256": "9d7cfc829938ab4ca01f5cb4483a1ccfdff83c3b92fa54610c2f87d677b77501"
+    },
+    {
+      "path": "gate.js",
+      "bytes": 5963,
+      "sha256": "2c69514480a7172a96afb16e71dfce6eb3a0f8f97cfe5ef824f9a0252944d663"
+    },
+    {
+      "path": "gate.vue",
+      "bytes": 2252,
+      "sha256": "12a04533d382f1cebeba558e22ee4c83de261e76a834d7571e24ba22e8b0445d"
+    },
+    {
+      "path": "index.html",
+      "bytes": 32746,
+      "sha256": "66f3ab981bc84d9df662151139c8f7fc3f6daa4637027e9924d8bb2d23e0e586"
+    },
+    {
+      "path": "kanban.html",
+      "bytes": 15411,
+      "sha256": "8a364b92ec9a4fe1ca8881612b198dab0dde3eb9a4cb3680c170aec235b70cca"
+    },
+    {
+      "path": "kanban.vue",
+      "bytes": 14113,
+      "sha256": "0ee310d7bb2fa4dc87a6d973339585c350825873b72bac8fb3f4050183fdf2dd"
+    },
+    {
+      "path": "list.html",
+      "bytes": 201946,
+      "sha256": "8e64797bfdffdd9fe0b14ea8a1692022a85d2a1841fba706ea08c03fae63e3f5"
+    },
+    {
+      "path": "list.js",
+      "bytes": 10987,
+      "sha256": "1c822eac5f6c1602b59a8a2bdc9567ad43d18a8b0c6af8c6973c6346467f0311"
+    },
+    {
+      "path": "list.vue",
+      "bytes": 14174,
+      "sha256": "26f29135418fe25a1902308b7ecc6a855d24ba1b3fda0d6365b4fbfa7625858b"
+    },
+    {
+      "path": "proposal.css",
+      "bytes": 15269,
+      "sha256": "1b29962bab661456dc6caaf5a4d3961953c4a42d6e50d0c17339b8b039a5a838"
+    },
+    {
+      "path": "qa/check.mjs",
+      "bytes": 11460,
+      "sha256": "a1161cc92c1a5d16bfabdc2c80ec421a7dc7728bc2422ffe3cef597b6a5935a6"
+    },
+    {
+      "path": "qa/header-check.mjs",
+      "bytes": 5119,
+      "sha256": "fb84f41d9c29669e6c435e72aebd5079e2ac242377e75867da9dd8fa05a3058d"
+    },
+    {
+      "path": "qa/header-results.txt",
+      "bytes": 212,
+      "sha256": "9616acb769ce2cb38ac33d4785bccf1a63e728de63eb8e9f92250d3281d99950"
+    },
+    {
+      "path": "qa/header-review.html",
+      "bytes": 5633,
+      "sha256": "e8d879a1d102db77958994dfe0edcff23d4071b72b246f270d8a88a44d20aba7"
+    },
+    {
+      "path": "qa/header-review.png",
+      "bytes": 414776,
+      "sha256": "549f6af6c86156f64beb2f827d51d84fd3345db457399753c7e9e5b56d3d1330"
+    },
+    {
+      "path": "qa/header-status.json",
+      "bytes": 272,
+      "sha256": "0432ebc8dedee998c12f17f611073c122dfeb49909f1d625f782ab50d1037cf8"
+    },
+    {
+      "path": "qa/header-tsconfig.json",
+      "bytes": 11089,
+      "sha256": "fcd3f3428e43171cbafc1bd21774e5a3af2d61232643344765ae4f7a33772669"
+    },
+    {
+      "path": "qa/header-type-results.txt",
+      "bytes": 114,
+      "sha256": "3274d3384480927e05eed9ee899f724a39e89becfcb6d5b7ea4dec02b2aea1e6"
+    },
+    {
+      "path": "qa/results.txt",
+      "bytes": 6720,
+      "sha256": "35abe23c7294a561ae5fe9ebb4b2652b290e6319c3543abc6fad0f7e6bc11cb3"
+    },
+    {
+      "path": "qa/run-checks.mjs",
+      "bytes": 1194,
+      "sha256": "4183b9d8de24b2c1200aa8fd24ac089cb2ff32c81c467b3038f50b577ee7c2a7"
+    },
+    {
+      "path": "qa/static-check.mjs",
+      "bytes": 1511,
+      "sha256": "4dd5b6aaf6fa7bc6a2e4c31fd22c36bf71049d2f9739405dc5d8a61744ec0da5"
+    },
+    {
+      "path": "qa/static-results.txt",
+      "bytes": 196,
+      "sha256": "31e9ec577d8821fb3bd076e0b92a624996030455b1e817f244d29a614d706544"
+    },
+    {
+      "path": "qa/status.json",
+      "bytes": 479,
+      "sha256": "0a4c3091c6b920183c9b5a72ad96a8fc97eee0cbf84a80db87d00a6887e0ed78"
+    },
+    {
+      "path": "qa/tsconfig.json",
+      "bytes": 12908,
+      "sha256": "bfbc5ceb7c026136b523f3938d46e469dbf0cd078cda15d14a36889108811f4d"
+    },
+    {
+      "path": "qa/type-results.txt",
+      "bytes": 114,
+      "sha256": "37d1398d975cfd113fe6c4eadd1b3eb6ab968ce06ee929b984e96a747cc99184"
+    },
+    {
+      "path": "qa/typecheck.mjs",
+      "bytes": 1270,
+      "sha256": "ccc8a408270b7ce2791f3b7c9fa503170c5e0dcea4721c1e81f199b1485a59e6"
+    },
+    {
+      "path": "qa/visual-review.html",
+      "bytes": 9319,
+      "sha256": "5b5049177042a7bfb01eb38df49fb268640b9bac80a2e75e662a39620953de6a"
+    },
+    {
+      "path": "qa/visual-review.png",
+      "bytes": 595865,
+      "sha256": "0453200ccd3a9e411c6e131fcc420e36d26598979d809836f260d89334fa85d5"
+    },
+    {
+      "path": "references/CalendarDay.vue",
+      "bytes": 2039,
+      "sha256": "13ce3ee17ccab169c97d1de36ba60eee28d16b4c7ec0232c88646bea9bf32092"
+    },
+    {
+      "path": "references/DeleteTaskDialog.vue",
+      "bytes": 1810,
+      "sha256": "3156636a48945c219e61491918e28645d5a0eded77aa457bf33fa17f86206bf0"
+    },
+    {
+      "path": "references/DeleteViewDialog.vue",
+      "bytes": 1240,
+      "sha256": "3e87c1d5a58e7ec915089c1558e2188ceabdfd871242dc3fcf727d7e1b631ec3"
+    },
+    {
+      "path": "references/FilterNode.vue",
+      "bytes": 8092,
+      "sha256": "55571c8883ec07a8436eb13384fe9dbf8da70e3f949afe766df27cf855bc9dbf"
+    },
+    {
+      "path": "references/FilterTree.vue",
+      "bytes": 724,
+      "sha256": "68dce2b8613d7a5a9daa93848a0d698028ed9fedc9d6fd1139feb02bf6e097d5"
+    },
+    {
+      "path": "references/LocaleSwitch.vue",
+      "bytes": 659,
+      "sha256": "89deb779b6a693274d2f95152975ff519536491761f185cfe8829032030ecd0c"
+    },
+    {
+      "path": "references/MoveDateDialog.vue",
+      "bytes": 1479,
+      "sha256": "1d66d2ca5b2a8b106ddf8a91a15b7986d84f2449a6ebb08bca723cc71dc2890b"
+    },
+    {
+      "path": "references/PlacementChip.vue",
+      "bytes": 2556,
+      "sha256": "1be3035732cf7a5c4a61eeca9878a9a359b75369e90ac520c263d9d110b670f1"
+    },
+    {
+      "path": "references/README.md",
+      "bytes": 3049,
+      "sha256": "643acfd0784ea40161254447e1a78fa2e1424a35027c25ad333393fffcb8eb80"
+    },
+    {
+      "path": "references/RegisterForm.vue",
+      "bytes": 2844,
+      "sha256": "4789bdf29a73cc119f96f418311b7cbef9955477b9b04e4a8d3a38828f584f1f"
+    },
+    {
+      "path": "references/SignInForm.vue",
+      "bytes": 1908,
+      "sha256": "699f0b4a61eb73181659f93177efc89b4d710b1dea01cc430e661cb92df6d248"
+    },
+    {
+      "path": "references/ViewHeader.vue",
+      "bytes": 835,
+      "sha256": "7362b88b4c3079976ea4f44a1bd2c9e0d806269c9769e9cff1b8443bb5ef0c17"
+    },
+    {
+      "path": "references/ViewModeTabs.vue",
+      "bytes": 2935,
+      "sha256": "1d6cb8ec102f454831521f290edb4182ebd61c0847976c4ae54c3fcdc0fbe40e"
+    },
+    {
+      "path": "screens.css",
+      "bytes": 8572,
+      "sha256": "7425e5c2a6e29c818408ccf88d3ca5f16247691e17603edc98440e4921215762"
+    },
+    {
+      "path": "screens.js",
+      "bytes": 40102,
+      "sha256": "ddaafe6fe6b95fd1c8883a72163017f7961a55cf6120e99e2600e5fee666571f"
+    },
+    {
+      "path": "states.html",
+      "bytes": 9067,
+      "sha256": "99418af1072569ddb5865541af17fdee117daaecceea22e80e32bed2b2e20894"
+    },
+    {
+      "path": "states.js",
+      "bytes": 458,
+      "sha256": "71450f05ad56b409f2a303370bae2232783b1c58c17d4c82b34d8107ca3c52d9"
+    },
+    {
+      "path": "task-dialogs.html",
+      "bytes": 9014,
+      "sha256": "edf8c53cf620576eab00c814602ed73646939dffb849ab7c268107ace70a1f79"
+    },
+    {
+      "path": "task-dialogs.vue",
+      "bytes": 6997,
+      "sha256": "12ac1a9b917a787bd2f8e6963a67510383d70c46de647baa3d45650be5914e91"
+    },
+    {
+      "path": "theme/app.config.ts",
+      "bytes": 1469,
+      "sha256": "0f7b651e135ee78adc36ef1b8fa50ce2b1779c93656820d61c5fa6eaa2e36cc6"
+    },
+    {
+      "path": "theme/main.css",
+      "bytes": 605,
+      "sha256": "740daa0d755091543b4061770ab2f9c6767db5e634748ca4b25364dcf86cc171"
+    },
+    {
+      "path": "tokens.css",
+      "bytes": 6009,
+      "sha256": "c1b3ef2bc26bff1ef8d04f1c2d0601ad048e53d084cfe86d39cc4b133f990751"
+    },
+    {
+      "path": "ux.css",
+      "bytes": 27280,
+      "sha256": "0a587fcf03160136161996940451f0035e752c076270c362bc200c618ebb85b6"
+    },
+    {
+      "path": "ux.html",
+      "bytes": 8992,
+      "sha256": "f1d80fc1eb9ca2a3b15f5d07fd22c7d894ed515b69ffc3ab503e067bf670bdb2"
+    },
+    {
+      "path": "ux.js",
+      "bytes": 67688,
+      "sha256": "342f181016fc21d439ace657faf9d0bf442701be90970073ebc4b56ba5b96bdd"
+    },
+    {
+      "path": "view-form.html",
+      "bytes": 9008,
+      "sha256": "dd8cf9211ae481dced2ee5a8e8e329489ba08dd66b5d7de454c4f6e4ce3bc685"
+    },
+    {
+      "path": "view-form.vue",
+      "bytes": 6319,
+      "sha256": "0442d8d85cbc4f9713e870e27a330e8f5ec85a31465defd40b649d2fa0dc14c7"
+    }
+  ],
+  "repositoryRevisions": [
+    {
+      "date": "2026-10-03",
+      "change": "P0 highest / P4 lowest; RU/EN current-state switch"
+    }
+  ]
+}

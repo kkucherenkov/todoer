@@ -1,0 +1,222 @@
+{
+  "compilerOptions": {
+    "paths": {
+      "@unhead/vue": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/@unhead+vue@3.4.2_@oxc-project+types@0.151.0_esbuild@0.28.2_lightningcss@1.33.0_oxc-parser@0._7kyazzutcblb6izidgl64zlake/node_modules/@unhead/vue"
+      ],
+      "@nuxt/devtools": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/@nuxt+devtools@3.4.2_db0@0.3.4_ioredis@5.11.1_magic-string@1.4.2_oxc-parser@0.141.0_rolldown@_cm7ej4vcno7m4gnzngcq6al4ia/node_modules/@nuxt/devtools"
+      ],
+      "@vue/runtime-core": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/@vue+runtime-core@3.5.43/node_modules/@vue/runtime-core"
+      ],
+      "@vue/compiler-sfc": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/@vue+compiler-sfc@3.5.43/node_modules/@vue/compiler-sfc"
+      ],
+      "vue-router": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/vue-router@5.3.1_@vue+compiler-sfc@3.5.43_esbuild@0.28.2_rolldown@1.2.11_rollup@4.63.5_vite@8_yd5xzt5erv7acy5m4npti4rghm/node_modules/vue-router"
+      ],
+      "vue-router/auto-routes": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/vue-router@5.3.1_@vue+compiler-sfc@3.5.43_esbuild@0.28.2_rolldown@1.2.11_rollup@4.63.5_vite@8_yd5xzt5erv7acy5m4npti4rghm/node_modules/vue-router/vue-router-auto-routes.d.mts"
+      ],
+      "@nuxt/schema": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/@nuxt+schema@4.5.2/node_modules/@nuxt/schema"
+      ],
+      "nuxt": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/nuxt@4.5.2_@babel+plugin-syntax-jsx@7.29.7_@babel+core@7.29.7__@babel+plugin-syntax-typescrip_hkohqgwux62yfmryam6d7stqsa/node_modules/nuxt"
+      ],
+      "vite/client": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/vite@8.3.1_@types+node@22.20.4_esbuild@0.28.2_jiti@2.7.0_terser@5.51.2_yaml@2.9.1/node_modules/vite/client"
+      ],
+      "@nuxt/icon": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/@nuxt+icon@2.5.1_magic-string@1.4.2_magicast@0.5.5_oxc-parser@0.141.0_rolldown@1.2.11_unplugi_d2id4ilflpdov62mczac2lk624/node_modules/@nuxt/icon"
+      ],
+      "@nuxtjs/color-mode": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/@nuxtjs+color-mode@4.0.1_magic-string@1.4.2_magicast@0.5.5_oxc-parser@0.141.0_rolldown@1.2.11_2xl3spnn3tw4ss5vczjyo3kvsm/node_modules/@nuxtjs/color-mode"
+      ],
+      "nitropack/types": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/nitropack@2.13.4_oxc-parser@0.141.0_rolldown@1.2.11_srvx@0.11.22_vite@8.3.1_@types+node@24.19_wwntrelddxrzplkxvuqb7mjit4/node_modules/nitropack/types"
+      ],
+      "nitropack/runtime": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/nitropack@2.13.4_oxc-parser@0.141.0_rolldown@1.2.11_srvx@0.11.22_vite@8.3.1_@types+node@24.19_wwntrelddxrzplkxvuqb7mjit4/node_modules/nitropack/runtime"
+      ],
+      "nitropack": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/nitropack@2.13.4_oxc-parser@0.141.0_rolldown@1.2.11_srvx@0.11.22_vite@8.3.1_@types+node@24.19_wwntrelddxrzplkxvuqb7mjit4/node_modules/nitropack"
+      ],
+      "defu": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/defu@6.1.7/node_modules/defu"
+      ],
+      "h3": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/h3@1.15.11/node_modules/h3"
+      ],
+      "consola": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/consola@3.4.2/node_modules/consola"
+      ],
+      "ofetch": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/ofetch@1.5.1/node_modules/ofetch"
+      ],
+      "crossws": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/crossws@0.3.5/node_modules/crossws"
+      ],
+      "~": [
+        "/Users/kkucherenkov/orca/todoer/apps/web/app"
+      ],
+      "~/*": [
+        "/Users/kkucherenkov/orca/todoer/apps/web/app/*"
+      ],
+      "@": [
+        "/Users/kkucherenkov/orca/todoer/apps/web/app"
+      ],
+      "@/*": [
+        "/Users/kkucherenkov/orca/todoer/apps/web/app/*"
+      ],
+      "~~": [
+        "/Users/kkucherenkov/orca/todoer/apps/web"
+      ],
+      "~~/*": [
+        "/Users/kkucherenkov/orca/todoer/apps/web/*"
+      ],
+      "@@": [
+        "/Users/kkucherenkov/orca/todoer/apps/web"
+      ],
+      "@@/*": [
+        "/Users/kkucherenkov/orca/todoer/apps/web/*"
+      ],
+      "#shared": [
+        "/Users/kkucherenkov/orca/todoer/apps/web/shared"
+      ],
+      "#shared/*": [
+        "/Users/kkucherenkov/orca/todoer/apps/web/shared/*"
+      ],
+      "#server": [
+        "/Users/kkucherenkov/orca/todoer/apps/web/server"
+      ],
+      "#server/*": [
+        "/Users/kkucherenkov/orca/todoer/apps/web/server/*"
+      ],
+      "#app": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/nuxt@4.5.2_@babel+plugin-syntax-jsx@7.29.7_@babel+core@7.29.7__@babel+plugin-syntax-typescrip_hkohqgwux62yfmryam6d7stqsa/node_modules/nuxt/dist/app"
+      ],
+      "#app/*": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/nuxt@4.5.2_@babel+plugin-syntax-jsx@7.29.7_@babel+core@7.29.7__@babel+plugin-syntax-typescrip_hkohqgwux62yfmryam6d7stqsa/node_modules/nuxt/dist/app/*"
+      ],
+      "vue-demi": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/nuxt@4.5.2_@babel+plugin-syntax-jsx@7.29.7_@babel+core@7.29.7__@babel+plugin-syntax-typescrip_hkohqgwux62yfmryam6d7stqsa/node_modules/nuxt/dist/app/compat/vue-demi"
+      ],
+      "#ui": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/@nuxt+ui@4.11.3_qvdxoc362be3xjcyv5w6t2lkgm/node_modules/@nuxt/ui/dist/runtime"
+      ],
+      "#ui/*": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/@nuxt+ui@4.11.3_qvdxoc362be3xjcyv5w6t2lkgm/node_modules/@nuxt/ui/dist/runtime/*"
+      ],
+      "@intlify/shared": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/@intlify+shared@11.4.12/node_modules/@intlify/shared/dist/shared"
+      ],
+      "@intlify/core-base": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/@intlify+core-base@11.4.12/node_modules/@intlify/core-base/dist/core-base"
+      ],
+      "@intlify/utils": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/@intlify+utils@0.14.1/node_modules/@intlify/utils/dist/index"
+      ],
+      "@intlify/utils/h3": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/@intlify+utils@0.14.1/node_modules/@intlify/utils/dist/h3"
+      ],
+      "@intlify/message-compiler": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/@intlify+message-compiler@11.4.12/node_modules/@intlify/message-compiler/dist/message-compiler"
+      ],
+      "vue-i18n": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/vue-i18n@11.4.12_vue@3.5.43_typescript@5.9.3_/node_modules/vue-i18n/dist/vue-i18n"
+      ],
+      "#i18n": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/@nuxtjs+i18n@10.6.0_@vue+compiler-dom@3.5.43_db0@0.3.4_esbuild@0.28.2_eslint@10.11.0_jiti@2.7_j2ow4es4z5ignemhlpuyu6rb5m/node_modules/@nuxtjs/i18n/dist/runtime/composables/index"
+      ],
+      "#i18n-kit": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/@nuxtjs+i18n@10.6.0_@vue+compiler-dom@3.5.43_db0@0.3.4_esbuild@0.28.2_eslint@10.11.0_jiti@2.7_j2ow4es4z5ignemhlpuyu6rb5m/node_modules/@nuxtjs/i18n/dist/runtime/kit"
+      ],
+      "#i18n-kit/*": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/@nuxtjs+i18n@10.6.0_@vue+compiler-dom@3.5.43_db0@0.3.4_esbuild@0.28.2_eslint@10.11.0_jiti@2.7_j2ow4es4z5ignemhlpuyu6rb5m/node_modules/@nuxtjs/i18n/dist/runtime/kit/*"
+      ],
+      "#internal-i18n-types": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/@nuxtjs+i18n@10.6.0_@vue+compiler-dom@3.5.43_db0@0.3.4_esbuild@0.28.2_eslint@10.11.0_jiti@2.7_j2ow4es4z5ignemhlpuyu6rb5m/node_modules/@nuxtjs/i18n/dist/types.d.mts"
+      ],
+      "#pwa": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/@vite-pwa+nuxt@1.1.1_magicast@0.5.5_vite@8.3.1_@types+node@24.19.0_esbuild@0.28.2_jiti@2.7.0__z7qbr7sqgwzhmzvjeb24deiu54/node_modules/@vite-pwa/nuxt/dist/runtime/composables/index"
+      ],
+      "#vue-router": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/vue-router@5.3.1_@vue+compiler-sfc@3.5.43_esbuild@0.28.2_rolldown@1.2.11_rollup@4.63.5_vite@8_yd5xzt5erv7acy5m4npti4rghm/node_modules/vue-router"
+      ],
+      "#unhead/composables": [
+        "/Users/kkucherenkov/orca/todoer/node_modules/.pnpm/nuxt@4.5.2_@babel+plugin-syntax-jsx@7.29.7_@babel+core@7.29.7__@babel+plugin-syntax-typescrip_hkohqgwux62yfmryam6d7stqsa/node_modules/nuxt/dist/head/runtime/composables"
+      ],
+      "#imports": [
+        "/Users/kkucherenkov/orca/todoer/apps/web/.nuxt/imports"
+      ],
+      "#app-manifest": [
+        "/Users/kkucherenkov/orca/todoer/apps/web/.nuxt/manifest/meta/05d98400-4fc0-4181-9d4c-4f2035a2a244.json"
+      ],
+      "#components": [
+        "/Users/kkucherenkov/orca/todoer/apps/web/.nuxt/components"
+      ],
+      "#build": [
+        "/Users/kkucherenkov/orca/todoer/apps/web/.nuxt"
+      ],
+      "#build/*": [
+        "/Users/kkucherenkov/orca/todoer/apps/web/.nuxt/*"
+      ],
+      "@todoer/client-core": [
+        "/Users/kkucherenkov/orca/todoer/packages/client-core/src/index.ts"
+      ],
+      "@nuxt/ui": [
+        "/Users/kkucherenkov/orca/todoer/apps/web/node_modules/@nuxt/ui"
+      ],
+      "vue": [
+        "/Users/kkucherenkov/orca/todoer/apps/web/node_modules/vue"
+      ]
+    },
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "target": "ESNext",
+    "allowJs": true,
+    "allowImportingTsExtensions": true,
+    "resolveJsonModule": true,
+    "moduleDetection": "force",
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "allowArbitraryExtensions": true,
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "forceConsistentCasingInFileNames": true,
+    "noImplicitOverride": true,
+    "module": "preserve",
+    "noEmit": true,
+    "lib": [
+      "ESNext",
+      "dom",
+      "dom.iterable",
+      "webworker"
+    ],
+    "libReplacement": false,
+    "jsx": "preserve",
+    "jsxImportSource": "vue",
+    "types": [],
+    "moduleResolution": "Bundler",
+    "useDefineForClassFields": true,
+    "noImplicitThis": true,
+    "allowSyntheticDefaultImports": true,
+    "exactOptionalPropertyTypes": true,
+    "incremental": false
+  },
+  "files": [
+    "/Users/kkucherenkov/Library/Application Support/Open Design/namespaces/release-stable/data/projects/todoer-redesign-8bd9/references/ViewHeader.vue",
+    "/Users/kkucherenkov/Library/Application Support/Open Design/namespaces/release-stable/data/projects/todoer-redesign-8bd9/references/ViewModeTabs.vue",
+    "/Users/kkucherenkov/orca/todoer/apps/web/.nuxt/nuxt.d.ts",
+    "/Users/kkucherenkov/orca/todoer/apps/web/.nuxt/components.d.ts",
+    "/Users/kkucherenkov/orca/todoer/apps/web/.nuxt/types/imports.d.ts",
+    "/Users/kkucherenkov/orca/todoer/apps/web/.nuxt/types/plugins.d.ts",
+    "/Users/kkucherenkov/orca/todoer/apps/web/.nuxt/types/vue-shim.d.ts"
+  ],
+  "vueCompilerOptions": {
+    "strictTemplates": true,
+    "checkUnknownProps": false
+  }
+}

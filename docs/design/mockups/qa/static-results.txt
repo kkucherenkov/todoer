@@ -1,0 +1,2 @@
+[1003/214216.214048:ERROR:electron/shell/common/mac/codesign_util.cc:79] task_name_for_pid: (os/kern) failure (5)
+LOCAL LINKS / SCRIPT SYNTAX / PLACEHOLDERS / TOKEN PARITY: 150 checks; 0 failures

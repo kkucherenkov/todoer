@@ -1,0 +1,1 @@
+document.querySelector('.demo-bar').insertAdjacentHTML('afterend','<nav class="reference-header-new"><a href="ux.html">← Working UX / Рабочий прототип</a> · <a href="gate.html">Access / Вход</a><p>Отдельные fixture-сценарии: изменения на этой странице не сохраняются в рабочем прототипе.</p></nav>');loadScenario('everyday');drawGallery();$('#gallery').showModal();
