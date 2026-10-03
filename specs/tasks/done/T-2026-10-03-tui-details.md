@@ -4,7 +4,7 @@
 - Owner: claude
 - Status: done
 - Completed: 2026-10-03
-- Result: (PR link below once opened)
+- Result: https://github.com/kkucherenkov/todoer/pull/36
 - Blockers: —
 - Spec: docs/specs/2026-10-03-tui-client-design.md (Q7, Routine choices: the
   details panel)
