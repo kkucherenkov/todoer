@@ -2,7 +2,9 @@
 
 - Created: 2026-10-03
 - Owner: claude
-- Status: in-progress
+- Status: done
+- Completed: 2026-10-03
+- Result: https://github.com/kkucherenkov/todoer/pull/26
 - Blockers: —
 - Spec: docs/specs/2026-10-03-tui-client-design.md (Q6, Risks)
 - Plan: docs/plans/2026-10-03-plan-t1-reparent.md
@@ -47,18 +49,18 @@ for it, and a refused indent must not reach the outbox.
 
 - **SC-001** an indent and an outdent from the engine show in `viewTasks`
   at once, offline included
-- [ ] every FR has a test that failed before the code made it pass
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] every FR has a test that failed before the code made it pass
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 
 - [x] T001 [FR-001] [FR-002] [FR-003] `reparent` — plan Task 1
 - [x] T002 [P] [FR-005] two stores, one file — plan Task 2
-- [ ] T003 [FR-004] engine write kind, after T0 merges — plan Task 3
-- [ ] T004 documents, gates, PR — plan Task 4
+- [x] T003 [FR-004] engine write kind, after T0 merges — plan Task 3
+- [x] T004 documents, gates, PR — plan Task 4
 - **Checkpoint:** the TUI can call `engine.handle({ kind: 'reparent', … })`
 
 ### Departures
@@ -71,6 +73,12 @@ for it, and a refused indent must not reach the outbox.
   write lock in `flush`; the coordinator ruled the duplicate harmless (ADR
   0005) and a lock across a network call harmful, and the Risks entry now
   says so.
+
+- T003: plan Task 3 merged `origin/main` rather than rebasing (the branch is
+  already pushed). Its engine tests seed tasks with the block's `taskRow`
+  fixtures instead of two `add` writes, as the neighbouring tests do; the
+  assertions are the plan's. The gates ran scoped to client-core, web and
+  cli: the backend's DB specs share `todoer_test` with a parallel worker.
 
 ### Open questions
 
