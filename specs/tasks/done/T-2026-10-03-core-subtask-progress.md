@@ -2,7 +2,8 @@
 
 - Created: 2026-10-03
 - Owner: claude
-- Status: in-progress
+- Status: done
+- Completed: 2026-10-03
 - Blockers: —
 - Spec: `docs/specs/2026-10-03-tui-client-design.md` (the outline);
   `docs/proposals/2026-10-03-web-ux-redesign.md` (hierarchy)
@@ -42,17 +43,17 @@ reading the closed subtasks themselves.
 
 - **SC-001** the progress a listing reports equals the drawer checklist's
   closed/total for the same task
-- [ ] every FR has a test that failed before the code made it pass
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] every FR has a test that failed before the code made it pass
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 
-- [ ] T001 [FR-001] [FR-002] [FR-003] `Item.subtasks` counted in one pass per
+- [x] T001 [FR-001] [FR-002] [FR-003] `Item.subtasks` counted in one pass per
       listing (plan Task 1) — `packages/client-core/src/operations.ts`
-- [ ] T002 [FR-001] gates and PR (plan Task 2)
+- [x] T002 [FR-001] gates and PR (plan Task 2)
 - **Checkpoint:** client-core, web and CLI build, typecheck and test green
 
 ### Departures from the plan

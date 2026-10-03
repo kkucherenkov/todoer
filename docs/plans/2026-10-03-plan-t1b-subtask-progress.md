@@ -45,8 +45,9 @@ parent shows the number of finished children and the total").
 
 **Interfaces:**
 
-- Produces: `Item['subtasks']: { done: number; total: number } | null`, and
-  `TaskDetails` inherits it.
+- Produces: `Item['subtasks']: { done: number; total: number } | null`.
+  `TaskDetails` keeps `subtasks` as its checklist (see the task spec's
+  departures).
 
 - [ ] **Step 1: Task spec**
 
