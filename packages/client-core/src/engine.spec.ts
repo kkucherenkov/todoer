@@ -1511,6 +1511,35 @@ describe('delete, rule and subtask writes', () => {
     expect(first(uuid(0xa5))).toMatchObject({ table: 'task', id: uuid(3) });
   });
 
+  it('reparent indents and outdents through the core', async () => {
+    const e = await signedIn(server(TODO, taskRow(3), taskRow(4)));
+    const parentOf = (id: string) =>
+      viewTasks(store, today, ALL_OPEN).find((t) => t.id === id)?.parentId ??
+      null;
+    const reparent = (opId: string, parentId: string | null) =>
+      e.handle({ kind: 'reparent', opId, taskId: uuid(4), parentId }, 'A');
+
+    expect(await reparent(uuid(0xc1), uuid(3))).toEqual({ ok: true });
+    expect(parentOf(uuid(4))).toBe(uuid(3));
+    expect(await reparent(uuid(0xc2), null)).toEqual({ ok: true });
+    expect(parentOf(uuid(4))).toBeNull();
+  });
+
+  it('reparent refused by the core is an invalid failure', async () => {
+    const e = await signedIn(server(TODO, taskRow(3)));
+    expect(
+      await e.handle(
+        {
+          kind: 'reparent',
+          opId: uuid(0xc1),
+          taskId: uuid(3),
+          parentId: uuid(3),
+        },
+        'A',
+      ),
+    ).toMatchObject({ ok: false, failure: { kind: 'invalid' } });
+  });
+
   it('delete of a synced parent drops both rows and the task topic while pending', async () => {
     const e = await signedIn(server(TODO, taskRow(1), SUB));
     await e.handle({ kind: 'watch', view: 'all', task: P }, 'A');

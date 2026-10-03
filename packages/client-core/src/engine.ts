@@ -30,6 +30,7 @@ import {
   moveOccurrence,
   moveTask,
   reconcile,
+  reparent,
   saveStatus,
   saveView,
   seedStatuses,
@@ -573,6 +574,8 @@ export function createEngine({
         return deleteTask(core, { opId }, w.taskId);
       case 'setRule':
         return setRecurrence(core, { opId }, w.taskId, w.rule);
+      case 'reparent':
+        return reparent(core, { opId }, w.taskId, w.parentId);
     }
   };
 
