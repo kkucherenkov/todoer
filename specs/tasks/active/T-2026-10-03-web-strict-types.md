@@ -66,10 +66,10 @@ State on `main` (a057d2d), measured before the change:
 - [x] every FR has a test that failed before the code made it pass — the lint
       and typecheck runs are the tests: both fail on `main`'s code with this
       configuration (26 lint errors, 3 type errors)
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
 - [x] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] dnote changelog line
 
 ### Steps
 
