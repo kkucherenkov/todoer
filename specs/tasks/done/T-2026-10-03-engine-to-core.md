@@ -4,6 +4,7 @@
 - Owner: claude
 - Status: done
 - Completed: 2026-10-03
+- Result: https://github.com/kkucherenkov/todoer/pull/27
 - Blockers: —
 - Spec: [docs/specs/2026-10-03-tui-client-design.md](../../../docs/specs/2026-10-03-tui-client-design.md) (Q4)
 - Plan: [docs/plans/2026-10-03-plan-t0-engine-to-core.md](../../../docs/plans/2026-10-03-plan-t0-engine-to-core.md)
@@ -68,7 +69,7 @@ before the TUI is written, instead of being copied.
    change the test beyond its imports, against FR-003, so
    `eslint.config.mjs` gives `engine.spec.ts` the web's rules
    (`disableTypeChecked`) for now. Bringing it under the core's rules is a
-   follow-up (tuxedo).
+   follow-up (tuxedo 429).
 
 ### Open questions
 
