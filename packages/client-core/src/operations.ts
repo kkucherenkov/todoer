@@ -991,17 +991,29 @@ export const ALL_OPEN: ViewSpec = {
   layout: 'list',
 };
 
-/** A listed task with what a screen shows: its column (`displayStatus`) and
- *  whether its occurrence is closed (only ever true on a board). */
-export type Item = Due & {
+/** What Item and TaskDetails share; they differ in `subtasks`. `Omit` cannot
+ *  do it: Due's index signature would swallow every named field. */
+type Shown = Due & {
   column: string | null;
   closed: boolean;
   /** The parent's title for a subtask; null for a top-level task. */
   parentTitle: string | null;
 };
 
-/** `titles`: the live tasks' titles by id. */
-function itemOf(titles: Map<string, string>) {
+/** A listed task with what a screen shows: its column (`displayStatus`) and
+ *  whether its occurrence is closed (only ever true on a board). */
+export type Item = Shown & {
+  /** Live subtasks, and how many are closed at this task's current
+   *  occurrence; null without any. Counted from the store: a view of open
+   *  tasks lists none of the closed. */
+  subtasks: { done: number; total: number } | null;
+};
+
+/** `titles`: the live tasks' titles by id; `progress`: from progressOf. */
+function itemOf(
+  titles: Map<string, string>,
+  progress: (row: Row) => Item['subtasks'],
+) {
   return ({ row, facts, closed }: Listed): Item => ({
     ...row,
     column: facts.statusId,
@@ -1010,11 +1022,38 @@ function itemOf(titles: Map<string, string>) {
       typeof row.parentId === 'string'
         ? (titles.get(row.parentId) ?? null)
         : null,
+    subtasks: progress(row),
   });
 }
 
 const titlesOf = (store: Store) =>
   new Map(liveTasks(tasks(store)).map((t) => [String(t.id), String(t.title)]));
+
+/** Each parent's live subtasks, grouped once per listing. Closed is done or
+ *  skipped at the parent's current occurrence (ADR 0009), as taskDetails'
+ *  checklist reads it; a series that ended has none closed. */
+function progressOf(store: Store) {
+  const kids = new Map<string, Row[]>();
+  for (const t of liveTasks(tasks(store))) {
+    if (typeof t.parentId !== 'string') continue;
+    const siblings = kids.get(t.parentId);
+    if (siblings === undefined) kids.set(t.parentId, [t]);
+    else siblings.push(t);
+  }
+  const marks = occurrences(store);
+  return (row: Row): Item['subtasks'] => {
+    const mine = kids.get(String(row.id));
+    if (mine === undefined) return null;
+    const occurrence =
+      typeof row.occurrence === 'string' ? row.occurrence : null;
+    const ended = typeof row.rrule === 'string' && occurrence === null;
+    const done = ended
+      ? 0
+      : mine.filter((t) => isClosed(stateOf(marks, String(t.id))(occurrence)))
+          .length;
+    return { done, total: mine.length };
+  };
+}
 
 function selected(
   store: Store,
@@ -1031,7 +1070,7 @@ function selected(
     due(store, today, closedSince).filter(({ facts }) =>
       matches(view.filter as Filter, facts, today),
     ),
-  ).map(itemOf(titlesOf(store)));
+  ).map(itemOf(titlesOf(store), progressOf(store)));
 }
 
 /** The open tasks a list view shows, filtered and sorted (the CLI's facts). */
@@ -1150,7 +1189,8 @@ export function calendarTasks(
  *  occurrence (ADR 0009), or by its own mark under a one-off parent. */
 export type Subtask = { id: string; title: string; closed: boolean };
 
-export type TaskDetails = Item & {
+/** `subtasks` is the checklist itself; its closed/total is the progress. */
+export type TaskDetails = Shown & {
   notes: string | null;
   rrule: string | null;
   dtstart: string | null;
@@ -1182,7 +1222,7 @@ export function taskDetails(
       closed: !ended && isClosed(stateOf(marks, String(t.id))(occurrence)),
     }));
   return {
-    ...itemOf(titlesOf(store))(found),
+    ...itemOf(titlesOf(store), progressOf(store))(found),
     notes: typeof notes === 'string' ? notes : null,
     rrule: typeof rrule === 'string' ? rrule : null,
     dtstart: typeof dtstart === 'string' ? dtstart : null,
@@ -1862,4 +1902,51 @@ export async function setRecurrence(
     baseVersion: version + i,
   }));
   return { synced: await submitOwn(core, ops, 'rule', minted.opId) };
+}
+
+/**
+ * Indents a task under `parentId`, or outdents it (null): one
+ * `set parentId`. Refuses, before queuing anything, what the server refuses:
+ * a task as its own parent, a parent that has one (the two-level rule and
+ * every cycle), a task with live subtasks, and a recurring task under a
+ * parent (a subtask repeats with its parent, ADR 0009). A tombstoned subtask
+ * does not count. An unchanged parent queues nothing. Replay-safe.
+ */
+export async function reparent(
+  core: Core,
+  minted: Minted,
+  taskId: string,
+  parentId: string | null,
+): Promise<{ synced: boolean }> {
+  const done = await replayed(core, minted.opId);
+  if (done !== undefined) return done;
+  const all = tasks(core.store);
+  const task = liveTask(all, taskId);
+  if (parentId !== null) {
+    if (parentId === taskId) {
+      throw new UsageError('a task cannot be its own parent');
+    }
+    if (typeof liveTask(all, parentId).parentId === 'string') {
+      throw new UsageError('a subtask cannot have subtasks');
+    }
+    if (liveTasks(all).some((t) => t.parentId === taskId)) {
+      throw new UsageError('a task with subtasks cannot become a subtask');
+    }
+    if (typeof task.rrule === 'string') {
+      throw new UsageError('a recurring task cannot become a subtask');
+    }
+  }
+  const ops =
+    (task.parentId ?? null) === parentId
+      ? []
+      : [
+          setTask(
+            task,
+            'parentId',
+            parentId,
+            core.newId,
+            core.now().toISOString(),
+          ),
+        ];
+  return { synced: await submitOwn(core, ops, 'reparent', minted.opId) };
 }

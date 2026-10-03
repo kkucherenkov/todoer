@@ -66,7 +66,14 @@ export type Write =
   /** `taskId`: the copy. */
   | { kind: 'undoMove'; opId: string; taskId: string }
   | { kind: 'deleteTask'; opId: string; taskId: string }
-  | { kind: 'setRule'; opId: string; taskId: string; rule: Rule | null };
+  | { kind: 'setRule'; opId: string; taskId: string; rule: Rule | null }
+  /** Indent under `parentId`, or outdent (null). */
+  | {
+      kind: 'reparent';
+      opId: string;
+      taskId: string;
+      parentId: string | null;
+    };
 
 /** The view key of the built-in "All open" (departure 8). */
 export const ALL = 'all';
