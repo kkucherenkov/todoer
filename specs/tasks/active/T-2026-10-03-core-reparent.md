@@ -61,6 +61,17 @@ for it, and a refused indent must not reach the outbox.
 - [ ] T004 documents, gates, PR — plan Task 4
 - **Checkpoint:** the TUI can call `engine.handle({ kind: 'reparent', … })`
 
+### Departures
+
+- T002: plan Task 2's fake server answered `applied` to every sight of an
+  opId. Two stores flushing at once each send the shared outbox, so every op
+  reached it twice. The fake now answers `duplicate` after the first sight,
+  as the backend's `replay` does, and the test pins it: each op applied once,
+  sent at most twice. The design doc had made "sent twice" a trigger for a
+  write lock in `flush`; the coordinator ruled the duplicate harmless (ADR
+  0005) and a lock across a network call harmful, and the Risks entry now
+  says so.
+
 ### Open questions
 
 None.
