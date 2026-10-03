@@ -27,7 +27,7 @@ a TUI needs its own replica, outbox, replay and recurrence expansion
 (`2026-09-25-domain-and-sync-design.md`, Deferred). Plan W0 paid that cost by
 moving all of it into `@todoer/client-core`. What a long-lived client still
 lacks is the loop around the core: when to sync, what to recompute, how a
-write's result reaches the screen. The web client has that loop in
+write's result reaches the screen. The web client had that loop in
 `apps/web/app/db/engine.ts`; the CLI does not need one, because each of its
 invocations is one command.
 
@@ -89,9 +89,12 @@ and the TUI's long-lived one. See Risks.
 it speaks: `Command`, `Write`, `Topics`, `Result`, `Failure`, `SyncReason`,
 `ALL`. Its `auth` and `tokens` dependencies are narrowed to two structural
 types, `EngineAuth` and `EngineTokens`, which `CookieAuthApi` and
-`CookieTokenSource` already satisfy. The web keeps only its transport:
-`dispatcher`, `CHANNEL`, `LEADER_LOCK`, `ToWorker`, `FromWorker`, `Init`,
-`Fatal`. `engine.spec.ts` moves with the engine, unchanged.
+`CookieTokenSource` already satisfy. The dispatcher and the worker's message
+types (`ToWorker`, `FromWorker`) move too: they have no browser dependency,
+and the engine's spec tests the dispatcher. The web keeps only the names of
+its browser transport: `CHANNEL`, `LEADER_LOCK`, `Init`, `Fatal`.
+`engine.spec.ts` moves with the engine, with only its imports and its mocked
+module changed (ADR 0018).
 
 The TUI adapts the CLI's session model (`tokenSource`, the refresh token kept
 by `Store.saveAuth`) to `EngineTokens`. `TODOER_TOKEN` overrides the stored

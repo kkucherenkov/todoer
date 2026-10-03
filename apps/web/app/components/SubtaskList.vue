@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import type { TaskDetails } from '@todoer/client-core';
-import type { Write } from '~/db/protocol';
+import type { TaskDetails, Write } from '@todoer/client-core';
 
 const props = defineProps<{ task: TaskDetails; readonly: boolean }>();
 const db = useDb();

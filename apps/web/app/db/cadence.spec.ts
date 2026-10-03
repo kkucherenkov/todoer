@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { startCadence } from './cadence';
-import type { SyncReason } from './protocol';
+import type { SyncReason } from '@todoer/client-core';
 
 // Fake document and window: an EventTarget each, plus the one field read.
 const setup = () => {

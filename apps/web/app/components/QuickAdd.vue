@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import type { Write } from '~/db/protocol';
+import type { Write } from '@todoer/client-core';
 
 const db = useDb();
 const { t } = useI18n();

@@ -12,6 +12,8 @@ export * from './transport.js';
 export * from './auth.js';
 export * from './operations.js';
 export * from './rank.js';
+export * from './engine-protocol.js';
+export * from './engine.js';
 export {
   WEEKDAYS,
   filterProblem,
