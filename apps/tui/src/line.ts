@@ -1,10 +1,11 @@
 import { parseQuickAdd, type TaskChanges } from '@todoer/client-core';
 
+/** Optional where a replica row (`Item`) only may carry them. */
 export type LineFields = {
-  title: unknown;
+  title?: unknown;
   tags: string[];
   project: string | null;
-  priority: unknown;
+  priority?: unknown;
 };
 
 /** A task as one quick-add line: `title @tags #project pN`. */

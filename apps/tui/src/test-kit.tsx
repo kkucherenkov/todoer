@@ -97,7 +97,7 @@ export async function renderTui(
   let n = 0;
   const newId = () =>
     `00000000-0000-7000-8000-${(n += 1).toString(16).padStart(12, '0')}`;
-  const engine: Engine = createEngine({
+  const raw: Engine = createEngine({
     store,
     auth: {
       login: () => Promise.reject(new Error('no')),
@@ -115,14 +115,34 @@ export async function renderTui(
     newId,
     publish: (topic, value) => topics.publish(topic, value),
   });
+  // Every command the UI sends is tracked, so `settle` can wait for a write
+  // (and the state update its `.then` makes) instead of guessing how long
+  // SQLite and the fake server take.
+  const inflight = new Set<Promise<unknown>>();
+  const engine: Engine = {
+    ...raw,
+    handle: (command, tab) => {
+      const run = raw.handle(command, tab);
+      inflight.add(run);
+      void run.finally(() => inflight.delete(run));
+      return run;
+    },
+  };
   await engine.start(true);
   const status = createStatusLine();
   const tui = { engine, topics, newId, today: () => localDate(NOW), status };
   const rendered = render(
     <TuiContext.Provider value={tui}>{ui}</TuiContext.Provider>,
   );
-  /** Lets publishes and effects settle before a frame is read. */
-  const settle = () => new Promise((resolve) => setTimeout(resolve, 20));
+  /** Lets writes, publishes and effects settle before a frame is read. The
+   *  pause outlasts the 20 ms Ink waits before it takes a lone Esc for the
+   *  Escape key, and lets React run the effects that move `useInput`. */
+  const settle = async () => {
+    do {
+      await Promise.all(inflight);
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    } while (inflight.size > 0);
+  };
   await settle();
   return {
     // Not the whole instance: its Stdout has a private field, which an
