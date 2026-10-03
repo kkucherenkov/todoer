@@ -12,6 +12,7 @@ import {
 } from '@todoer/client-core';
 import { openReplica } from '@todoer/client-core/node-sqlite';
 import { TuiContext } from './context.js';
+import { createKeyHold } from './key-hold.js';
 import { createStatusLine } from './status-line.js';
 import { createTopics, type Topics$ } from './topics.js';
 
@@ -130,18 +131,29 @@ export async function renderTui(
   };
   await engine.start(true);
   const status = createStatusLine();
-  const tui = { engine, topics, newId, today: () => localDate(NOW), status };
+  const tui = {
+    engine,
+    topics,
+    newId,
+    today: () => localDate(NOW),
+    status,
+    keys: createKeyHold(),
+  };
   const rendered = render(
     <TuiContext.Provider value={tui}>{ui}</TuiContext.Provider>,
   );
-  /** Lets writes, publishes and effects settle before a frame is read. The
-   *  pause outlasts the 20 ms Ink waits before it takes a lone Esc for the
-   *  Escape key, and lets React run the effects that move `useInput`. */
+  /** Lets writes, publishes and effects settle before a frame is read: until
+   *  no command is in flight and no frame was drawn for 50 ms. A loaded
+   *  machine delays React's commit of a write's `.then`, and the effects that
+   *  move `useInput` run after it; a fixed pause raced them. 50 ms also
+   *  outlasts the 20 ms Ink waits before it takes a lone Esc for Escape. */
   const settle = async () => {
-    do {
+    for (;;) {
       await Promise.all(inflight);
+      const drawn = rendered.frames.length;
       await new Promise((resolve) => setTimeout(resolve, 50));
-    } while (inflight.size > 0);
+      if (inflight.size === 0 && rendered.frames.length === drawn) return;
+    }
   };
   await settle();
   return {

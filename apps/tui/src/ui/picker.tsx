@@ -1,5 +1,6 @@
 import { Box, Text, useInput } from 'ink';
 import { useState } from 'react';
+import { useHoldKeys } from '../key-hold.js';
 
 export type PickerItem = { id: string; label: string };
 
@@ -21,6 +22,7 @@ export function Picker({
     0,
     items.findIndex((i) => i.id === initial),
   );
+  useHoldKeys();
   const [at, setAt] = useState(start);
   useInput((input, key) => {
     if (key.escape) return onCancel();

@@ -97,4 +97,14 @@ describe('App', () => {
     await t.settle();
     expect(t.lastFrame()).toMatch(/Run `todoer login`/);
   });
+  it('leaves global keys to a line being typed', async () => {
+    const t = await renderTui(<App />, {
+      server: fakeServer([status, view]),
+    });
+    cleanup = t.cleanup;
+    // q would quit, ] switch views, ? open the help.
+    await t.press('o', 'q', ']', '?', KEY.enter);
+    expect(t.lastFrame()).toContain('q]?');
+    expect(t.lastFrame()).toMatch(/▸ All open/);
+  });
 });

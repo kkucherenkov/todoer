@@ -12,6 +12,7 @@ import { openReplica, readConfig } from '@todoer/client-core/node-sqlite';
 import { App } from './app.js';
 import { TuiContext } from './context.js';
 import { cliSession } from './session.js';
+import { createKeyHold } from './key-hold.js';
 import { createStatusLine } from './status-line.js';
 import { createTopics } from './topics.js';
 
@@ -51,6 +52,7 @@ async function main(): Promise<number> {
       newId: uuidv7,
       today: () => localDate(now()),
       status: createStatusLine(),
+      keys: createKeyHold(),
     };
     const app = render(
       <TuiContext.Provider value={tui}>

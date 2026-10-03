@@ -6,6 +6,7 @@ import { SCREENS, type Screen } from './screens.js';
 import { Sidebar, viewEntries } from './sidebar.js';
 import { StatusBar } from './status-bar.js';
 import { useTopic, useView } from './topics.js';
+import { useKeysHeld } from './key-hold.js';
 import { Picker } from './ui/picker.js';
 import { ViewPane } from './view-pane.js';
 
@@ -23,7 +24,8 @@ const HELP = [
 ];
 
 export function App() {
-  const { engine, topics, status } = useTui();
+  const { engine, topics, status, keys } = useTui();
+  const held = useKeysHeld(keys);
   const { exit } = useApp();
   const { columns } = useWindowSize();
   const session = useTopic(topics, 'session');
@@ -65,6 +67,7 @@ export function App() {
   };
 
   const onView = screen.kind === 'view' && !picking && !help;
+  const global = onView && !held;
   useInput(
     (input) => {
       const i = entries.findIndex((e) => e.key === key);
@@ -81,7 +84,7 @@ export function App() {
         void engine.handle({ kind: 'sync', reason: 'manual' }, 'tui');
       else if (input === 'S') openScreen({ kind: 'statuses' });
     },
-    { isActive: onView },
+    { isActive: global },
   );
   useInput(() => setHelp(false), { isActive: help });
 

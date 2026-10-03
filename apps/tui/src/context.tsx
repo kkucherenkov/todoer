@@ -1,5 +1,6 @@
 import { createContext, useContext } from 'react';
 import type { Engine } from '@todoer/client-core';
+import type { KeyHold } from './key-hold.js';
 import type { StatusLine } from './status-line.js';
 import type { Topics$ } from './topics.js';
 
@@ -10,6 +11,7 @@ export type Tui = {
   /** The local date, YYYY-MM-DD (ADR 0010). */
   today: () => string;
   status: StatusLine;
+  keys: KeyHold;
 };
 
 export const TuiContext = createContext<Tui | null>(null);
