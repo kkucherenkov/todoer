@@ -24,10 +24,19 @@ function serve(build: string, hint: () => boolean): void {
   const engine = (value: Topics['engine']) =>
     channel.postMessage({ type: 'publish', topic: 'engine', value, build });
   let failures: number[] = [];
+  let worker: Worker | undefined;
+  // A discarded document's worker lives on for a moment and would answer
+  // the next document's hello with a signed-in snapshot before that
+  // document's own worker restored the session. A page entering the
+  // back-forward cache keeps the lock and comes back to its worker.
+  addEventListener(
+    'pagehide',
+    (e: PageTransitionEvent) => e.persisted || worker?.terminate(),
+  );
 
   const spawn = () => {
     engine({ state: 'starting', reason: null });
-    let worker: Worker | undefined;
+    worker = undefined;
     let dead = false;
     const fail = (reason: string) => {
       if (dead) return; // error and fatal from one worker are one failure

@@ -270,9 +270,12 @@ the TUI to the stack table in `.claude/CLAUDE.md`.
   `cookieTokenSource` takes no lock because one worker owns the origin. The
   CLI already runs as concurrent processes, and `tokenSource` refreshes under
   `withWriteLock`, but `flush` takes no lock, and a long-lived process next to
-  short-lived ones is new. T1 tests two stores flushing one file. If an
-  operation is lost or sent twice, `flush` takes the write lock, as a step of
-  T1.
+  short-lived ones is new. T1's `shared-replica.spec.ts` flushes two stores
+  on one file at once: no operation is lost, both outboxes end empty and the
+  cursor never moves back. An operation may be sent twice; the server's opId
+  guard answers the second with `duplicate` (ADR 0005). So `flush` stays
+  unlocked: a lock would hold SQLite's write lock across a network call and
+  stall every CLI run until its busy timeout.
 - **The engine move (T0).** The web's most central file moves. The proof is
   the same as W0's: nothing changes, every existing test passes untouched.
 - **Terminal differences.** `Alt-↑` and `Shift-Tab` arrive differently across
