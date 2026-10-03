@@ -38,6 +38,8 @@ class FakeChannel {
   close() {}
 }
 
+/** The window's listeners: a test fires `pagehide` through them. */
+let listeners: Map<string, (e: { persisted: boolean }) => void>;
 let grant: () => void;
 let lockName: string | undefined;
 let held: Promise<unknown> | undefined;
@@ -47,6 +49,12 @@ beforeEach(() => {
   FakeWorker.all = [];
   broadcast = [];
   lockName = held = undefined;
+  listeners = new Map();
+  vi.stubGlobal(
+    'addEventListener',
+    (type: string, listener: (e: { persisted: boolean }) => void) =>
+      listeners.set(type, listener),
+  );
   vi.stubGlobal('Worker', FakeWorker);
   vi.stubGlobal('BroadcastChannel', FakeChannel);
   vi.stubGlobal('navigator', {
@@ -158,6 +166,22 @@ describe('lead', () => {
     vi.advanceTimersByTime(1000); // two inside the minute: 500 ms × 2
     expect(FakeWorker.all).toHaveLength(4);
     expect(engine().at(-1)).toEqual({ state: 'starting', reason: null });
+  });
+
+  // A reload's old worker outlived its document and answered the new tab's
+  // hello: the new tab showed the shell before its own worker signed in.
+  it('terminates the worker when the page is discarded', () => {
+    lead('b1', () => true);
+    grant();
+    listeners.get('pagehide')?.({ persisted: false });
+    expect(FakeWorker.all[0]!.terminated).toBe(true);
+  });
+
+  it('keeps the worker of a page entering the back-forward cache', () => {
+    lead('b1', () => true);
+    grant();
+    listeners.get('pagehide')?.({ persisted: true });
+    expect(FakeWorker.all[0]!.terminated).toBe(false);
   });
 
   it('counts a Worker constructor that throws as a failure, not a dead lock', () => {
