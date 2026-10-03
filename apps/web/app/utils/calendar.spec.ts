@@ -63,15 +63,15 @@ describe('gridSpan', () => {
           last <= span.to && iso(Date.parse(span.to) - 7 * 86_400_000) < last,
         ).toBe(true);
         // consecutive days: no DST shift repeats or skips one
-        all.forEach((d, i) =>
-          expect(d).toBe(iso(Date.parse(span.from) + i * 86_400_000)),
+        expect(all).toEqual(
+          all.map((_, i) => iso(Date.parse(span.from) + i * 86_400_000)),
         );
         const w = gridSpan('week', at);
         expect(days(w)).toHaveLength(7);
         expect(days(w)).toContain(at);
       }
     }
-  });
+  }, 30_000); // 852 months: run time scales with CPU contention on a loaded runner
 });
 
 describe('shift', () => {

@@ -69,12 +69,6 @@ export default defineConfig(
   // The web's Vue parser, Vue and Nuxt rules come from @nuxt/eslint, whose
   // generated config globs relative to the web (`app/pages/**`).
   { basePath: 'apps/web', extends: [await withNuxt()] },
-  // Moved from the web unchanged (ADR 0018), so it keeps the web's rules
-  // until it is rewritten against the type-checked ones.
-  {
-    files: ['packages/client-core/src/engine.spec.ts'],
-    extends: [tseslint.configs.disableTypeChecked],
-  },
   // Config files outside every tsconfig: syntax rules only.
   { files: ['**/*.{js,mjs}'], extends: [tseslint.configs.disableTypeChecked] },
 );

@@ -92,7 +92,8 @@ types, `EngineAuth` and `EngineTokens`, which `CookieAuthApi` and
 `CookieTokenSource` already satisfy. The dispatcher and the worker's message
 types (`ToWorker`, `FromWorker`) move too: they have no browser dependency,
 and the engine's spec tests the dispatcher. The web keeps only the names of
-its browser transport: `CHANNEL`, `LEADER_LOCK`, `Init`, `Fatal`.
+its browser transport: `CHANNEL`, `LEADER_LOCK`, `leaderLock`, `Init`,
+`Fatal`, and `FromLeader`, the core's message stamped with its leader's id.
 `engine.spec.ts` moves with the engine, with only its imports and its mocked
 module changed (ADR 0018).
 
@@ -172,8 +173,8 @@ a sign-in screen, the mouse.
   | `h` `l` `←` `→` | fold, unfold | neighbouring column |
   | `J` `K` `Alt-↑` `Alt-↓` | move the task (manual sort only) | move in the column |
   | `H` `L` | — | move to the neighbouring column |
-  | `Tab` `Shift-Tab` | indent under the previous task, outdent | — |
-  | `o` `O` | new task below, new subtask | new task in the column |
+  | `Tab` `Shift-Tab` | indent under the nearest top-level task above, outdent | — |
+  | `o` `O` | new task below, new subtask below | new task below the card |
   | `Enter` `i` | edit the line in place | edit the line in place |
   | `x` `Space` | done, undo | done, undo |
   | `s` | skip a recurring occurrence | skip |
@@ -184,15 +185,19 @@ a sign-in screen, the mouse.
   | `[` `]` `v` | previous, next view, view picker | the same |
   | `r` `?` `q` | sync now, help, quit | the same |
 
+  "Below" holds in a manual view: a `move` anchored on the cursor follows the
+  add. A view with another sort places the new task by that sort.
+
 - **Editing a line.** The line opens as `title @tags #project pN` and is read
   back with `parseQuickAdd`; the difference becomes one `editTask`. Adding and
   editing share that grammar. An input closes when its write is taken (a
   queued offline write is) and keeps the typed text on a refusal, whose
   reason the status bar shows.
-- **The details panel.** At the right from 120 columns, full screen below.
+- **The details panel.** It takes the main pane; a side-by-side layout from
+  120 columns is deferred.
   Each field saves on its own as one `editTask` (or `setRecurrence`), with no
   Save step. Dates are `YYYY-MM-DD`, empty clears, and an unparsable value is
-  reported on the field and not saved. Recurrence offers presets (daily,
+  reported on the status line and not saved. Recurrence offers presets (daily,
   weekdays, weekly on a day, monthly on a date, none) and a raw RRULE checked
   with `parseRrule`; it is disabled for a subtask. Notes open in `$EDITOR`
   (`vi` when unset) with Ink suspended.
@@ -278,7 +283,10 @@ the TUI to the stack table in `.claude/CLAUDE.md`.
 - **The engine move (T0).** The web's most central file moves. The proof is
   the same as W0's: nothing changes, every existing test passes untouched.
 - **Terminal differences.** `Alt-↑` and `Shift-Tab` arrive differently across
-  terminals. The vim keys (`J`, `K`) are the fallback that always works.
+  terminals. The vim keys (`J`, `K`) are the fallback that always works. The
+  outline also takes a bare `\e[Z` as `Shift-Tab`, for terminals that send
+  it without Ink reporting `shift`; under tmux on macOS both `Shift-Tab` and
+  `Alt-↑`/`Alt-↓` work.
 
 ## Deferred
 

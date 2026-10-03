@@ -33,7 +33,11 @@ self.onmessage = async ({ data }: MessageEvent<Init>) => {
     const tokens = cookieTokenSource(auth, () => new Date());
     const channel = new BroadcastChannel(CHANNEL);
     const post = (m: Unstamped<FromWorker>) =>
-      channel.postMessage({ ...m, build: data.build });
+      channel.postMessage({
+        ...m,
+        build: data.build,
+        leader: data.leader,
+      });
     const engine = createEngine({
       store,
       auth,

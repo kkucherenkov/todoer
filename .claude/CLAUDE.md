@@ -110,18 +110,19 @@ the list is what a protection rule should name when one is added.
 
 ## The stack
 
-A pnpm workspace under turbo. Five packages and the image. `@todoer/specs` is upstream of
+A pnpm workspace under turbo. Six packages and the image. `@todoer/specs` is upstream of
 all others — it holds the OpenAPI document and the client generated from it —
-and `@todoer/client-core` is upstream of both the CLI and the web client.
+and `@todoer/client-core` is upstream of every client: the CLI, the TUI and the web.
 
 | Path | What |
 | --- | --- |
 | `packages/specs` | OpenAPI document, generated TS types and SDK. The contract. |
-| `packages/client-core` | Replica, outbox, sync, the domain operations and the long-lived engine (`createEngine`) the clients run. The portable entry has no Node import; `./node-sqlite` is the CLI's adapter, `./sqlite-wasm` is the web's (its types need the optional peer `@sqlite.org/sqlite-wasm`). |
+| `packages/client-core` | Replica, outbox, sync, the domain operations and the long-lived engine (`createEngine`) the clients run. The portable entry has no Node import; `./node-sqlite` is the Node adapter, with `openReplica` and `readConfig` that the CLI and the TUI share, `./sqlite-wasm` is the web's (its types need the optional peer `@sqlite.org/sqlite-wasm`). |
 | `apps/backend` | NestJS 11, Prisma 6, PostgreSQL 18. `POST /sync` is the entire write surface. Serves the built SPA from `WEB_ROOT`. |
 | `apps/web` | Nuxt 4 SPA. The leader tab's worker runs client-core on SQLite WASM (OPFS). Built SPA served by the backend from `WEB_ROOT`. |
 | `Dockerfile`, `docker/` | One image with the backend and the built SPA; compose service `app` behind the profile `app`, the entrypoint runs `prisma migrate deploy`. |
 | `apps/cli` | The reference client. Its primary caller is a script or an agent — see ADR 0015. |
+| `apps/tui` | The terminal client (Ink). Shares the CLI's replica and session; runs the core engine. |
 | `scripts/walking-skeleton.sh` | The end-to-end proof. CI runs it against a live backend. |
 
 Design and rationale live in `docs/specs/`, `docs/adr/` and `docs/plans/`. The

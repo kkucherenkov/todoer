@@ -19,6 +19,7 @@ import {
   expect,
   it,
   vi,
+  type Mock,
 } from 'vitest';
 import { createEngine, dispatcher, type Engine } from './engine.js';
 import type { Result, ToWorker, Topic, Topics } from './engine-protocol.js';
@@ -94,11 +95,9 @@ const offline = () => Promise.reject(new TypeError('fetch failed'));
 
 let sqlite3: Sqlite3Static;
 let store: Store;
-let auth: {
-  [K in keyof CookieAuthApi]: ReturnType<typeof vi.fn>;
-} & CookieAuthApi;
+let auth: { [K in keyof CookieAuthApi]: Mock<CookieAuthApi[K]> };
 let tokens: CookieTokenSource;
-let send: ReturnType<typeof vi.fn> & Transport;
+let send: Mock<Transport>;
 let published: { [T in Topic]?: Topics[T][] };
 
 beforeAll(async () => {
@@ -108,15 +107,14 @@ beforeAll(async () => {
 
 beforeEach(() => {
   store = openWasmStore(sqlite3, new sqlite3.oo1.DB(':memory:', 'c'));
-  const fns = {
+  auth = {
     login: vi.fn(() => Promise.resolve(grant('u1'))),
     register: vi.fn(() => Promise.resolve(grant('u1'))),
     refresh: vi.fn(() => Promise.resolve(grant('u1'))),
     logout: vi.fn(() => Promise.resolve(undefined)),
   };
-  auth = fns as typeof auth;
   tokens = cookieTokenSource(auth, () => NOW);
-  send = vi.fn(() => Promise.resolve(json(CANNED))) as typeof send;
+  send = vi.fn<Transport>(() => Promise.resolve(json(CANNED)));
   published = {};
   clock = NOW;
 });
@@ -147,7 +145,7 @@ const engine = (transport: Transport = send) =>
   });
 
 const last = <T extends Topic>(topic: T): Topics[T] | undefined =>
-  (published[topic] as Topics[T][] | undefined)?.at(-1);
+  published[topic]?.at(-1);
 
 describe('start', () => {
   it('without the hint: signed-out, and no auth call', async () => {
@@ -380,7 +378,7 @@ describe('signOut', () => {
     const e = engine();
     await e.start(true);
     await e.handle({ kind: 'signOut' });
-    expect(auth.logout.mock.calls.map(([bearer]) => bearer as string)).toEqual([
+    expect(auth.logout.mock.calls.map(([bearer]) => bearer)).toEqual([
       token('u1', 1),
       token('u1', 2),
     ]);
@@ -519,7 +517,7 @@ describe('sync', () => {
   it("a sync before start is answered 'unavailable', not signed-out", async () => {
     expect(await engine().handle({ kind: 'sync', reason: 'manual' })).toEqual({
       ok: false,
-      failure: { kind: 'unavailable', detail: expect.any(String) },
+      failure: { kind: 'unavailable', detail: expect.any(String) as string },
     });
   });
 
@@ -1059,7 +1057,11 @@ describe('write commands', () => {
     );
     expect(result).toEqual({
       ok: true,
-      note: { marked: 'done', occurrence: today, next: expect.any(String) },
+      note: {
+        marked: 'done',
+        occurrence: today,
+        next: expect.any(String) as string,
+      },
     });
     if (result.ok) expect(String(result.note?.next) > today).toBe(true);
   });
@@ -1567,7 +1569,7 @@ describe('delete, rule and subtask writes', () => {
       ok: false,
       failure: {
         kind: 'invalid',
-        detail: expect.stringContaining('not synced yet'),
+        detail: expect.stringContaining('not synced yet') as string,
       },
     });
   });
