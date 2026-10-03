@@ -1,0 +1,13 @@
+{
+  "dom_and_header_compile": {
+    "exit": 0,
+    "assertions": 1614,
+    "log": "qa/header-results.txt"
+  },
+  "header_vue_typecheck": {
+    "exit": 0,
+    "log": "qa/header-type-results.txt"
+  },
+  "screenshot": "qa/header-review.png",
+  "scope": "header modes only"
+}

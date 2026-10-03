@@ -1,0 +1,57 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+const req=createRequire('/private/tmp/todoer-qa/package.json');
+const {Window}=req('happy-dom');
+const app='/Users/kkucherenkov/orca/todoer';
+const sfc=req(app+'/node_modules/.pnpm/@vue+compiler-sfc@3.5.43/node_modules/@vue/compiler-sfc');
+let count=0;
+const check=(value,label)=>{assert.ok(value,label);count++;console.log('PASS '+label);};
+for(const file of ['calendar.vue','view-form.vue','gate.vue','task-dialogs.vue',...fs.readdirSync('references').filter(x=>x.endsWith('.vue')).map(x=>'references/'+x)]){
+ const source=fs.readFileSync(file,'utf8');const {descriptor,errors}=sfc.parse(source,{filename:file});check(!errors.length,file+' parse');
+ const script=sfc.compileScript(descriptor,{id:file});const template=sfc.compileTemplate({source:descriptor.template.content,filename:file,id:file,compilerOptions:{bindingMetadata:script.bindings}});check(!template.errors.length,file+' script + template compile');
+}
+function load(file){const w=new Window({url:'http://todoer.local/'+file,settings:{disableCSSFileLoading:true,disableJavaScriptFileLoading:true}});w.structuredClone=structuredClone;w.document.write(fs.readFileSync(file,'utf8'));
+ const codes=[];for(const node of w.document.querySelectorAll('script[src]')){const name=node.getAttribute('src');let code=fs.readFileSync(name,'utf8');if(name==='ux.js')code+='\nwindow.testUX={get state(){return state},taskBy,render,loadScenario,openDrawer,completeTask,restoreTask,syncNow,openTasks,drawTask,save};';codes.push(code);}
+ w.eval(codes.join('\n'));return w;}
+const click=(w,s)=>{const n=w.document.querySelector(s);assert.ok(n,'control '+s);n.click();};
+const input=(w,s,v)=>{const n=w.document.querySelector(s);assert.ok(n,s);n.value=v;n.dispatchEvent(new w.Event('input',{bubbles:true}));};
+const change=(w,s,v)=>{const n=w.document.querySelector(s);assert.ok(n,s);n.value=v;n.dispatchEvent(new w.Event('change',{bubbles:true}));};
+const submit=(w,s)=>w.document.querySelector(s).dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+for(const locale of ['en','ru'])for(const theme of ['light','dark']){
+ const w=load('calendar.html'),u=w.testUX,sc=w.todoerScreens;u.state.locale=locale;u.state.theme=theme;u.render();const label=locale+'/'+theme;
+ check(w.document.documentElement.lang===locale&&w.document.documentElement.classList.contains('dark')===(theme==='dark'),label+' locale/theme');
+ check(w.document.querySelectorAll('#view-content .calendar-day').length===35,label+' October month');
+ const scheduled=sc.placements().find(p=>p.taskId==='release'&&p.kind==='scheduled'),due=sc.placements().find(p=>p.taskId==='release'&&p.kind==='due');check(scheduled.date==='2026-10-03'&&due.date==='2026-10-02',label+' scheduled vs due');
+ sc.movePlacement(due,'2026-10-06');check(u.taskBy('release').when==='2026-10-03'&&u.taskBy('release').deadline==='2026-10-06',label+' due move preserves scheduled');click(w,'.toast-undo');check(u.taskBy('release').deadline==='2026-10-02',label+' date Undo');
+ const recurring=sc.placements().find(p=>p.taskId==='weekly'&&p.date==='2026-10-07');const old=JSON.stringify(u.taskBy('weekly'));sc.movePlacement(recurring,'2026-10-09');let copy=u.state.tasks.find(t=>t.seriesId==='weekly');check(copy.when==='2026-10-09'&&!copy.repeat&&!copy.deadline&&u.taskBy('weekly').movedDates.includes('2026-10-07'),label+' occurrence-only copy');click(w,'.toast-undo');check(!u.state.tasks.some(t=>t.seriesId==='weekly')&&!u.taskBy('weekly').movedDates.includes('2026-10-07'),label+' occurrence Undo');
+ u.completeTask('weekly');check(sc.placements().some(p=>p.taskId==='weekly'&&p.date==='2026-10-03'&&p.closed),label+' completed occurrence placement');click(w,'.toast-undo');check(sc.placements().some(p=>p.taskId==='weekly'&&p.date==='2026-10-03'&&!p.closed),label+' mark Undo');
+ u.completeTask('weekly','skipped');check(!sc.placements().some(p=>p.taskId==='weekly'&&p.date==='2026-10-03'),label+' skipped occurrence absent');click(w,'.toast-undo');
+ check(sc.movePlacement({taskId:'finished',date:'2026-10-02',kind:'scheduled',closed:true},'2026-10-04')===false,label+' closed not movable');
+ const trigger=w.document.querySelector('.placement-menu');trigger.focus();trigger.click();check(w.document.activeElement.getAttribute('role')==='menuitem',label+' menu focuses item');w.document.activeElement.dispatchEvent(new w.KeyboardEvent('keydown',{key:'Escape',bubbles:true}));check(w.document.activeElement===trigger,label+' menu Escape return focus');
+ trigger.click();click(w,'[data-screen="placement-move"]');const move=w.document.querySelector('#move-date-dialog');check(move.open,label+' keyboard move dialog');move.dispatchEvent(new w.Event('cancel',{cancelable:true}));await sleep(1);check(!move.open&&w.document.activeElement.dataset.odId===trigger.dataset.odId,label+' dialog cancel return focus');
+ click(w,'[data-screen="new-view"]');input(w,'#view-name',locale==='ru'?'Мой календарь':'My calendar');change(w,'#view-sort','priority');const radio=w.document.querySelector('input[name="layout"][value="calendar"]');radio.checked=true;radio.dispatchEvent(new w.Event('change',{bubbles:true}));submit(w,'#view-form');check(u.state.savedViews.length===1&&u.state.layout==='calendar',label+' saved view create');
+ click(w,'[data-screen="edit-view"]');click(w,'#view-raw');input(w,'#view-json','{"and":');check(w.document.querySelector('#view-save').disabled&&!w.document.querySelector('#filter-problem').hidden,label+' invalid JSON preserved');input(w,'#view-json','{"and":[]}');u.state.refuseNext=true;submit(w,'#view-form');check(w.document.querySelector('#view-form-dialog').open&&!w.document.querySelector('#view-refusal').hidden,label+' refused view stays open');submit(w,'#view-form');check(!w.document.querySelector('#view-form-dialog').open,label+' retry view');
+ const v=JSON.stringify(u.state.savedViews[0]);click(w,'#board-tab');check(JSON.stringify(u.state.savedViews[0])===v,label+' layout transient');click(w,'[data-screen="delete-view"]');click(w,'[data-screen="confirm-view-delete"]');check(!u.state.savedViews.length&&u.state.view==='all',label+' delete view leaves tasks');
+ u.openDrawer('weekly',null);sc.openRule(u.taskBy('weekly'));change(w,'#rule-mode','custom');input(w,'#rule-text','FREQ=HOURLY');check(w.document.querySelector('#rule-save').disabled,label+' invalid recurrence');input(w,'#rule-text','FREQ=WEEKLY;BYDAY=MO,WE');u.state.refuseNext=true;submit(w,'#repeat-form');await sleep(300);check(w.document.querySelector('#repeat-dialog').open&&w.document.querySelector('#rule-text').value==='FREQ=WEEKLY;BYDAY=MO,WE',label+' rule refusal preserves draft');submit(w,'#repeat-form');await sleep(300);check(u.taskBy('weekly').rrule==='FREQ=WEEKLY;BYDAY=MO,WE'&&!w.document.querySelector('#repeat-dialog').open,label+' rule saved');
+ sc.openRule(u.taskBy('wipe'));check(!w.document.querySelector('#repeat-dialog').open,label+' child cannot repeat independently');
+ sc.openDelete(u.taskBy('kitchen'));check(w.document.activeElement.id==='delete-cancel',label+' delete initial focus Cancel');click(w,'#delete-cancel');check(u.taskBy('kitchen')&&u.taskBy('wipe'),label+' cancel leaves children');sc.openDelete(u.taskBy('kitchen'));u.state.refuseNext=true;click(w,'[data-screen="confirm-task-delete"]');check(u.taskBy('kitchen')&&w.document.querySelector('#delete-task-dialog').open,label+' refused delete retained');click(w,'[data-screen="confirm-task-delete"]');check(!u.taskBy('kitchen')&&!u.taskBy('wipe')&&!u.taskBy('floor'),label+' delete parent + children');
+ await w.happyDOM.close();
+}
+for(const file of ['ux.html','view-form.html','task-dialogs.html','states.html']){const w=load(file);check(!!w.document.querySelector('#view-content'),file+' entry loads');await w.happyDOM.close();}
+const w=load('ux.html'),u=w.testUX;
+u.loadScenario('offline');u.state.layout='calendar';u.render();const p=w.todoerScreens.placements().find(p=>p.taskId==='milk');w.todoerScreens.movePlacement(p,'2026-10-08');check(u.state.sync==='offline'&&u.state.pending===4&&u.taskBy('milk').when==='2026-10-08','offline accepts local move + queue');u.syncNow(true);await sleep(550);check(u.state.pending===0&&u.state.sync==='synced','recovery clears fixture queue');
+u.loadScenario('refused');u.syncNow();await sleep(550);check(u.state.sync==='synced','refused recovery');
+u.loadScenario('everyday');u.state.view='all';u.state.layout='list';u.render();const ids=[...w.document.querySelectorAll('.task-row[data-task-id]')].map(n=>n.dataset.taskId);check(ids.length===new Set(ids).size,'hierarchy regression no duplicate rows');const before=u.openTasks().length;click(w,'[data-action="toggle-subtasks"][data-id="kitchen"]');check(u.openTasks().length===before,'hierarchy fold does not change count');await w.happyDOM.close();
+for(const locale of ['en','ru'])for(const theme of ['light','dark']){const g=load('gate.html');if(locale==='ru')click(g,'[data-gate="locale"]');if(theme==='dark')click(g,'[data-gate="theme"]');check(g.document.querySelectorAll('#gate-main input[readonly]').length===2,'gate dummy-only '+locale+'/'+theme);submit(g,'#gate-form');await sleep(400);check(!!g.document.querySelector('#gate-main a[href="ux.html"]'),'gate accepted links UX '+locale+'/'+theme);change(g,'#gate-state','register');submit(g,'#gate-form');await sleep(400);check(!!g.document.querySelector('#gate-main a[href="ux.html"]'),'register accepted '+locale+'/'+theme);change(g,'#gate-state','mismatch');submit(g,'#gate-form');check(!!g.document.querySelector('#gate-main [aria-invalid]'),'confirmation mismatch '+locale+'/'+theme);change(g,'#gate-state','error');submit(g,'#gate-form');await sleep(400);check(!!g.document.querySelector('#gate-main [role="alert"]'),'gate refusal '+locale+'/'+theme);await g.happyDOM.close();}
+const states=load('states.html');const su=states.testUX;
+for(const scenario of ['calendar-empty','calendar-loading','queued','recovery','offline','refused']){su.loadScenario(scenario);check(su.state.scenario===scenario,'separate state '+scenario);if(scenario==='calendar-loading')check(!!states.document.querySelector('[data-testid="calendar-skeleton"]'),'calendar loading DOM');if(scenario==='calendar-empty')check(!states.document.querySelector('#view-content .calendar-placement'),'calendar empty DOM');}
+check(!states.localStorage.getItem('todoer-ux-proposal-v1'),'state review storage isolated');await states.happyDOM.close();
+const sorted=load('ux.html');const so=sorted.testUX;
+so.state.savedViews=[{id:'sort',name:'Sorted',filter:{and:[]},layout:'list',sort:'priority'}];so.state.view='view:sort';so.state.layout='list';so.render();const priority=so.openTasks().map(t=>t.priority);check(priority.every((p,i)=>i===0||priority[i-1]<=p),'saved priority sort');
+so.state.savedViews[0].sort='due';so.render();check(so.openTasks()[0].id==='release','saved due sort');
+const beforeTasks=JSON.stringify(so.state.tasks);so.state.layout='calendar';so.render();check(JSON.stringify(so.state.tasks)===beforeTasks,'layout does not mutate task data');
+so.openDrawer('milk',null);sorted.todoerScreens.openDelete(so.taskBy('milk'));click(sorted,'[data-screen="confirm-task-delete"]');check(!sorted.document.querySelector('.toast-undo'),'delete has no Undo');await sorted.happyDOM.close();
+console.log('TOTAL '+count+' assertions passed');

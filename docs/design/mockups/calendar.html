@@ -1,0 +1,263 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Todoer · calendar reference</title>
+    <link rel="stylesheet" href="tokens.css" />
+    <link rel="stylesheet" href="ux.css" />
+    <link rel="stylesheet" href="screens.css" />
+    <script src="domain/dates.js" defer></script>
+    <script src="domain/rrule.js" defer></script>
+    <script src="domain/filter.js" defer></script>
+    <script src="domain/expand.js" defer></script>
+    <script src="domain/occurrence.js" defer></script>
+    <script src="domain/calendar.js" defer></script>
+    <script src="domain/recurrence.js" defer></script>
+    <script src="domain/filterTree.js" defer></script>
+    <script src="domain/templates.js" defer></script>
+    <script src="domain/labels.js" defer></script>
+    <script src="ux.js" defer></script>
+    <script src="screens.js" defer></script>
+  </head>
+  <body data-entry="calendar">
+    <div class="demo-bar" data-od-id="prototype-controls">
+      <a href="index.html" class="demo-home" data-od-id="proposal-home"
+        >Todoer / UX proposal</a
+      >
+      <span class="fixture-label">Fixture date · 2026-10-03</span>
+      <div class="demo-actions">
+        <button
+          data-action="theme"
+          data-od-id="demo-theme"
+          aria-label="Switch to dark theme"
+        >
+          Dark
+        </button>
+        <button data-action="locale" data-od-id="demo-locale">Русский</button>
+        <button data-action="gallery" data-od-id="demo-states">
+          State examples
+        </button>
+        <a href="UX.md" data-od-id="ux-decisions">UX decisions ↗</a>
+      </div>
+    </div>
+    <div class="app-shell" data-od-id="app-shell">
+      <aside id="sidebar" class="sidebar" data-od-id="sidebar">
+        <header class="sidebar-header">
+          <span class="brand">Todoer</span
+          ><button
+            class="mobile-only icon-button"
+            data-action="close-nav"
+            aria-label="Close navigation"
+          >
+            ×
+          </button>
+        </header>
+        <nav
+          id="navigation"
+          aria-label="Views"
+          data-od-id="views-navigation"
+        ></nav>
+        <footer
+          id="sync-footer"
+          class="sync-footer"
+          data-od-id="sync-summary"
+        ></footer>
+      </aside>
+      <main id="main" data-od-id="workspace">
+        <header class="workspace-header" data-od-id="workspace-header">
+          <button
+            class="mobile-only icon-button"
+            data-action="open-nav"
+            data-od-id="mobile-navigation"
+            aria-label="Views"
+          >
+            ☰
+          </button>
+          <div class="view-heading">
+            <p id="view-kicker" class="kicker"></p>
+            <h1 id="view-title" data-od-id="view-title">Today</h1>
+          </div>
+          <span id="view-count" class="view-count"></span>
+          <div class="layouts" role="tablist" aria-label="Layout">
+            <button
+              role="tab"
+              id="list-tab"
+              aria-controls="view-content"
+              data-action="layout"
+              data-layout="list"
+              data-od-id="list-tab"
+            >
+              List
+            </button>
+            <button
+              role="tab"
+              id="board-tab"
+              aria-controls="view-content"
+              data-action="layout"
+              data-layout="board"
+              data-od-id="board-tab"
+            >
+              Board
+            </button>
+            <button role="tab" id="calendar-tab" aria-controls="view-content"
+              data-action="layout" data-layout="calendar" data-od-id="calendar-tab">Calendar</button>
+          </div>
+        </header>
+        <div class="view-toolbar" data-od-id="view-toolbar">
+          <button
+            id="columns-button"
+            class="secondary"
+            data-action="columns"
+            data-od-id="columns-button"
+          >
+            Columns
+          </button>
+        </div>
+        <div id="alerts" class="alerts" data-od-id="sync-alerts"></div>
+        <div class="workspace-body" data-od-id="workspace-body">
+          <p id="view-description" class="view-description"></p>
+          <form id="capture" class="capture" data-od-id="quick-capture">
+            <div class="capture-main">
+              <span class="capture-plus" aria-hidden="true">+</span
+              ><input
+                id="capture-title"
+                aria-label="Quick add"
+                placeholder="Buy milk #home @errand p2"
+                autocomplete="off"
+                data-od-id="capture-title"
+              /><button
+                class="primary"
+                type="submit"
+                id="add-task-button"
+                data-od-id="add-task"
+              >
+                Add task
+              </button>
+            </div>
+            <div class="capture-bottom">
+              <button
+                type="button"
+                class="text-button"
+                id="capture-details-toggle"
+                data-action="capture-details"
+                aria-expanded="false"
+                aria-controls="capture-details"
+                data-od-id="capture-details-toggle"
+              >
+                Add details</button
+              ><span id="capture-hint" class="hint"
+                >Enter to add · #project @tag p0–p4</span
+              >
+            </div>
+            <div
+              id="capture-details"
+              class="capture-details"
+              hidden
+              data-od-id="capture-details"
+            >
+              <label
+                ><span data-label="project">Project</span
+                ><select
+                  id="capture-project"
+                  data-od-id="capture-project"
+                ></select
+              ></label>
+              <label
+                ><span data-label="tags">Tags</span
+                ><input
+                  id="capture-tags"
+                  placeholder="@errand"
+                  data-od-id="capture-tags"
+              /></label>
+              <label
+                ><span data-label="priority">Priority</span
+                ><select id="capture-priority" data-od-id="capture-priority">
+                  <option value="">Use title syntax</option>
+                  <option value="0">p0 · highest</option>
+                  <option value="1">p1</option>
+                  <option value="2">p2</option>
+                  <option value="3">p3</option>
+                  <option value="4">p4 · lowest</option>
+                </select></label
+              >
+              <label
+                ><span data-label="when">When</span
+                ><input
+                  id="capture-when"
+                  type="date"
+                  data-od-id="capture-when"
+                /><small data-label="whenHelp">Day to work on it</small></label
+              >
+              <label
+                ><span data-label="deadline">Deadline</span
+                ><input
+                  id="capture-deadline"
+                  type="date"
+                  data-od-id="capture-deadline"
+                /><small data-label="deadlineHelp"
+                  >Day it must be finished</small
+                ></label
+              >
+            </div>
+            <p id="capture-error" class="error-text" role="alert" hidden></p>
+          </form>
+          <div
+            id="view-content"
+            role="tabpanel"
+            aria-labelledby="list-tab"
+            aria-describedby="view-description"
+            data-od-id="view-content"
+          ></div>
+        </div>
+      </main>
+    </div>
+    <dialog
+      id="drawer"
+      class="drawer"
+      aria-labelledby="drawer-heading"
+      data-testid="task-drawer"
+      data-od-id="task-drawer"
+    ></dialog>
+    <dialog
+      id="columns-dialog"
+      class="columns-dialog"
+      aria-labelledby="columns-heading"
+      data-od-id="columns-dialog"
+    ></dialog>
+    <dialog
+      id="gallery"
+      class="gallery-dialog"
+      aria-labelledby="gallery-heading"
+      data-od-id="state-gallery"
+    >
+      <header class="dialog-header">
+        <h2 id="gallery-heading">State examples</h2>
+        <button
+          class="icon-button"
+          data-action="close-gallery"
+          aria-label="Close"
+        >
+          ×
+        </button>
+      </header>
+      <p class="muted">
+        Demo controls, separate from the proposed everyday UI. Each example
+        resets local fixtures.
+      </p>
+      <div id="scenario-options" class="scenario-options"></div>
+      <p class="hint">
+        Nothing here contacts a server. Theme and scenario controls are proposal
+        review tools.
+      </p>
+      <a href="kanban.html">Open the kanban reference</a>
+    </dialog>
+    <div
+      id="toasts"
+      class="toasts"
+      aria-live="polite"
+      aria-relevant="additions"
+      data-od-id="toast-region"
+    ></div>
+  </body>
+</html>

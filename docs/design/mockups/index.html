@@ -1,0 +1,788 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Todoer · token review</title>
+    <link rel="stylesheet" href="tokens.css" />
+    <link rel="stylesheet" href="proposal.css" />
+  </head>
+  <body>
+    <header class="proposal-header" data-od-id="proposal-header">
+      <div>
+        <div class="eyebrow">TODOER / REDESIGN PROPOSAL</div>
+        <h1 data-od-id="token-heading">
+          A quiet foundation for working through a list
+        </h1>
+        <p class="muted">
+          Exact source tokens. System fonts. One interactive accent. Light and
+          dark treated equally.
+        </p>
+      </div>
+      <nav class="links" aria-label="Proposal files" data-od-id="index-nav-1">
+        <a href="list.html" data-od-id="list-link">Task list & states →</a
+        ><a href="theme/app.config.ts">app.config.ts</a
+        ><a href="theme/main.css">main.css</a
+        ><a href="tokens.css">tokens.css</a>
+      </nav>
+    </header>
+    <section class="proposal-index" data-od-id="connected-ux-proposal">
+      <h2 data-od-id="connected-ux-heading">Connected UX proposal · screen references</h2>
+      <p class="muted">
+        Work through a shared project outline, board and calendar. Capture tasks, edit dates, open
+        details, move cards and Undo — with the same zinc foundation.
+      </p>
+      <nav class="links" aria-label="UX proposal deliverables">
+        <a href="calendar.html" data-od-id="calendar-reference-link">Calendar →</a>
+        <a href="view-form.html" data-od-id="view-form-reference-link">New / edit views →</a>
+        <a href="gate.html" data-od-id="gate-reference-link">Sign-in / owner registration →</a>
+        <a href="task-dialogs.html" data-od-id="task-dialogs-reference-link">Repeat / delete task →</a>
+        <a href="ux.html" data-od-id="open-ux" style="font-weight: 600"
+          >Open the interactive UX proposal →</a
+        >
+        <a
+          href="ux.html?view=all&amp;layout=board"
+          data-od-id="open-working-board"
+          >Try the working kanban →</a
+        >
+        <a href="kanban.html">Kanban reference</a>
+        <a href="kanban.vue">Nuxt UI kanban reference</a>
+        <a href="UX.md">UX decisions & implementation</a><a href="states.html" data-od-id="states-reference-link">Отдельные состояния →</a><a href="QA.md" data-od-id="qa-report-link">Проверки и ограничения →</a><a href="references/README.md">Комплект Vue-референсов →</a>
+      </nav>
+    </section>
+    <section class="proposal-index" data-od-id="coverage-index">
+      <h2 data-od-id="coverage-heading">Оставшиеся экраны и границы проверки</h2>
+      <p class="muted">Общие задачи, фильтр и drawer связывают список, доску и календарь. Вход ведёт в локальный пример без авторизации. Приложение и core не изменены.</p>
+      <table style="width:100%;text-align:left;border-collapse:collapse">
+        <thead><tr><th>Экран</th><th>HTML / Vue</th><th>Проверка</th></tr></thead>
+        <tbody>
+          <tr><td>Календарь</td><td><a href="calendar.html">Экран</a> · <a href="calendar.vue">Vue</a></td><td>Перенос дат, вхождение, Undo, отказ</td></tr>
+          <tr><td>Представления</td><td><a href="view-form.html">Форма</a> · <a href="view-form.vue">Vue</a></td><td>Фильтр, JSON, создание, изменение, удаление</td></tr>
+          <tr><td>Вход / регистрация</td><td><a href="gate.html">Экран</a> · <a href="gate.vue">Vue</a></td><td>Тестовые данные, состояния, переход в UX</td></tr>
+          <tr><td>Повтор / удаление</td><td><a href="task-dialogs.html">Диалоги</a> · <a href="task-dialogs.vue">Vue</a></td><td>RRULE, предпросмотр, отказ, отмена, дети</td></tr>
+          <tr><td>Offline / очередь / восстановление</td><td><a href="states.html">Сценарии</a></td><td>Отдельное fixture-хранилище; сервер не вызывается</td></tr>
+        </tbody>
+      </table>
+      <p class="muted">Фактические команды и результаты — в QA.md. Vue compilation/typecheck не заменяют сборку приложения. Нативный focus trap и полная mobile-геометрия требуют отдельной приёмки.</p>
+    </section>
+    <section class="proposal-index" data-od-id="proposal-index">
+      <h2 data-od-id="index-h2-2">Token review complete</h2>
+      <p class="muted">
+        Resolved tokens match the authoritative source byte for byte. Shade
+        overrides and focus-control slots follow Nuxt UI 4.11.3. Status colors
+        carry meaning only; zinc remains the structural palette.
+      </p>
+      <nav class="links" aria-label="List examples" data-od-id="index-nav-3">
+        <a href="list.html#populated">Populated list</a
+        ><a href="list.html#manual">Manual sort & actions</a
+        ><a href="list.html#empty">Empty</a
+        ><a href="list.html#error">Quick-add error</a
+        ><a href="list.html#offline">Offline</a
+        ><a href="list.html#refused">Refusal & update</a
+        ><a href="list.html#toasts">Done / Undo</a
+        ><a href="list.html#sync">Sync inventory</a
+        ><a href="list.html#phone">Phone / Russian</a
+        ><a href="list.vue">Nuxt UI reference</a>
+      </nav>
+    </section>
+    <main class="pair">
+      <section class="theme" data-od-id="tokens-light">
+        <div class="theme-label">Light<span>Nuxt UI 4 · zinc</span></div>
+        <div class="token-body">
+          <section class="token-section" data-od-id="index-section-4">
+            <h2 data-od-id="index-h2-5">Semantic colors</h2>
+            <div class="color-row" data-od-id="light-primary">
+              <span>primary</span
+              ><span class="sample solid" style="--role: var(--ui-primary)"
+                >solid</span
+              ><span class="sample subtle" style="--role: var(--ui-primary)"
+                >subtle</span
+              ><span class="sample" style="--role: var(--ui-primary)"
+                >text</span
+              >
+            </div>
+            <div class="color-row" data-od-id="light-secondary">
+              <span>secondary</span
+              ><span class="sample solid" style="--role: var(--ui-secondary)"
+                >solid</span
+              ><span class="sample subtle" style="--role: var(--ui-secondary)"
+                >subtle</span
+              ><span class="sample" style="--role: var(--ui-secondary)"
+                >text</span
+              >
+            </div>
+            <div class="color-row" data-od-id="light-success">
+              <span>success</span
+              ><span class="sample solid" style="--role: var(--ui-success)"
+                >solid</span
+              ><span class="sample subtle" style="--role: var(--ui-success)"
+                >subtle</span
+              ><span class="sample" style="--role: var(--ui-success)"
+                >text</span
+              >
+            </div>
+            <div class="color-row" data-od-id="light-info">
+              <span>info</span
+              ><span class="sample solid" style="--role: var(--ui-info)"
+                >solid</span
+              ><span class="sample subtle" style="--role: var(--ui-info)"
+                >subtle</span
+              ><span class="sample" style="--role: var(--ui-info)">text</span>
+            </div>
+            <div class="color-row" data-od-id="light-warning">
+              <span>warning</span
+              ><span class="sample solid" style="--role: var(--ui-warning)"
+                >solid</span
+              ><span class="sample subtle" style="--role: var(--ui-warning)"
+                >subtle</span
+              ><span class="sample" style="--role: var(--ui-warning)"
+                >text</span
+              >
+            </div>
+            <div class="color-row" data-od-id="light-error">
+              <span>error</span
+              ><span class="sample solid" style="--role: var(--ui-error)"
+                >solid</span
+              ><span class="sample subtle" style="--role: var(--ui-error)"
+                >subtle</span
+              ><span class="sample" style="--role: var(--ui-error)">text</span>
+            </div>
+            <div class="color-row" data-od-id="light-neutral">
+              <span>neutral</span
+              ><span class="sample solid" style="--role: var(--ui-text-toned)"
+                >solid</span
+              ><span class="sample subtle" style="--role: var(--ui-text-toned)"
+                >subtle</span
+              ><span class="sample" style="--role: var(--ui-text-toned)"
+                >text</span
+              >
+            </div>
+          </section>
+          <section class="token-section" data-od-id="index-section-6">
+            <h2 data-od-id="index-h2-7">Neutral roles</h2>
+            <div class="neutral-grid">
+              <div
+                class="neutral"
+                style="background: var(--ui-bg); color: var(--ui-text-toned)"
+              >
+                <span class="neutral-preview" style="background: var(--ui-bg)"
+                  >Aa</span
+                ><span class="mono">--ui-bg</span><span>Zinc neutral role</span>
+              </div>
+              <div
+                class="neutral"
+                style="
+                  background: var(--ui-bg-muted);
+                  color: var(--ui-text-toned);
+                "
+              >
+                <span
+                  class="neutral-preview"
+                  style="background: var(--ui-bg-muted)"
+                  >Aa</span
+                ><span class="mono">--ui-bg-muted</span
+                ><span>Zinc neutral role</span>
+              </div>
+              <div
+                class="neutral"
+                style="
+                  background: var(--ui-bg-elevated);
+                  color: var(--ui-text-toned);
+                "
+              >
+                <span
+                  class="neutral-preview"
+                  style="background: var(--ui-bg-elevated)"
+                  >Aa</span
+                ><span class="mono">--ui-bg-elevated</span
+                ><span>Zinc neutral role</span>
+              </div>
+              <div
+                class="neutral"
+                style="
+                  background: var(--ui-bg-accented);
+                  color: var(--ui-text-toned);
+                "
+              >
+                <span
+                  class="neutral-preview"
+                  style="background: var(--ui-bg-accented)"
+                  >Aa</span
+                ><span class="mono">--ui-bg-accented</span
+                ><span>Zinc neutral role</span>
+              </div>
+              <div
+                class="neutral"
+                style="
+                  background: var(--ui-bg-inverted);
+                  color: var(--ui-text-inverted);
+                "
+              >
+                <span
+                  class="neutral-preview"
+                  style="
+                    background: var(--ui-bg-inverted);
+                    color: var(--ui-text-inverted);
+                  "
+                  >Aa</span
+                ><span class="mono">--ui-bg-inverted</span
+                ><span>Zinc neutral role</span>
+              </div>
+              <div class="neutral" style="">
+                <span
+                  class="neutral-preview"
+                  style="border-color: var(--ui-border)"
+                  >Aa</span
+                ><span class="mono">--ui-border</span
+                ><span>Zinc neutral role</span>
+              </div>
+              <div class="neutral" style="">
+                <span
+                  class="neutral-preview"
+                  style="border-color: var(--ui-border-muted)"
+                  >Aa</span
+                ><span class="mono">--ui-border-muted</span
+                ><span>Zinc neutral role</span>
+              </div>
+              <div class="neutral" style="">
+                <span
+                  class="neutral-preview"
+                  style="border-color: var(--ui-border-accented)"
+                  >Aa</span
+                ><span class="mono">--ui-border-accented</span
+                ><span>Zinc neutral role</span>
+              </div>
+              <div class="neutral" style="">
+                <span
+                  class="neutral-preview"
+                  style="border-color: var(--ui-border-inverted)"
+                  >Aa</span
+                ><span class="mono">--ui-border-inverted</span
+                ><span>Zinc neutral role</span>
+              </div>
+              <div class="neutral" style="">
+                <span
+                  class="neutral-preview"
+                  style="color: var(--ui-text-dimmed)"
+                  >Aa</span
+                ><span class="mono">--ui-text-dimmed</span
+                ><span>Placeholder / disabled only</span>
+              </div>
+              <div class="neutral" style="">
+                <span
+                  class="neutral-preview"
+                  style="color: var(--ui-text-muted)"
+                  >Aa</span
+                ><span class="mono">--ui-text-muted</span
+                ><span>Zinc neutral role</span>
+              </div>
+              <div class="neutral" style="">
+                <span
+                  class="neutral-preview"
+                  style="color: var(--ui-text-toned)"
+                  >Aa</span
+                ><span class="mono">--ui-text-toned</span
+                ><span>Zinc neutral role</span>
+              </div>
+              <div class="neutral" style="">
+                <span class="neutral-preview" style="color: var(--ui-text)"
+                  >Aa</span
+                ><span class="mono">--ui-text</span
+                ><span>Zinc neutral role</span>
+              </div>
+              <div class="neutral" style="">
+                <span
+                  class="neutral-preview"
+                  style="color: var(--ui-text-highlighted)"
+                  >Aa</span
+                ><span class="mono">--ui-text-highlighted</span
+                ><span>Zinc neutral role</span>
+              </div>
+              <div class="neutral" style="">
+                <span
+                  class="neutral-preview"
+                  style="
+                    color: var(--ui-text-inverted);
+                    background: var(--ui-bg-inverted);
+                  "
+                  >Aa</span
+                ><span class="mono">--ui-text-inverted</span
+                ><span>Zinc neutral role</span>
+              </div>
+            </div>
+          </section>
+          <section class="token-section" data-od-id="index-section-8">
+            <h2 data-od-id="index-h2-9">System typography</h2>
+            <p
+              class="type-row"
+              style="font-size: var(--text-xs); line-height: 16px"
+            >
+              Hints · 12/16
+            </p>
+            <p
+              class="type-row"
+              style="font-size: var(--text-sm); line-height: 20px"
+            >
+              Task titles, body and metadata · 14/20
+            </p>
+            <p
+              class="type-row"
+              style="font-size: var(--text-lg); line-height: 28px"
+            >
+              Panel title · 18/28
+            </p>
+            <p
+              class="type-row"
+              style="font-size: var(--text-xl); line-height: 28px"
+            >
+              Auth heading · 20/28
+            </p>
+            <p class="mono">RRULE · FREQ=DAILY</p>
+          </section>
+          <section class="token-section" data-od-id="index-section-10">
+            <h2 data-od-id="index-h2-11">Shape</h2>
+            <div class="radius-row">
+              <span style="border-radius: var(--radius-sm)">4px</span
+              ><span style="border-radius: var(--radius-md)">6px</span
+              ><span style="border-radius: var(--radius-lg)">8px</span>
+            </div>
+          </section>
+          <section class="token-section" data-od-id="index-section-12">
+            <h2 data-od-id="index-h2-13">Solid focus ring</h2>
+            <div class="focus-row">
+              <button class="focus-demo" data-od-id="focus-button-light">
+                Sync now</button
+              ><input
+                class="focus-demo"
+                aria-label="Focus example light"
+                value="Quick add"
+                data-od-id="index-input-14"
+              />
+            </div>
+          </section>
+          <section class="token-section" data-od-id="index-section-15">
+            <h2 data-od-id="index-h2-16">Measured contrast</h2>
+            <p class="muted">Documented WCAG ratios · AA ≥ 4.5:1</p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Pair</th>
+                  <th>Light</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Body / page</td>
+                  <td>10.46:1</td>
+                </tr>
+                <tr>
+                  <td>Muted / page</td>
+                  <td>4.83:1</td>
+                </tr>
+                <tr>
+                  <td>Muted / muted surface</td>
+                  <td>4.62:1</td>
+                </tr>
+                <tr>
+                  <td>Toned / elevated</td>
+                  <td>7.02:1</td>
+                </tr>
+                <tr>
+                  <td>Primary / page</td>
+                  <td>6.44:1</td>
+                </tr>
+                <tr>
+                  <td>Primary / elevated</td>
+                  <td>5.85:1</td>
+                </tr>
+                <tr>
+                  <td>Inverted / primary</td>
+                  <td>6.44:1</td>
+                </tr>
+                <tr>
+                  <td>Error / subtle</td>
+                  <td>5.33:1</td>
+                </tr>
+                <tr>
+                  <td>Success / subtle</td>
+                  <td>6.07:1</td>
+                </tr>
+                <tr>
+                  <td>Warning / subtle</td>
+                  <td>6.09:1</td>
+                </tr>
+                <tr>
+                  <td>Info / subtle</td>
+                  <td>5.06:1</td>
+                </tr>
+                <tr>
+                  <td>Primary / subtle</td>
+                  <td>5.51:1</td>
+                </tr>
+                <tr>
+                  <td>Info subtle / muted (lowest)</td>
+                  <td>4.85:1</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+          <p class="muted">
+            Muted on elevated is 4.39:1 in light: use toned. Dimmed is for
+            placeholders and disabled controls only.
+          </p>
+        </div>
+      </section>
+      <section class="theme dark" data-od-id="tokens-dark">
+        <div class="theme-label">Dark<span>Nuxt UI 4 · zinc</span></div>
+        <div class="token-body">
+          <section class="token-section" data-od-id="index-section-17">
+            <h2 data-od-id="index-h2-18">Semantic colors</h2>
+            <div class="color-row" data-od-id="dark-primary">
+              <span>primary</span
+              ><span class="sample solid" style="--role: var(--ui-primary)"
+                >solid</span
+              ><span class="sample subtle" style="--role: var(--ui-primary)"
+                >subtle</span
+              ><span class="sample" style="--role: var(--ui-primary)"
+                >text</span
+              >
+            </div>
+            <div class="color-row" data-od-id="dark-secondary">
+              <span>secondary</span
+              ><span class="sample solid" style="--role: var(--ui-secondary)"
+                >solid</span
+              ><span class="sample subtle" style="--role: var(--ui-secondary)"
+                >subtle</span
+              ><span class="sample" style="--role: var(--ui-secondary)"
+                >text</span
+              >
+            </div>
+            <div class="color-row" data-od-id="dark-success">
+              <span>success</span
+              ><span class="sample solid" style="--role: var(--ui-success)"
+                >solid</span
+              ><span class="sample subtle" style="--role: var(--ui-success)"
+                >subtle</span
+              ><span class="sample" style="--role: var(--ui-success)"
+                >text</span
+              >
+            </div>
+            <div class="color-row" data-od-id="dark-info">
+              <span>info</span
+              ><span class="sample solid" style="--role: var(--ui-info)"
+                >solid</span
+              ><span class="sample subtle" style="--role: var(--ui-info)"
+                >subtle</span
+              ><span class="sample" style="--role: var(--ui-info)">text</span>
+            </div>
+            <div class="color-row" data-od-id="dark-warning">
+              <span>warning</span
+              ><span class="sample solid" style="--role: var(--ui-warning)"
+                >solid</span
+              ><span class="sample subtle" style="--role: var(--ui-warning)"
+                >subtle</span
+              ><span class="sample" style="--role: var(--ui-warning)"
+                >text</span
+              >
+            </div>
+            <div class="color-row" data-od-id="dark-error">
+              <span>error</span
+              ><span class="sample solid" style="--role: var(--ui-error)"
+                >solid</span
+              ><span class="sample subtle" style="--role: var(--ui-error)"
+                >subtle</span
+              ><span class="sample" style="--role: var(--ui-error)">text</span>
+            </div>
+            <div class="color-row" data-od-id="dark-neutral">
+              <span>neutral</span
+              ><span class="sample solid" style="--role: var(--ui-text-toned)"
+                >solid</span
+              ><span class="sample subtle" style="--role: var(--ui-text-toned)"
+                >subtle</span
+              ><span class="sample" style="--role: var(--ui-text-toned)"
+                >text</span
+              >
+            </div>
+          </section>
+          <section class="token-section" data-od-id="index-section-19">
+            <h2 data-od-id="index-h2-20">Neutral roles</h2>
+            <div class="neutral-grid">
+              <div
+                class="neutral"
+                style="background: var(--ui-bg); color: var(--ui-text-toned)"
+              >
+                <span class="neutral-preview" style="background: var(--ui-bg)"
+                  >Aa</span
+                ><span class="mono">--ui-bg</span><span>Zinc neutral role</span>
+              </div>
+              <div
+                class="neutral"
+                style="
+                  background: var(--ui-bg-muted);
+                  color: var(--ui-text-toned);
+                "
+              >
+                <span
+                  class="neutral-preview"
+                  style="background: var(--ui-bg-muted)"
+                  >Aa</span
+                ><span class="mono">--ui-bg-muted</span
+                ><span>Zinc neutral role</span>
+              </div>
+              <div
+                class="neutral"
+                style="
+                  background: var(--ui-bg-elevated);
+                  color: var(--ui-text-toned);
+                "
+              >
+                <span
+                  class="neutral-preview"
+                  style="background: var(--ui-bg-elevated)"
+                  >Aa</span
+                ><span class="mono">--ui-bg-elevated</span
+                ><span>Zinc neutral role</span>
+              </div>
+              <div
+                class="neutral"
+                style="
+                  background: var(--ui-bg-accented);
+                  color: var(--ui-text-toned);
+                "
+              >
+                <span
+                  class="neutral-preview"
+                  style="background: var(--ui-bg-accented)"
+                  >Aa</span
+                ><span class="mono">--ui-bg-accented</span
+                ><span>Zinc neutral role</span>
+              </div>
+              <div
+                class="neutral"
+                style="
+                  background: var(--ui-bg-inverted);
+                  color: var(--ui-text-inverted);
+                "
+              >
+                <span
+                  class="neutral-preview"
+                  style="
+                    background: var(--ui-bg-inverted);
+                    color: var(--ui-text-inverted);
+                  "
+                  >Aa</span
+                ><span class="mono">--ui-bg-inverted</span
+                ><span>Zinc neutral role</span>
+              </div>
+              <div class="neutral" style="">
+                <span
+                  class="neutral-preview"
+                  style="border-color: var(--ui-border)"
+                  >Aa</span
+                ><span class="mono">--ui-border</span
+                ><span>Zinc neutral role</span>
+              </div>
+              <div class="neutral" style="">
+                <span
+                  class="neutral-preview"
+                  style="border-color: var(--ui-border-muted)"
+                  >Aa</span
+                ><span class="mono">--ui-border-muted</span
+                ><span>Zinc neutral role</span>
+              </div>
+              <div class="neutral" style="">
+                <span
+                  class="neutral-preview"
+                  style="border-color: var(--ui-border-accented)"
+                  >Aa</span
+                ><span class="mono">--ui-border-accented</span
+                ><span>Zinc neutral role</span>
+              </div>
+              <div class="neutral" style="">
+                <span
+                  class="neutral-preview"
+                  style="border-color: var(--ui-border-inverted)"
+                  >Aa</span
+                ><span class="mono">--ui-border-inverted</span
+                ><span>Zinc neutral role</span>
+              </div>
+              <div class="neutral" style="">
+                <span
+                  class="neutral-preview"
+                  style="color: var(--ui-text-dimmed)"
+                  >Aa</span
+                ><span class="mono">--ui-text-dimmed</span
+                ><span>Placeholder / disabled only</span>
+              </div>
+              <div class="neutral" style="">
+                <span
+                  class="neutral-preview"
+                  style="color: var(--ui-text-muted)"
+                  >Aa</span
+                ><span class="mono">--ui-text-muted</span
+                ><span>Zinc neutral role</span>
+              </div>
+              <div class="neutral" style="">
+                <span
+                  class="neutral-preview"
+                  style="color: var(--ui-text-toned)"
+                  >Aa</span
+                ><span class="mono">--ui-text-toned</span
+                ><span>Zinc neutral role</span>
+              </div>
+              <div class="neutral" style="">
+                <span class="neutral-preview" style="color: var(--ui-text)"
+                  >Aa</span
+                ><span class="mono">--ui-text</span
+                ><span>Zinc neutral role</span>
+              </div>
+              <div class="neutral" style="">
+                <span
+                  class="neutral-preview"
+                  style="color: var(--ui-text-highlighted)"
+                  >Aa</span
+                ><span class="mono">--ui-text-highlighted</span
+                ><span>Zinc neutral role</span>
+              </div>
+              <div class="neutral" style="">
+                <span
+                  class="neutral-preview"
+                  style="
+                    color: var(--ui-text-inverted);
+                    background: var(--ui-bg-inverted);
+                  "
+                  >Aa</span
+                ><span class="mono">--ui-text-inverted</span
+                ><span>Zinc neutral role</span>
+              </div>
+            </div>
+          </section>
+          <section class="token-section" data-od-id="index-section-21">
+            <h2 data-od-id="index-h2-22">System typography</h2>
+            <p
+              class="type-row"
+              style="font-size: var(--text-xs); line-height: 16px"
+            >
+              Hints · 12/16
+            </p>
+            <p
+              class="type-row"
+              style="font-size: var(--text-sm); line-height: 20px"
+            >
+              Task titles, body and metadata · 14/20
+            </p>
+            <p
+              class="type-row"
+              style="font-size: var(--text-lg); line-height: 28px"
+            >
+              Panel title · 18/28
+            </p>
+            <p
+              class="type-row"
+              style="font-size: var(--text-xl); line-height: 28px"
+            >
+              Auth heading · 20/28
+            </p>
+            <p class="mono">RRULE · FREQ=DAILY</p>
+          </section>
+          <section class="token-section" data-od-id="index-section-23">
+            <h2 data-od-id="index-h2-24">Shape</h2>
+            <div class="radius-row">
+              <span style="border-radius: var(--radius-sm)">4px</span
+              ><span style="border-radius: var(--radius-md)">6px</span
+              ><span style="border-radius: var(--radius-lg)">8px</span>
+            </div>
+          </section>
+          <section class="token-section" data-od-id="index-section-25">
+            <h2 data-od-id="index-h2-26">Solid focus ring</h2>
+            <div class="focus-row">
+              <button class="focus-demo" data-od-id="focus-button-dark">
+                Sync now</button
+              ><input
+                class="focus-demo"
+                aria-label="Focus example dark"
+                value="Quick add"
+                data-od-id="index-input-27"
+              />
+            </div>
+          </section>
+          <section class="token-section" data-od-id="index-section-28">
+            <h2 data-od-id="index-h2-29">Measured contrast</h2>
+            <p class="muted">Documented WCAG ratios · AA ≥ 4.5:1</p>
+            <table>
+              <thead>
+                <tr>
+                  <th>Pair</th>
+                  <th>Dark</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Body / page</td>
+                  <td>13.98:1</td>
+                </tr>
+                <tr>
+                  <td>Muted / page</td>
+                  <td>6.74:1</td>
+                </tr>
+                <tr>
+                  <td>Muted / muted surface</td>
+                  <td>5.66:1</td>
+                </tr>
+                <tr>
+                  <td>Toned / elevated</td>
+                  <td>—</td>
+                </tr>
+                <tr>
+                  <td>Primary / page</td>
+                  <td>5.68:1</td>
+                </tr>
+                <tr>
+                  <td>Primary / elevated</td>
+                  <td>4.77:1</td>
+                </tr>
+                <tr>
+                  <td>Inverted / primary</td>
+                  <td>5.68:1</td>
+                </tr>
+                <tr>
+                  <td>Error / subtle</td>
+                  <td>5.39:1</td>
+                </tr>
+                <tr>
+                  <td>Success / subtle</td>
+                  <td>8.35:1</td>
+                </tr>
+                <tr>
+                  <td>Warning / subtle</td>
+                  <td>8.50:1</td>
+                </tr>
+                <tr>
+                  <td>Info / subtle</td>
+                  <td>6.94:1</td>
+                </tr>
+                <tr>
+                  <td>Primary / subtle</td>
+                  <td>4.97:1</td>
+                </tr>
+                <tr>
+                  <td>Info subtle / muted (lowest)</td>
+                  <td>—</td>
+                </tr>
+              </tbody>
+            </table>
+          </section>
+          <p class="muted">
+            Muted on elevated is 4.39:1 in light: use toned. Dimmed is for
+            placeholders and disabled controls only.
+          </p>
+        </div>
+      </section>
+    </main>
+    <footer class="footer">
+      Proposal, not shipped · Tokens copied verbatim from
+      docs/design/tokens.css. Ratios from DESIGN.md; a dash means the source did
+      not publish a measurement. No remote assets.
+    </footer>
+  </body>
+</html>

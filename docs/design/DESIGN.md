@@ -95,8 +95,8 @@ its departure 5 (system fonts), and the maintainer's direction of 2026-10-02
 | `secondary`    | `zinc`   | not used; mapped to grey so an accidental use cannot add a second accent |
 | `success`      | `green`  | the completing column's mark, done states                              |
 | `info`         | `sky`    | the update prompt, priority `p2`                                       |
-| `warning`      | `amber`  | offline, a view with a problem, priority `p3`                          |
-| `error`        | `red`    | refusals, sync problem, destructive buttons, priority `p4`             |
+| `warning`      | `amber`  | offline, a view with a problem, priority `p1`                          |
+| `error`        | `red`    | refusals, sync problem, destructive buttons, priority `p0`             |
 | `neutral`      | `zinc`   | every surface, border and text role                                    |
 
 Nuxt UI points `--ui-<colour>` at shade 500 in light mode and 400 in dark.
@@ -137,17 +137,23 @@ Nuxt UI's defaults on the `zinc` palette, unchanged:
 
 ### Semantic roles in todoer
 
-**Priority.** `p4` is the strongest (views design, decision 4: sort by
-priority puts 4 first). A badge always shows the text `pN`; colour only
-reinforces it.
+**Priority.** User decision 2026-10-03: P0 is highest, P4 is lowest.
+Sort ascending (0 first). P0 is a real priority, never “none”; every value
+has a visible `pN` badge. Core currently uses the previous descending scale;
+implement the shared semantic change before porting these badges.
 
-| Priority | Badge                              | Note                              |
-| -------- | ---------------------------------- | --------------------------------- |
-| `p4`     | `color="error" variant="subtle"`   | urgent                            |
-| `p3`     | `color="warning" variant="subtle"` |                                   |
-| `p2`     | `color="info" variant="subtle"`    |                                   |
-| `p1`     | `color="neutral" variant="subtle"` |                                   |
-| `p0`     | no badge                           | "none"; today's rows already omit it |
+| Priority | Badge | Meaning |
+| --- | --- | --- |
+| `p0` | `color="error" variant="subtle"` | highest |
+| `p1` | `color="warning" variant="subtle"` | high |
+| `p2` | `color="info" variant="subtle"` | medium |
+| `p3` | `color="neutral" variant="subtle"` | low |
+| `p4` | `color="neutral" variant="subtle"` | lowest |
+
+**Language.** One RU/EN switch displays both labels and the current state.
+RU selected means Russian; EN selected means English. Keyboard focus and
+an accessible localized language name are required; the switch must not
+show only the destination language.
 
 **Status columns.** Status names are the user's own, so they get no colour.
 A column header is `text-highlighted` with a muted count. The completing

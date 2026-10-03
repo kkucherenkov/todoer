@@ -1,0 +1,2 @@
+[1003/221812.707717:ERROR:electron/shell/common/mac/codesign_util.cc:79] task_name_for_pid: (os/kern) failure (5)
+PASS 1614 scoped assertions; 5 entry pages × EN/RU × light/dark × 1366/390; header SFC compile
