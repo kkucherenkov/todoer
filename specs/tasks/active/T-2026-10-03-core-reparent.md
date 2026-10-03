@@ -56,7 +56,7 @@ for it, and a refused indent must not reach the outbox.
 ### Steps
 
 - [x] T001 [FR-001] [FR-002] [FR-003] `reparent` — plan Task 1
-- [ ] T002 [P] [FR-005] two stores, one file — plan Task 2
+- [x] T002 [P] [FR-005] two stores, one file — plan Task 2
 - [ ] T003 [FR-004] engine write kind, after T0 merges — plan Task 3
 - [ ] T004 documents, gates, PR — plan Task 4
 - **Checkpoint:** the TUI can call `engine.handle({ kind: 'reparent', … })`
