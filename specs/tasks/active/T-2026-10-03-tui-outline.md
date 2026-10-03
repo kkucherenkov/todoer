@@ -70,7 +70,7 @@ stub with that outline.
 
 - [x] T001 [FR-001] [FR-002] [FR-003] [FR-004] outline rows, indent target,
       move anchor — `apps/tui/src/outline-tree.ts` (plan Task 1)
-- [ ] T002 [FR-001]–[FR-006] the outline pane — `apps/tui/src/outline.tsx`
+- [x] T002 [FR-001]–[FR-006] the outline pane — `apps/tui/src/outline.tsx`
       (plan Task 2)
 - [ ] T003 by-hand run against a live backend (plan Task 3)
 - [ ] T004 documents, gates, PR (plan Task 4)
@@ -85,6 +85,26 @@ stub with that outline.
 2. `parentIn(items, item)` is not exported: nothing outside `outline-tree.ts`
    needs it, and the plan's version scanned `items` once per item. A private
    `parentsOf(items)` builds the set of listed ids once.
+3. The plan's render spec used ids like `'alpha'`; the engine finds a task by
+   uuid or a hex id suffix, so `x` on such a row was refused. The spec mints
+   uuids and names tasks by title. Its sorted view's filter is `{ and: [] }`:
+   `{ all: [] }` (as in `app.spec.tsx`) is an invalid filter, and the view
+   then shows nothing.
+4. The cursor follows its task by id instead of `setAt(i + step)` after a
+   move. A top-level task moving past a sibling with subtasks travels more
+   than one row, and before any `j`/`k` the index pointed at whatever row
+   came first after the write (`J` then `K` moved nothing). It is pinned to
+   the task under it on every key; a task that leaves the view leaves the
+   cursor at the same place.
+5. `j`/`k` and the arrows skip `key.meta`: in the plan the `j` branch came
+   first and took `Alt-↓`, so `Alt-↓`/`Alt-↑` never moved a task.
+6. Shift-Tab also matches `input === '\u001b[Z'`, as the plan's note
+   allowed for terminals that do not set `shift`.
+7. The add line closes only when the write is taken (the plan's constraint;
+   its code closed before the write).
+8. More tests than the plan's: `o`, `O` on a subtask adds a sibling, a refused
+   `O` keeps its text, `Tab` on the first row, `J` in a sorted view writes
+   nothing, `Alt-↓`/`Alt-↑`, and `x` on a subtask row (FR-006).
 
 ### Open questions
 

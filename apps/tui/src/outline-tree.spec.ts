@@ -5,21 +5,20 @@ import { indentTarget, moveAfter, outline } from './outline-tree.js';
 const item = (
   id: string,
   extra: Partial<Item> & { parentId?: string } = {},
-): Item =>
-  ({
-    id,
-    title: id,
-    ref: id,
-    occurrence: null,
-    project: null,
-    tags: [],
-    status: null,
-    column: null,
-    closed: false,
-    parentTitle: null,
-    subtasks: null,
-    ...extra,
-  }) as Item;
+): Item => ({
+  id,
+  title: id,
+  ref: id,
+  occurrence: null,
+  project: null,
+  tags: [],
+  status: null,
+  column: null,
+  closed: false,
+  parentTitle: null,
+  subtasks: null,
+  ...extra,
+});
 
 describe('outline', () => {
   const items = [
