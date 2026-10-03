@@ -1,8 +1,4 @@
-import {
-  execFileSync,
-  spawn,
-  type ChildProcessWithoutNullStreams,
-} from 'node:child_process';
+import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process';
 import { chmodSync, mkdirSync, mkdtempSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -10,7 +6,10 @@ import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import type { Store } from '@todoer/client-core';
 import type { Op } from '@todoer/specs';
-import { openStore, retryOnBusy } from './store.js';
+import {
+  openReplica as openStore,
+  retryOnBusy,
+} from '@todoer/client-core/node-sqlite';
 
 let dir: string;
 let open: Store[];
@@ -147,15 +146,12 @@ describe('retryOnBusy', () => {
 // does not exist yet all race to switch it to WAL, which needs a momentary
 // exclusive lock that `DatabaseSync`'s own `timeout` does not reliably cover
 // (an upstream node:sqlite/SQLite quirk). This must exercise the real,
-// compiled `openStore` under real OS-process concurrency — an in-process
+// compiled `openReplica` under real OS-process concurrency — an in-process
 // fake or a hand-rolled `node:sqlite` script proves nothing about the actual
-// bug. `tsc` builds `store.js` once up front (a few hundred ms) into a
-// directory of its own — not `dist/`, which turbo's `@todoer/cli#build` may be
-// writing at the same moment — then each attempt spawns a fresh `node`
-// process that imports the built `Store` and opens a brand-new file, matching
-// the CLI's own first run. The emitted `store.js` imports only `node:*`,
-// `@todoer/client-core` and `@todoer/client-core/node-sqlite`; `@todoer/specs` is type-only and erased. The build
-// directory sits under `node_modules/` so that bare specifier resolves.
+// bug. It lives in `@todoer/client-core/node-sqlite`, whose `dist/` turbo's
+// `^build` has written before this runs; each attempt spawns a fresh `node`
+// process that imports that built entry and opens a brand-new file, matching
+// the CLI's own first run.
 //
 // A plain "spawn 20 processes and hope" mostly measures process-startup
 // jitter, not the lock race: by the time each child reaches `openStore`,
@@ -166,30 +162,17 @@ describe('retryOnBusy', () => {
 // first and failed on a loaded CI runner (8 of 20 workers started in
 // time): a pipe releases them together however slow the machine is.
 describe('parallel first opens (openStore under real concurrency)', () => {
-  const cliDir = fileURLToPath(new URL('..', import.meta.url));
-  let outDir: string;
-
-  beforeEach(() => {
-    outDir = mkdtempSync(join(cliDir, 'node_modules', 'todoer-build-'));
-  });
-
-  afterEach(() => {
-    rmSync(outDir, { recursive: true, force: true });
-  });
-
   it('never leaves SQLITE_BUSY unhandled when many processes race to create the file', () => {
-    execFileSync(
-      join(cliDir, 'node_modules', '.bin', 'tsc'),
-      ['-p', 'tsconfig.build.json', '--outDir', outDir],
-      { cwd: cliDir, stdio: 'pipe' },
+    // The built entry turbo's `^build` produced before this test ran.
+    const storeDist = fileURLToPath(
+      import.meta.resolve('@todoer/client-core/node-sqlite'),
     );
-    const storeDist = join(outDir, 'store.js');
 
     // `readSync` on the stdin pipe blocks until the parent writes; a
     // non-blocking descriptor answers EAGAIN instead, which is retried.
     const workerScript = `
         import { readSync, writeSync } from 'node:fs';
-        import { openStore } from ${JSON.stringify(storeDist)};
+        import { openReplica as openStore } from ${JSON.stringify(storeDist)};
         const dbPath = process.argv[1];
         writeSync(1, 'ready\\n');
         const buffer = Buffer.alloc(1);

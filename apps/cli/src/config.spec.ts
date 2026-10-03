@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { readConfig } from './config.js';
 import { UsageError } from '@todoer/client-core';
+import { readConfig } from '@todoer/client-core/node-sqlite';
 
 describe('readConfig', () => {
   it('defaults the URL, the token and the timeout', () => {
