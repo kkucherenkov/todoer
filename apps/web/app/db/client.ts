@@ -2,7 +2,6 @@
 import { shallowRef, type ShallowRef } from 'vue';
 import type {
   Command,
-  FromWorker,
   Result,
   Span,
   ToWorker,
@@ -11,7 +10,7 @@ import type {
   Write,
 } from '@todoer/client-core';
 import { id as mintId, opId as mintOpId } from './mint';
-import { CHANNEL } from './protocol';
+import { CHANNEL, leaderLock, type FromLeader } from './protocol';
 
 /** A write as a screen asks for it: the ids are minted here, once. A create
  *  may name its own `id` (to open it right away). */
@@ -52,6 +51,11 @@ const unavailable = (detail: string): Result => ({
 
 type Unstamped<T> = T extends unknown ? Omit<T, 'build'> : never;
 
+const held = async (leader: string) =>
+  (await navigator.locks.query()).held?.some(
+    (lock) => lock.name === leaderLock(leader),
+  ) ?? false;
+
 /** This tab's side of the protocol, leader or follower alike. */
 export function connect(
   build: string,
@@ -85,8 +89,33 @@ export function connect(
   const postWatch = (command: Command & { kind: 'watch' }) =>
     post({ type: 'request', tab, id: ++lastId, command });
 
-  channel.onmessage = ({ data: m }: MessageEvent<FromWorker>) => {
+  // The leader this tab hears. Terminating a worker only asks its thread to
+  // stop, so the worker of a page that is gone may still answer the next
+  // page's hello with its own session. Its page released the leader's lock,
+  // so a tab hears a new leader only once that lock is seen held, and holds
+  // back what arrives meanwhile, in order.
+  let leader: string | undefined;
+  const gone = new Set<string>();
+  let checking: FromLeader[] | undefined;
+  const receive = (m: FromLeader) => {
     if (m.build !== build) return void (stale.value = true);
+    if (checking !== undefined) return void checking.push(m);
+    if (m.leader === leader) return handle(m);
+    if (gone.has(m.leader)) return;
+    checking = [m];
+    void held(m.leader)
+      .catch(() => false)
+      .then((live) => {
+        if (live) leader = m.leader;
+        else gone.add(m.leader);
+        const waited = checking!;
+        checking = undefined;
+        waited.forEach(receive);
+      });
+  };
+  channel.onmessage = ({ data }: MessageEvent<FromLeader>) => receive(data);
+
+  const handle = (m: FromLeader) => {
     switch (m.type) {
       case 'ready':
         // A worker (re)started: whatever it never saw goes again, what

@@ -1,13 +1,38 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import {
+  afterAll,
+  afterEach,
+  beforeAll,
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
 import { connect, type Db } from './client';
 import type { FromWorker, Span, ToWorker } from '@todoer/client-core';
-import { CHANNEL } from './protocol';
+import { CHANNEL, leaderLock } from './protocol';
 
 const BUILD = 'b1';
+/** A leader whose lock is held for the whole file, as a live page holds it. */
+const LIVE = 'live-leader';
 const pause = (ms = 10) => new Promise((resolve) => setTimeout(resolve, ms));
 
 let db: Db | undefined;
 let worker: BroadcastChannel | undefined;
+let release: () => void;
+
+beforeAll(async () => {
+  await new Promise<void>((granted) => {
+    void navigator.locks.request(
+      leaderLock(LIVE),
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+          granted();
+        }),
+    );
+  });
+});
+afterAll(() => release());
 
 afterEach(() => {
   db?.close();
@@ -16,16 +41,20 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-/** A worker stand-in: a second channel object, answering what it is told. */
-function fakeWorker(answer?: (m: ToWorker) => FromWorker | undefined) {
+/** A worker stand-in: a second channel object, answering what it is told,
+ *  every message stamped with its leader's id. */
+function fakeWorker(
+  answer?: (m: ToWorker) => FromWorker | undefined,
+  leader = LIVE,
+) {
   const seen: ToWorker[] = [];
   worker = new BroadcastChannel(CHANNEL);
   worker.onmessage = ({ data }: MessageEvent<ToWorker>) => {
     seen.push(data);
     const reply = answer?.(data);
-    if (reply !== undefined) worker!.postMessage(reply);
+    if (reply !== undefined) post(reply);
   };
-  const post = (m: FromWorker) => worker!.postMessage(m);
+  const post = (m: FromWorker) => worker!.postMessage({ ...m, leader });
   return { seen, post };
 }
 
@@ -164,6 +193,69 @@ describe('connect', () => {
         'https://example.com',
       ),
     );
+  });
+});
+
+describe('the leader a tab listens to', () => {
+  const signedIn = {
+    type: 'publish',
+    topic: 'session',
+    value: { state: 'signed-in', reason: null },
+    build: BUILD,
+  } as const;
+
+  it("ignores a worker whose page is gone: its leader's lock is not held", async () => {
+    // A reload: the old page's worker answers the new page's hello.
+    const { post } = fakeWorker(
+      (m) => (m.type === 'hello' ? signedIn : undefined),
+      'gone-leader',
+    );
+    db = connect(BUILD);
+    post({
+      type: 'publish',
+      topic: 'summary',
+      value: { tasks: 3 },
+      build: BUILD,
+    });
+    await pause(50);
+    expect(db.topics.session.value).toBeUndefined();
+    expect(db.topics.summary.value).toBeUndefined();
+  });
+
+  it('switches to a leader whose lock is held, and stays off the gone one', async () => {
+    db = connect(BUILD);
+    const gone = fakeWorker(undefined, 'gone-leader');
+    gone.post(signedIn);
+    const live = fakeWorker((m) =>
+      m.type === 'hello'
+        ? { ...signedIn, value: { state: 'restoring', reason: null } }
+        : undefined,
+    );
+    live.post({ type: 'ready', build: BUILD });
+    await vi.waitFor(() =>
+      expect(db!.topics.session.value).toEqual({
+        state: 'restoring',
+        reason: null,
+      }),
+    );
+    gone.post(signedIn);
+    await pause(50);
+    expect(db.topics.session.value?.state).toBe('restoring');
+  });
+
+  it('keeps the order of what arrives while it checks a new leader', async () => {
+    const { post } = fakeWorker();
+    db = connect(BUILD);
+    for (const tasks of [1, 2, 3]) {
+      post({
+        type: 'publish',
+        topic: 'summary',
+        value: { tasks },
+        build: BUILD,
+      });
+    }
+    await pause(50);
+    expect(db.topics.summary.value).toEqual({ tasks: 3 });
   });
 });
 
