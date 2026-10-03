@@ -2,9 +2,11 @@
 
 - Created: 2026-10-03
 - Owner: claude
-- Status: in-progress
+- Status: done
 - Blockers: —
-- Result: https://github.com/kkucherenkov/todoer/pull/30
+- Completed: 2026-10-03
+- Result: https://github.com/kkucherenkov/todoer/pull/30 (merged fc27fa5;
+  its CI e2e went green once #40 fixed the reload race)
 - Spec: maintainer request, 2026-10-03 — strict TypeScript everywhere;
   `@nuxt/eslint` chosen by the maintainer
 - Plan: [docs/plans/2026-10-03-plan-web-strict-types.md](../../../docs/plans/2026-10-03-plan-web-strict-types.md)
