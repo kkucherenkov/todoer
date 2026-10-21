@@ -508,5 +508,7 @@ test('calendar: Undo of a moved copy names why it cannot', async ({
   await expect(
     page.locator('[data-slot="description"]', { hasText: 'is gone' }),
   ).toBeVisible();
+  // That cannot pass any more: no Undo is offered again.
+  await expect(page.getByRole('button', { name: 'Undo' })).toHaveCount(0);
   await expect(chip(page, target, 'Water plants')).toHaveCount(1);
 });

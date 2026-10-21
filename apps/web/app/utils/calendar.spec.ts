@@ -8,6 +8,7 @@ import {
   gridSpan,
   placeWrite,
   shift,
+  undoable,
   weekday,
 } from './calendar';
 import { watchView } from './layout';
@@ -258,5 +259,18 @@ describe('a calendar across local midnight', () => {
     const { before, after } = await run({ mode: 'week', at: '2026-10-21' });
     expect(after.today).toBe('2026-10-26');
     expect(after.span).toEqual(before.span);
+  });
+});
+
+describe('undoable', () => {
+  it.each([
+    ['invalid', 'task c is not synced yet', true],
+    ['invalid', 'task c has subtasks', true],
+    ['unreachable', 'timeout', true],
+    ['invalid', 'the original task of c is gone', false],
+    ['invalid', 'no task c', false],
+    ['invalid', 'task c is not a moved occurrence', false],
+  ] as const)('%s "%s" → %s', (kind, detail, expected) => {
+    expect(undoable({ kind, detail })).toBe(expected);
   });
 });

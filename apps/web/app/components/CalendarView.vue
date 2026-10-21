@@ -93,9 +93,9 @@ async function move(p: Placement, to: string): Promise<boolean> {
   return true;
 }
 
-/** A toast with Undo. A refused Undo (a copy not synced yet, one with
- *  subtasks, one whose original is gone) is the failure toast with the same
- *  Undo again, so it can succeed once the reason is gone. */
+/** A toast with Undo. A refused Undo is the failure toast; when the
+ *  refusal can pass (a copy not synced yet, one with subtasks) it carries
+ *  the same Undo again, so it succeeds once the reason is gone. */
 function offerUndo(
   shown: { title: string; description: string; color?: 'error' },
   undo: Write,
@@ -108,6 +108,7 @@ function offerUndo(
         onClick: () =>
           void db.write(undo).then((result) => {
             if (result.ok) return;
+            if (!undoable(result.failure)) return fail(result);
             offerUndo(
               {
                 color: 'error',

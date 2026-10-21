@@ -1,4 +1,10 @@
-import type { Item, Placement, Span, Write } from '@todoer/client-core';
+import type {
+  Failure,
+  Item,
+  Placement,
+  Span,
+  Write,
+} from '@todoer/client-core';
 import type { Draft } from '../db/client';
 
 export type Mode = 'week' | 'month';
@@ -103,3 +109,11 @@ export function placeWrite(
     }),
   };
 }
+
+/** Whether a refused Undo of a move can succeed later, and so is offered
+ *  again: the copy may still sync or lose its subtasks, the worker or the
+ *  server may answer next time. A copy or an original that is gone, or a
+ *  task that is not a moved copy, never comes back. */
+export const undoable = (failure: Failure): boolean =>
+  failure.kind !== 'invalid' ||
+  /not synced yet|has subtasks/.test(failure.detail);
