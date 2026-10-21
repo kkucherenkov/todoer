@@ -92,7 +92,7 @@ or silently add dates to make a new task fit the current preset.
 - [ ] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
 - [x] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] dnote changelog line
 
 ### Steps
 
