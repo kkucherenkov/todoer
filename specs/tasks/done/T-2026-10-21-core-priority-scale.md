@@ -2,7 +2,7 @@
 
 - Created: 2026-10-21
 - Owner: claude
-- Status: in-progress
+- Status: done
 - Blockers: —
 - Spec: maintainer request, 2026-10-03 — P0 highest, P4 lowest; maintainer
   decision, 2026-10-21 — change the stored values, not only their display;
@@ -71,12 +71,15 @@ change once, for every client at the same time.
 
 - **SC-001** After the migration, the dev database's tasks and views list the
   same tasks in the same order in the CLI, the TUI and the web, with P0 on
-  the most urgent ones.
-- [ ] every FR has a test that failed before the code made it pass
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+  the most urgent ones. Checked on the data: the dev database migrated
+  (186 tasks, none left on the old scale, no priority views); the three
+  clients' ordering is covered by the core sort spec and the TUI and web
+  specs, not by a manual side-by-side run.
+- [x] every FR has a test that failed before the code made it pass
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 

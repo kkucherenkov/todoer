@@ -2,7 +2,7 @@
 
 - **Date:** 2026-10-21
 - **Status:** approved by the maintainer, 2026-10-21; [ADR 0019](../adr/0019-p0-is-the-highest-priority.md)
-- **Task:** [`T-2026-10-21-core-priority-scale`](../../specs/tasks/active/T-2026-10-21-core-priority-scale.md)
+- **Task:** [`T-2026-10-21-core-priority-scale`](../../specs/tasks/done/T-2026-10-21-core-priority-scale.md)
   (C0 of the [web redesign plan](../plans/2026-10-03-plan-web-ux-redesign.md))
 
 ## Why

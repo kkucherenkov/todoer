@@ -8,7 +8,7 @@
 
 **Tech Stack:** Prisma 6 / PostgreSQL 18, TypeScript, vitest, Ink (TUI), Nuxt 4 (web).
 
-**Spec:** `docs/specs/2026-10-21-priority-scale-design.md`, ADR 0019, task `specs/tasks/active/T-2026-10-21-core-priority-scale.md`.
+**Spec:** `docs/specs/2026-10-21-priority-scale-design.md`, ADR 0019, task `specs/tasks/done/T-2026-10-21-core-priority-scale.md`.
 
 ## Global Constraints
 
@@ -115,7 +115,7 @@ Expected: PASS; check prints nothing and exits 0.
 **Files:**
 - Modify: `apps/cli/src/usage.ts:76` → `p0..p4      priority, p0 the highest; p4 when none is given`
 - Modify: `docs/specs/2026-09-25-domain-and-sync-design.md:76` and `docs/specs/2026-10-01-views-design.md:301`: add a line noting ADR 0019 superseded the old scale (do not rewrite the history)
-- Modify: `specs/tasks/active/T-2026-10-21-core-priority-scale.md` steps T002–T005 ticked with what landed
+- Modify: `specs/tasks/done/T-2026-10-21-core-priority-scale.md` steps T002–T005 ticked with what landed
 - Test: `apps/cli/src/*.spec.ts` that snapshot usage text, if any
 
 - [ ] **Step 1:** `ugrep -rn "p0..p4" apps/cli/src` and update any usage snapshot spec first; run `pnpm -w exec turbo run build test --filter=@todoer/cli...` → FAIL if a snapshot exists.
