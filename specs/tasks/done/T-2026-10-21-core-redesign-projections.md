@@ -2,10 +2,12 @@
 
 - Created: 2026-10-21
 - Owner: antigravity
-- Status: in-review
+- Status: done
+- Completed: 2026-10-21
+- Result: https://github.com/kkucherenkov/todoer/pull/48
 - Blockers: —
 - Spec: [web redesign plan](../../../docs/plans/2026-10-03-plan-web-ux-redesign.md),
-  task C1; [T-2026-10-03-web-redesign-context](T-2026-10-03-web-redesign-context.md)
+  task C1; [T-2026-10-03-web-redesign-context](../active/T-2026-10-03-web-redesign-context.md)
   FR-001, FR-004
 - Plan: none; the steps below are the whole change
 
