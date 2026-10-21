@@ -649,3 +649,20 @@ test('list: a subtask added under a folded parent unfolds it', async ({
   await expect(toggle(page, 'Trip')).toHaveAttribute('aria-expanded', 'true');
   await expect(row(page, 'Tickets')).toBeVisible();
 });
+
+test('list: a long title wraps on a phone instead of being cut off', async ({
+  page,
+  account,
+  cli,
+}) => {
+  const long =
+    'Prepare the quarterly report for the board with every appendix, the reviewed budget and the notes';
+  await cli(account.token, 'add', long);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  const title = page.getByTestId('task-title');
+  await expect(title).toHaveText(long);
+  expect(await title.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
+    true,
+  );
+});
