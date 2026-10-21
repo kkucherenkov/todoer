@@ -234,8 +234,10 @@ ordinary one-off task.
   saved view is. The keys are exported from `engine-protocol.ts` as `ALL`,
   `TODAY`, `UPCOMING` and `PROJECT_PREFIX`. The `catalog` topic carries
   `nav: {key, count}[]`: `all`, `today`, `upcoming`, then each live project in
-  the catalog's project order, each count the open tasks that entry's list
-  shows, subtasks included (each is its own row) and each task once. Items and
+  the catalog's project order, each count the number of open tasks matching
+  that entry's filter, subtasks included, each task once. Children shown under
+  an expanded parent only because they are its `children` (outside the filter)
+  are not counted. Items and
   counts use the publishing call's local today, so the next publish after
   midnight carries the new date. Signed out, `nav` is empty.
 

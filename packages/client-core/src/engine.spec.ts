@@ -5,7 +5,7 @@ import {
   type CookieTokenSource,
 } from './auth.js';
 import { localDate } from './occurrence.js';
-import { ALL_OPEN, taskDetails, viewTasks } from './operations.js';
+import { ALL_OPEN, boardTasks, taskDetails, viewTasks } from './operations.js';
 import { RefusalError } from './protocol.js';
 import type { AccessGrant, Store } from './store.js';
 import type { Transport } from './sync.js';
@@ -27,7 +27,11 @@ import type { Result, ToWorker, Topic, Topics } from './engine-protocol.js';
 // A spy that calls through, so one test can make a computation throw.
 vi.mock('./operations.js', async (original) => {
   const actual = await original<typeof import('./operations.js')>();
-  return { ...actual, taskDetails: vi.fn(actual.taskDetails) };
+  return {
+    ...actual,
+    taskDetails: vi.fn(actual.taskDetails),
+    boardTasks: vi.fn(actual.boardTasks),
+  };
 });
 
 type Op = Parameters<Store['enqueue']>[0];
@@ -121,6 +125,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.mocked(taskDetails).mockReset();
+  vi.mocked(boardTasks).mockReset();
   vi.restoreAllMocks();
   store.close();
   vi.unstubAllGlobals();
@@ -1040,6 +1045,22 @@ describe('publication that throws', () => {
     expect(titles('all')).toContain('milk');
     expect(last('task')).toEqual({ id: BAD, task: null });
     expect(error).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a saved kanban view's layout on the problem it publishes", async () => {
+    const V = uuid(0x71);
+    const srv = server(TODO, viewRow(V, { layout: 'kanban' }), taskRow(1));
+    const e = await signedIn(srv);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(boardTasks).mockImplementation(() => {
+      throw new Error('boom');
+    });
+    await e.handle({ kind: 'watch', view: V, task: null }, 'A');
+    expect(lastView(V)).toMatchObject({
+      problem: 'unavailable',
+      layout: 'kanban',
+      items: [],
+    });
   });
 });
 

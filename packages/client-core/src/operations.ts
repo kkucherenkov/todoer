@@ -1341,24 +1341,27 @@ export function catalog(store: Store, today: string): Catalog {
     .sort(byName)
     .map((p) => ({ id: String(p.id), name: String(p.name) }));
   const projectIds = projectList.map((p) => p.id);
-  // ponytail: one full projection per nav entry per publish (3 + projects
-  // passes over the replica); memoise per store change when it shows in a
-  // profile (tuxedo 418).
-  const nav = [
-    ALL,
-    TODAY,
-    UPCOMING,
-    ...projectIds.map((id) => PROJECT_PREFIX + id),
-  ].map((key) => {
-    const spec = builtInView(key, projectIds) as ViewSpec;
-    // A list row per task, subtasks included: the length is the count.
+  // One pass over the replica, then a filter per entry: the same rows
+  // viewTasks lists, one per open task, subtasks included.
+  // ponytail: still recomputed on every publish; memoise per store change
+  // when it shows in a profile (tuxedo 418).
+  const listed = due(store, today);
+  const count = (spec: ViewSpec) =>
     // A project id the filter refuses would throw: it counts nothing.
-    const count =
-      filterProblem(spec.filter) === null
-        ? viewTasks(store, today, spec).length
-        : 0;
-    return { key, count };
-  });
+    filterProblem(spec.filter) === null
+      ? listed.filter(({ facts }) =>
+          matches(spec.filter as Filter, facts, today),
+        ).length
+      : 0;
+  const nav = [
+    { key: ALL, count: count(ALL_OPEN) },
+    { key: TODAY, count: count(TODAY_OPEN) },
+    { key: UPCOMING, count: count(UPCOMING_OPEN) },
+    ...projectIds.map((id) => ({
+      key: PROJECT_PREFIX + id,
+      count: count(projectView(id)),
+    })),
+  ];
   return {
     views: listViews(store).map((v) => ({
       id: String(v.id),

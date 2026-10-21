@@ -291,7 +291,14 @@ export function createEngine({
       guard(
         `view:${key}`,
         () => publishView(key, span, layout, cat, today),
-        () => problemView(key, 'unavailable', today, span, layout ?? 'list'),
+        () =>
+          problemView(
+            key,
+            'unavailable',
+            today,
+            span,
+            layout ?? validLayout(viewSpec(key, cat)?.layout) ?? 'list',
+          ),
       );
     }
     for (const id of new Set(tasks)) {
