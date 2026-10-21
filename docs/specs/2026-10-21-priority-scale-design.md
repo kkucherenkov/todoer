@@ -1,7 +1,7 @@
 # Priority scale: P0 is the highest
 
 - **Date:** 2026-10-21
-- **Status:** draft, awaiting the maintainer's review
+- **Status:** approved by the maintainer, 2026-10-21; [ADR 0019](../adr/0019-p0-is-the-highest-priority.md)
 - **Task:** [`T-2026-10-21-core-priority-scale`](../../specs/tasks/active/T-2026-10-21-core-priority-scale.md)
   (C0 of the [web redesign plan](../plans/2026-10-03-plan-web-ux-redesign.md))
 
@@ -141,4 +141,3 @@ checkpoint, not automated:
   (seed through SQL after `migrate reset` to the previous migration, or
   another way that fits the backend's test setup).
 - Splitting the work into PRs, as long as no merged state has two scales.
-- Writing ADR 0019 from this document once it is approved.

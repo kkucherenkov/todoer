@@ -2,7 +2,7 @@
 
 - Created: 2026-10-21
 - Owner: claude
-- Status: draft
+- Status: ready
 - Blockers: —
 - Spec: maintainer request, 2026-10-03 — P0 highest, P4 lowest; maintainer
   decision, 2026-10-21 — change the stored values, not only their display;
@@ -81,7 +81,7 @@ change once, for every client at the same time.
 ### Steps
 
 - [x] T001 [FR-001–005] Design doc — `docs/specs/2026-10-21-priority-scale-design.md`;
-  ADR 0019 is written from it once approved
+  ADR 0019 — `docs/adr/0019-p0-is-the-highest-priority.md`
 - [ ] T002 [FR-001] Migration of tasks and the default, failing-first DB spec
   — `apps/backend/prisma/`
 - [ ] T003 [FR-002] Filter rewrite, failing-first spec per filter shape —
