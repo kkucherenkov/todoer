@@ -55,9 +55,9 @@ publish the proven image, so the NAS stack only names a version and pulls.
 
 ### Steps
 
-- [ ] T001 [FR-001, FR-004] The compose `app` service names its image;
+- [x] T001 [FR-001, FR-004] The compose `app` service names its image;
   the Dockerfile labels its source — `docker/compose.yml`, `Dockerfile`
-- [ ] T002 [FR-001, FR-002, FR-003] Release workflow —
+- [x] T002 [FR-001, FR-002, FR-003] Release workflow —
   `.github/workflows/release.yml`
-- [ ] T003 README: running a released image on the NAS — `README.md`
+- [x] T003 README: running a released image on the NAS — `README.md`
 - **Checkpoint:** a `workflow_dispatch` run on `main` is green.

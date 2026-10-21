@@ -76,6 +76,14 @@ jobs:
           grep -q 'id="__nuxt"' index.html
           grep -qi '^content-security-policy:' headers.txt
 
+      # GHCR links the package to the repository through this label.
+      - name: Check the source label
+        env:
+          SEMVER: ${{ steps.version.outputs.semver }}
+        run: |
+          test "$(docker inspect -f '{{ index .Config.Labels "org.opencontainers.image.source" }}' "$IMAGE:$SEMVER")" \
+            = https://github.com/kkucherenkov/todoer
+
       - name: Show the container's log
         if: always()
         run: docker compose -f docker/compose.yml --profile app logs app
@@ -84,8 +92,10 @@ jobs:
         if: github.event_name != 'workflow_dispatch'
         env:
           SEMVER: ${{ steps.version.outputs.semver }}
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ACTOR: ${{ github.actor }}
         run: |
-          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          echo "$TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
           MINOR="${SEMVER%.*}"
           for tag in "$SEMVER" "$MINOR" "${MINOR%.*}" latest; do
             docker tag "$IMAGE:$SEMVER" "$IMAGE:$tag"
