@@ -466,4 +466,47 @@ test('calendar: Undo of a moved copy names why it cannot', async ({
   ).toBeVisible();
   await expect(chip(page, target, 'Water plants')).toHaveCount(there);
   await expect(chip(page, today, 'Water plants')).toHaveCount(0);
+
+  // The refusal offers the same Undo. With the subtask and the series both
+  // deleted elsewhere, it is refused again: the original is gone.
+  await undo.hover();
+  const pulled = await page.request.post('/api/v1/sync', {
+    headers: { authorization: `Bearer ${account.token}` },
+    data: { since: 0, ops: [] },
+  });
+  const { changes } = (await pulled.json()) as {
+    changes: {
+      table: string;
+      id: string;
+      row: { version: number; parentId?: string | null };
+    }[];
+  };
+  const original = (await listed()).find((t) => t.rrule !== null)!;
+  const gone = await page.request.post('/api/v1/sync', {
+    headers: { authorization: `Bearer ${account.token}` },
+    data: {
+      since: 0,
+      ops: changes
+        .filter(
+          (c) =>
+            c.table === 'task' &&
+            (c.id === original.id || c.row.parentId === copy.id),
+        )
+        .map((c) => ({
+          opId: crypto.randomUUID(),
+          kind: 'delete',
+          table: 'task',
+          id: c.id,
+          baseVersion: c.row.version,
+        })),
+    },
+  });
+  expect(gone.status()).toBe(200);
+  await page.getByTestId('sync-now').click();
+  await expect(count(page)).toHaveText(tasks(1));
+  await undo.click();
+  await expect(
+    page.locator('[data-slot="description"]', { hasText: 'is gone' }),
+  ).toBeVisible();
+  await expect(chip(page, target, 'Water plants')).toHaveCount(1);
 });
