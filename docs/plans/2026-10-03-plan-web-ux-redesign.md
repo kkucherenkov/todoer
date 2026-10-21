@@ -107,11 +107,13 @@ gets its own task spec and PR, as stage 0 says.
 
 Источники: drawer в `ux.html`, `task-dialogs.vue`, `references/DeleteTaskDialog.vue`. Области: `TaskDrawer`, `SubtaskList`, `RecurrenceDialog`, `DeleteTaskDialog`.
 
-- [ ] Title/notes первыми, поля раскрываются постепенно; scheduled/due, blur-save и pending/refused feedback сохраняются.
-- [ ] Parent/child навигация и закрытие сохраняют URL; возврат фокуса работает после rerender и исчезновения исходной карточки. Проверить вложенные dialogs, Tab/Shift+Tab/Escape нативно.
-- [ ] Повторение и delete используют существующие settled/version правила; подзадача без независимого RRULE. Delete родителя каскадирует прямых детей по core и не обещает Undo.
+- [x] Title/notes первыми, поля раскрываются постепенно; scheduled/due, blur-save и pending/refused feedback сохраняются.
+- [x] Parent/child навигация и закрытие сохраняют URL; возврат фокуса работает после rerender и исчезновения исходной карточки. Проверить вложенные dialogs, Tab/Shift+Tab/Escape нативно.
+- [x] Повторение и delete используют существующие settled/version правила; подзадача без независимого RRULE. Delete родителя каскадирует прямых детей по core и не обещает Undo.
 
 Результат: редактор сохраняет намерение при отказе и остаётся доступным с клавиатуры. Проверки: editing e2e, recurrence/refusal, повтор submit без duplicate opId.
+
+Текущий результат ([`T-2026-10-21-web-redesign-details`](../../specs/tasks/done/T-2026-10-21-web-redesign-details.md), PR pending): title/notes/даты первыми, остальное под «More details»; строка статуса сохранения с очередью; отказ поля показывает сохранённое значение, изменение и причину, Retry отправляет тот же write (тот же opId, `utils/intent.ts`); repeat и delete повторяют тот же write и держат диалог открытым при отказе; у подзадачи repeat отключён с пояснением, под повторяющимся родителем её дата — вхождение родителя. Раскрытие свёрнутого родителя после добавления подзадачи — в W3.
 
 ### 5. Календарь на реальных данных
 
@@ -140,7 +142,7 @@ gets its own task spec and PR, as stage 0 says.
 - [ ] Общая реплика Web/TUI: parent/child → статус → progress → Undo → исключить родителя → offline → sync; дополнительно recurring occurrence и refused reparent. Не считать чтение TUI-spec подтверждением прогона.
 - [ ] Обновить task specs и proposal фактическими результатами, закрыть завершённые задачи и записать changelog. Начать пользоваться приложением; дальнейшие UX-правки оформлять по конкретным наблюдениям.
 
-Результат: готовый редизайн приложения, подтверждённый тестами и использованием. Текущее состояние (2026-10-21): C0, C1, C2, этапы 1 (включая cross-projection overrides, #51), 2 (#53) и 3 (#52) смёржены; этап 6 — PR pending; этап 4 в работе; остальные не начаты.
+Результат: готовый редизайн приложения, подтверждённый тестами и использованием. Текущее состояние (2026-10-21): C0, C1, C2, этапы 1 (включая cross-projection overrides, #51), 2 (#53), 3 (#52) и 6 (#54) смёржены; этап 4 — PR pending; остальные не начаты.
 
 ## Порядок и зависимость работ
 

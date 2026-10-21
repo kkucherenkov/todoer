@@ -2,7 +2,9 @@
 
 - Created: 2026-10-21
 - Owner: claude
-- Status: in-progress
+- Status: done
+- Completed: 2026-10-21
+- Result: PR pending
 - Blockers: —
 - Spec: [web redesign context](../active/T-2026-10-03-web-redesign-context.md),
   FR-003, FR-006–007; mockups `docs/design/mockups/ux.html` (drawer),
@@ -83,8 +85,9 @@ cannot be undone.
 - A refused write that the worker had in fact applied (timeout) → the retry
   replays its opId, so the core flushes instead of applying twice (FR-003–004,
   T001).
-- A subtask of an ended series → still shows a Scheduled input; the core
-  refuses the date and the refusal panel says why (FR-003, T002).
+- A subtask of an ended series → the core still gives it an occurrence, so
+  it is shown as scheduled by the parent's rule like any recurring child
+  (FR-005, T002).
 - Delete of a task with queued writes → "not synced yet"; the dialog stays
   open and the same confirm resends after a sync (FR-004, FR-006, T003).
 - Opener row leaves the view (status set to the completing one) → focus goes
@@ -95,28 +98,29 @@ cannot be undone.
 - **SC-001** In EN and RU a person edits a task from title to status, sees
   each save, recovers from a refusal without retyping, and deletes a parent
   knowing its subtasks go with it — by mouse or keyboard alone.
-- [ ] every FR has a test that failed before the code made it pass
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] every FR has a test that failed before the code made it pass
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 
-- [ ] T001 [FR-003–004] Failing-first unit spec, then a held-intent helper
+- [x] T001 [FR-003–004] Failing-first unit spec, then a held-intent helper
   that keeps a minted write until it is accepted — `apps/web/app/utils/intent.ts`
-- [ ] T002 [FR-001–003, FR-005] Failing-first e2e, then reorder the drawer,
+- [x] T002 [FR-001–003, FR-005] Failing-first e2e, then reorder the drawer,
   add "More details", the status line, the refusal panel with Retry, and the
   subtask repeat rule — `apps/web/app/components/TaskDrawer.vue`,
   `apps/web/i18n/locales/*`, `apps/web/e2e/details.spec.ts`
-- [ ] T003 [FR-004, FR-006] Failing-first e2e, then pending and inline
+- [x] T003 [FR-004, FR-006] Failing-first e2e, then pending and inline
   refusal in the delete dialog and held intents for repeat and delete —
   `DeleteTaskDialog.vue`, `RecurrenceDialog.vue`, `TaskDrawer.vue`
-- [ ] T004 [FR-007] e2e for query preservation across parent/child on a
+- [x] T004 [FR-007] e2e for query preservation across parent/child on a
   transient layout, focus return when the opener leaves, and nested-dialog
   Tab/Shift+Tab/Escape — `apps/web/e2e/details.spec.ts`
-- [ ] T005 [FR-001–007] Update e2e contracts the reordering moves
-  (`editing.spec.ts`, `list.spec.ts`, `offline.spec.ts`), run gates, update
+- [x] T005 [FR-001–007] Update e2e contracts the reordering moves
+  (`editing.spec.ts`, `list.spec.ts`, `offline.spec.ts`,
+  `calendar.spec.ts`), run gates, update
   the plan's stage 4 — `docs/plans/2026-10-03-plan-web-ux-redesign.md`
 - **Checkpoint:** the drawer, its repeat and its delete follow the mockup and
   the core's refusal/retry rules, tested in unit and e2e.
