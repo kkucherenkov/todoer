@@ -47,3 +47,18 @@ export function navEntries(catalog: Catalog | undefined): NavEntry[] {
     name: names.get(key) ?? null,
   }));
 }
+
+/** A key the screen labels itself (`nav.<key>`), before any catalog. */
+export const isBuiltIn = (key: string) => Object.hasOwn(PATHS, key);
+
+/** The task count a destination shows: a navigation key's own catalog.nav
+ *  count, so header and sidebar agree; a saved view's open items, since a
+ *  board or calendar also lists recently closed cards. */
+export function shownCount(
+  key: string,
+  catalog: Catalog | undefined,
+  items: readonly { closed: boolean }[] | undefined,
+) {
+  const entry = catalog?.nav.find((e) => e.key === key);
+  return entry?.count ?? (items ?? []).filter((i) => !i.closed).length;
+}

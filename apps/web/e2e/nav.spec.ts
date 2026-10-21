@@ -136,3 +136,45 @@ test('navigation: reachable on a phone', async ({ page, account }) => {
   await expect(page).toHaveURL(/\/upcoming$/);
   await expect(page.getByTestId('view-title')).toHaveText('Upcoming');
 });
+
+test('navigation: a built-in keeps ?layout= and ?task=, and the header count is the sidebar count', async ({
+  page,
+  account,
+}) => {
+  await seedTask(page.request, account.token, {
+    title: 'Pay rent',
+    dueOn: day(0),
+  });
+  await seedTask(page.request, account.token, {
+    title: 'Call bank',
+    dueOn: day(0),
+  });
+  await page.goto('/today');
+  const headerCount = page.getByTestId('view-header').locator('.view-count');
+  await expect(headerCount).toHaveText('2 tasks');
+  await titles(page)
+    .filter({ hasText: 'Call bank' })
+    .locator('xpath=ancestor::*[@data-testid="task-row"]')
+    .getByRole('button', { name: 'Mark done' })
+    .click();
+  await expect(entry(page, 'Today')).toHaveText(/^Today\s*1$/);
+
+  // The board also lists the card closed today; the count stays the open one.
+  await page.goto('/today?layout=kanban');
+  await expect(page.getByTestId('board')).toBeVisible();
+  await expect(page.getByTestId('card')).toHaveCount(2);
+  await expect(headerCount).toHaveText('1 task');
+  await expect(entry(page, 'Today')).toHaveText(/^Today\s*1$/);
+
+  await page
+    .getByTestId('card')
+    .filter({ hasText: 'Pay rent' })
+    .getByRole('button', { name: 'Task actions' })
+    .click();
+  await page.getByRole('menuitem', { name: 'Open', exact: true }).click();
+  await expect(page).toHaveURL(/\/today\?.*task=[0-9a-f-]+/);
+  await expect(page).toHaveURL(/layout=kanban/);
+  await expect(page.getByRole('dialog').getByLabel('Title')).toHaveValue(
+    'Pay rent',
+  );
+});

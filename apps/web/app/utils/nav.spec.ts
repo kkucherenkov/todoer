@@ -8,7 +8,7 @@ import {
 } from '@todoer/client-core';
 import { openWasmStore } from '@todoer/client-core/sqlite-wasm';
 import { beforeAll, describe, expect, it } from 'vitest';
-import { navEntries, navPath, routeKey } from './nav';
+import { isBuiltIn, navEntries, navPath, routeKey, shownCount } from './nav';
 
 const catalog = (nav: Catalog['nav'], projects: Catalog['projects'] = []) =>
   ({ views: [], statuses: [], tags: [], projects, nav }) satisfies Catalog;
@@ -51,6 +51,32 @@ describe('navigation entries', () => {
       expect(routeKey(path, id)).toBe(key);
       expect(navPath(key)).toBe(path);
     }
+  });
+});
+
+describe('the count a destination shows', () => {
+  const nav = catalog([
+    { key: 'all', count: 1 },
+    { key: 'today', count: 2 },
+  ]);
+  const items = [{ closed: false }, { closed: true }, { closed: true }];
+
+  it('a navigation key shows its catalog.nav count, whatever the layout lists', () => {
+    expect(shownCount('today', nav, items)).toBe(2);
+  });
+
+  it('a saved view counts its open items, not the closed cards a board or calendar adds', () => {
+    expect(shownCount('v1', nav, items)).toBe(1);
+  });
+
+  it('nothing published yet: zero', () => {
+    expect(shownCount('today', undefined, undefined)).toBe(0);
+  });
+
+  it('only the built-in keys are labelled by the screen', () => {
+    expect(
+      ['all', 'today', 'upcoming', 'project:p', 'v1'].map(isBuiltIn),
+    ).toEqual([true, true, true, false, false]);
   });
 });
 

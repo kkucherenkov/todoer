@@ -94,7 +94,14 @@ or silently add dates to make a new task fit the current preset.
   a `tick`); the e2e checks only that a write changes the counts. Faking the
   clock inside the dedicated worker from Playwright was not attempted.
 - Before the first catalog publish the navigation has no built-in entries;
-  they appear with their counts, never with counts the web computed.
+  they appear with their counts, never with counts the web computed. The
+  header still names a built-in at once.
+- A project and a saved view with the same name are told apart only by their
+  group heading and icon; a screen reader hears the same link name (out of
+  scope, decision 2026-10-21).
+- The header shows the destination's `catalog.nav` count for a navigation
+  key and the open items for a saved view, so a board's or calendar's
+  recently closed cards never inflate it.
 - The pending add/edit attempt lives in the tab's memory: closing the tab
   between an accepted add and a refused edit loses the structured fields; the
   task itself exists.
@@ -113,8 +120,9 @@ or silently add dates to make a new task fit the current preset.
 - **SC-002** A pinned clock proves Today/Upcoming rollover and a refused-write
   fixture proves draft/opId retention.
 - [x] every FR has a test that failed before the code made it pass
-- [x] gates: `PR title (conventional commit)`, `Shell tests`,
-      `Workspace tests`, `Lint`
+- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+      `Workspace tests`, `Lint` — no PR yet; locally the web unit, typecheck,
+      build, lint and the web e2e pass
 - [x] no document still asserts the behaviour this task replaced
 - [x] dnote changelog line
 

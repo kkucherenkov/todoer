@@ -285,6 +285,8 @@ a name assembled at runtime is not bundled and renders as nothing.
 | Meaning                 | Icon                          |
 | ----------------------- | ----------------------------- |
 | All open (nav)          | `i-lucide-inbox`              |
+| Today, Upcoming (nav)   | `i-lucide-calendar-check`, `i-lucide-calendar-clock` |
+| Project (nav)           | `i-lucide-folder`             |
 | List, kanban, calendar view | `i-lucide-list`, `i-lucide-kanban`, `i-lucide-calendar` |
 | View with a problem     | `i-lucide-triangle-alert` (`text-warning`) |
 | Add, quick add          | `i-lucide-plus`               |
@@ -314,8 +316,8 @@ One shell, `UDashboardGroup`:
 - **Sidebar** (`UDashboardSidebar`): the app name in the header; `ViewNav`
   (`UNavigationMenu`, vertical, labelled "Views": All open `/`, Today
   `/today`, Upcoming `/upcoming`, then under "Projects" each live project
-  `/projects/<id>`, each with the core's count from `catalog.nav` as a badge;
-  then under "Saved views" the saved views `/views/<id>` with their layout
+  `/projects/<id>`, each with the core's count from `catalog.nav` as a badge (the header shows the same count);
+  then under "Saved views" (RU "Сохранённые представления") the saved views `/views/<id>` with their layout
   icon; then "New view"). The shown destination's link carries
   `aria-current="page"`. Below `lg` the sidebar is a slideover opened by the
   navbar's toggle; the footer holds the sync summary and the language switch.
