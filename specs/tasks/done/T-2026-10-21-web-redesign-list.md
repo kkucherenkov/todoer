@@ -2,7 +2,9 @@
 
 - Created: 2026-10-21
 - Owner: claude
-- Status: in-progress
+- Status: done
+- Completed: 2026-10-21
+- Result: https://github.com/kkucherenkov/todoer/pull/52
 - Blockers: —
 - Spec: [web redesign context](T-2026-10-03-web-redesign-context.md),
   FR-004–FR-007; maintainer-approved rules in the

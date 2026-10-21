@@ -46,7 +46,7 @@ gets list items without placements. Stage 1 therefore needs a core change.
 | Core | C2 [`T-2026-10-21-core-nav-projections`](../../specs/tasks/done/T-2026-10-21-core-nav-projections.md): built-in views today/upcoming/project and navigation counts | Claude | W2 (navigation) |
 | Web | W1 stage 1, with [`T-2026-10-03-web-redesign-context`](../../specs/tasks/active/T-2026-10-03-web-redesign-context.md) FR-001–003 | Codex | W2–W6 |
 | Web | W2 stage 2 | Codex | — |
-| Web | W3 stage 3, context FR-004–007, [`T-2026-10-21-web-redesign-list`](../../specs/tasks/active/T-2026-10-21-web-redesign-list.md) | Claude (Codex ran out of usage, 2026-10-21) | W4 |
+| Web | W3 stage 3, context FR-004–007, [`T-2026-10-21-web-redesign-list`](../../specs/tasks/done/T-2026-10-21-web-redesign-list.md) | Claude (Codex ran out of usage, 2026-10-21) | W4 |
 | Web | W4 stage 4 | Claude (Codex ran out of usage, 2026-10-21) | — |
 | Web | W6 stage 6 | Antigravity | — |
 | Web | W5 stage 5 | Antigravity | — |
@@ -101,7 +101,7 @@ gets its own task spec and PR, as stage 0 says.
 
 Результат: реальные hierarchy flows без двойного счёта и fixture completion. Проверки: core regression, list/kanban/editing e2e, мобильные затронутые контролы и keyboard alternatives.
 
-Текущий результат W3 ([`T-2026-10-21-web-redesign-list`](../../specs/tasks/active/T-2026-10-21-web-redesign-list.md), ветка `feat/web-redesign-list`): список сгруппирован по проектам, ребёнок вложен под совпавшим родителем, остальные дети — контекстные ссылки без счёта; прогресс из `Item.subtasks` в строке и карточке; fold общий для List/Kanban; Indent/Outdent через `reparent`; DnD и Move up/down — только среди соседей в outline. Новых core-контрактов не понадобилось. Мобильные 390/1366 и axe — за этапом 7.
+Текущий результат W3 ([`T-2026-10-21-web-redesign-list`](../../specs/tasks/done/T-2026-10-21-web-redesign-list.md), ветка `feat/web-redesign-list`): список сгруппирован по проектам, ребёнок вложен под совпавшим родителем, остальные дети — контекстные ссылки без счёта; прогресс из `Item.subtasks` в строке и карточке; fold общий для List/Kanban; Indent/Outdent через `reparent`; DnD и Move up/down — только среди соседей в outline. Новых core-контрактов не понадобилось. Мобильные 390/1366 и axe — за этапом 7.
 
 ### 4. Детали, повторение и удаление
 
