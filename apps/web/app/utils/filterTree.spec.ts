@@ -306,4 +306,3 @@ describe('filter limits', () => {
     expect(LIMIT_NODES).toBe(FILTER_MAX_NODES);
   });
 });
-
