@@ -116,15 +116,41 @@ test('view form: filter tree', async ({
   await choose('op-n-2', 'All of');
   await menu('add-n-2', 'Tag');
   await dialog.getByTestId('not-n-2-0').click();
-  await expect(limits).toHaveText('6/256 conditions · depth 4/8');
+  await menu('add-n-2', 'Priority');
+  await expect(
+    dialog.getByTestId('value-n-2-1').getByRole('checkbox', { name: 'p0' }),
+  ).toBeChecked();
+  await expect(
+    dialog.getByTestId('value-n-2-1').getByRole('checkbox', { name: 'p1' }),
+  ).not.toBeChecked();
+  await expect(limits).toHaveText('7/256 conditions · depth 4/8');
 
-  // The same tree as JSON, with the errand tag's lower-case id.
+  // Deselecting all priorities invalidates the filter and disables Save.
+  await dialog
+    .getByTestId('value-n-2-1')
+    .getByRole('checkbox', { name: 'p0' })
+    .click();
+  await expect(problem).toBeVisible();
+  await expect(save).toBeDisabled();
+  await dialog
+    .getByTestId('value-n-2-1')
+    .getByRole('checkbox', { name: 'p0' })
+    .click();
+  await expect(problem).toHaveCount(0);
+  await expect(save).toBeEnabled();
+
+  // The same tree as JSON, with the errand tag's lower-case id and [0] priority.
   await dialog.getByTestId('view-raw').click();
   const tree = {
     or: [
       { scheduled: { from: 0, to: 6 } },
       { due: { from: 0, to: 6 } },
-      { and: [{ not: { tag: expect.stringMatching(/^[0-9a-f-]{36}$/) } }] },
+      {
+        and: [
+          { not: { tag: expect.stringMatching(/^[0-9a-f-]{36}$/) } },
+          { priority: [0] },
+        ],
+      },
     ],
   };
   expect(JSON.parse(await filterText())).toEqual(tree);
@@ -162,7 +188,7 @@ test('view form: filter tree', async ({
   // Edit shows the same tree; Save without a change queues nothing.
   await page.getByTestId('edit-view').click();
   await expect(dialog.getByTestId('op-n-2')).toHaveText('All of');
-  await expect(limits).toHaveText('6/256 conditions · depth 4/8');
+  await expect(limits).toHaveText('7/256 conditions · depth 4/8');
   await dialog.getByTestId('view-raw').click();
   expect(JSON.parse(await filterText())).toEqual(tree);
   await dialog.getByTestId('view-raw').click();

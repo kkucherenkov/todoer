@@ -52,12 +52,14 @@ function start(kind: (typeof STARTS)[number]): Template {
       return { kind };
   }
 }
-const starts = STARTS.map((k) => ({
-  label: t(`viewForm.kinds.${k}`),
-  onSelect: () => {
-    filter.value = filterOf(start(k));
-  },
-}));
+const starts = computed(() =>
+  STARTS.map((k) => ({
+    label: t(`viewForm.kinds.${k}`),
+    onSelect: () => {
+      filter.value = filterOf(start(k));
+    },
+  })),
+);
 
 /** The filter, or why it is not one: the same check the server runs. */
 const parsed = computed<{ filter?: unknown; problem: string | null }>(() => {
