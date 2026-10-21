@@ -25,6 +25,8 @@ test('details: title and notes lead, more details are remembered, saves are said
   await openRow(page, 'Plan trip');
 
   const d = drawer(page);
+  // Past the loading skeleton, which has no labels.
+  await expect(d.getByLabel('Title')).toHaveValue('Plan trip');
   const labels = await d
     .locator('label')
     .evaluateAll((l) => l.map((e) => e.textContent?.trim()));
@@ -334,7 +336,10 @@ test('details: a refused repeat and return to series resend the same write', asy
   await page.getByRole('option', { name: 'Daily' }).click();
   await refuse('setRule');
   await form.getByRole('button', { name: 'Save' }).click();
-  await expect(page.getByText('late answer')).toBeVisible();
+  // Exact: the toast also announces its text in a hidden live region.
+  await expect(
+    page.getByText('late answer', { exact: true }).last(),
+  ).toBeVisible();
   await expect(page.locator('[role="dialog"]')).toHaveCount(2);
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(page.locator('[role="dialog"]')).toHaveCount(1);
@@ -378,7 +383,11 @@ test('details: navigation keeps the query, nested dialogs keep the focus', async
   await page.keyboard.press('Escape');
 
   await page.goto('/?layout=kanban');
-  const card = page.getByTestId('card').filter({ hasText: 'Child' }).first();
+  // The child's own card (it links its parent); the parent's card lists
+  // the child too.
+  const card = page
+    .getByTestId('card')
+    .filter({ has: page.getByTestId('parent-link') });
   await card.getByText('Child', { exact: true }).click();
   await drawer(page).getByTestId('subtask-of').click();
   await expect(drawer(page).getByLabel('Title')).toHaveValue('Parent');
