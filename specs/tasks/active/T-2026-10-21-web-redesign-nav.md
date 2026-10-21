@@ -2,11 +2,11 @@
 
 - Created: 2026-10-21
 - Owner: Codex (Web)
-- Status: blocked
-- Blockers: BLOCKED-ON-CORE — `@todoer/client-core` must publish watchable
-  Today, Upcoming and project projections plus their unique open-task counts;
-  its current public contract exposes only `all` and saved-view keys, and
-  `Catalog.projects` contains only `id` and `name`
+- Status: in-progress
+- Blockers: Navigation only: core task C2 must publish watchable Today,
+  Upcoming and project projections plus their unique open-task counts. The
+  coordinator approved progressive quick add as independent W2 Part 1 on
+  2026-10-21.
 - Spec: [web redesign context](T-2026-10-03-web-redesign-context.md), FR-007;
   maintainer-approved rules in the
   [web UX redesign plan](../../../docs/plans/2026-10-03-plan-web-ux-redesign.md),
@@ -110,8 +110,9 @@ or silently add dates to make a new task fit the current preset.
 - [ ] T004 [FR-001–006] Update affected docs, run Web unit/typecheck/lint/build
   and the touched e2e specs, then record the dnote changelog line — `docs/`,
   `specs/tasks/`
-- **Checkpoint:** BLOCKED-ON-CORE; no Web implementation starts until core
-  publishes the projections and counts below.
+- **Checkpoint:** Part 1 may land progressive quick add independently;
+  navigation remains BLOCKED-ON-CORE C2 until the projections and counts below
+  are published.
 
 ### Open questions
 
