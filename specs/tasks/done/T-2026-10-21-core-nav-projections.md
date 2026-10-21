@@ -2,7 +2,9 @@
 
 - Created: 2026-10-21
 - Owner: claude
-- Status: in-progress
+- Status: done
+- Completed: 2026-10-21
+- Result: https://github.com/kkucherenkov/todoer/pull/50
 - Blockers: —
 - Spec: [web redesign plan](../../../docs/plans/2026-10-03-plan-web-ux-redesign.md),
   stage 2 and the rule "Сегодня/Предстоящие используют scheduled OR due";
@@ -61,10 +63,10 @@ the engine needs to name them and count them.
 - **SC-001** The web can render the navigation with counts and open any of
   its entries reading only what the engine publishes.
 - [x] every FR has a test that failed before the code made it pass
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
 - [x] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] dnote changelog line
 
 ### Steps
 
