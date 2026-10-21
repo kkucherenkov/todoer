@@ -42,6 +42,14 @@ describe('lineChanges', () => {
     );
   });
 
+  it('treats a missing priority as P4', () => {
+    const bare = { title: 'milk', tags: [], project: null };
+    expect(lineChanges(bare, 'milk')).toEqual({});
+    expect(lineChanges({ ...bare, priority: undefined }, 'milk p1')).toEqual({
+      priority: 1,
+    });
+  });
+
   it('compares tags as a set', () => {
     const two = { ...item, tags: ['@a', '@b'] };
     expect(lineChanges(two, 'milk @b @a #home p2')).toEqual({});

@@ -46,6 +46,14 @@ const row = (t: Awaited<ReturnType<typeof details>>, id = 't1') =>
   t.store.rows('task').find((r) => r.id === id);
 
 describe('DetailsScreen', () => {
+  it('shows p0 for the highest priority and no label for P4', async () => {
+    const hot = await details([task('t1', 'milk', { priority: 0 })]);
+    expect(hot.lastFrame()).toContain('p0');
+    hot.cleanup();
+    const plain = await details();
+    expect(plain.lastFrame()).not.toMatch(/\bp\d\b/);
+  });
+
   it('shows the fields and closes with Esc', async () => {
     const t = await details();
     for (const label of [
