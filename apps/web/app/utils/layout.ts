@@ -1,3 +1,6 @@
+import type { Span } from '@todoer/client-core';
+import { fromQuery, gridSpan } from './calendar';
+
 export const LAYOUTS = ['list', 'kanban', 'calendar'] as const;
 export type Layout = (typeof LAYOUTS)[number];
 export type LayoutKey = 'ArrowLeft' | 'ArrowRight' | 'Home' | 'End';
@@ -52,4 +55,22 @@ export function nextLayout(current: Layout, key: LayoutKey): Layout {
   const step = key === 'ArrowRight' ? 1 : -1;
   const index = LAYOUTS.indexOf(current) + step + LAYOUTS.length;
   return LAYOUTS[index % LAYOUTS.length]!;
+}
+
+/** What a tab sends in `watch` for a view whose saved layout is `saved`:
+ *  the URL's override, or null to keep the saved one, and a span only when
+ *  the shown layout is Calendar and the worker's date (`today`) is known. A
+ *  stale span on a list publish would be dropped by the tab and hang it. */
+export function watchArgs(
+  query: Query,
+  saved: Layout,
+  today: string | undefined,
+): { task: string | null; span: Span | null; layout: Layout | null } {
+  const { layout, override } = resolveLayout(query.layout, saved);
+  const { mode, at } = fromQuery(query, today ?? '');
+  return {
+    task: typeof query.task === 'string' ? query.task : null,
+    span: layout === 'calendar' && at ? gridSpan(mode, at) : null,
+    layout: override ?? null,
+  };
 }

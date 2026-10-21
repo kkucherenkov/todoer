@@ -23,19 +23,8 @@ export function useWatch(view: () => string) {
   watch(shown, (v) => v && (today.value = v.today));
   watchEffect(() => {
     const key = view();
-    const task = route.query.task;
-    const { layout, override } = resolveLayout(
-      route.query.layout,
-      savedLayoutOf(key, catalog.value?.views),
-    );
-    // The span comes from the URL alone, and only a calendar has one: a
-    // stale span on a list publish would be dropped by the tab and hang it.
-    const { mode, at } = fromQuery(route.query, today.value ?? '');
-    db.watch(
-      key,
-      typeof task === 'string' ? task : null,
-      layout === 'calendar' && at ? gridSpan(mode, at) : null,
-      override ?? null,
-    );
+    const saved = savedLayoutOf(key, catalog.value?.views);
+    const { task, span, layout } = watchArgs(route.query, saved, today.value);
+    db.watch(key, task, span, layout);
   });
 }

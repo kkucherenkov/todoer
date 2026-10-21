@@ -5,6 +5,7 @@ import {
   resolveLayout,
   savedLayoutOf,
   viewQuery,
+  watchArgs,
 } from './layout';
 
 describe('transient layout routes', () => {
@@ -100,5 +101,52 @@ describe('mode-group roving focus', () => {
     expect(nextLayout('list', 'ArrowLeft')).toBe('calendar');
     expect(nextLayout('kanban', 'Home')).toBe('list');
     expect(nextLayout('list', 'End')).toBe('calendar');
+  });
+});
+
+describe('what a tab sends in watch', () => {
+  const TODAY = '2026-10-21';
+  const WEEK = { from: '2026-10-19', to: '2026-10-25' };
+
+  it('sends no override when the URL has none', () => {
+    expect(watchArgs({ task: 't1' }, 'kanban', TODAY)).toEqual({
+      task: 't1',
+      span: null,
+      layout: null,
+    });
+    expect(watchArgs({}, 'calendar', TODAY)).toEqual({
+      task: null,
+      span: WEEK,
+      layout: null,
+    });
+  });
+
+  it('sends Calendar with a span on a saved list', () => {
+    expect(watchArgs({ layout: 'calendar' }, 'list', TODAY)).toEqual({
+      task: null,
+      span: WEEK,
+      layout: 'calendar',
+    });
+    // No date yet: the span follows once the worker's today arrives.
+    expect(watchArgs({ layout: 'calendar' }, 'list', undefined)).toEqual({
+      task: null,
+      span: null,
+      layout: 'calendar',
+    });
+  });
+
+  it('sends List without a span on a saved calendar', () => {
+    const query = { layout: 'list', mode: 'month', at: '2026-10-01' };
+    expect(watchArgs(query, 'calendar', TODAY)).toEqual({
+      task: null,
+      span: null,
+      layout: 'list',
+    });
+  });
+
+  it('sends no override for an invalid or redundant one', () => {
+    for (const layout of ['tiles', 'list']) {
+      expect(watchArgs({ layout }, 'list', TODAY).layout).toBeNull();
+    }
   });
 });
