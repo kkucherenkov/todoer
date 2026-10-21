@@ -8,7 +8,8 @@
   decision, 2026-10-21 — change the stored values, not only their display;
   [web redesign plan](../../../docs/plans/2026-10-03-plan-web-ux-redesign.md),
   task C0
-- Plan: none yet; a design doc and an ADR come first (T001)
+- Plan: [design](../../../docs/specs/2026-10-21-priority-scale-design.md);
+  the implementation plan follows its approval
 
 ### Goal
 
@@ -30,29 +31,28 @@ change once, for every client at the same time.
    CLI, the TUI or the web, **Then** it is stored as P4.
 4. **Given** quick-add text with `p0`, **When** the task is added, **Then** it
    is stored as P0 and sorts first by priority.
-5. **Given** a client built before the change with entries still in its
-   outbox, **When** it pushes them after the migration, **Then** no stored
-   priority silently ends up on the old scale.
+5. **Given** a replica that has not pulled since the migration, **When** it
+   sends a base-versioned write to a migrated task or view, **Then** the
+   server answers `conflict`.
 
 ### Requirements
 
 - **FR-001** The server MUST migrate every task's `priority` to `4 − priority`
-  and give each changed row a new `seq`, so replicas pull the change; a new
-  task's default MUST be 4 (← maintainer, 2026-10-21).
+  and give each changed row a new `seq` and `version + 1`; a new task's
+  default MUST be 4 (← maintainer, 2026-10-21; design, "The migration").
 - **FR-002** The server MUST rewrite every saved view filter that names a
-  priority so it selects the same tasks, with a new `seq` (← maintainer,
-  2026-10-21).
+  priority so it selects the same tasks, with a new `seq` and
+  `version + 1` (← maintainer, 2026-10-21).
 - **FR-003** The core MUST sort by priority ascending, P0 first (← plan,
   approved rules).
 - **FR-004** The quick-add parser MUST read `pN` as priority N and MUST
   default to 4 when no `pN` is given (← plan; maintainer, 2026-10-03).
-- **FR-005** The CLI, the TUI and the web MUST show the stored value as
-  `P0`–`P4`, and the CLI usage MUST describe P0 as the highest (← plan,
-  "one scale Web/TUI/CLI").
-- **FR-006** [NEEDS CLARIFICATION: what stops a client built before the
-  change from writing old-scale values — a protocol version the server
-  rejects, a cut-over with every outbox drained first, or something else.
-  Decided in the design doc, T001.]
+- **FR-005** The TUI and the web MUST show `p0`–`p3` and hide the default
+  `p4`, and fall back to 4 wherever a priority is missing; the CLI's `list`
+  keeps the integer and its usage MUST describe P0 as the highest (← plan,
+  "one scale Web/TUI/CLI"; design, "The clients").
+- No backward compatibility: an old client, server or outbox is not
+  guarded against (← maintainer, 2026-10-21).
 
 ### Edge cases
 
@@ -80,9 +80,8 @@ change once, for every client at the same time.
 
 ### Steps
 
-- [ ] T001 [FR-001–006] Brainstorm and write the design doc and ADR 0019:
-  migration, filter rewrite, old clients and their outbox, rollback —
-  `docs/specs/`, `docs/adr/`
+- [x] T001 [FR-001–005] Design doc — `docs/specs/2026-10-21-priority-scale-design.md`;
+  ADR 0019 is written from it once approved
 - [ ] T002 [FR-001] Migration of tasks and the default, failing-first DB spec
   — `apps/backend/prisma/`
 - [ ] T003 [FR-002] Filter rewrite, failing-first spec per filter shape —
@@ -93,12 +92,10 @@ change once, for every client at the same time.
 - [ ] T005 [FR-005] Output and usage in the CLI and the TUI; the web's
   current screens show `P0`–`P4` until W2 restyles them —
   `apps/cli/src/`, `apps/tui/src/`, `apps/web/app/components/`
-- [ ] T006 [FR-006] Whatever T001 decides for old clients
 - **Checkpoint:** every client reads and writes the new scale; the dev
-  database migrated without a manual fix-up.
+  database migrated without a manual fix-up, in the cut-over order the
+  design gives.
 
 ### Open questions
 
-- [NEEDS CLARIFICATION: FR-006, old clients and their outbox.]
-- [NEEDS CLARIFICATION: whether the web edits in T005 are this task's or
-  Codex's; the plan gives `apps/web` to Codex.]
+None; the web edits in T005 are this task's (design, "The clients").
