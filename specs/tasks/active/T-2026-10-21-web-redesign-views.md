@@ -1,65 +1,117 @@
 ## T-2026-10-21-web-redesign-views — Saved views, access gate, and system states
 
 - Created: 2026-10-21
-- Owner: Antigravity (Web)
-- Status: ready
+- Owner: claude
+- Status: in-progress
 - Blockers: —
-- Spec: maintainer brief w6-antigravity.md, 2026-10-21; [web redesign plan](../../../docs/plans/2026-10-03-plan-web-ux-redesign.md), stage 6; [context spec](T-2026-10-03-web-redesign-context.md), FR-001, FR-007
+- Spec: maintainer brief w6-antigravity.md and the W6 review findings, 2026-10-21; [web redesign plan](../../../docs/plans/2026-10-03-plan-web-ux-redesign.md), stage 6; [context spec](T-2026-10-03-web-redesign-context.md), FR-001, FR-007
 - Plan: [web UX redesign](../../../docs/plans/2026-10-03-plan-web-ux-redesign.md), stage 6
 
 ### Goal
 
-Deliver the redesigned saved view editing, filter tree builder, access gate (sign-in and owner registration), sync status, update prompts, and application state representations in `apps/web`. The components preserve the raw JSON fallback, filter tree limits (`FILTER_MAX_DEPTH`, `FILTER_MAX_NODES` sourced from `@todoer/specs`), priority scale alignment (starting value `[0]` for P0 highest per ADR 0019), and explicit saves without modifying saved views implicitly. Authentication and registration operate on real `db.request` and session state without mock or fixture short-circuits. System states (empty, loading, offline, queued, refused, recovery, update) reflect real client topics and fixtures without adding demo galleries to user navigation.
+Stage 6 brings the saved view form, the access gate and the sync and update
+states to the accepted prototype (`view-form.html`/`screens.js`,
+`gate.html`/`screens.css`, `ux.js`/`ux.css`) without losing what the current
+code does right: the raw JSON fallback, the filter tree limits, validation,
+explicit save of layout, sort and filter, and sign-in and registration on the
+real `db.request`, session and `registrationOpen`. The first attempt at this
+stage changed little and claimed more than it verified; this spec records only
+what was checked.
 
 ### Scenarios
 
-1. **Given** a user creating or editing a saved view, **When** they configure name, layout, sort, and conditions in `FilterTree` or raw JSON mode, **Then** the view is saved explicitly via `db.write({ kind: 'saveView' })`, invalid filters show validation problems and disable saving, and priority leaf starts at `[0]` (P0).
-2. **Given** a view with conditions near or at the limits (`FILTER_MAX_DEPTH = 8`, `FILTER_MAX_NODES = 256`), **When** interacting with the filter tree, **Then** tree modifications respect depth and node count constraints, preventing invalid expansion while allowing removal/trimming.
-3. **Given** an unauthenticated session on an instance with no users, **When** opening the app, **Then** `AppGate` renders `RegisterForm` with owner setup, client-side confirmation check, and real `register` request; on an initialized instance, `SignInForm` renders with real credentials validation and error display.
-4. **Given** a network failure or server 4xx/5xx rejection during sync, **When** viewing the shell or initiating manual sync, **Then** `SyncStatus` shows offline badge, pending queue count, or refusal alert with real failure reason, retaining queued writes and offering recovery on reconnect.
-5. **Given** an app update or service worker refresh, **When** a new build is detected or db is marked stale, **Then** `UpdatePrompt` displays an accessible notification allowing clean reload without loss of state.
+1. **Given** a user saving a view, **When** the server refuses the save,
+   **Then** the form stays open with every input kept and the refusal shows
+   inside it.
+2. **Given** a saved view, **When** the user deletes it and clicks Delete
+   twice quickly, **Then** one delete is sent, the view is gone and the app
+   returns to `/`.
+3. **Given** the filter tree, **When** it shows its size, **Then** the limits
+   it shows are the ones the server enforces.
+4. **Given** the workspace, **When** the user looks at the sidebar footer,
+   **Then** it shows the task count, "Saved on this device", the sync badges,
+   the last sync and the sync button, in that order.
+5. **Given** a new build or a stale tab, **When** the update prompt shows,
+   **Then** it sits in the workspace alerts next to the sync problem, or on
+   the gate when signed out.
+6. **Given** an account with no open tasks, **When** it opens All open,
+   **Then** it reads "No open tasks."
 
 ### Requirements
 
-- **FR-001** `ViewForm` MUST explicitly save view fields (`name`, `layout`, `sort`, `filter`) via `db.write({ kind: 'saveView' })`, provide raw JSON editing with fallback for unparseable/custom filters, and block saving when `filterProblem` reports a violation or name is blank (← brief; redesign plan stage 6).
-- **FR-002** `FilterTree` and `FilterNode` MUST enforce filter limits (`FILTER_MAX_DEPTH = 8`, `FILTER_MAX_NODES = 256` from `@todoer/specs`), initialize priority leaf with `[0]` (P0 highest per ADR 0019), and maintain immutable tree edits with lower-cased catalog ids and unknown id preservation (← brief; redesign plan stage 6; ADR 0019).
-- **FR-003** `AppGate` MUST restrict access to the application replica until `session.state === 'signed-in'` and `engine.state === 'ready'`, rendering responsive gate layout, skeleton loading during startup/restoration, `RegisterForm` when `registrationOpen` is true, `SignInForm` otherwise, and engine failure alerts (← brief; mockup `gate.vue`; redesign plan stage 6).
-- **FR-004** `SignInForm` and `RegisterForm` MUST execute via real `db.request` (`kind: 'signIn'` and `'register'`), validate password confirmation on submission without blur layout shifts, display structured failures, and never use fixture shortcuts or invite flows (← brief; redesign plan stage 6; tuxedo 423).
-- **FR-005** `SyncStatus` MUST display relative last-sync time, reactive task counts with locale pluralization, and badges for offline, pending writes queue, and sync failures with manual sync trigger and sign-out (← brief; redesign plan stage 6).
-- **FR-006** `UpdatePrompt` MUST notify users when a service worker update is available or the database is stale, providing a single reload action without cluttering everyday workspace navigation (← brief; redesign plan stage 6).
-- **FR-007** System states (empty views, loading skeletons, offline indicators, queued operations, refused sync, recovery via manual sync, update prompts) MUST be verified via application unit tests and test fixtures in e2e specs without adding demo state galleries to application navigation (← brief; redesign plan stage 6).
+- **FR-001** `ViewForm` MUST save name, layout, sort and filter only on an
+  explicit Save, keep the raw JSON fallback for a filter the tree cannot draw,
+  and block Save while the filter has a problem or the name is blank (← brief;
+  plan stage 6).
+- **FR-002** `ViewForm` MUST show a refused save inline, in a `role="alert"`
+  region inside the form, and keep the dialog and its input (← review b;
+  coordinator ruling: inline, not a toast; `screens.js` `#view-refusal`).
+- **FR-003** Deleting a view MUST go through `DeleteViewDialog`, which sends
+  one `deleteView` while one is pending and navigates to `/` after it is
+  accepted (← review a; `references/DeleteViewDialog.vue`).
+- **FR-004** The filter tree MUST take its limits from `FILTER_MAX_DEPTH` and
+  `FILTER_MAX_NODES` of `@todoer/specs`, in the code and in the shown text;
+  the priority leaf starts at `[0]` (← review c; brief; ADR 0019).
+- **FR-005** `SyncStatus` MUST follow `ux.js` `#sync-footer`: the task count
+  at 14px/500, "Saved on this device", badges, then the last sync (← review d).
+- **FR-006** `UpdatePrompt` MUST sit in the workspace alerts area next to the
+  sync problem, and on the gate while signed out (← review d; prototype
+  `#alerts`).
+- **FR-007** The gate MUST follow `.gate-wrap`: 384px wide, 64px vertical
+  margin (32px at 700px and below), 32px under the header (← review e).
+- **FR-008** Sign-in and registration MUST run on the real `db.request`,
+  session and `registrationOpen`, with no invite UI; the states gallery is not
+  in navigation (← brief; tuxedo 423).
+- **FR-009** The empty, offline, queued, refused, recovery and update states
+  MUST be covered by the app's e2e specs (← brief; review f).
 
 ### Edge cases
 
-- Empty name or whitespace-only name in ViewForm → Save button is disabled (FR-001, T002).
-- Non-JSON or invalid JSON in raw filter mode → Error message displayed, Save disabled, toggling back to tree mode disabled until valid (FR-001, T002).
-- Adding condition when tree depth is 8 or node count is 256 → `canAdd` and `canToggleNot` return false, Add menu disabled or prevents violation (FR-002, T002).
-- Priority leaf created → starts at `[0]` (P0), checkboxes allow toggling 0..4, deselecting all renders invalid filter blocking save (FR-002, T002).
-- Password mismatch on registration → inline form error displayed without sending network request (FR-004, T003).
-- Registration refused (403 forbidden) → error alert displays server detail message, form remains visible with inputs intact (FR-004, T003).
-- Network drops while writes are performed → writes accepted locally, pending badge increments, offline badge shown, no data lost (FR-005, FR-007, T004).
-- Sync refused with 403 → sync-problem alert displayed with reason and retry action; 503 → offline badge shown (FR-005, FR-007, T004).
+- Blank name → Save disabled (FR-001, T002).
+- Invalid or unparseable raw JSON → the problem shown, Save disabled
+  (FR-001, T002).
+- A refusal, then a retry that the server accepts → the alert goes, the
+  dialog closes, the view is listed (FR-002, T002).
+- Delete clicked twice → one write (FR-003, T003).
+- Priority leaf with every value cleared → a problem, Save disabled
+  (FR-004, T002).
 
 ### Definition of Done
 
-- **SC-001** Views can be created, edited with FilterTree (including P0 priority leaf) and raw JSON, and deleted, with full keyboard and validation support in EN and RU.
-- **SC-002** Sign-in and owner registration operate on live engine requests, handle errors and password mismatch gracefully, and guard the app shell.
-- **SC-003** Offline, queued writes, sync refusal, recovery, and update prompts behave accurately in tests without demo galleries in the main UI.
-- [x] every FR has a test that failed before the code made it pass
-- [x] gates: `PR title (conventional commit)`, `Shell tests`,
+- **SC-001** A refused view save leaves the form and its input, with the
+  reason inside the form (views e2e).
+- **SC-002** The filter limits shown are the specs constants (unit test).
+- **SC-003** Footer, gate and alerts match the prototype's order and spacing.
+- [ ] every FR has a test that failed before the code made it pass
+- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [x] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [ ] no document still asserts the behaviour this task replaced
+- [ ] dnote changelog line (the coordinator writes it)
 
 ### Steps
 
-- [x] T001 [FR-001–002] Link `@todoer/specs` in `apps/web/package.json` to source `FILTER_MAX_DEPTH` and `FILTER_MAX_NODES`, update `filterTree.ts`, and verify filterTree unit tests — `apps/web/package.json`, `apps/web/app/utils/filterTree.ts`, `apps/web/app/utils/filterTree.spec.ts`
-- [x] T002 [FR-001–002] Align `ViewForm.vue`, `FilterTree.vue`, and `FilterNode.vue` with redesign styling, reactive computed start kinds, and e2e contract coverage for priority leaf and limits — `apps/web/app/components/ViewForm.vue`, `apps/web/app/components/FilterNode.vue`, `apps/web/e2e/views.spec.ts`
-- [x] T003 [FR-003–004] Align `AppGate.vue`, `SignInForm.vue`, and `RegisterForm.vue` with design layout tokens (`max-w-sm mx-auto py-12`), ensuring strict real session and db.request handling — `apps/web/app/components/AppGate.vue`, `apps/web/app/components/SignInForm.vue`, `apps/web/app/components/RegisterForm.vue`, `apps/web/e2e/register.spec.ts`
-- [x] T004 [FR-005–007] Verify and refine `SyncStatus.vue`, `UpdatePrompt.vue`, and states handling (empty, loading, offline, queued, refused, recovery, update) in unit and e2e test contracts — `apps/web/app/components/SyncStatus.vue`, `apps/web/app/components/UpdatePrompt.vue`, `apps/web/e2e/screens.spec.ts`, `apps/web/e2e/offline.spec.ts`
-- [x] T005 [FR-001–007] Verify i18n keys for EN and RU, execute quality gates (`pnpm --filter @todoer/web test`, `typecheck`, `build`, `pnpm lint`), and prepare `.superpowers/w6-report.md` — `apps/web/i18n/locales/*`, `.superpowers/w6-report.md`
-- **Checkpoint:** Stage W6 components, utils, specs, and gates pass cleanly.
+- [ ] T001 [FR-004] Limits from the specs constants in `filterTree.ts` and in
+  the `filterTree.limits` text; a test that the shown limits come from them —
+  `apps/web/app/utils/filterTree.ts`, `apps/web/app/utils/filterTree.spec.ts`,
+  `apps/web/app/components/FilterTree.vue`, `apps/web/i18n/locales/*`
+- [ ] T002 [FR-001, FR-002] Inline refusal in `ViewForm`; e2e: a refused save
+  keeps the input and shows the reason — `apps/web/app/components/ViewForm.vue`,
+  `apps/web/e2e/views.spec.ts`
+- [ ] T003 [FR-003] `DeleteViewDialog` with a pending guard, wired into the
+  view route — `apps/web/app/components/DeleteViewDialog.vue`,
+  `apps/web/app/pages/views/[id].vue`
+- [ ] T004 [FR-005, FR-006] Sync footer per `ux.js`; the update prompt in the
+  workspace alerts and on the gate — `apps/web/app/components/SyncStatus.vue`,
+  `apps/web/app/components/AppShell.vue`, `apps/web/app/components/AppGate.vue`,
+  `apps/web/app/app.vue`, `apps/web/e2e/screens.spec.ts`
+- [ ] T005 [FR-007, FR-008] Gate spacing per `.gate-wrap` —
+  `apps/web/app/components/AppGate.vue`
+- [ ] T006 [FR-009] e2e for the empty state — `apps/web/e2e/screens.spec.ts`
+- [ ] T007 Gates: web unit, typecheck, lint, build; e2e views, register,
+  screens, offline, tabs on `todoer_e2e_w6`
+- **Checkpoint:** stage 6 of the plan is ticked, with the gate output in the
+  report.
 
 ### Open questions
 
-None. Requirements follow the W6 brief, mockups, and approved redesign plan.
+None.
