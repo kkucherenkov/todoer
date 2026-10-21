@@ -94,7 +94,7 @@ const actions = computed<DropdownMenuItem[]>(() => [
         tag
       }}</span>
       <UBadge
-        v-if="Number(item.priority) > 0"
+        v-if="Number(item.priority) < 4"
         color="neutral"
         variant="subtle"
         size="sm"

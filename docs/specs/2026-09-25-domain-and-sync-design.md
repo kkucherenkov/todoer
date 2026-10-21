@@ -52,7 +52,8 @@ constrained by them:
   offline client must answer "what is due today" without a server, and the
   server itself never expands a rule (§4). What is avoidable is that their
   disagreement goes unnoticed.
-- **Priority is an enumeration of five values, 0 meaning none.** A numeric range
+- **Priority is an enumeration of five values, 0 meaning none** (superseded
+  by ADR 0019: 0 is the highest, 4 the default). A numeric range
   without semantics becomes an argument with oneself about what 7 means.
 
 
@@ -130,6 +131,9 @@ erDiagram
         float   value         "nullable, reserved for v2 habits"
     }
 ```
+
+`priority` reads differently since ADR 0019: 0 is the highest, 4 the default
+and "none"; the diagram above shows the original scale.
 
 `status`, `view` and the three task fields `status_id`, `origin_task_id` and
 `origin_occurrence` are specified in

@@ -229,3 +229,31 @@ test('calendar: moves and undo', async ({ page, account, cli }) => {
   await expect(chip(page, tue, 'Water plants')).toHaveCount(1);
   await expect(chip(page, wed, 'Water plants')).toHaveCount(1);
 });
+
+test('calendar: P0 chip shows p0, P4 chip shows none', async ({
+  page,
+  account,
+}) => {
+  const today = day();
+  const view = await seedView(
+    page.request,
+    account.token,
+    'Week',
+    'a0',
+    'calendar',
+  );
+  await seedTask(page.request, account.token, {
+    title: 'Urgent',
+    priority: 0,
+    scheduledOn: today,
+  });
+  await seedTask(page.request, account.token, {
+    title: 'Plain',
+    priority: 4,
+    scheduledOn: today,
+  });
+  await page.goto(`/views/${view}`);
+  await expect(chip(page, today, 'Urgent')).toContainText('p0');
+  await expect(chip(page, today, 'Plain')).toBeVisible();
+  await expect(chip(page, today, 'Plain')).not.toContainText(/\bp\d\b/);
+});

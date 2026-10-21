@@ -435,7 +435,7 @@ function sortFor(sort: string | undefined, rows: Listed[]): Listed[] {
   if (sort === undefined) return rows;
   const key = (l: Listed): string | number | null =>
     sort === 'priority'
-      ? -l.facts.priority
+      ? l.facts.priority
       : sort === 'due'
         ? l.facts.dueOn
         : sort === 'scheduled'

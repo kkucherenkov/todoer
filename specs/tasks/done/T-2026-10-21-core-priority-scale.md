@@ -2,14 +2,14 @@
 
 - Created: 2026-10-21
 - Owner: claude
-- Status: ready
+- Status: done
 - Blockers: —
 - Spec: maintainer request, 2026-10-03 — P0 highest, P4 lowest; maintainer
   decision, 2026-10-21 — change the stored values, not only their display;
   [web redesign plan](../../../docs/plans/2026-10-03-plan-web-ux-redesign.md),
   task C0
-- Plan: [design](../../../docs/specs/2026-10-21-priority-scale-design.md);
-  the implementation plan follows its approval
+- Plan: [design](../../../docs/specs/2026-10-21-priority-scale-design.md),
+  [implementation plan](../../../docs/plans/2026-10-21-plan-c0-priority-scale.md)
 
 ### Goal
 
@@ -71,27 +71,34 @@ change once, for every client at the same time.
 
 - **SC-001** After the migration, the dev database's tasks and views list the
   same tasks in the same order in the CLI, the TUI and the web, with P0 on
-  the most urgent ones.
-- [ ] every FR has a test that failed before the code made it pass
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+  the most urgent ones. Checked on the data: the dev database migrated
+  (186 tasks, none left on the old scale, no priority views); the three
+  clients' ordering is covered by the core sort spec and the TUI and web
+  specs, not by a manual side-by-side run.
+- [x] every FR has a test that failed before the code made it pass
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 
 - [x] T001 [FR-001–005] Design doc — `docs/specs/2026-10-21-priority-scale-design.md`;
   ADR 0019 — `docs/adr/0019-p0-is-the-highest-priority.md`
-- [ ] T002 [FR-001] Migration of tasks and the default, failing-first DB spec
-  — `apps/backend/prisma/`
-- [ ] T003 [FR-002] Filter rewrite, failing-first spec per filter shape —
-  `apps/backend/prisma/` or `apps/backend/src/scripts/`
-- [ ] T004 [P] [FR-003, FR-004] Ascending sort and the parser default —
+- [x] T002 [FR-001] Migration of tasks and the default, failing-first DB spec
+  — `apps/backend/prisma/`. Landed: one migration, `priority-migration.spec.ts`.
+- [x] T003 [FR-002] Filter rewrite, failing-first spec per filter shape —
+  `apps/backend/prisma/` or `apps/backend/src/scripts/`. Landed: in the same
+  migration as T002.
+- [x] T004 [P] [FR-003, FR-004] Ascending sort and the parser default —
   `packages/client-core/src/operations.ts`,
-  `packages/client-core/src/parse-quick-add.ts`
-- [ ] T005 [FR-005] Output and usage in the CLI and the TUI; the web's
-  current screens show `P0`–`P4` until W2 restyles them —
-  `apps/cli/src/`, `apps/tui/src/`, `apps/web/app/components/`
+  `packages/client-core/src/parse-quick-add.ts`. Landed: sort key ascending,
+  parser default 4, specs for the p0 marker and the rank tie-break.
+- [x] T005 [FR-005] Output and usage in the CLI and the TUI; the web's
+  current screens show p0–p3 and hide the default p4 until W2 restyles them —
+  `apps/cli/src/`, `apps/tui/src/`, `apps/web/app/components/`. Landed: CLI
+  usage text; TUI and web show p0–p3 and hide the default p4, blank/default is 4; web
+  filter editor's new priority leaf is `[0]`.
 - **Checkpoint:** every client reads and writes the new scale; the dev
   database migrated without a manual fix-up, in the cut-over order the
   design gives.

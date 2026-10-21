@@ -126,7 +126,7 @@ export function setGroup(root: Filter, path: Path, op: 'and' | 'or'): Filter {
 /**
  * A new leaf or group: tag and status take the first catalog id in
  * lower-case, or '' (which filterProblem refuses); project null; priority
- * [4]; ranges {}; recurring true.
+ * [0]; ranges {}; recurring true.
  */
 export function blank(kind: LeafKind | 'and' | 'or', catalog: Catalog): Filter {
   switch (kind) {
@@ -141,7 +141,7 @@ export function blank(kind: LeafKind | 'and' | 'or', catalog: Catalog): Filter {
     case 'project':
       return { project: null };
     case 'priority':
-      return { priority: [4] };
+      return { priority: [0] };
     case 'scheduled':
       return { scheduled: {} };
     case 'due':

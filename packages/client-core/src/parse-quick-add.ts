@@ -19,7 +19,7 @@ export function parseQuickAdd(input: string): QuickAdd {
   const title: string[] = [];
   const tags: string[] = [];
   let project: string | undefined;
-  let priority = 0;
+  let priority = 4;
 
   for (const token of input.split(/\s+/).filter((t) => t.length > 0)) {
     if (TAG.test(token)) {

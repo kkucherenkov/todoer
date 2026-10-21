@@ -341,15 +341,15 @@ describe('run', () => {
       await run(['add', 'ring the plumber @phone @home'], d);
 
       expect((await run(['list'], d)).stdout).toEqual([
-        'id-6  0  call the bank  #finance @phone',
-        'id-11  0  water the plants  @home',
-        'id-14  0  ring the plumber  @home @phone',
+        'id-6  4  call the bank  #finance @phone',
+        'id-11  4  water the plants  @home',
+        'id-14  4  ring the plumber  @home @phone',
       ]);
       expect((await run(['list', '@Phone', '@home'], d)).stdout).toEqual([
-        'id-14  0  ring the plumber  @home @phone',
+        'id-14  4  ring the plumber  @home @phone',
       ]);
       expect((await run(['list', '#finance'], d)).stdout).toEqual([
-        'id-6  0  call the bank  #finance @phone',
+        'id-6  4  call the bank  #finance @phone',
       ]);
       expect(
         envelope((await run(['list', '#finance', '--json'], d)).stdout),
@@ -753,7 +753,7 @@ describe('run', () => {
       const d = hexDeps(fakeServer().send);
       await run(['add', 'water the plants', '--rrule', 'FREQ=DAILY'], d);
       expect(await lines(d)).toEqual([
-        '000002  0  water the plants  2026-09-26',
+        '000002  4  water the plants  2026-09-26',
       ]);
     });
 
@@ -773,7 +773,7 @@ describe('run', () => {
         },
       });
       expect(await lines(d)).toEqual([
-        '000002  0  water the plants  2026-09-27  Inbox',
+        '000002  4  water the plants  2026-09-27  Inbox',
       ]);
 
       const undo = await run(['undo', '0002', '--json'], d);
@@ -781,7 +781,7 @@ describe('run', () => {
         data: { state: 'open', completedAt: null },
       });
       expect(await lines(d)).toEqual([
-        '000002  0  water the plants  2026-09-26  Inbox',
+        '000002  4  water the plants  2026-09-26  Inbox',
       ]);
     });
 
@@ -1036,7 +1036,7 @@ describe('run', () => {
       await run(['done', '000002'], d);
       expect(await lines(d)).toEqual([]);
       await run(['undo', '000002'], d);
-      expect(await lines(d)).toEqual(['000002  0  file taxes  Inbox']);
+      expect(await lines(d)).toEqual(['000002  4  file taxes  Inbox']);
     });
 
     // Scenario 4 and Review Focus 2.
@@ -1046,11 +1046,11 @@ describe('run', () => {
       d.send = unreachable;
       expect((await run(['done', '0002'], d)).exit).toBe(5);
       expect(await lines(d)).toEqual([
-        '000002  0  water the plants  2026-09-27  Inbox',
+        '000002  4  water the plants  2026-09-27  Inbox',
       ]);
       await run(['undo', '0002'], d);
       expect(await lines(d)).toEqual([
-        '000002  0  water the plants  2026-09-26  Inbox',
+        '000002  4  water the plants  2026-09-26  Inbox',
       ]);
     });
 
@@ -1061,7 +1061,7 @@ describe('run', () => {
         ['add', 'stretch', '--rrule', 'FREQ=DAILY', '--from', '2026-09-20'],
         d,
       );
-      expect(await lines(d)).toEqual(['000002  0  stretch  2026-09-26']);
+      expect(await lines(d)).toEqual(['000002  4  stretch  2026-09-26']);
     });
 
     it('marks a named occurrence with --on', async () => {
@@ -1079,11 +1079,11 @@ describe('run', () => {
       );
       await run(['done', '0002', '--on', '2026-10-05'], d);
       expect(await lines(d)).toEqual([
-        '000002  0  stand-up  2026-09-28  Inbox',
+        '000002  4  stand-up  2026-09-28  Inbox',
       ]);
       await run(['done', '0002'], d);
       expect(await lines(d)).toEqual([
-        '000002  0  stand-up  2026-10-12  Inbox',
+        '000002  4  stand-up  2026-10-12  Inbox',
       ]);
     });
 
@@ -1192,7 +1192,7 @@ describe('run', () => {
         },
       ]);
       await run(['add', 'file taxes'], d);
-      expect(await lines(d)).toEqual(['000002  0  file taxes']);
+      expect(await lines(d)).toEqual(['000002  4  file taxes']);
     });
 
     // FR-010, ADR 0009: a subtask lives on its parent's occurrence axis.
@@ -2187,7 +2187,7 @@ describe('views', () => {
 
   it('orders by the view sort', async () => {
     const d = fixture();
-    const p = [0, 1, 3, 4];
+    const p = [4, 3, 1, 0];
     p.forEach((priority, i) =>
       addTask(d, i + 1, {
         priority,
