@@ -1,6 +1,6 @@
 # План внедрения UX-редизайна Web
 
-Дата: 2026-10-03. Статус: ready; реализация не начата.
+Дата: 2026-10-03. Статус: ready; реализация не начата. Решения 2026-10-21 и разбивка на потоки — в разделе [Decisions and tracks](#decisions-and-tracks-2026-10-21).
 
 Цель: перенести принятый UX в Nuxt-приложение, сохранив реальные операции core, URL-контекст, i18n, offline и синхронизацию. [Макеты и инструкция просмотра](../design/mockups/README.md) находятся в репозитории; Open Design не требуется для дальнейшей разработки. [Proposal](../proposals/2026-10-03-web-ux-redesign.md) задаёт продуктовые решения; [task spec контекста](../../specs/tasks/active/T-2026-10-03-web-redesign-context.md) — FR и критерии приёмки.
 
@@ -14,6 +14,48 @@
 - Vue/HTML — референсы. Не копировать fixture engine, boolean recurring-child completion, мгновенный settled-free Undo или фиктивные auth/sync в приложение.
 
 Уточнение пользователя 2026-10-03: **P0 — самый высокий, P4 — самый низкий**; язык — один RU/EN switch с отображением текущей стороны. Это заменяет прежнюю шкалу, в которой P0 означал отсутствие приоритета. До переноса создать отдельную общую core/spec задачу: ascending sort, high-priority presets `[0,1]`, отображение P0, default быстрого ввода и стратегия совместимости существующих задач/сохранённых фильтров. Значения пользовательских данных не инвертировать молча. В макете новый ввод без pN использует P4; production default и миграция должны быть явно зафиксированы в общей задаче. Проверить одну шкалу Web/TUI/CLI. Перенести RU/EN switch из `mockups/references/LocaleSwitch.vue` с сохранением locale preference.
+
+## Decisions and tracks (2026-10-21)
+
+The maintainer decided three things on 2026-10-21:
+
+1. **The priority scale changes in storage, not only in display.** Stored
+   values become `new = 4 − old`: today's 0 (no priority) becomes P4, the
+   default; today's 4 (highest) becomes P0. Saved view filters that name a
+   priority are rewritten with the tasks, and the sort turns ascending. The
+   core/spec task the paragraph above asks for is C0 below.
+2. **Execution is split by package.** The core dependencies are Claude's,
+   the Web stages are shared by Codex and Antigravity. No agent edits a
+   package it does not own; a contract both need goes through a core task
+   first. The two Web agents split by screen, and both touch
+   `apps/web/i18n/locales/*` and the shell: the stage that lands second
+   rebases onto the first.
+3. **Acceptance is reduced** (stage 7): Playwright at 390 and 1366,
+   EN/RU × light/dark, keyboard and focus, axe. The maintainer checks touch
+   and the mobile flow by hand. No screen-reader pass, no seven-width matrix.
+
+Checked against the code on 2026-10-21: the engine picks a view's projection
+from the saved `layout` (`packages/client-core/src/engine.ts`, `publishView`)
+and the `watch` command carries no layout, so a transient `?layout=calendar`
+gets list items without placements. Stage 1 therefore needs a core change.
+
+| Track | Task | Owner | Blocks |
+| --- | --- | --- | --- |
+| Core | C0 [`T-2026-10-21-core-priority-scale`](../../specs/tasks/active/T-2026-10-21-core-priority-scale.md): P0–P4 scale, migration, sort, quick-add default, CLI/TUI/Web output | Claude | W2 |
+| Core | C1 [`T-2026-10-21-core-redesign-projections`](../../specs/tasks/active/T-2026-10-21-core-redesign-projections.md): layout override on `watch`, fields of children outside the filter | Claude | W1 (calendar), W3 |
+| Web | W1 stage 1, with [`T-2026-10-03-web-redesign-context`](../../specs/tasks/active/T-2026-10-03-web-redesign-context.md) FR-001–003 | Codex | W2–W6 |
+| Web | W2 stage 2 | Codex | — |
+| Web | W3 stage 3, context FR-004–006 | Codex | W4 |
+| Web | W4 stage 4 | Codex | — |
+| Web | W6 stage 6 | Antigravity | — |
+| Web | W5 stage 5 | Antigravity | — |
+| All | W7 stage 7, reduced | Codex, Antigravity, maintainer | — |
+
+C0, C1 and W1 start in parallel. W1 can land without the calendar mode and
+add it once C1's override ships. W1 sets the theme and the shell every other
+screen sits in, so the Web stages after it wait for it. Then Codex runs
+W2 → W3 → W4 and Antigravity runs W6 → W5 at the same time. Each Web stage
+gets its own task spec and PR, as stage 0 says.
 
 ## Этапы
 
@@ -90,7 +132,7 @@
 ### 7. Итоговая приёмка и использование
 
 - [ ] Web unit, typecheck, build, lint и полный Web e2e; source dependencies затронутого core — соответствующие tests/typecheck/build. `pnpm --filter @todoer/web e2e` использует тестовую БД по существующему setup, не пользовательские данные.
-- [ ] Новые экраны EN/RU × light/dark: 360/390/430, tablet 768/820 и desktop 1366/1920; полная прокрутка, длинные названия, zoom, contrast, touch, native keyboard/focus, screen reader. CSP и offline production bundle проверяются после build.
+- [ ] Новые экраны EN/RU × light/dark в Playwright на 390 и 1366: полная прокрутка, длинные названия, keyboard/focus, axe. Touch и мобильный сценарий пользователь проверяет вручную; screen reader и остальные ширины не проверяются (решение 2026-10-21). CSP и offline production bundle проверяются после build.
 - [ ] Общая реплика Web/TUI: parent/child → статус → progress → Undo → исключить родителя → offline → sync; дополнительно recurring occurrence и refused reparent. Не считать чтение TUI-spec подтверждением прогона.
 - [ ] Обновить task specs и proposal фактическими результатами, закрыть завершённые задачи и записать changelog. Начать пользоваться приложением; дальнейшие UX-правки оформлять по конкретным наблюдениям.
 
@@ -98,4 +140,4 @@
 
 ## Порядок и зависимость работ
 
-0 → 1 → 2 → 3 → 4 → 5 → 6 → 7. Каждый этап — отдельная reviewable группа изменений; при обнаружении общей зависимости core сначала отдельная задача core, затем потребитель Web. Не переносить весь bundle в `apps/web` одним копированием. Старые W2–W5 планы описывают исходную реализацию; этот план задаёт расширенный UX и осознанное обновление тестовых контрактов.
+C0 и C1 параллельно с 1; после 1 — 2 → 3 → 4 (Codex) параллельно с 6 → 5 (Antigravity); затем 7. Каждый этап — отдельная reviewable группа изменений; при обнаружении общей зависимости core сначала отдельная задача core, затем потребитель Web. Не переносить весь bundle в `apps/web` одним копированием. Старые W2–W5 планы описывают исходную реализацию; этот план задаёт расширенный UX и осознанное обновление тестовых контрактов.
