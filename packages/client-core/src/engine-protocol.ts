@@ -1,5 +1,6 @@
 import type {
   Catalog,
+  ChildItem,
   Item,
   Mark,
   Placement,
@@ -9,6 +10,8 @@ import type {
   taskDetails,
   ViewFields,
 } from './operations.js';
+
+export type { ChildItem };
 
 export type SyncReason =
   'start' | 'write' | 'tick' | 'focus' | 'online' | 'manual';
@@ -91,6 +94,7 @@ export type Command =
       view: string | null;
       task: string | null;
       span?: Span | null;
+      layout?: 'list' | 'kanban' | 'calendar' | null;
     }
   | Write;
 

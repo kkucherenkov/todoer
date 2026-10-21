@@ -40,8 +40,7 @@ const reorder = (i: number, to: 'up' | 'down') =>
 const deleting = ref<string | null>(null);
 /** Where the deleted column's tasks go (views Q8): the first other one. */
 const first = (s: Status) => statuses.value.find((x) => x.id !== s.id)?.name;
-/** Every live task on the status, as deleteStatus moves them, not only the
- *  cards the current (maybe filtered) board shows. */
+/** The tasks shown in that column, as deleteStatus moves them to the first column (FR-004). */
 const moving = (s: Status) =>
   t(`summary.tasks.${pluralForm(locale.value, s.tasks)}`, { n: s.tasks });
 async function remove(s: Status) {

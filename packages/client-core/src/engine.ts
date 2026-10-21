@@ -69,8 +69,24 @@ export type EngineDeps = {
   publish: <T extends Topic>(topic: T, value: Topics[T]) => void;
 };
 
-type Watch = { view: string | null; task: string | null; span: Span | null };
-type ViewKey = { key: string | null; span: Span | null };
+type Layout = 'list' | 'kanban' | 'calendar';
+const VALID_LAYOUTS = new Set<string>(['list', 'kanban', 'calendar']);
+const validLayout = (layout: unknown): Layout | null =>
+  typeof layout === 'string' && VALID_LAYOUTS.has(layout)
+    ? (layout as Layout)
+    : null;
+
+type Watch = {
+  view: string | null;
+  task: string | null;
+  span: Span | null;
+  layout: Layout | null;
+};
+type ViewKey = {
+  key: string | null;
+  span: Span | null;
+  layout: Layout | null;
+};
 
 /** A tick this soon after a sync is dropped (the cadence is 30 s). */
 const TICK_GAP_MS = 25_000;
@@ -150,8 +166,8 @@ export function createEngine({
     key === ALL
       ? { ...ALL_OPEN, problem: null }
       : cat.views.find((v) => v.id === key);
-  const items = (spec: ViewSpec, today: string) =>
-    (spec.layout === 'kanban' ? boardTasks : viewTasks)(store, today, spec);
+  const items = (spec: ViewSpec, today: string, layout = spec.layout) =>
+    (layout === 'kanban' ? boardTasks : viewTasks)(store, today, spec);
 
   const open = () => session.state === 'signed-in';
   /** What a tab gets while no account is signed in: the replica still holds
@@ -163,10 +179,11 @@ export function createEngine({
     problem: string,
     today: string,
     span: Span | null,
+    layout: Layout = 'list',
   ) =>
     publish('view', {
       key,
-      layout: 'list',
+      layout,
       sort: 'manual',
       problem,
       today,
@@ -178,19 +195,24 @@ export function createEngine({
   const publishView = (
     key: string,
     span: Span | null,
+    layoutOverride: Layout | null,
     cat: Catalog,
     today: string,
   ) => {
-    if (!open()) return problemView(key, 'signed-out', today, span);
+    const requested = layoutOverride ?? 'list';
+    if (!open()) return problemView(key, 'signed-out', today, span, requested);
     const spec = viewSpec(key, cat);
-    if (spec === undefined) return problemView(key, 'deleted', today, span);
-    const { layout, sort, problem } = spec;
+    if (spec === undefined) {
+      return problemView(key, 'deleted', today, span, requested);
+    }
+    const layout = layoutOverride ?? spec.layout;
+    const { sort, problem } = spec;
     const base = { key, layout, sort, problem, today };
     if (layout !== 'calendar') {
       return publish('view', {
         ...base,
         span: null,
-        items: problem === null ? items(spec, today) : [],
+        items: problem === null ? items(spec, today, layout) : [],
         placements: [],
       });
     }
@@ -243,16 +265,20 @@ export function createEngine({
     const today = localDate(now());
     // Two tabs on one calendar view with two spans each get theirs.
     const unique = new Map<string, ViewKey & { key: string }>();
-    for (const { key, span } of views) {
+    for (const { key, span, layout } of views) {
       if (key !== null) {
-        unique.set(`${key}:${span?.from}:${span?.to}`, { key, span });
+        unique.set(`${key}:${layout ?? ''}:${span?.from}:${span?.to}`, {
+          key,
+          span,
+          layout,
+        });
       }
     }
-    for (const { key, span } of unique.values()) {
+    for (const { key, span, layout } of unique.values()) {
       guard(
         `view:${key}`,
-        () => publishView(key, span, cat, today),
-        () => problemView(key, 'unavailable', today, span),
+        () => publishView(key, span, layout, cat, today),
+        () => problemView(key, 'unavailable', today, span, layout ?? 'list'),
       );
     }
     for (const id of new Set(tasks)) {
@@ -281,7 +307,7 @@ export function createEngine({
         const all = [...watches.values()];
         publishKeys(
           cat,
-          all.map((w) => ({ key: w.view, span: w.span })),
+          all.map((w) => ({ key: w.view, span: w.span, layout: w.layout })),
           all.map((w) => w.task),
         );
       },
@@ -297,7 +323,7 @@ export function createEngine({
       () =>
         publishKeys(
           open() ? catalog(store) : NONE,
-          [{ key: next.view, span: next.span }],
+          [{ key: next.view, span: next.span, layout: next.layout }],
           [next.task],
         ),
       () => undefined,
@@ -474,6 +500,7 @@ export function createEngine({
    *  none unless the view sorts manual (departure 7). */
   const dropRanks = (
     w: Extract<Write, { kind: 'move' }>,
+    tab?: string,
   ): Ranked[] | undefined => {
     // A resend of an applied drop must not re-validate an anchor that has
     // since left the list: the core answers it from the marker.
@@ -482,14 +509,20 @@ export function createEngine({
     if (spec === undefined || spec.sort !== 'manual' || spec.problem !== null) {
       return undefined;
     }
-    const listed = items(spec, localDate(now()));
+    const watch = tab !== undefined ? watches.get(tab) : undefined;
+    const layout: Layout =
+      (watch && watch.view === w.view && watch.layout !== null
+        ? watch.layout
+        : null) ??
+      validLayout(spec.layout) ??
+      'list';
+    const listed = items(spec, localDate(now()), layout);
     const column =
       w.statusId !== undefined
         ? w.statusId
         : listed.find((i) => i.id === w.taskId)?.column;
     const container = listed.filter(
-      (i) =>
-        i.id !== w.taskId && (spec.layout !== 'kanban' || i.column === column),
+      (i) => i.id !== w.taskId && (layout !== 'kanban' || i.column === column),
     );
     try {
       return rankWrites(
@@ -519,7 +552,10 @@ export function createEngine({
   });
 
   /** Each write is its core operation, with the tab's ids (departure 2). */
-  const apply = async (w: Write): Promise<{ synced: boolean; note?: Note }> => {
+  const apply = async (
+    w: Write,
+    tab?: string,
+  ): Promise<{ synced: boolean; note?: Note }> => {
     const { opId } = w;
     switch (w.kind) {
       case 'add':
@@ -533,7 +569,7 @@ export function createEngine({
       case 'edit':
         return editTask(core, { opId }, w.taskId, w.changes);
       case 'move': {
-        const ranks = dropRanks(w);
+        const ranks = dropRanks(w, tab);
         const r = await moveTask(core, { opId }, w.taskId, {
           ...(w.statusId === undefined ? {} : { statusId: w.statusId }),
           ...(ranks === undefined ? {} : { ranks }),
@@ -579,11 +615,11 @@ export function createEngine({
     }
   };
 
-  const write = async (w: Write): Promise<Result> => {
+  const write = async (w: Write, tab?: string): Promise<Result> => {
     const before = answered;
     let done: Awaited<ReturnType<typeof apply>>;
     try {
-      done = await apply(w);
+      done = await apply(w, tab);
     } catch (error) {
       // A refused write still pulled: merge what that brought.
       if (answered > before) afterReached();
@@ -608,7 +644,7 @@ export function createEngine({
   return {
     /** Restore the session from the cookie when the hint says one may exist. */
     start: (hint: boolean): Promise<void> => serial(() => start(hint)),
-    /** `tab` names the sender; only `watch` reads it. */
+    /** `tab` names the sender; `watch` and `dropRanks` read it. */
     async handle(command: Command, tab = ''): Promise<Result> {
       try {
         switch (command.kind) {
@@ -617,6 +653,7 @@ export function createEngine({
               view: command.view,
               task: command.task,
               span: command.span ?? null,
+              layout: validLayout(command.layout),
             });
             return OK;
           case 'signIn':
@@ -641,7 +678,7 @@ export function createEngine({
             const refused = await signedIn();
             if (refused !== undefined) return refused;
             try {
-              return await write(command);
+              return await write(command, tab);
             } finally {
               // Settled, refused or failed: the screens show what is true now.
               publishAll();

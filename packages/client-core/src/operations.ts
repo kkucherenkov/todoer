@@ -1000,6 +1000,19 @@ type Shown = Due & {
   parentTitle: string | null;
 };
 
+/** What a list row and a board card show for a live direct child. */
+export type ChildItem = {
+  id: string;
+  title: string;
+  closed: boolean;
+  statusId: string | null;
+  projectId: string | null;
+  priority: number;
+  scheduledOn: string | null;
+  dueOn: string | null;
+  inView: boolean;
+};
+
 /** A listed task with what a screen shows: its column (`displayStatus`) and
  *  whether its occurrence is closed (only ever true on a board). */
 export type Item = Shown & {
@@ -1007,32 +1020,44 @@ export type Item = Shown & {
    *  occurrence; null without any. Counted from the store: a view of open
    *  tasks lists none of the closed. */
   subtasks: { done: number; total: number } | null;
+  /** Live direct children with the fields a row/card shows. */
+  children?: ChildItem[];
 };
 
-/** `titles`: the live tasks' titles by id; `progress`: from progressOf. */
+/** `titles`: the live tasks' titles by id; `children`: from childrenOf. */
 function itemOf(
   titles: Map<string, string>,
-  progress: (row: Row) => Item['subtasks'],
+  children: (row: Row) => ChildItem[] = () => [],
 ) {
-  return ({ row, facts, closed }: Listed): Item => ({
-    ...row,
-    column: facts.statusId,
-    closed,
-    parentTitle:
-      typeof row.parentId === 'string'
-        ? (titles.get(row.parentId) ?? null)
-        : null,
-    subtasks: progress(row),
-  });
+  return ({ row, facts, closed }: Listed): Item => {
+    const kids = children(row);
+    const subtasks =
+      kids.length === 0
+        ? null
+        : {
+            done: kids.filter((c) => c.closed).length,
+            total: kids.length,
+          };
+    return {
+      ...row,
+      column: facts.statusId,
+      closed,
+      parentTitle:
+        typeof row.parentId === 'string'
+          ? (titles.get(row.parentId) ?? null)
+          : null,
+      subtasks,
+      children: kids,
+    };
+  };
 }
 
 const titlesOf = (store: Store) =>
   new Map(liveTasks(tasks(store)).map((t) => [String(t.id), String(t.title)]));
 
-/** Each parent's live subtasks, grouped once per listing. Closed is done or
- *  skipped at the parent's current occurrence (ADR 0009), as taskDetails'
- *  checklist reads it; a series that ended has none closed. */
-function progressOf(store: Store) {
+/** Each parent's live direct children, grouped once per listing. Closed is done or
+ *  skipped at the parent's current occurrence (ADR 0009). */
+function childrenOf(store: Store, inViewIds: Set<string>) {
   const kids = new Map<string, Row[]>();
   for (const t of liveTasks(tasks(store))) {
     if (typeof t.parentId !== 'string') continue;
@@ -1040,18 +1065,30 @@ function progressOf(store: Store) {
     if (siblings === undefined) kids.set(t.parentId, [t]);
     else siblings.push(t);
   }
+  for (const siblings of kids.values()) {
+    siblings.sort((a, b) => compareStrings(a.rank, b.rank) || compareIds(a, b));
+  }
   const marks = occurrences(store);
-  return (row: Row): Item['subtasks'] => {
+  return (row: Row): ChildItem[] => {
     const mine = kids.get(String(row.id));
-    if (mine === undefined) return null;
+    if (mine === undefined) return [];
     const occurrence =
       typeof row.occurrence === 'string' ? row.occurrence : null;
     const ended = typeof row.rrule === 'string' && occurrence === null;
-    const done = ended
-      ? 0
-      : mine.filter((t) => isClosed(stateOf(marks, String(t.id))(occurrence)))
-          .length;
-    return { done, total: mine.length };
+    return mine.map((t) => ({
+      id: String(t.id),
+      title: String(t.title),
+      closed: !ended && isClosed(stateOf(marks, String(t.id))(occurrence)),
+      statusId: typeof t.statusId === 'string' ? t.statusId : null,
+      projectId: typeof t.projectId === 'string' ? t.projectId : null,
+      priority:
+        t.priority !== undefined && t.priority !== null
+          ? Number(t.priority)
+          : 4,
+      scheduledOn: typeof t.scheduledOn === 'string' ? t.scheduledOn : null,
+      dueOn: typeof t.dueOn === 'string' ? t.dueOn : null,
+      inView: inViewIds.has(String(t.id)),
+    }));
   };
 }
 
@@ -1065,12 +1102,13 @@ function selected(
   if (problem !== null) {
     throw new RefusalError(`view has an invalid filter: ${problem}`);
   }
-  return sortFor(
-    view.sort,
-    due(store, today, closedSince).filter(({ facts }) =>
-      matches(view.filter as Filter, facts, today),
-    ),
-  ).map(itemOf(titlesOf(store), progressOf(store)));
+  const matching = due(store, today, closedSince).filter(({ facts }) =>
+    matches(view.filter as Filter, facts, today),
+  );
+  const inViewIds = new Set(matching.map(({ row }) => String(row.id)));
+  return sortFor(view.sort, matching).map(
+    itemOf(titlesOf(store), childrenOf(store, inViewIds)),
+  );
 }
 
 /** The open tasks a list view shows, filtered and sorted (the CLI's facts). */
@@ -1196,6 +1234,7 @@ export type TaskDetails = Shown & {
   dtstart: string | null;
   /** Live subtasks by rank, then id. */
   subtasks: Subtask[];
+  children?: ChildItem[];
 };
 
 /** One task for the drawer: the row, labels, current occurrence, column,
@@ -1208,21 +1247,16 @@ export function taskDetails(
 ): TaskDetails | null {
   const found = due(store, today, null).find(({ row }) => row.id === id);
   if (found === undefined) return null;
-  const { notes, rrule, dtstart, occurrence } = found.row;
-  const marks = occurrences(store);
-  // A series that ended has no axis to tick on; one-off marks left from when
-  // the parent was one-off no longer apply (departure 8).
-  const ended = typeof rrule === 'string' && occurrence === null;
-  const subtasks = liveTasks(tasks(store))
-    .filter((t) => t.parentId === id)
-    .sort((a, b) => compareStrings(a.rank, b.rank) || compareIds(a, b))
-    .map((t) => ({
-      id: String(t.id),
-      title: String(t.title),
-      closed: !ended && isClosed(stateOf(marks, String(t.id))(occurrence)),
-    }));
+  const { notes, rrule, dtstart } = found.row;
+  const children = childrenOf(store, new Set());
+  const kids = children(found.row);
+  const subtasks = kids.map(({ id, title, closed }) => ({
+    id,
+    title,
+    closed,
+  }));
   return {
-    ...itemOf(titlesOf(store), progressOf(store))(found),
+    ...itemOf(titlesOf(store), children)(found),
     notes: typeof notes === 'string' ? notes : null,
     rrule: typeof rrule === 'string' ? rrule : null,
     dtstart: typeof dtstart === 'string' ? dtstart : null,
@@ -1239,10 +1273,34 @@ export function catalog(store: Store): Catalog {
   const statuses = notDeleted(statusRows(store)).sort(
     (a, b) => compareStrings(a.rank, b.rank) || compareIds(a, b),
   );
-  const completing = completingStatus(statusFacts(statuses));
+  const facts = statusFacts(statuses);
+  const completing = completingStatus(facts);
+  const all = tasks(store);
+  const byId = new Map(all.map((t) => [String(t.id), t]));
+  const marks = new Map(
+    occurrences(store).map((m) => [
+      JSON.stringify([m.taskId, m.occurrence ?? null]),
+      m,
+    ]),
+  );
   const perStatus = new Map<unknown, number>();
-  for (const t of liveTasks(tasks(store))) {
-    perStatus.set(t.statusId, (perStatus.get(t.statusId) ?? 0) + 1);
+  for (const t of liveTasks(all)) {
+    const parent =
+      typeof t.parentId === 'string' ? byId.get(t.parentId) : undefined;
+    const recurrence = recurrenceOf(t, parent);
+    const mark =
+      recurrence === null
+        ? marks.get(JSON.stringify([String(t.id), null]))
+        : undefined;
+    const closed = recurrence === null && isClosed(mark?.state);
+    const targetStatus = displayStatus(
+      typeof t.statusId === 'string' ? t.statusId : null,
+      facts,
+      closed,
+    );
+    if (targetStatus !== null) {
+      perStatus.set(targetStatus, (perStatus.get(targetStatus) ?? 0) + 1);
+    }
   }
   const version = (row: Row) =>
     typeof row.version === 'number' ? row.version : null;

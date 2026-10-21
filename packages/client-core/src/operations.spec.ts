@@ -386,15 +386,27 @@ describe('catalog', () => {
     ]);
   });
 
-  it('counts the live tasks on each status, as deleteStatus moves them', () => {
+  it('counts the live tasks on each status by display status (tuxedo 432)', () => {
     const store = boardStore();
     put(store, 'task', task('a', { statusId: 's1' }));
     put(store, 'task', task('b', { statusId: 's1' }));
     put(store, 'task', task('c', { statusId: 's1', deletedAt: 'x' }));
     put(store, 'task', task('d', { statusId: null }));
+    put(store, 'task', task('e', { statusId: 'deleted-status' }));
     expect(catalog(store).statuses.map((s) => [s.id, s.tasks])).toEqual([
-      ['s1', 2],
+      ['s1', 4],
       ['20000000-0000-4000-8000-000000000000', 0],
+    ]);
+  });
+
+  it('counts closed tasks in the completing status', () => {
+    const store = boardStore();
+    put(store, 'task', task('a', { statusId: 's1' }));
+    put(store, 'task', task('done1', { statusId: 's1' }));
+    closeAt(store, 'done1', TODAY);
+    expect(catalog(store).statuses.map((s) => [s.id, s.tasks])).toEqual([
+      ['s1', 1],
+      ['20000000-0000-4000-8000-000000000000', 1],
     ]);
   });
 });
@@ -2179,6 +2191,208 @@ describe('subtask progress', () => {
       total: checklist.length,
     }).toEqual(progress(store, 'p'));
     expect(progress(store, 'p')).toEqual({ done: 1, total: 2 });
+  });
+});
+
+describe('children outside the filter (FR-003)', () => {
+  it('each item carries its live direct children with row fields and inView', () => {
+    const P1 = '10000000-0000-4000-8000-000000000001';
+    const P2 = '10000000-0000-4000-8000-000000000002';
+    const store = openStore(':memory:');
+    put(store, 'project', { id: P1, name: 'Project 1' });
+    put(store, 'project', { id: P2, name: 'Project 2' });
+    put(store, 'status', {
+      id: 's1',
+      name: 'Todo',
+      rank: 'a0',
+      completing: false,
+    });
+
+    // Parent in project P1
+    put(store, 'task', task('p', { projectId: P1, rank: 'a0' }));
+    // Child 1 in project P1 (in filter)
+    put(
+      store,
+      'task',
+      task('c1', {
+        parentId: 'p',
+        projectId: P1,
+        title: 'Child 1',
+        priority: 1,
+        statusId: 's1',
+        scheduledOn: '2026-10-10',
+        dueOn: '2026-10-20',
+        rank: 'a1',
+      }),
+    );
+    // Child 2 in project P2 (outside filter)
+    put(
+      store,
+      'task',
+      task('c2', {
+        parentId: 'p',
+        projectId: P2,
+        title: 'Child 2',
+        priority: 2,
+        statusId: null,
+        scheduledOn: null,
+        dueOn: null,
+        rank: 'a2',
+      }),
+    );
+    // Tombstoned child (must be excluded)
+    put(
+      store,
+      'task',
+      task('c3', {
+        parentId: 'p',
+        projectId: P1,
+        title: 'Child 3',
+        deletedAt: '2026-10-01',
+      }),
+    );
+
+    const viewSpec = {
+      sort: 'manual',
+      layout: 'list',
+      filter: { project: P1 },
+    };
+    const items = viewTasks(store, TODAY, viewSpec);
+    // Filter matches p and c1, but NOT c2. items.length remains 2.
+    expect(items.map((i) => i.id)).toEqual(['p', 'c1']);
+
+    const parent = items.find((i) => i.id === 'p')!;
+    expect(parent.children).toEqual([
+      {
+        id: 'c1',
+        title: 'Child 1',
+        closed: false,
+        statusId: 's1',
+        projectId: P1,
+        priority: 1,
+        scheduledOn: '2026-10-10',
+        dueOn: '2026-10-20',
+        inView: true,
+      },
+      {
+        id: 'c2',
+        title: 'Child 2',
+        closed: false,
+        statusId: null,
+        projectId: P2,
+        priority: 2,
+        scheduledOn: null,
+        dueOn: null,
+        inView: false,
+      },
+    ]);
+
+    // Subtask itself has no children
+    const c1Item = items.find((i) => i.id === 'c1')!;
+    expect(c1Item.children).toEqual([]);
+  });
+
+  it('marks closed children per occurrence axis as subtasks counts', () => {
+    const store = openStore(':memory:');
+    // Recurring parent
+    put(
+      store,
+      'task',
+      task('rp', { rrule: 'FREQ=DAILY', dtstart: '2026-10-01' }),
+    );
+    put(store, 'task', task('rc1', { parentId: 'rp', rank: 'a0' }));
+    put(store, 'task', task('rc2', { parentId: 'rp', rank: 'a1' }));
+
+    // Close rc1 on today's occurrence
+    put(store, 'task_occurrence', {
+      id: 'rc1-today',
+      taskId: 'rc1',
+      occurrence: TODAY,
+      state: 'done',
+    });
+    // Close rc2 on yesterday's occurrence
+    put(store, 'task_occurrence', {
+      id: 'rc2-yesterday',
+      taskId: 'rc2',
+      occurrence: '2026-10-01',
+      state: 'done',
+    });
+
+    const items = viewTasks(store, TODAY, ALL_OPEN);
+    const parent = items.find((i) => i.id === 'rp')!;
+    expect(parent.subtasks).toEqual({ done: 1, total: 2 });
+    expect(parent.children?.map((c) => [c.id, c.closed])).toEqual([
+      ['rc1', true],
+      ['rc2', false],
+    ]);
+  });
+
+  it('sorts children by rank where insertion order differs from rank order', () => {
+    const store = openStore(':memory:');
+    put(store, 'task', task('p'));
+    // Insert child with higher rank ('a1') first so store seq is lower
+    put(store, 'task', task('c-late', { parentId: 'p', rank: 'a1' }));
+    // Insert child with lower rank ('a0') second
+    put(store, 'task', task('c-early', { parentId: 'p', rank: 'a0' }));
+
+    const items = viewTasks(store, TODAY, ALL_OPEN);
+    const parent = items.find((i) => i.id === 'p')!;
+    expect(parent.children?.map((c) => c.id)).toEqual(['c-early', 'c-late']);
+  });
+
+  it('shows child of an ended recurring series as not closed per the series axis', () => {
+    const store = openStore(':memory:');
+    put(store, 'status', {
+      id: 's-done',
+      name: 'Done',
+      rank: 'a0',
+      completing: true,
+    });
+    // Recurring parent whose series ends on 2026-10-01
+    put(
+      store,
+      'task',
+      task('ended-p', {
+        rrule: 'FREQ=DAILY;UNTIL=20261001',
+        dtstart: '2026-09-01',
+        statusId: 's-done',
+      }),
+    );
+    // End the series for real by completing its last occurrence
+    put(store, 'task_occurrence', {
+      id: 'p-done',
+      taskId: 'ended-p',
+      occurrence: '2026-10-01',
+      state: 'done',
+    });
+    put(store, 'task', task('c-ended', { parentId: 'ended-p', rank: 'a0' }));
+    // A one-off mark left on the child from when it was one-off
+    put(store, 'task_occurrence', {
+      id: 'c-mark',
+      taskId: 'c-ended',
+      occurrence: null,
+      state: 'done',
+    });
+
+    const parent = taskDetails(store, TODAY, 'ended-p')!;
+    expect(parent.children?.[0]?.closed).toBe(false);
+    expect(parent.subtasks).toEqual([
+      { id: 'c-ended', title: 'c-ended', closed: false },
+    ]);
+  });
+
+  it('defaults child priority to 4 when absent', () => {
+    const store = openStore(':memory:');
+    put(store, 'task', task('p'));
+    put(
+      store,
+      'task',
+      task('c-no-prio', { parentId: 'p', priority: undefined }),
+    );
+
+    const items = viewTasks(store, TODAY, ALL_OPEN);
+    const parent = items.find((i) => i.id === 'p')!;
+    expect(parent.children?.[0]?.priority).toBe(4);
   });
 });
 

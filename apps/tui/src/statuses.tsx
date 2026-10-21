@@ -68,7 +68,7 @@ function Statuses({ close }: { close: () => void }) {
         setDeleting(true);
         status.say({
           tone: 'info',
-          text: `delete "${current.name}"? its ${current.tasks} task(s) move to the first status · y/n`,
+          text: `delete "${current.name}"? the ${current.tasks} task(s) shown in that column move to the first status · y/n`,
         });
         return;
       }

@@ -104,7 +104,7 @@ describe('StatusesScreen', () => {
   it('deletes with dd y, naming the tasks that move; dd n keeps it', async () => {
     const t = await statuses();
     await t.press('j', 'd', 'd');
-    expect(t.lastFrame()).toContain('its 1 task(s) move');
+    expect(t.lastFrame()).toContain('the 1 task(s) shown in that column move');
     await t.press('n');
     expect(names(t)).toHaveLength(3);
     await t.press('d', 'd', 'y');
