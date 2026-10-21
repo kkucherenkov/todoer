@@ -1,3 +1,4 @@
+import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
 import {
   arrowTo,
@@ -511,4 +512,50 @@ test('calendar: Undo of a moved copy names why it cannot', async ({
   // That cannot pass any more: no Undo is offered again.
   await expect(page.getByRole('button', { name: 'Undo' })).toHaveCount(0);
   await expect(chip(page, target, 'Water plants')).toHaveCount(1);
+});
+
+test('calendar: Previous, Next and Today keep the keyboard focus', async ({
+  page,
+  account,
+}) => {
+  const view = await seedView(
+    page.request,
+    account.token,
+    'Week',
+    'a0',
+    'calendar',
+  );
+  await page.goto(`/views/${view}`);
+  const title = page.getByTestId('calendar-title');
+  await expect(title).toBeVisible();
+  const week = await title.innerText();
+  for (const name of ['Next', 'Previous', 'Today']) {
+    const button = page.getByRole('button', { name, exact: true });
+    await button.focus();
+    await page.keyboard.press('Enter');
+    await expect(page.getByTestId('calendar-skeleton')).toHaveCount(0);
+    await expect(button).toBeFocused();
+  }
+  await expect(title).toHaveText(week);
+});
+
+test('calendar: the Week / Month tabs keep text contrast', async ({
+  page,
+  account,
+}) => {
+  const view = await seedView(
+    page.request,
+    account.token,
+    'Week',
+    'a0',
+    'calendar',
+  );
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.goto(`/views/${view}`);
+  await expect(page.getByRole('tab', { name: 'Month' })).toBeVisible();
+  const { violations } = await new AxeBuilder({ page })
+    .include('[data-testid="calendar"] [role="tablist"]')
+    .withRules(['color-contrast'])
+    .analyze();
+  expect(violations).toEqual([]);
 });

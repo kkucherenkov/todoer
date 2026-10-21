@@ -1,8 +1,8 @@
 ## T-2026-10-03-web-redesign-context — Сохранить контекст и иерархию при переносе Web UX
 
 - Created: 2026-10-03
-- Owner: Codex (Web)
-- Status: ready
+- Owner: Claude (Web; Codex for W1–W2)
+- Status: in-progress — W1–W7 landed; waits on the maintainer's touch and mobile check (2026-10-22)
 - Blockers: —
 - Spec: maintainer request, 2026-10-03 — правила List/Board, URL, детей вне фильтра, прогресса и общей семантики Web/TUI утверждены; [proposal](../../../docs/proposals/2026-10-03-web-ux-redesign.md)
 - Plan: none; the steps below are the whole change
@@ -43,8 +43,8 @@
 
 ### Definition of Done
 
-- **SC-001** Сценарии 1–6 проходят в приложении в EN/RU, обеих темах; desktop/mobile затронутые контролы проверены.
-- **SC-002** Общий сценарий Web/TUI на одной реплике подтверждён с occurrence-aware завершением, Undo и offline → sync.
+- **SC-001** Сценарии 1–6 проходят в приложении в EN/RU, обеих темах; desktop/mobile затронутые контролы проверены. Playwright на 390 и 1366 — 2026-10-22; touch и мобильный сценарий проверяет пользователь вручную (решение 2026-10-21).
+- **SC-002** Общий сценарий Web/TUI на одной реплике подтверждён с occurrence-aware завершением, Undo и offline → sync. Подтверждено 2026-10-22 (T004).
 - [ ] every FR has a test that failed before the code made it pass
 - [ ] gates: `PR title (conventional commit)`, `Shell tests`, `Workspace tests`, `Lint`
 - [ ] no document still asserts the behaviour this task replaced
@@ -52,11 +52,11 @@
 
 ### Steps
 
-- [ ] T001 [FR-001–008] Сверить исходные контракты и владельцев: `apps/web`, `packages/client-core/src/operations.ts`, TUI spec, ADR 0009. Зафиксировать способ чтения всех детей: `taskDetails` даёт ID/title/closed, дополнительные поля нужны из core projection, не из HTML fixture. При необходимости отдельной общей правки назначить одного владельца; TUI-файлы не менять в Web-задаче.
-- [ ] T002 [FR-001–003, FR-007] Добавить failing-first route/history/focus проверки, затем реализовать transient layout и drawer context; проверить URL без override, invalid override, reload, Back/Forward, смену view и исчезновение инициатора.
-- [ ] T003 [FR-004–005] Добавить failing-first проверки children/progress, затем реализовать раскрытие через core details/projections, принадлежность проекту, метки вне фильтра и уникальный счётчик. Не дублировать engine в Web.
-- [ ] T004 [FR-006–008] Проверить операции и общую реплику: создать parent/child → list/board/details → изменить ребёнка → progress → Undo → исключить родителя фильтром → offline → sync; дополнительно recurring occurrence и refused reparent. Отчёт о соответствии TUI spec не заменяет фактический межклиентский прогон.
-- [ ] T005 [FR-001–008] Выполнить Web/core tests, typecheck/build, lint и браузерные e2e; проверить i18n/CSP и обновить docs/статус с фактическими результатами. Fixtures не засчитывать как application integration.
+- [x] T001 [FR-001–008] Сверить исходные контракты и владельцев: `apps/web`, `packages/client-core/src/operations.ts`, TUI spec, ADR 0009. Зафиксировать способ чтения всех детей: `taskDetails` даёт ID/title/closed, дополнительные поля нужны из core projection, не из HTML fixture. При необходимости отдельной общей правки назначить одного владельца; TUI-файлы не менять в Web-задаче. Результат: C1 #48 ([`T-2026-10-21-core-redesign-projections`](../done/T-2026-10-21-core-redesign-projections.md)) — поля детей вне фильтра из core projection.
+- [x] T002 [FR-001–003, FR-007] Добавить failing-first route/history/focus проверки, затем реализовать transient layout и drawer context; проверить URL без override, invalid override, reload, Back/Forward, смену view и исчезновение инициатора. Результат: W1 #45/#49/#51 ([`T-2026-10-21-web-redesign-shell`](../done/T-2026-10-21-web-redesign-shell.md)).
+- [x] T003 [FR-004–005] Добавить failing-first проверки children/progress, затем реализовать раскрытие через core details/projections, принадлежность проекту, метки вне фильтра и уникальный счётчик. Не дублировать engine в Web. Результат: W3 #52 ([`T-2026-10-21-web-redesign-list`](../done/T-2026-10-21-web-redesign-list.md)).
+- [x] T004 [FR-006–008] Проверить операции и общую реплику: создать parent/child → list/board/details → изменить ребёнка → progress → Undo → исключить родителя фильтром → offline → sync; дополнительно recurring occurrence и refused reparent. Отчёт о соответствии TUI spec не заменяет фактический межклиентский прогон. Результат 2026-10-22 (W7, [`T-2026-10-22-web-redesign-acceptance`](../done/T-2026-10-22-web-redesign-acceptance.md)): Web в Playwright и сам TUI в tmux на одном backend и аккаунте прошли parent/child → статус → progress → Undo → родитель вне фильтра → offline → sync, recurring occurrence и отказ reparent; клиенты совпали на каждом шаге.
+- [x] T005 [FR-001–008] Выполнить Web/core tests, typecheck/build, lint и браузерные e2e; проверить i18n/CSP и обновить docs/статус с фактическими результатами. Fixtures не засчитывать как application integration. Результат 2026-10-22: Web unit, typecheck, lint, build и полный Web e2e (chromium + firefox) зелёные; `e2e/acceptance.spec.ts` покрывает 390/1366 × EN/RU × light/dark, клавиатуру и axe; CSP проверяет fixture `guard` в каждом тесте.
 - **Checkpoint:** правила реализованы и проверены в приложении; пока создана только спецификация, код и тесты не менялись.
 
 ### Open questions

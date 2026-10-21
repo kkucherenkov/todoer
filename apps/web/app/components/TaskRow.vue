@@ -108,7 +108,7 @@ const actions = computed<DropdownMenuItem[]>(() => [
     <div class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
       <button
         type="button"
-        class="truncate text-left font-medium"
+        class="text-left font-medium [overflow-wrap:anywhere]"
         data-task-opener
         data-testid="task-title"
         @click="emit('open', $event.currentTarget as HTMLElement)"

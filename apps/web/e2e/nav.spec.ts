@@ -178,3 +178,19 @@ test('navigation: a built-in keeps ?layout= and ?task=, and the header count is 
     'Pay rent',
   );
 });
+
+test('navigation: a long view name wraps instead of being cut off', async ({
+  page,
+  account,
+}) => {
+  const name =
+    'Everything that has to happen before the release candidate is cut, including the documentation';
+  await seedView(page.request, account.token, name, 'a0', 'list');
+  await page.goto('/');
+  const link = nav(page).getByRole('link', { name });
+  await expect(link).toBeVisible();
+  const label = link.getByText(name);
+  expect(await label.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
+    true,
+  );
+});

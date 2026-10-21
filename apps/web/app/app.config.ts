@@ -49,5 +49,12 @@ export default defineAppConfig({
         base: 'focus-visible:outline-primary focus-visible:outline-solid focus-visible:outline-3',
       },
     },
+    // An inactive tab sits on bg-elevated, where text-muted is 4.39:1 in
+    // light mode (DESIGN.md, Contrast): text-toned instead.
+    tabs: {
+      slots: {
+        trigger: 'data-[state=inactive]:text-toned',
+      },
+    },
   },
 });

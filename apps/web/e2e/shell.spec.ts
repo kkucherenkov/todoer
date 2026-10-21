@@ -267,6 +267,22 @@ test('a reload restores the session through the cookie', async ({
   await expect(count(page)).toHaveCount(0);
 });
 
+test('the document language follows the interface language', async ({
+  page,
+}) => {
+  await page.goto('/');
+  await expect(page.getByTestId('sign-in')).toBeVisible();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'en');
+  await page.getByRole('switch', { name: 'Interface language' }).click();
+  await expect(page.locator('html')).toHaveAttribute('lang', 'ru');
+});
+
+test('the document has a title', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.getByTestId('sign-in')).toBeVisible();
+  await expect(page).toHaveTitle('Todoer');
+});
+
 test('wrong password', async ({ page }, { testId }) => {
   const text = (locale: string) =>
     (

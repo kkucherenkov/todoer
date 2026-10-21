@@ -209,11 +209,10 @@ export function connect(
     mint,
     write: (w) => request('opId' in w ? w : mint(w)),
     watch(view, task, span = null, layout = null) {
-      if (
-        view !== watching.view ||
-        !sameSpan(span, watching.span) ||
-        layout !== watching.layout
-      ) {
+      // A new span keeps the topic: the calendar shows its skeleton until
+      // the span it asked for arrives, and stays mounted, so the toolbar
+      // button that moved it keeps the focus.
+      if (view !== watching.view || layout !== watching.layout) {
         topics.view.value = undefined;
       }
       if (task !== watching.task) topics.task.value = undefined;
