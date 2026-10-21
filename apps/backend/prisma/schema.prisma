@@ -37,7 +37,7 @@ model Task {
   notes            String?
   projectId        String?   @db.Uuid
   parentId         String?   @db.Uuid
-  priority         Int       @default(0)
+  priority         Int       @default(4)
   scheduledOn      DateTime? @db.Date
   dueOn            DateTime? @db.Date
   rrule            String?
