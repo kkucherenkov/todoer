@@ -16,6 +16,7 @@
     "@nuxtjs/i18n": "^10.6.0",
     "@sqlite.org/sqlite-wasm": "3.53.4-build1",
     "@todoer/client-core": "workspace:^",
+    "@todoer/specs": "workspace:^",
     "@vite-pwa/nuxt": "^1.1.1",
     "nuxt": "^4.5.2",
     "tailwindcss": "^4.3.3",

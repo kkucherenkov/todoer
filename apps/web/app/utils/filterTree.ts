@@ -1,4 +1,5 @@
 import { filterSize, type Catalog, type Filter } from '@todoer/client-core';
+import { FILTER_MAX_DEPTH, FILTER_MAX_NODES } from '@todoer/specs';
 import type { ComputedRef, InjectionKey } from 'vue';
 
 /** Child indexes from the root; a `not` has one child, at 0. */
@@ -25,12 +26,12 @@ const KEYS = new Set<string>([
   'due',
   'recurring',
 ]);
+export const LIMIT_DEPTH = FILTER_MAX_DEPTH;
+export const LIMIT_NODES = FILTER_MAX_NODES;
 // One level and one node past what filterProblem allows, so a tree that is
 // over the limits can still be drawn and trimmed.
-const MAX_DEPTH = 9;
-const MAX_NODES = 257;
-const LIMIT_DEPTH = 8;
-const LIMIT_NODES = 256;
+const MAX_DEPTH = LIMIT_DEPTH + 1;
+const MAX_NODES = LIMIT_NODES + 1;
 
 /**
  * Whether the tree can be drawn: every node one known key with the right

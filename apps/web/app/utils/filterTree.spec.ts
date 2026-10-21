@@ -14,6 +14,8 @@ import {
   canToggleNot,
   children,
   editable,
+  LIMIT_DEPTH,
+  LIMIT_NODES,
   options,
   remove,
   replace,
@@ -21,6 +23,7 @@ import {
   toggleNot,
   type Path,
 } from './filterTree';
+import { FILTER_MAX_DEPTH, FILTER_MAX_NODES } from '@todoer/specs';
 import { filterOf, type Template } from './templates';
 
 const ID = '0192f3a0-0000-7000-8000-000000000001';
@@ -296,3 +299,11 @@ describe('options', () => {
     expect(options(rows, '', 'unknown')).toHaveLength(1);
   });
 });
+
+describe('filter limits', () => {
+  it('derives from @todoer/specs constants', () => {
+    expect(LIMIT_DEPTH).toBe(FILTER_MAX_DEPTH);
+    expect(LIMIT_NODES).toBe(FILTER_MAX_NODES);
+  });
+});
+
