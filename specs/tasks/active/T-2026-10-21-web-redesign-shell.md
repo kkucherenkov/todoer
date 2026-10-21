@@ -2,7 +2,7 @@
 
 - Created: 2026-10-21
 - Owner: Codex (Web)
-- Status: in-review
+- Status: paused
 - Blockers: C1 is not on `origin/main`; cross-projection overrides remain
   unavailable (Calendar outside saved calendar views, and List/Kanban inside
   them)
@@ -81,7 +81,7 @@ and URL history and the task drawer must preserve the user's current context.
   return from the drawer to a meaningful focus target at desktop and mobile
   widths.
 - [ ] every FR has a test that failed before the code made it pass
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
 - [x] no document still asserts the behaviour this task replaced
 - [x] dnote changelog line
