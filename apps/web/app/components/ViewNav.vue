@@ -57,6 +57,7 @@ const items = computed<NavigationMenuItem[][]>(() => {
       orientation="vertical"
       :items="items"
       :aria-label="$t('nav.title')"
+      :ui="{ linkLabel: 'whitespace-normal [overflow-wrap:anywhere]' }"
       data-testid="nav"
     />
     <UButton
