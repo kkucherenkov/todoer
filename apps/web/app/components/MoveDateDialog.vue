@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Placement } from '@todoer/client-core';
+import { exclusive } from '~/utils/exclusive';
 
 const props = defineProps<{
   placement: Placement | null;
@@ -9,23 +10,17 @@ const props = defineProps<{
 const emit = defineEmits<{ close: [] }>();
 
 const date = ref('');
-const saving = ref(false);
 watch(
   () => props.placement,
   (p) => p && (date.value = p.date),
 );
 
 // A refusal (its toast names the reason) keeps the dialog and the date, so
-// Move again is the same intent; one submit at a time.
-async function submit() {
-  if (!props.placement || !date.value || saving.value) return;
-  saving.value = true;
-  try {
-    if (await props.apply(props.placement, date.value)) emit('close');
-  } finally {
-    saving.value = false;
-  }
-}
+// Move again is the same intent; a second submit while one runs is dropped.
+const { busy: saving, run: submit } = exclusive(async () => {
+  if (!props.placement || !date.value) return;
+  if (await props.apply(props.placement, date.value)) emit('close');
+});
 </script>
 
 <template>
