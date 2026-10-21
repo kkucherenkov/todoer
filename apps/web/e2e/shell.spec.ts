@@ -21,6 +21,14 @@ test('layout switch preserves URL history, drawer context and focus', async ({
     'a0',
     'list',
   );
+  const secondary = await seedView(
+    page.request,
+    account.token,
+    'Secondary',
+    'a1',
+    'kanban',
+  );
+  await cli(account.token, 'add', 'First task');
   await cli(account.token, 'add', 'Keep context');
   await page.goto(`/views/${view}?mode=month&at=2026-10-01&custom=kept`);
 
@@ -41,16 +49,38 @@ test('layout switch preserves URL history, drawer context and focus', async ({
   await expect(page).toHaveURL(/mode=month/);
   await expect(page).toHaveURL(/at=2026-10-01/);
   await expect(page).toHaveURL(/custom=kept/);
+  await page.reload();
+  await expect(page.getByTestId('board')).toBeVisible();
+  await expect(page).toHaveURL(/layout=kanban/);
 
   const card = page.getByTestId('card').filter({ hasText: 'Keep context' });
-  await card.focus();
-  await card.press('Enter');
-  await expect(page.getByRole('dialog')).toBeVisible();
+  await card.getByRole('button', { name: 'Task actions' }).click();
+  await page.getByRole('menuitem', { name: 'Open', exact: true }).click();
+  const drawer = page.getByRole('dialog');
+  await expect(drawer).toBeVisible();
+  const closeBox = await drawer
+    .getByRole('button', { name: 'Close' })
+    .boundingBox();
+  expect(closeBox?.width).toBeGreaterThanOrEqual(44);
+  expect(closeBox?.height).toBeGreaterThanOrEqual(44);
   await page.keyboard.press('Escape');
-  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(drawer).toHaveCount(0);
   await expect(card).toBeFocused();
   await expect(page).toHaveURL(/layout=kanban/);
   await expect(page).not.toHaveURL(/task=/);
+
+  await page
+    .getByRole('navigation', { name: 'Views' })
+    .getByRole('link', { name: 'Secondary', exact: true })
+    .click();
+  await expect(page).toHaveURL(new RegExp(`/views/${secondary}`));
+  await expect(page).not.toHaveURL(/layout=/);
+  await expect(page).toHaveURL(/custom=kept/);
+  await expect(page.getByTestId('board')).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL(new RegExp(`/views/${view}`));
+  await expect(page).toHaveURL(/layout=kanban/);
+  await expect(page).toHaveURL(/custom=kept/);
 
   await modes.getByRole('tab', { name: 'List' }).click();
   await expect(page).not.toHaveURL(/layout=/);
@@ -60,9 +90,47 @@ test('layout switch preserves URL history, drawer context and focus', async ({
   await page.goForward();
   await expect(page.getByTestId('task-list')).toBeVisible();
 
+  await page.goto('/');
   await page.goto(`/views/${view}?layout=tiles&custom=kept`);
   await expect(page).not.toHaveURL(/layout=/);
   await expect(page).toHaveURL(/custom=kept/);
+  await page.goBack();
+  await expect.poll(() => new URL(page.url()).pathname).toBe('/');
+});
+
+test('drawer parent navigation preserves the original task opener', async ({
+  page,
+  account,
+  cli,
+}) => {
+  await cli(account.token, 'add', 'Parent task');
+  await page.goto('/');
+  const drawer = page.getByRole('dialog');
+  const parentTitle = page
+    .getByTestId('task-row')
+    .filter({ hasText: 'Parent task' })
+    .getByTestId('task-title');
+  await parentTitle.click();
+  const add = drawer.getByRole('textbox', { name: 'Add subtask' });
+  await add.fill('Child task');
+  await add.press('Enter');
+  await expect(
+    drawer.getByRole('checkbox', { name: 'Done: Child task' }),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  const childTitle = page
+    .getByTestId('task-row')
+    .filter({ hasText: 'Child task' })
+    .getByTestId('task-title');
+  await childTitle.click();
+  await drawer.getByTestId('subtask-of').click();
+  await expect(drawer.getByRole('textbox', { name: 'Title' })).toHaveValue(
+    'Parent task',
+  );
+  await page.keyboard.press('Escape');
+  await expect(drawer).toHaveCount(0);
+  await expect(childTitle).toBeFocused();
 });
 
 test('sees a CLI write on focus', async ({ page, account, cli }) => {
@@ -132,7 +200,7 @@ test('wrong password', async ({ page }, { testId }) => {
   await expect(page.getByTestId('sign-in-error')).toContainText(text('en'));
   await page
     .getByRole('switch', {
-      name: 'Interface language: English; switch to Russian',
+      name: 'Interface language',
     })
     .click();
   await expect(page.getByTestId('sign-in-error')).toContainText(text('ru'));

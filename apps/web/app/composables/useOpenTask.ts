@@ -6,6 +6,7 @@ export function useOpenTask() {
     if (typeof route.query.task !== 'string') {
       const active = document.activeElement;
       rememberDrawerFocus(
+        id,
         opener ?? (active instanceof HTMLElement ? active : undefined),
       );
     }

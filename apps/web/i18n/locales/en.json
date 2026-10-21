@@ -3,8 +3,7 @@
     "title": "Todoer"
   },
   "locale": {
-    "switchToRussian": "Interface language: English; switch to Russian",
-    "switchToEnglish": "Interface language: Russian; switch to English"
+    "label": "Interface language"
   },
   "insecure": {
     "title": "A secure connection is required",

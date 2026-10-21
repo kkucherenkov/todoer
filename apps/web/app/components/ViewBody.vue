@@ -8,7 +8,13 @@ const layout = computed(
 </script>
 
 <template>
-  <div id="view-content" class="flex flex-col gap-3" data-testid="view">
+  <div
+    id="view-content"
+    role="tabpanel"
+    :aria-labelledby="`mode-${layout}`"
+    class="flex flex-col gap-3"
+    data-testid="view"
+  >
     <UAlert
       v-if="view?.problem"
       color="warning"

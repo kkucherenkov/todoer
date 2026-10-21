@@ -14,11 +14,6 @@ const catalog = useTopic('catalog');
 const id = computed(() =>
   typeof route.query.task === 'string' ? route.query.task : null,
 );
-watch(id, async (now, before) => {
-  if (now !== null || before === null) return;
-  await nextTick();
-  restoreDrawerFocus();
-});
 /** undefined: not published yet; null: deleted or unknown. */
 const task = computed(() =>
   topic.value?.id === id.value ? topic.value.task : undefined,
@@ -226,9 +221,10 @@ const dates = [
     :open="id !== null"
     :title="$t('drawer.title')"
     :description="$t('drawer.description')"
-    :ui="{ description: 'sr-only' }"
+    :ui="{ description: 'sr-only', close: 'size-11' }"
     data-testid="task-drawer"
     @update:open="(open) => !open && close()"
+    @after:leave="restoreDrawerFocus()"
   >
     <template #body>
       <div v-if="task === undefined" class="flex flex-col gap-3">

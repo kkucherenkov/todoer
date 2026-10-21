@@ -5,6 +5,7 @@ const props = defineProps<{ layout: Layout; saved: Layout }>();
 const emit = defineEmits<{ change: [layout: Layout] }>();
 const { t } = useI18n();
 const group = ref<HTMLElement | null>(null);
+const pendingFocus = ref<Layout | null>(null);
 
 const modes = computed(() =>
   LAYOUTS.map((value) => ({
@@ -20,14 +21,31 @@ const modes = computed(() =>
   })),
 );
 
-async function choose(value: Layout) {
-  if (!layoutAvailable(value, props.saved)) return;
-  emit('change', value);
-  await nextTick();
+function focusMode(value: Layout) {
   group.value
     ?.querySelector<HTMLButtonElement>(`[data-layout="${value}"]`)
     ?.focus({ preventScroll: true });
 }
+
+async function choose(value: Layout) {
+  if (!layoutAvailable(value, props.saved)) return;
+  pendingFocus.value = value;
+  emit('change', value);
+  if (value !== props.layout) return;
+  await nextTick();
+  focusMode(value);
+  pendingFocus.value = null;
+}
+
+watch(
+  () => props.layout,
+  async (value) => {
+    if (pendingFocus.value !== value) return;
+    await nextTick();
+    focusMode(value);
+    pendingFocus.value = null;
+  },
+);
 
 function navigate(event: KeyboardEvent, value: Layout) {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
@@ -46,6 +64,7 @@ function navigate(event: KeyboardEvent, value: Layout) {
   >
     <button
       v-for="mode in modes"
+      :id="`mode-${mode.value}`"
       :key="mode.value"
       type="button"
       role="tab"

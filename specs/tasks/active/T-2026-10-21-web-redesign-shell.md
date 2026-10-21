@@ -2,8 +2,10 @@
 
 - Created: 2026-10-21
 - Owner: Codex (Web)
-- Status: in-progress
-- Blockers: C1 is not on `origin/main`; transient Calendar remains unavailable for non-calendar saved views
+- Status: in-review
+- Blockers: C1 is not on `origin/main`; cross-projection overrides remain
+  unavailable (Calendar outside saved calendar views, and List/Kanban inside
+  them)
 - Spec: [web redesign context](T-2026-10-03-web-redesign-context.md), FR-001–003
 - Plan: [web UX redesign](../../../docs/plans/2026-10-03-plan-web-ux-redesign.md), stage 1
 
@@ -47,9 +49,10 @@ and URL history and the task drawer must preserve the user's current context.
   invalid override, push user switches, preserve every unrelated query
   parameter, and discard the old override when navigating to another view
   (← context FR-002; redesign plan stage 1).
-- **FR-004** Web MUST keep transient Calendar unavailable unless the saved
-  view is calendar while C1's watch-layout projection contract is absent;
-  saved calendar views MUST retain `mode`/`at` and their span watch
+- **FR-004** While C1's watch-layout projection contract is absent, Web MUST
+  keep Calendar unavailable for non-calendar saved views and MUST keep List
+  and Kanban unavailable for saved calendar views; saved calendar views MUST
+  retain `mode`/`at` and their span watch
   (← W1 brief option (a); core C1 dependency).
 - **FR-005** Closing the task drawer MUST remove only `task`, preserve the
   filter/layout/calendar query, and restore focus to the opening control or,
@@ -62,9 +65,9 @@ and URL history and the task drawer must preserve the user's current context.
   replace it away without changing the saved view (FR-003, T002).
 - Switching back to the saved layout → remove the redundant override by push,
   so reload still derives the saved default (FR-003, T002).
-- A saved calendar opened with `layout=list|kanban` → no span watch; returning
-  to Calendar restores a valid span from the surviving `mode`/`at` query
-  (FR-003–004, T002).
+- A saved calendar opened with `layout=list|kanban` → normalize the unsupported
+  override away with replace, keep the calendar span watch, and preserve the
+  surviving `mode`/`at` query (FR-003–004, T002).
 - Drawer opener disappears after a task leaves the filter → focus the nearest
   remaining task surface, then the workspace heading (FR-005, T003).
 - Mobile mode controls and drawer close control → at least 44 by 44 CSS pixels
@@ -78,7 +81,7 @@ and URL history and the task drawer must preserve the user's current context.
   return from the drawer to a meaningful focus target at desktop and mobile
   widths.
 - [ ] every FR has a test that failed before the code made it pass
-- [x] gates: `PR title (conventional commit)`, `Shell tests`,
+- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
 - [x] no document still asserts the behaviour this task replaced
 - [x] dnote changelog line

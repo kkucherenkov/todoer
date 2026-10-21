@@ -10,9 +10,7 @@ const english = computed(() => locale.value === 'en');
     </span>
     <USwitch
       :model-value="english"
-      :aria-label="
-        english ? $t('locale.switchToRussian') : $t('locale.switchToEnglish')
-      "
+      :aria-label="$t('locale.label')"
       @update:model-value="setLocale($event ? 'en' : 'ru')"
     />
     <span :class="english ? 'font-semibold text-primary' : 'text-muted'">

@@ -13,7 +13,7 @@ const actions = computed<DropdownMenuItem[]>(() => [
   {
     label: t('calendar.open'),
     icon: 'i-lucide-panel-right-open',
-    onSelect: () => emit('open'),
+    onSelect: () => emit('open', chip.value ?? undefined),
   },
   ...(props.item.parentId
     ? [

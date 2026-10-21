@@ -49,7 +49,7 @@ const actions = computed<DropdownMenuItem[]>(() => [
   {
     label: t('list.open'),
     icon: 'i-lucide-panel-right-open',
-    onSelect: () => emit('open'),
+    onSelect: () => emit('open', card.value ?? undefined),
   },
 ]);
 </script>

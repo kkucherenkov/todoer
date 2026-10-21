@@ -9,10 +9,10 @@ export const savedLayout = (value: unknown): Layout =>
   isLayout(value) ? value : 'list';
 
 export const layoutAvailable = (layout: Layout, saved: Layout) =>
-  layout !== 'calendar' || saved === 'calendar';
+  saved === 'calendar' ? layout === 'calendar' : layout !== 'calendar';
 
 /** Resolves presentation only. It never changes the saved view. Calendar is
- * available transiently once core C1 can project it for a non-calendar view. */
+ * available transiently once core C1 can project the requested layout. */
 export function resolveLayout(query: unknown, savedValue: unknown) {
   const saved = savedLayout(savedValue);
   if (query === undefined) {
