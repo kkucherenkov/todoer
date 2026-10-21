@@ -146,6 +146,16 @@ const refuseNext = (page: Page) =>
     window.BroadcastChannel = Spy;
   });
 
+/** The opIds of the writes of `kind` the tab sent, in order. */
+const opIds = (page: Page, kind: string) =>
+  page.evaluate(
+    (k) =>
+      (window as unknown as { sent: { kind: string; opId: string }[] }).sent
+        .filter((w) => w.kind === k)
+        .map((w) => w.opId),
+    kind,
+  );
+
 test('details: a refused change is kept and retried as the same write', async ({
   page,
   account,
@@ -202,6 +212,7 @@ test('details: delete names its subtasks, shows progress, keeps a refusal', asyn
   cli,
 }) => {
   await cli(account.token, 'add', 'Synced');
+  await refuseNext(page); // records only: nothing is refused here
   await page.goto('/');
   await expect(count(page)).toHaveText(tasks(1));
 
@@ -230,6 +241,124 @@ test('details: delete names its subtasks, shows progress, keeps a refusal', asyn
   await expect(page.getByRole('button', { name: 'Undo' })).toHaveCount(0);
   await expect(row(page, 'Fresh')).toHaveCount(0);
   await expect(page).not.toHaveURL(/task=/);
+  // Confirming again resent the refused write, not a new one.
+  const deletes = await opIds(page, 'deleteTask');
+  expect(deletes).toHaveLength(2);
+  expect(deletes[1]).toBe(deletes[0]);
+});
+
+test('details: a subtask of an ended series keeps a refused date', async ({
+  page,
+  account,
+  cli,
+}) => {
+  const old = (
+    JSON.parse(
+      await cli(
+        account.token,
+        'add',
+        'Old series',
+        '--rrule',
+        'FREQ=DAILY;COUNT=1',
+        '--from',
+        day(),
+        '--json',
+      ),
+    ) as { data: { id: string } }
+  ).data.id;
+  await seedTask(page.request, account.token, {
+    title: 'Leftover',
+    parentId: old,
+  });
+  // Its one occurrence done: the subtask has no occurrence left.
+  await page.goto(`/?task=${old}`);
+  await drawer(page).getByRole('checkbox', { name: 'Done: Leftover' }).click();
+  await expect(drawer(page).getByTestId('progress')).toHaveText('1 of 1 done');
+  await drawer(page)
+    .getByRole('button', { name: 'Leftover', exact: true })
+    .click();
+  const d = drawer(page);
+  await expect(d.getByLabel('Title')).toHaveValue('Leftover');
+  // No occurrence left, so a date input — which the core refuses (tuxedo 514).
+  const scheduled = d.getByLabel('Scheduled', { exact: true });
+  await scheduled.fill(day(1));
+  await scheduled.blur();
+  const refused = d.getByTestId('refused');
+  await expect(refused).toContainText(`Your change: ${day(1)}`);
+  await expect(refused).toContainText(
+    'a recurring task is scheduled by its rule',
+  );
+  await expect(scheduled).toHaveValue('');
+});
+
+test('details: a refused repeat and return to series resend the same write', async ({
+  page,
+  account,
+  cli,
+}) => {
+  await cli(account.token, 'add', 'Gym');
+  const water = (
+    JSON.parse(
+      await cli(
+        account.token,
+        'add',
+        'Water',
+        '--rrule',
+        'FREQ=DAILY',
+        '--from',
+        day(),
+        '--json',
+      ),
+    ) as { data: { id: string } }
+  ).data.id;
+  const copy = await seedTask(page.request, account.token, {
+    title: 'Water',
+    originTaskId: water,
+    originOccurrence: day(),
+    scheduledOn: day(1),
+  });
+  await refuseNext(page);
+  await page.goto('/');
+  const refuse = (kind: string) =>
+    page.evaluate(
+      (k) => ((window as unknown as { refuse: string }).refuse = k),
+      kind,
+    );
+
+  // Repeat: the form stays open, Save again sends the same setRule.
+  await openRow(page, 'Gym');
+  await more(page).click();
+  await drawer(page).getByRole('button', { name: 'Repeat…' }).click();
+  const form = nested(page);
+  await form.getByRole('combobox', { name: 'Repeat' }).click();
+  await page.getByRole('option', { name: 'Daily' }).click();
+  await refuse('setRule');
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText('late answer')).toBeVisible();
+  await expect(page.locator('[role="dialog"]')).toHaveCount(2);
+  await form.getByRole('button', { name: 'Save' }).click();
+  await expect(page.locator('[role="dialog"]')).toHaveCount(1);
+  await expect(drawer(page).getByTestId('rule')).toContainText('FREQ=DAILY');
+  const rules = await opIds(page, 'setRule');
+  expect(rules).toHaveLength(2);
+  expect(rules[1]).toBe(rules[0]);
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+
+  // Return to series: the drawer stays, the second press sends the same undoMove.
+  await page.goto(`/?task=${copy}`);
+  await refuse('undoMove');
+  const back = drawer(page).getByRole('button', { name: 'Return to series' });
+  await back.click();
+  await expect(
+    page.getByText('late answer', { exact: true }).last(),
+  ).toBeVisible();
+  await expect(page).toHaveURL(/task=/);
+  await back.click();
+  await expect(page).not.toHaveURL(/task=/);
+  const undos = await opIds(page, 'undoMove');
+  expect(undos).toHaveLength(2);
+  expect(undos[1]).toBe(undos[0]);
 });
 
 test('details: navigation keeps the query, nested dialogs keep the focus', async ({
