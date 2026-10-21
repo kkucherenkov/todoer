@@ -1,8 +1,8 @@
 ## T-2026-10-21-core-redesign-projections — Give the redesigned web the projections it reads
 
 - Created: 2026-10-21
-- Owner: claude
-- Status: done
+- Owner: antigravity
+- Status: in-review
 - Blockers: —
 - Spec: [web redesign plan](../../../docs/plans/2026-10-03-plan-web-ux-redesign.md),
   task C1; [T-2026-10-03-web-redesign-context](T-2026-10-03-web-redesign-context.md)
@@ -65,7 +65,7 @@ core, so the web does not grow a second reading of the replica.
 - **SC-001** A web tab can show any saved view in any of the three layouts
   and expand any parent to all its children, reading only what the engine
   publishes.
-- [x] every FR has a test that failed before the code made it pass
+- [ ] every FR has a test that failed before the code made it pass
 - [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
 - [x] no document still asserts the behaviour this task replaced
@@ -73,8 +73,8 @@ core, so the web does not grow a second reading of the replica.
 
 ### Steps
 
-- [x] T001 [FR-003] Agree the child row's shape with the W3 owner (Codex)
-  before writing it; it is a public engine contract —
+- [x] T001 [FR-003] Set the child row's shape per coordinator brief before writing
+  it; it is a public engine contract —
   `packages/client-core/src/engine-protocol.ts`
 - [x] T002 [FR-001, FR-002] Layout override on `watch`, failing-first engine
   spec — `packages/client-core/src/engine.ts`,
@@ -88,4 +88,4 @@ core, so the web does not grow a second reading of the replica.
 
 ### Open questions
 
-- [Resolved: FR-003 child row shape settled with Codex in T001 as ChildItem: id, title, closed, statusId, projectId, priority, scheduledOn, dueOn, inView.]
+- [Resolved: FR-003 child row shape set by coordinator brief in T001 as ChildItem: id, title, closed, statusId, projectId, priority, scheduledOn, dueOn, inView.]

@@ -1024,23 +1024,32 @@ export type Item = Shown & {
   children?: ChildItem[];
 };
 
-/** `titles`: the live tasks' titles by id; `progress`: from progressOf; `children`: from childrenOf. */
+/** `titles`: the live tasks' titles by id; `children`: from childrenOf. */
 function itemOf(
   titles: Map<string, string>,
-  progress: (row: Row) => Item['subtasks'],
   children: (row: Row) => ChildItem[] = () => [],
 ) {
-  return ({ row, facts, closed }: Listed): Item => ({
-    ...row,
-    column: facts.statusId,
-    closed,
-    parentTitle:
-      typeof row.parentId === 'string'
-        ? (titles.get(row.parentId) ?? null)
-        : null,
-    subtasks: progress(row),
-    children: children(row),
-  });
+  return ({ row, facts, closed }: Listed): Item => {
+    const kids = children(row);
+    const subtasks =
+      kids.length === 0
+        ? null
+        : {
+            done: kids.filter((c) => c.closed).length,
+            total: kids.length,
+          };
+    return {
+      ...row,
+      column: facts.statusId,
+      closed,
+      parentTitle:
+        typeof row.parentId === 'string'
+          ? (titles.get(row.parentId) ?? null)
+          : null,
+      subtasks,
+      children: kids,
+    };
+  };
 }
 
 const titlesOf = (store: Store) =>
@@ -1072,37 +1081,14 @@ function childrenOf(store: Store, inViewIds: Set<string>) {
       closed: !ended && isClosed(stateOf(marks, String(t.id))(occurrence)),
       statusId: typeof t.statusId === 'string' ? t.statusId : null,
       projectId: typeof t.projectId === 'string' ? t.projectId : null,
-      priority: typeof t.priority === 'number' ? t.priority : 0,
+      priority:
+        t.priority !== undefined && t.priority !== null
+          ? Number(t.priority)
+          : 4,
       scheduledOn: typeof t.scheduledOn === 'string' ? t.scheduledOn : null,
       dueOn: typeof t.dueOn === 'string' ? t.dueOn : null,
       inView: inViewIds.has(String(t.id)),
     }));
-  };
-}
-
-/** Each parent's live subtasks, grouped once per listing. Closed is done or
- *  skipped at the parent's current occurrence (ADR 0009), as taskDetails'
- *  checklist reads it; a series that ended has none closed. */
-function progressOf(store: Store) {
-  const kids = new Map<string, Row[]>();
-  for (const t of liveTasks(tasks(store))) {
-    if (typeof t.parentId !== 'string') continue;
-    const siblings = kids.get(t.parentId);
-    if (siblings === undefined) kids.set(t.parentId, [t]);
-    else siblings.push(t);
-  }
-  const marks = occurrences(store);
-  return (row: Row): Item['subtasks'] => {
-    const mine = kids.get(String(row.id));
-    if (mine === undefined) return null;
-    const occurrence =
-      typeof row.occurrence === 'string' ? row.occurrence : null;
-    const ended = typeof row.rrule === 'string' && occurrence === null;
-    const done = ended
-      ? 0
-      : mine.filter((t) => isClosed(stateOf(marks, String(t.id))(occurrence)))
-          .length;
-    return { done, total: mine.length };
   };
 }
 
@@ -1121,7 +1107,7 @@ function selected(
   );
   const inViewIds = new Set(matching.map(({ row }) => String(row.id)));
   return sortFor(view.sort, matching).map(
-    itemOf(titlesOf(store), progressOf(store), childrenOf(store, inViewIds)),
+    itemOf(titlesOf(store), childrenOf(store, inViewIds)),
   );
 }
 
@@ -1274,7 +1260,7 @@ export function taskDetails(
       closed: !ended && isClosed(stateOf(marks, String(t.id))(occurrence)),
     }));
   return {
-    ...itemOf(titlesOf(store), progressOf(store))(found),
+    ...itemOf(titlesOf(store))(found),
     notes: typeof notes === 'string' ? notes : null,
     rrule: typeof rrule === 'string' ? rrule : null,
     dtstart: typeof dtstart === 'string' ? dtstart : null,
@@ -1294,12 +1280,23 @@ export function catalog(store: Store): Catalog {
   const facts = statusFacts(statuses);
   const completing = completingStatus(facts);
   const all = tasks(store);
-  const marks = occurrences(store);
+  const byId = new Map(all.map((t) => [String(t.id), t]));
+  const marks = new Map(
+    occurrences(store).map((m) => [
+      JSON.stringify([m.taskId, m.occurrence ?? null]),
+      m,
+    ]),
+  );
   const perStatus = new Map<unknown, number>();
   for (const t of liveTasks(all)) {
-    const closed =
-      recurrenceOf(t, parentOf(all, t)) === null &&
-      isClosed(stateOf(marks, String(t.id))(null));
+    const parent =
+      typeof t.parentId === 'string' ? byId.get(t.parentId) : undefined;
+    const recurrence = recurrenceOf(t, parent);
+    const mark =
+      recurrence === null
+        ? marks.get(JSON.stringify([String(t.id), null]))
+        : undefined;
+    const closed = recurrence === null && isClosed(mark?.state);
     const targetStatus = displayStatus(
       typeof t.statusId === 'string' ? t.statusId : null,
       facts,

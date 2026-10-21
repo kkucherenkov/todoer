@@ -189,7 +189,7 @@
     "name": "Column name",
     "makeCompleting": "Make completing",
     "delete": "Delete",
-    "confirm": "Delete “{name}”? Its tasks move to {first} ({count}).",
+    "confirm": "Delete “{name}”? The tasks shown in that column move to {first} ({count}).",
     "confirmDelete": "Delete column",
     "cancel": "Cancel",
     "new": "New column",

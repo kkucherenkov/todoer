@@ -2326,6 +2326,69 @@ describe('children outside the filter (FR-003)', () => {
       ['rc2', false],
     ]);
   });
+
+  it('sorts children by rank where rank order differs from id order', () => {
+    const store = openStore(':memory:');
+    put(store, 'task', task('p'));
+    // c-z has lower rank ('a0') but lexicographically higher id
+    put(store, 'task', task('c-z', { parentId: 'p', rank: 'a0' }));
+    // c-a has higher rank ('a1') but lexicographically lower id
+    put(store, 'task', task('c-a', { parentId: 'p', rank: 'a1' }));
+
+    const items = viewTasks(store, TODAY, ALL_OPEN);
+    const parent = items.find((i) => i.id === 'p')!;
+    expect(parent.children?.map((c) => c.id)).toEqual(['c-z', 'c-a']);
+  });
+
+  it('shows child of an ended recurring series as not closed per the series axis', () => {
+    const store = openStore(':memory:');
+    put(store, 'status', {
+      id: 's-done',
+      name: 'Done',
+      rank: 'a0',
+      completing: true,
+    });
+    // Recurring parent whose series has ended (until is in the past)
+    put(
+      store,
+      'task',
+      task('ended-p', {
+        rrule: 'FREQ=DAILY;UNTIL=20261001',
+        dtstart: '2026-09-01',
+        statusId: 's-done',
+      }),
+    );
+    put(store, 'task', task('c-ended', { parentId: 'ended-p', rank: 'a0' }));
+    // A one-off mark left on the child from when it was one-off
+    put(store, 'task_occurrence', {
+      id: 'c-mark',
+      taskId: 'c-ended',
+      occurrence: null,
+      state: 'done',
+    });
+
+    const items = boardTasks(store, TODAY, {
+      ...ALL_OPEN,
+      layout: 'kanban',
+    });
+    const parent = items.find((i) => i.id === 'ended-p')!;
+    expect(parent.children?.[0]?.closed).toBe(false);
+    expect(parent.subtasks).toEqual({ done: 0, total: 1 });
+  });
+
+  it('defaults child priority to 4 when absent', () => {
+    const store = openStore(':memory:');
+    put(store, 'task', task('p'));
+    put(
+      store,
+      'task',
+      task('c-no-prio', { parentId: 'p', priority: undefined }),
+    );
+
+    const items = viewTasks(store, TODAY, ALL_OPEN);
+    const parent = items.find((i) => i.id === 'p')!;
+    expect(parent.children?.[0]?.priority).toBe(4);
+  });
 });
 
 describe('reparent', () => {

@@ -1783,11 +1783,118 @@ describe('layout override on watch', () => {
   it('override equal to saved layout produces same result as no override', async () => {
     const srv = server(TODO, LIST_VIEW, DAILY);
     const e = await signedIn(srv);
+    await e.handle({ kind: 'watch', view: V, task: null }, 'A');
+    const withoutOverride = lastView(V);
     await e.handle({ kind: 'watch', view: V, task: null, layout: 'list' }, 'A');
-    expect(lastView(V)).toMatchObject({
-      key: V,
-      layout: 'list',
-      span: null,
+    const withOverride = lastView(V);
+    expect(withOverride).toEqual(withoutOverride);
+  });
+
+  it('publishAll keeps the layout override: write preserves kanban on saved list', async () => {
+    const srv = server(TODO, LIST_VIEW, DAILY);
+    const e = await signedIn(srv);
+    await e.handle(
+      { kind: 'watch', view: V, task: null, layout: 'kanban' },
+      'A',
+    );
+    expect(lastView(V)?.layout).toBe('kanban');
+    await e.handle(
+      {
+        kind: 'edit',
+        opId: uuid(0xa9),
+        taskId: String(DAILY[1].id),
+        changes: { title: 'Updated' },
+      },
+      'A',
+    );
+    expect(lastView(V)?.layout).toBe('kanban');
+  });
+
+  it('two tabs watching the same view with different layouts each receive their own', async () => {
+    const srv = server(TODO, LIST_VIEW, DAILY);
+    const e = await signedIn(srv);
+    published.view = [];
+    await e.handle({ kind: 'watch', view: V, task: null, layout: 'list' }, 'A');
+    await e.handle(
+      { kind: 'watch', view: V, task: null, layout: 'kanban' },
+      'B',
+    );
+    const views = published.view?.filter((v) => v.key === V);
+    expect(views?.some((v) => v.layout === 'list')).toBe(true);
+    expect(views?.some((v) => v.layout === 'kanban')).toBe(true);
+  });
+
+  it('problemView echoes requested layout when view has problem or is missing', async () => {
+    const srv = server(TODO);
+    const e = await signedIn(srv);
+    const MISSING = uuid(0x99);
+    await e.handle(
+      { kind: 'watch', view: MISSING, task: null, layout: 'kanban' },
+      'A',
+    );
+    expect(lastView(MISSING)).toMatchObject({
+      key: MISSING,
+      layout: 'kanban',
+      problem: 'deleted',
     });
+  });
+
+  it('a saved kanban watched as list accepts a drop after a task from another status', async () => {
+    const KV = uuid(0x81);
+    const srv = server(
+      TODO,
+      statusRow(S2, 'Doing', 'a1'),
+      viewRow(KV, { layout: 'kanban', sort: 'manual' }),
+      taskRow(1, { statusId: S1, rank: 'a0' }),
+      taskRow(2, { statusId: S2, rank: 'a1' }),
+    );
+    const e = await signedIn(srv);
+    await e.handle(
+      { kind: 'watch', view: KV, task: null, layout: 'list' },
+      'A',
+    );
+    const res = await e.handle(
+      {
+        kind: 'move',
+        opId: uuid(0xe1),
+        taskId: uuid(1),
+        view: KV,
+        after: uuid(2),
+      },
+      'A',
+    );
+    expect(res).toEqual({ ok: true });
+  });
+
+  it('a saved list watched as kanban accepts a drop after a recently closed card', async () => {
+    const LV = uuid(0x82);
+    const srv = server(
+      TODO,
+      statusRow(DONE, 'Done', 'a2', true),
+      viewRow(LV, { layout: 'list', sort: 'manual' }),
+      taskRow(1, { statusId: DONE, rank: 'a0' }),
+      taskRow(2, { statusId: DONE, rank: 'a1' }),
+    );
+    const e = await signedIn(srv);
+    await e.handle(
+      { kind: 'mark', opId: uuid(0xe2), mark: 'done', taskId: uuid(1) },
+      'A',
+    );
+    await e.handle(
+      { kind: 'watch', view: LV, task: null, layout: 'kanban' },
+      'A',
+    );
+    const res = await e.handle(
+      {
+        kind: 'move',
+        opId: uuid(0xe3),
+        taskId: uuid(2),
+        view: LV,
+        statusId: DONE,
+        after: uuid(1),
+      },
+      'A',
+    );
+    expect(res).toMatchObject({ ok: true });
   });
 });
