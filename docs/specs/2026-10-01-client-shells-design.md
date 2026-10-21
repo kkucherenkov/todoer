@@ -284,14 +284,16 @@ Settled by the maintainer on 2026-10-02, for plan W5
   - *Cost:* stranded occurrences become routine (plan C design, "Risks"),
     and a rule edit fails offline for a task that has not synced yet.
 - **Subtasks.** Shown in the parent's drawer, where they are added, marked
-  and opened. In list, kanban and calendar a subtask is an ordinary row with
-  a link to its parent. Two levels only. A subtask of a recurring parent is
+  and opened. In kanban and calendar a subtask is an ordinary card or chip
+  with a link to its parent; the web list nests a listed subtask under its
+  listed parent instead, and a parent row or card discloses every child
+  (redesign stage 3, 2026-10-21). Two levels only. A subtask of a recurring parent is
   marked on the parent's current occurrence (ADR 0009).
   - *Rejected: nesting subtasks under their parent in every layout.* A
     kanban column or a calendar day has no room for a tree, and a filter
     selects a subtask on its own facts, not its parent's.
-  - *Cost:* a subtask appears in a view apart from its parent; the link is
-    the only connection there.
+  - *Cost:* on a board or a calendar a subtask appears apart from its
+    parent; the link and the parent card's disclosure are the connection.
 - **Delete.** A confirmation dialog, "Delete task and N subtasks?", then one
   batch that deletes the live subtasks first and the parent last (#391). No
   undo. Every `delete` carries the row's `baseVersion`, like the other

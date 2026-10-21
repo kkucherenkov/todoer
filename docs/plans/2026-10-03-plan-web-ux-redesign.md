@@ -46,7 +46,7 @@ gets list items without placements. Stage 1 therefore needs a core change.
 | Core | C2 [`T-2026-10-21-core-nav-projections`](../../specs/tasks/done/T-2026-10-21-core-nav-projections.md): built-in views today/upcoming/project and navigation counts | Claude | W2 (navigation) |
 | Web | W1 stage 1, with [`T-2026-10-03-web-redesign-context`](../../specs/tasks/active/T-2026-10-03-web-redesign-context.md) FR-001–003 | Codex | W2–W6 |
 | Web | W2 stage 2 | Codex | — |
-| Web | W3 stage 3, context FR-004–006 | Claude (Codex ran out of usage, 2026-10-21) | W4 |
+| Web | W3 stage 3, context FR-004–007, [`T-2026-10-21-web-redesign-list`](../../specs/tasks/active/T-2026-10-21-web-redesign-list.md) | Claude (Codex ran out of usage, 2026-10-21) | W4 |
 | Web | W4 stage 4 | Claude (Codex ran out of usage, 2026-10-21) | — |
 | Web | W6 stage 6 | Antigravity | — |
 | Web | W5 stage 5 | Antigravity | — |
@@ -94,12 +94,14 @@ gets its own task spec and PR, as stage 0 says.
 
 Источники: `list.vue`, `kanban.vue`; области: `TaskList/TaskRow`, `KanbanBoard/Column/Card`, `SubtaskList` и core details/topics. Реализовать FR-004–007 task spec контекста.
 
-- [ ] Группировка по проектам и один уровень раскрытия; ребёнок без совпавшего родителя остаётся в своём проекте со ссылкой. Исключённые дети явно обозначены и не увеличивают счётчик.
-- [ ] Брать progress из `Item.subtasks`, checklist из `taskDetails`; для дополнительных данных всех детей определить core projection/topic, поскольку checklist даёт только ID/title/closed.
-- [ ] На доске ребёнок — отдельная карточка со своим статусом; parent progress единый с list/details. Сохранить manual order, DnD и keyboard Move to/up/down, управление колонками и подтверждение перераспределения.
-- [ ] Завершение, Skip, Undo и reparent — только общие операции; recurring parent/child проверять по оси вхождения. Создание ребёнка подставляет проект, последующие изменения не каскадируют.
+- [x] Группировка по проектам и один уровень раскрытия; ребёнок без совпавшего родителя остаётся в своём проекте со ссылкой. Исключённые дети явно обозначены и не увеличивают счётчик.
+- [x] Брать progress из `Item.subtasks`, checklist из `taskDetails`; для дополнительных данных всех детей определить core projection/topic, поскольку checklist даёт только ID/title/closed.
+- [x] На доске ребёнок — отдельная карточка со своим статусом; parent progress единый с list/details. Сохранить manual order, DnD и keyboard Move to/up/down, управление колонками и подтверждение перераспределения.
+- [x] Завершение, Skip, Undo и reparent — только общие операции; recurring parent/child проверять по оси вхождения. Создание ребёнка подставляет проект, последующие изменения не каскадируют.
 
 Результат: реальные hierarchy flows без двойного счёта и fixture completion. Проверки: core regression, list/kanban/editing e2e, мобильные затронутые контролы и keyboard alternatives.
+
+Текущий результат W3 ([`T-2026-10-21-web-redesign-list`](../../specs/tasks/active/T-2026-10-21-web-redesign-list.md), ветка `feat/web-redesign-list`): список сгруппирован по проектам, ребёнок вложен под совпавшим родителем, остальные дети — контекстные ссылки без счёта; прогресс из `Item.subtasks` в строке и карточке; fold общий для List/Kanban; Indent/Outdent через `reparent`; DnD и Move up/down — только среди соседей в outline. Новых core-контрактов не понадобилось. Мобильные 390/1366 и axe — за этапом 7.
 
 ### 4. Детали, повторение и удаление
 
@@ -138,7 +140,7 @@ gets its own task spec and PR, as stage 0 says.
 - [ ] Общая реплика Web/TUI: parent/child → статус → progress → Undo → исключить родителя → offline → sync; дополнительно recurring occurrence и refused reparent. Не считать чтение TUI-spec подтверждением прогона.
 - [ ] Обновить task specs и proposal фактическими результатами, закрыть завершённые задачи и записать changelog. Начать пользоваться приложением; дальнейшие UX-правки оформлять по конкретным наблюдениям.
 
-Результат: готовый редизайн приложения, подтверждённый тестами и использованием. Текущее состояние (2026-10-21): C0, C1 и shell этапа 1 смёржены; cross-projection overrides реализованы (PR pending); этап 2 в работе; остальные не начаты.
+Результат: готовый редизайн приложения, подтверждённый тестами и использованием. Текущее состояние (2026-10-21): C0, C1 и shell этапа 1 смёржены; cross-projection overrides реализованы (PR pending); этап 2 в работе; этап 3 (W3) в review; остальные не начаты.
 
 ## Порядок и зависимость работ
 

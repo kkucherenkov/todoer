@@ -1,5 +1,13 @@
 import type { Locator, Page } from '@playwright/test';
-import { arrowTo, day, expect, seedTask, seedView, test } from './fixtures';
+import {
+  arrowTo,
+  day,
+  expect,
+  projectId,
+  seedTask,
+  seedView,
+  test,
+} from './fixtures';
 
 const column = (page: Page, name: string) =>
   page.getByRole('region', { name, exact: true });
@@ -155,4 +163,68 @@ test('kanban: P0 card shows p0, P4 card shows none', async ({
   await expect(card(page, 'Inbox', 'Urgent')).toContainText('p0');
   await expect(card(page, 'Inbox', 'Plain')).toBeVisible();
   await expect(card(page, 'Inbox', 'Plain')).not.toContainText(/\bp\d\b/);
+});
+
+test('kanban: a child is its own card; the parent lists every child', async ({
+  page,
+  account,
+  cli,
+}) => {
+  await cli(account.token, 'add', 'Trip #home');
+  const home = await projectId(page.request, account.token, 'home');
+  const trip = (
+    JSON.parse(await cli(account.token, 'list', '--json')) as {
+      data: { id: string; title: string }[];
+    }
+  ).data.find((t) => t.title === 'Trip')!.id;
+  await seedTask(page.request, account.token, {
+    title: 'Passport',
+    parentId: trip,
+    projectId: home,
+  });
+  await seedTask(page.request, account.token, {
+    title: 'Car rental',
+    parentId: trip,
+  });
+  const board = await seedView(
+    page.request,
+    account.token,
+    'Home board',
+    'a0',
+    'kanban',
+    { project: home },
+  );
+  await page.goto(`/views/${board}`);
+
+  // The matching child is a card of its own; the other adds no card.
+  await expect(column(page, 'Inbox').getByTestId('card')).toHaveCount(2);
+  // Not the parent card, whose disclosure names the child too.
+  const passport = card(page, 'Inbox', 'Passport').filter({
+    has: page.getByRole('button', { name: 'Open parent: Trip' }),
+  });
+  await expect(
+    passport.getByRole('button', { name: 'Open parent: Trip' }),
+  ).toBeVisible();
+  const parent = column(page, 'Inbox')
+    .getByTestId('card')
+    .filter({ has: page.getByRole('button', { name: /^Subtasks of Trip/ }) });
+  const toggle = parent.getByRole('button', { name: /^Subtasks of Trip/ });
+  await expect(toggle).toContainText('0/2');
+  const link = (title: string) =>
+    parent.getByTestId('child-link').filter({ hasText: title });
+  await expect(link('Passport')).toContainText('On this board');
+  await expect(link('Car rental')).toContainText('Outside this filter');
+
+  // The child moves alone; its parent stays where it is.
+  await passport.getByRole('button', { name: 'Task actions' }).click();
+  await page.getByRole('menuitem', { name: 'Move to' }).click();
+  await page.getByRole('menuitem', { name: 'Doing' }).click();
+  await expect(card(page, 'Doing', 'Passport')).toBeVisible();
+  await expect(parent).toBeVisible();
+  await expect(column(page, 'Inbox').getByTestId('card')).toHaveCount(1);
+
+  // Ticking the outside child closes it; the progress is the core's.
+  await parent.getByRole('checkbox', { name: 'Done: Car rental' }).click();
+  await expect(toggle).toContainText('1/2');
+  await expect(link('Car rental')).toContainText('Closed');
 });

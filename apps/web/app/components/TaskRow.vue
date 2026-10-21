@@ -8,11 +8,19 @@ const props = defineProps<{
   manual: boolean;
   first: boolean;
   last: boolean;
+  /** The parent's children are hidden; `hidden` of them are listed. */
+  folded?: boolean;
+  hidden?: number;
+  /** The row Indent puts this one under; null: none above. Indent shows
+   *  only for a task the core would let become a subtask. */
+  indentUnder?: { id: string; title: string } | null;
 }>();
 const emit = defineEmits<{
   mark: [mark: 'done' | 'skip'];
   move: [to: 'up' | 'down'];
   open: [opener?: HTMLElement];
+  fold: [];
+  reparent: [parentId: string | null];
 }>();
 const { t } = useI18n();
 const open = useOpenTask();
@@ -37,6 +45,27 @@ const actions = computed<DropdownMenuItem[]>(() => [
           icon: 'i-lucide-arrow-down',
           disabled: props.last,
           onSelect: () => emit('move', 'down'),
+        },
+      ]
+    : []),
+  ...(canIndent(props.item)
+    ? [
+        {
+          label: props.indentUnder
+            ? t('list.indent', { title: props.indentUnder.title })
+            : t('list.indentNone'),
+          icon: 'i-lucide-indent-increase',
+          disabled: !props.indentUnder,
+          onSelect: () => emit('reparent', props.indentUnder!.id),
+        },
+      ]
+    : []),
+  ...(typeof props.item.parentId === 'string'
+    ? [
+        {
+          label: t('list.outdent'),
+          icon: 'i-lucide-indent-decrease',
+          onSelect: () => emit('reparent', null),
         },
       ]
     : []),
@@ -114,6 +143,25 @@ const actions = computed<DropdownMenuItem[]>(() => [
       <UBadge v-if="item.status" color="primary" variant="soft" size="sm">
         {{ item.status }}
       </UBadge>
+      <UButton
+        v-if="item.subtasks"
+        variant="ghost"
+        color="neutral"
+        size="xs"
+        class="tabular-nums"
+        :icon="folded ? 'i-lucide-chevron-right' : 'i-lucide-chevron-down'"
+        :aria-expanded="!folded"
+        :aria-controls="`children-${item.id}`"
+        :aria-label="
+          $t('list.subtasksOf', { title: item.title, ...item.subtasks })
+        "
+        @click="emit('fold')"
+      >
+        {{ item.subtasks.done }}/{{ item.subtasks.total }}
+        <span v-if="folded && hidden" class="text-muted">
+          · {{ $t('list.hidden', { n: hidden }) }}
+        </span>
+      </UButton>
     </div>
     <UDropdownMenu :items="actions">
       <UButton

@@ -107,28 +107,28 @@ engine does not publish.
 ### Definition of Done
 
 - **SC-001** Scenarios 1–8 hold in the app, EN and RU.
-- [ ] every FR has a test that failed before the code made it pass
+- [x] every FR has a test that failed before the code made it pass
 - [ ] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 
-- [ ] T001 [FR-001, FR-002, FR-005] The outline as a pure function: groups,
+- [x] T001 [FR-001, FR-002, FR-005] The outline as a pure function: groups,
   nesting, contextual children, counts, siblings and the drop/step anchors,
   failing-first unit spec — `apps/web/app/utils/outline.ts`
-- [ ] T002 [FR-001–FR-003, FR-005, FR-007] Draw it in the list: group
+- [x] T002 [FR-001–FR-003, FR-005, FR-007] Draw it in the list: group
   headers, nested rows, disclosure with progress, contextual links, per-group
-  drag and sibling Move up/down — `TaskList.vue`, `TaskRow.vue`,
+  drag and sibling Move up/down — `TaskList.vue`, `TaskGroup.vue`, `TaskRow.vue`,
   `ChildLinks.vue`, `useFolded.ts`, locales
-- [ ] T003 [P] [FR-003, FR-004, FR-007] The board card's disclosure and
+- [x] T003 [P] [FR-003, FR-004, FR-007] The board card's disclosure and
   progress — `KanbanCard.vue`
-- [ ] T004 [FR-006] Contextual check, Indent and Outdent through `mark` and
+- [x] T004 [FR-006] Contextual check, Indent and Outdent through `mark` and
   `reparent` — `ChildLinks.vue`, `TaskList.vue`, `TaskRow.vue`
-- [ ] T005 [FR-001–FR-007] Failing-first e2e of scenarios 1–8 —
+- [x] T005 [FR-001–FR-007] Failing-first e2e of scenarios 1–8 —
   `apps/web/e2e/list.spec.ts`, `apps/web/e2e/kanban.spec.ts`
-- [ ] T006 Gates, plan stage 3 checkboxes, DESIGN/plan claims that turned
+- [x] T006 Gates, plan stage 3 checkboxes, DESIGN/plan claims that turned
   false — `docs/plans/2026-10-03-plan-web-ux-redesign.md`
 - **Checkpoint:** a parent and all its children are visible and operable in
   list and board, reading only what the engine publishes.
