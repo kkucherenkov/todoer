@@ -374,7 +374,7 @@ describe('catalog', () => {
       rank: 'a0',
       filter: { tag: 'X' },
     });
-    const { views, statuses } = catalog(store);
+    const { views, statuses } = catalog(store, TODAY);
     expect(views.map((v) => [v.id, v.problem === null])).toEqual([
       ['v1', false],
       ['v2', true],
@@ -393,7 +393,7 @@ describe('catalog', () => {
     put(store, 'task', task('c', { statusId: 's1', deletedAt: 'x' }));
     put(store, 'task', task('d', { statusId: null }));
     put(store, 'task', task('e', { statusId: 'deleted-status' }));
-    expect(catalog(store).statuses.map((s) => [s.id, s.tasks])).toEqual([
+    expect(catalog(store, TODAY).statuses.map((s) => [s.id, s.tasks])).toEqual([
       ['s1', 4],
       ['20000000-0000-4000-8000-000000000000', 0],
     ]);
@@ -404,7 +404,7 @@ describe('catalog', () => {
     put(store, 'task', task('a', { statusId: 's1' }));
     put(store, 'task', task('done1', { statusId: 's1' }));
     closeAt(store, 'done1', TODAY);
-    expect(catalog(store).statuses.map((s) => [s.id, s.tasks])).toEqual([
+    expect(catalog(store, TODAY).statuses.map((s) => [s.id, s.tasks])).toEqual([
       ['s1', 1],
       ['20000000-0000-4000-8000-000000000000', 1],
     ]);

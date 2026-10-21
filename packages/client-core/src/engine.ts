@@ -1,10 +1,10 @@
+import { filterProblem } from '@todoer/specs';
 import {
   adoptAccount,
   type CookieAuthApi,
   type CookieTokenSource,
 } from './auth.js';
 import {
-  ALL,
   type Command,
   type Failure,
   type Note,
@@ -18,8 +18,8 @@ import {
 import { localDate } from './occurrence.js';
 import {
   add,
-  ALL_OPEN,
   boardTasks,
+  builtInView,
   calendarTasks,
   catalog,
   deleteStatus,
@@ -162,17 +162,28 @@ export function createEngine({
   // worker restarts; one entry per tab ever opened.
   const watches = new Map<string, Watch>();
 
-  const viewSpec = (key: string, cat: Catalog) =>
-    key === ALL
-      ? { ...ALL_OPEN, problem: null }
-      : cat.views.find((v) => v.id === key);
+  const viewSpec = (key: string, cat: Catalog) => {
+    const spec = builtInView(
+      key,
+      cat.projects.map((p) => p.id),
+    );
+    return spec === undefined
+      ? cat.views.find((v) => v.id === key)
+      : { ...spec, problem: filterProblem(spec.filter) };
+  };
   const items = (spec: ViewSpec, today: string, layout = spec.layout) =>
     (layout === 'kanban' ? boardTasks : viewTasks)(store, today, spec);
 
   const open = () => session.state === 'signed-in';
   /** What a tab gets while no account is signed in: the replica still holds
    *  the last one's rows (signOut keeps it), and none of it is shown. */
-  const NONE: Catalog = { views: [], statuses: [], projects: [], tags: [] };
+  const NONE: Catalog = {
+    views: [],
+    statuses: [],
+    projects: [],
+    tags: [],
+    nav: [],
+  };
   /** A problem echoes the watched span: the tab keeps only its own. */
   const problemView = (
     key: string,
@@ -257,12 +268,14 @@ export function createEngine({
       onError();
     }
   };
+  /** `today`: the date the catalog was computed on, so its counts and the
+   *  items agree across a midnight. */
   const publishKeys = (
     cat: Catalog,
+    today: string,
     views: Iterable<ViewKey>,
     tasks: Iterable<string | null>,
   ) => {
-    const today = localDate(now());
     // Two tabs on one calendar view with two spans each get theirs.
     const unique = new Map<string, ViewKey & { key: string }>();
     for (const { key, span, layout } of views) {
@@ -302,11 +315,13 @@ export function createEngine({
       'catalog',
       () => {
         publishSync();
-        const cat = open() ? catalog(store) : NONE;
+        const today = localDate(now());
+        const cat = open() ? catalog(store, today) : NONE;
         publish('catalog', cat);
         const all = [...watches.values()];
         publishKeys(
           cat,
+          today,
           all.map((w) => ({ key: w.view, span: w.span, layout: w.layout })),
           all.map((w) => w.task),
         );
@@ -318,11 +333,13 @@ export function createEngine({
   const watch = (tab: string, next: Watch) => {
     if (next.view === null && next.task === null) watches.delete(tab);
     else watches.set(tab, next);
+    const today = localDate(now());
     guard(
       'watch',
       () =>
         publishKeys(
-          open() ? catalog(store) : NONE,
+          open() ? catalog(store, today) : NONE,
+          today,
           [{ key: next.view, span: next.span, layout: next.layout }],
           [next.task],
         ),
@@ -505,7 +522,8 @@ export function createEngine({
     // A resend of an applied drop must not re-validate an anchor that has
     // since left the list: the core answers it from the marker.
     if (w.after === undefined || store.seen(w.opId)) return undefined;
-    const spec = viewSpec(w.view, catalog(store));
+    const today = localDate(now());
+    const spec = viewSpec(w.view, catalog(store, today));
     if (spec === undefined || spec.sort !== 'manual' || spec.problem !== null) {
       return undefined;
     }
@@ -516,7 +534,7 @@ export function createEngine({
         : null) ??
       validLayout(spec.layout) ??
       'list';
-    const listed = items(spec, localDate(now()), layout);
+    const listed = items(spec, today, layout);
     const column =
       w.statusId !== undefined
         ? w.statusId

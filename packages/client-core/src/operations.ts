@@ -15,6 +15,7 @@ import {
   type OpSet,
   type StatusRow,
 } from '@todoer/specs';
+import { ALL, PROJECT_PREFIX, TODAY, UPCOMING } from './engine-protocol.js';
 import {
   currentOccurrence,
   isOccurrence,
@@ -983,13 +984,44 @@ export function listViews(store: Store): Row[] {
   );
 }
 
-/** A view as the reads need it: a stored row or the built-in "All open". */
+/** A view as the reads need it: a stored row or a built-in. */
 export type ViewSpec = { filter: unknown; sort: string; layout: string };
 export const ALL_OPEN: ViewSpec = {
   filter: { and: [] },
   sort: 'manual',
   layout: 'list',
 };
+/** Scheduled or due on or before today: what is overdue counts as today. */
+export const TODAY_OPEN: ViewSpec = {
+  filter: { or: [{ scheduled: { to: 0 } }, { due: { to: 0 } }] },
+  sort: 'due',
+  layout: 'list',
+};
+export const UPCOMING_OPEN: ViewSpec = {
+  filter: { or: [{ scheduled: { from: 1 } }, { due: { from: 1 } }] },
+  sort: 'due',
+  layout: 'list',
+};
+export const projectView = (id: string): ViewSpec => ({
+  filter: { project: id },
+  sort: 'manual',
+  layout: 'list',
+});
+
+/** The built-in view `key` names (engine-protocol's keys); undefined for any
+ *  other key, a `project:` one of a project not in `projectIds` included. */
+export function builtInView(
+  key: string,
+  projectIds: readonly string[],
+): ViewSpec | undefined {
+  if (key === ALL) return ALL_OPEN;
+  if (key === TODAY) return TODAY_OPEN;
+  if (key === UPCOMING) return UPCOMING_OPEN;
+  const id = key.startsWith(PROJECT_PREFIX)
+    ? key.slice(PROJECT_PREFIX.length)
+    : null;
+  return id !== null && projectIds.includes(id) ? projectView(id) : undefined;
+}
 
 /** What Item and TaskDetails share; they differ in `subtasks`. `Omit` cannot
  *  do it: Due's index signature would swallow every named field. */
@@ -1266,8 +1298,9 @@ export function taskDetails(
 
 /** What the sidebar, forms and pickers need: live views by rank (with
  *  `problem` from filterProblem), live statuses by rank then id with
- *  `completing` resolved by completingStatus, live projects and tags by name. */
-export function catalog(store: Store): Catalog {
+ *  `completing` resolved by completingStatus, live projects and tags by name,
+ *  and the navigation's built-ins with their counts on `today`. */
+export function catalog(store: Store, today: string): Catalog {
   const byName = (a: Row, b: Row) =>
     compareStrings(a.name, b.name) || compareIds(a, b);
   const statuses = notDeleted(statusRows(store)).sort(
@@ -1304,6 +1337,28 @@ export function catalog(store: Store): Catalog {
   }
   const version = (row: Row) =>
     typeof row.version === 'number' ? row.version : null;
+  const projectList = liveProjects(projects(store))
+    .sort(byName)
+    .map((p) => ({ id: String(p.id), name: String(p.name) }));
+  const projectIds = projectList.map((p) => p.id);
+  // ponytail: one full projection per nav entry per publish (3 + projects
+  // passes over the replica); memoise per store change when it shows in a
+  // profile (tuxedo 418).
+  const nav = [
+    ALL,
+    TODAY,
+    UPCOMING,
+    ...projectIds.map((id) => PROJECT_PREFIX + id),
+  ].map((key) => {
+    const spec = builtInView(key, projectIds) as ViewSpec;
+    // A list row per task, subtasks included: the length is the count.
+    // A project id the filter refuses would throw: it counts nothing.
+    const count =
+      filterProblem(spec.filter) === null
+        ? viewTasks(store, today, spec).length
+        : 0;
+    return { key, count };
+  });
   return {
     views: listViews(store).map((v) => ({
       id: String(v.id),
@@ -1325,12 +1380,11 @@ export function catalog(store: Store): Catalog {
       tasks: perStatus.get(s.id) ?? 0,
       version: version(s),
     })),
-    projects: liveProjects(projects(store))
-      .sort(byName)
-      .map((p) => ({ id: String(p.id), name: String(p.name) })),
+    projects: projectList,
     tags: liveTags(tagRows(store))
       .sort(byName)
       .map((t) => ({ id: String(t.id), name: String(t.name) })),
+    nav,
   };
 }
 export type Catalog = {
@@ -1355,6 +1409,9 @@ export type Catalog = {
   }[];
   projects: { id: string; name: string }[];
   tags: { id: string; name: string }[];
+  /** `all`, `today`, `upcoming`, then `project:<id>` in `projects` order;
+   *  `count`: the open tasks the entry's list shows, subtasks included. */
+  nav: { key: string; count: number }[];
 };
 
 /** After a pull: drop moot failed entries, queue the duplicate-name merge.
