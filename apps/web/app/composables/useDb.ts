@@ -21,10 +21,11 @@ export function useWatch(view: () => string) {
   const shown = useTopic('view');
   const today = ref<string>();
   watch(shown, (v) => v && (today.value = v.today));
-  watchEffect(() => {
-    const key = view();
-    const saved = savedLayoutOf(key, catalog.value?.views);
-    const { task, span, layout } = watchArgs(route.query, saved, today.value);
-    db.watch(key, task, span, layout);
-  });
+  watchView(
+    (key, task, span, layout) => db.watch(key, task, span, layout),
+    view,
+    () => catalog.value?.views,
+    () => route.query,
+    () => today.value,
+  );
 }

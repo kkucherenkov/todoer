@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { effectScope, nextTick, ref, shallowRef } from 'vue';
 import {
   layoutQuery,
   nextLayout,
@@ -6,6 +7,7 @@ import {
   savedLayoutOf,
   viewQuery,
   watchArgs,
+  watchView,
 } from './layout';
 
 describe('transient layout routes', () => {
@@ -148,5 +150,64 @@ describe('what a tab sends in watch', () => {
     for (const layout of ['tiles', 'list']) {
       expect(watchArgs({ layout }, 'list', TODAY).layout).toBeNull();
     }
+  });
+});
+
+describe('watchView', () => {
+  const setup = () => {
+    const sent: unknown[][] = [];
+    const key = ref('v1');
+    const views = shallowRef([{ id: 'v1', layout: 'list' }]);
+    const query = shallowRef<Record<string, unknown>>({});
+    const today = ref<string>();
+    effectScope().run(() =>
+      watchView(
+        (...args) => sent.push(args),
+        () => key.value,
+        () => views.value,
+        () => query.value,
+        () => today.value,
+      ),
+    );
+    return { sent, key, views, query, today };
+  };
+
+  it('sends nothing for a catalog publish that keeps the saved layout', async () => {
+    const { sent, views } = setup();
+    expect(sent).toEqual([['v1', null, null, null]]);
+    views.value = [
+      { id: 'v1', layout: 'list' },
+      { id: 'v2', layout: 'kanban' },
+    ];
+    await nextTick();
+    expect(sent).toHaveLength(1);
+  });
+
+  it('rewatches when the saved layout, the key or the override changes', async () => {
+    const { sent, key, views, query } = setup();
+    views.value = [{ id: 'v1', layout: 'kanban' }];
+    await nextTick();
+    // ?layout=list is an override only once the saved layout is not list.
+    query.value = { layout: 'list' };
+    await nextTick();
+    key.value = 'v2';
+    await nextTick();
+    expect(sent).toEqual([
+      ['v1', null, null, null],
+      ['v1', null, null, null],
+      ['v1', null, null, 'list'],
+      // Not in the catalog: saved as list, so ?layout=list is no override.
+      ['v2', null, null, null],
+    ]);
+  });
+
+  it('rewatches with a span once a calendar learns the date', async () => {
+    const { sent, views, today } = setup();
+    views.value = [{ id: 'v1', layout: 'calendar' }];
+    await nextTick();
+    today.value = '2026-10-21';
+    await nextTick();
+    expect(sent).toHaveLength(3);
+    expect(sent[2]![2]).not.toBeNull();
   });
 });
