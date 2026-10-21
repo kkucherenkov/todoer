@@ -4,7 +4,7 @@
 - Owner: Codex (Web)
 - Status: done
 - Completed: 2026-10-21
-- Result: PR pending
+- Result: https://github.com/kkucherenkov/todoer/pull/53
 - Blockers: — (core C2 landed in #50; progressive quick add landed as Part 1
   in #49)
 - Spec: [web redesign context](T-2026-10-03-web-redesign-context.md), FR-007;
