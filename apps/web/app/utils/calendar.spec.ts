@@ -1,7 +1,7 @@
 import { MAX_SPAN_DAYS, type Item, type Placement } from '@todoer/client-core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { effectScope, nextTick, ref } from 'vue';
-import { clockEngine, row } from '../db/clockEngine';
+import { clockEngine, row } from '../db/clockEngine.testing';
 import {
   days,
   fromQuery,
@@ -222,7 +222,8 @@ describe('a calendar across local midnight', () => {
       await nextTick();
       await pending;
     };
-    effectScope().run(() =>
+    const scope = effectScope();
+    scope.run(() =>
       watchView(
         (view, task, span, layout) => {
           pending = engine
@@ -240,6 +241,7 @@ describe('a calendar across local midnight', () => {
     clock.now = new Date(2026, 9, 26, 0, 1);
     await engine.handle({ kind: 'sync', reason: 'tick' });
     await settle();
+    scope.stop();
     return { before, after: latest.view! };
   };
 

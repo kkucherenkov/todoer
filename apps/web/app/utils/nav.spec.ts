@@ -1,6 +1,6 @@
 import { localDate, type Catalog } from '@todoer/client-core';
 import { describe, expect, it } from 'vitest';
-import { clockEngine, row } from '../db/clockEngine';
+import { clockEngine, row } from '../db/clockEngine.testing';
 import { isBuiltIn, navEntries, navPath, routeKey, shownCount } from './nav';
 
 const catalog = (nav: Catalog['nav'], projects: Catalog['projects'] = []) =>
