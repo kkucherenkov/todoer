@@ -85,9 +85,11 @@ cannot be undone.
 - A refused write that the worker had in fact applied (timeout) → the retry
   replays its opId, so the core flushes instead of applying twice (FR-003–004,
   T001).
-- A subtask of an ended series → the core still gives it an occurrence, so
-  it is shown as scheduled by the parent's rule like any recurring child
-  (FR-005, T002).
+- A subtask of an ended series (UNTIL/COUNT exhausted) → the core gives it no
+  occurrence, so the drawer shows an editable Scheduled date; the core refuses
+  any date ("a recurring task is scheduled by its rule") and the refusal panel
+  shows it with the input kept. Whether such a subtask should be read-only is
+  open: tuxedo 514 (FR-003, FR-005, T002).
 - Delete of a task with queued writes → "not synced yet"; the dialog stays
   open and the same confirm resends after a sync (FR-004, FR-006, T003).
 - Opener row leaves the view (status set to the completing one) → focus goes
@@ -99,8 +101,9 @@ cannot be undone.
   each save, recovers from a refusal without retyping, and deletes a parent
   knowing its subtasks go with it — by mouse or keyboard alone.
 - [x] every FR has a test that failed before the code made it pass
-- [x] gates: `PR title (conventional commit)`, `Shell tests`,
-      `Workspace tests`, `Lint`
+- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+      `Workspace tests`, `Lint` — tick after the PR's CI; locally web
+      test, typecheck, `pnpm lint`, build and e2e pass
 - [x] no document still asserts the behaviour this task replaced
 - [x] dnote changelog line
 

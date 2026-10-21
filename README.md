@@ -94,8 +94,10 @@ recurrence).
   saved and how many writes still wait to sync. A refused change puts the
   field back and keeps your change beside the reason, with "Retry change",
   which sends the same write again rather than a new one. A recurring task's
-  scheduled date is set by its rule, and so is a subtask's under a recurring
-  parent. A copy made by moving an occurrence has "Return to series". A
+  scheduled date is set by its rule, and so is a subtask's under a live
+  recurring series. Under a series that has ended the subtask's date stays
+  editable, the core refuses it, and the drawer shows the refusal with the
+  date kept (an open decision, tuxedo 514). A copy made by moving an occurrence has "Return to series". A
   subtask shows "Subtask of …" with a link to its parent. The drawer also has:
   - **Delete.** A dialog counts the task's subtasks and deletes them with it.
     There is no undo. It is refused until the task and its subtasks have

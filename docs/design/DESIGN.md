@@ -362,7 +362,7 @@ library.
 | `TaskDrawer`                          | `USlideover`, `UFormField`, `UInput`, `UTextarea`, `USelectMenu`, `URadioGroup`, `UButton`, `USkeleton` | title, notes and dates first, the rest under a "More details" `<details>`; fields save on blur; priority as radio `p0`–`p4` |
 | `SubtaskList` (W5)                    | `UCheckbox`, `UButton` (link), `UInput`                         | progress "1 of 3 done"; add on Enter                           |
 | `RecurrenceDialog` (W5)               | `UModal`, `USelect`, `UInputNumber`, `UCheckboxGroup`, `UInput`, `UAlert` | presets, weekdays, start, raw RRULE in mono, preview list or problem alert |
-| `DeleteTaskDialog` (W5)               | `UModal`, `UButton`                                             | Delete has focus so Enter confirms; "This cannot be undone."   |
+| `DeleteTaskDialog` (W5)               | `UModal`, `UButton`, `UAlert`                                   | Cancel has focus so Enter alone deletes nothing; "This cannot be undone."; a refusal stays in the dialog as an alert |
 | toasts (`useMarked`, `useFail`, calendar moves) | `useToast()`                                          | title, task title as description, Undo action; refusals in `error` |
 
 **Focus ring.** Nuxt UI 4.11 draws focus as a 3 px outline in the component's
