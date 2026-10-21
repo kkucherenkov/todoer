@@ -32,10 +32,22 @@ const lastSynced = computed(() => {
 </script>
 
 <template>
-  <section class="flex w-full flex-col gap-2">
-    <p class="text-lg font-semibold" data-testid="task-count">{{ tasks }}</p>
-    <p class="text-xs" data-testid="last-synced">{{ lastSynced }}</p>
-    <div class="flex flex-wrap gap-2">
+  <!-- ux.js #sync-footer: count, saved locally, badges, then the last sync. -->
+  <section class="flex w-full flex-col gap-2 text-xs text-muted">
+    <p class="text-sm font-medium text-default" data-testid="task-count">
+      {{ tasks }}
+    </p>
+    <p
+      class="inline-flex items-center gap-1.5 text-toned"
+      data-testid="saved-locally"
+    >
+      <UIcon name="i-lucide-check" class="size-3.5 shrink-0" />
+      {{ $t('summary.savedLocally') }}
+    </p>
+    <div
+      class="flex flex-wrap items-center gap-1.5 empty:hidden"
+      data-testid="sync-badges"
+    >
       <UBadge
         v-if="sync?.reached === false"
         color="warning"
@@ -60,6 +72,7 @@ const lastSynced = computed(() => {
         {{ $t('summary.failed', { n: sync.failed }) }}
       </UBadge>
     </div>
+    <p data-testid="last-synced">{{ lastSynced }}</p>
     <div class="flex gap-2">
       <UButton
         size="sm"

@@ -22,7 +22,12 @@ async function submit() {
 </script>
 
 <template>
-  <UForm :state="form" class="flex max-w-sm flex-col gap-4" @submit="submit">
+  <UForm
+    :state="form"
+    class="flex max-w-sm flex-col gap-4"
+    data-testid="sign-in-form"
+    @submit="submit"
+  >
     <h2 class="text-xl font-semibold">{{ $t('signIn.title') }}</h2>
     <UAlert
       v-if="kind"

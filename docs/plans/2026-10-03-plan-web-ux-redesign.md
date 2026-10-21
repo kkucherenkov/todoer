@@ -127,11 +127,11 @@ gets its own task spec and PR, as stage 0 says.
 
 Источники: `view-form.vue`, `gate.vue`, `references/`, `states.html`. Области: `ViewForm/FilterTree/FilterNode`, `AppGate/SignInForm/RegisterForm`, sync/update компоненты.
 
-- [ ] Перенести формы, сохраняя raw JSON fallback, лимиты дерева, validation/refusal и явное сохранение layout/sort/filter.
-- [ ] Перенести вход/регистрацию на реальные db.request/session/registrationOpen, а не переход в fixture.
-- [ ] Проверить empty/loading/offline/queued/refused/recovery/update в тестовых fixtures приложения; галерею состояний не включать в рабочую навигацию.
+- [x] Перенести формы, сохраняя raw JSON fallback, лимиты дерева, validation/refusal и явное сохранение layout/sort/filter.
+- [x] Перенести вход/регистрацию на реальные db.request/session/registrationOpen, а не переход в fixture.
+- [x] Проверить empty/loading/offline/queued/refused/recovery/update в тестовых fixtures приложения; галерею состояний не включать в рабочую навигацию.
 
-Результат: реальная auth и sync видны в принятом оформлении. Проверки: views/register/screens/offline e2e и сохранение вводимых данных.
+Результат: реальная auth и sync видны в принятом оформлении. Task spec: [`T-2026-10-21-web-redesign-views`](../../specs/tasks/done/T-2026-10-21-web-redesign-views.md), PR pending. Проверки: views/register/screens/offline e2e и сохранение вводимых данных.
 
 ### 7. Итоговая приёмка и использование
 
@@ -140,7 +140,7 @@ gets its own task spec and PR, as stage 0 says.
 - [ ] Общая реплика Web/TUI: parent/child → статус → progress → Undo → исключить родителя → offline → sync; дополнительно recurring occurrence и refused reparent. Не считать чтение TUI-spec подтверждением прогона.
 - [ ] Обновить task specs и proposal фактическими результатами, закрыть завершённые задачи и записать changelog. Начать пользоваться приложением; дальнейшие UX-правки оформлять по конкретным наблюдениям.
 
-Результат: готовый редизайн приложения, подтверждённый тестами и использованием. Текущее состояние (2026-10-21): C0, C1, C2, этап 1 (включая cross-projection overrides, #51) и этап 3 (#52) смёржены; этап 2 завершён (навигация — PR pending); этапы 4 и 6 в работе; остальные не начаты.
+Результат: готовый редизайн приложения, подтверждённый тестами и использованием. Текущее состояние (2026-10-21): C0, C1, C2, этапы 1 (включая cross-projection overrides, #51), 2 (#53) и 3 (#52) смёржены; этап 6 — PR pending; этап 4 в работе; остальные не начаты.
 
 ## Порядок и зависимость работ
 

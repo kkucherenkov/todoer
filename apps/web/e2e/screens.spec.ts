@@ -49,3 +49,64 @@ test('the sidebar lists views, and a sync that fails shows why', async ({
     await expect(alert).toHaveCount(0);
   }
 });
+
+test('an empty account says so, and the footer reads in order', async ({
+  page,
+  account,
+}) => {
+  void account; // signed in, with nothing in it
+  await page.goto('/');
+  await expect(count(page)).toHaveText('0 tasks');
+  await expect(page.getByText('No open tasks.')).toBeVisible();
+
+  // ux.js #sync-footer: count, saved locally, badges, last sync.
+  const footer = [
+    'task-count',
+    'saved-locally',
+    'sync-badges',
+    'last-synced',
+    'sync-now',
+  ];
+  await expect(page.getByTestId('saved-locally')).toHaveText(
+    'Saved on this device',
+  );
+  await expect(count(page)).toHaveCSS('font-size', '14px');
+  await expect(count(page)).toHaveCSS('font-weight', '500');
+  const order = await page.evaluate((ids) => {
+    const at = ids.map((id) => document.querySelector(`[data-testid="${id}"]`));
+    return at.every(
+      (el, i) =>
+        el !== null &&
+        (i === 0 ||
+          (at[i - 1]!.compareDocumentPosition(el) &
+            Node.DOCUMENT_POSITION_FOLLOWING) !==
+            0),
+    );
+  }, footer);
+  expect(order, footer.join(' → ')).toBe(true);
+});
+
+test('the update prompt sits in the workspace alerts', async ({
+  page,
+  account,
+}) => {
+  void account;
+  await page.goto('/');
+  await expect(count(page)).toBeVisible();
+  // A message an older build would stamp marks this tab stale.
+  await page.evaluate(() => {
+    const channel = new BroadcastChannel('todoer');
+    channel.postMessage({
+      type: 'request',
+      tab: 'old-tab',
+      id: 1,
+      command: { kind: 'sync', reason: 'manual' },
+      build: 'an-older-build',
+    });
+    channel.close();
+  });
+  await expect(
+    page.getByTestId('alerts').getByTestId('update-available'),
+  ).toBeVisible();
+  await expect(page.getByTestId('update-available')).toHaveCount(1);
+});

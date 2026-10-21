@@ -340,13 +340,13 @@ library.
 
 | App component                         | Nuxt UI parts                                                   | Design notes                                                   |
 | ------------------------------------- | --------------------------------------------------------------- | -------------------------------------------------------------- |
-| `AppGate`                             | `UAlert`, `USkeleton`                                           | insecure origin (warning), engine failed (error, Reload), loading skeleton |
+| `AppGate`                             | `UAlert`, `USkeleton`                                           | 384px column, 64px down (32px at 700px and less), 32px under the header; insecure origin (warning), engine failed (error, Reload), loading skeleton, the update prompt while signed out |
 | `SignInForm`, `RegisterForm`          | `UForm`, `UFormField`, `UInput`, `UButton`, `UAlert`            | one column; the error alert sits above the fields; the password rule is the field's help text |
 | `LocaleSwitch`                        | `UButton` × 2                                                   | current locale `solid`, other `outline`; could become a `UFieldGroup` |
 | `AppShell`                            | `UDashboardGroup`, `UDashboardSidebar`, `UDashboardPanel`, `UDashboardNavbar`, `UAlert` | see Layout                                    |
 | `ViewNav`                             | `UNavigationMenu`, `UButton`                                    | active item in `primary`; built-ins and projects show a count badge; a problem view gets the warning icon |
-| `SyncStatus`                          | `UBadge`, `UButton`                                             | task count, last synced, badges per sync state, Sync now, Sign out |
-| `UpdatePrompt`                        | `UAlert` (info)                                                 | above everything, Reload action                                |
+| `SyncStatus`                          | `UBadge`, `UButton`                                             | task count (14px/500), "Saved on this device", badges per sync state, last synced, Sync now, Sign out |
+| `UpdatePrompt`                        | `UAlert` (info)                                                 | in the workspace alerts under the header, next to the sync problem; on the gate while signed out; Reload action |
 | `ViewBody`                            | `UAlert` (warning)                                              | a view whose filter is invalid or deleted shows why            |
 | `QuickAdd`                            | `UInput`, `UButton`, `UFormField`, `USelect`                      | title and Add task first; details reveal project/tags/priority/scheduled/due; the title keeps `#project @tag pN`; refused drafts stay; an out-of-filter add links to All open |
 | `TaskList`, `TaskGroup`, `TaskRow`    | `UButton`, `UBadge`, `UDropdownMenu`                            | one `h2` section per project, "No project" last, with its task count; a listed subtask nests under its listed parent; round check, title, parent link (W5) unless nested under that parent, `#project`, `@tags`, priority, occurrence, due, status, progress disclosure `n/m`; actions menu with Indent/Outdent |
@@ -356,7 +356,8 @@ library.
 | `CalendarView`, `CalendarDay`         | `UButton`, `UTabs`, `USkeleton`                                 | toolbar: previous, next, Today, title, Week/Month tabs         |
 | `PlacementChip`                       | `UIcon`, `UBadge`, `UDropdownMenu`                              | kind icon, title, repeat icon, priority, menu                  |
 | `MoveDateDialog`                      | `UModal`, `UInput type="date"`, `UButton`                       | the keyboard path for a calendar drag                          |
-| `ViewForm`                            | `UModal`, `UForm`, `UInput`, `UDropdownMenu`, `UTextarea`, `USwitch`, `URadioGroup`, `USelect` | name, Start from, filter tree or raw JSON, layout, sort |
+| `ViewForm`                            | `UModal`, `UForm`, `UInput`, `UDropdownMenu`, `UTextarea`, `USwitch`, `URadioGroup`, `USelect` | name, Start from, filter tree or raw JSON, layout, sort; a refused save shows in an alert inside the form, every field kept |
+| `DeleteViewDialog`                    | `UModal`, `UButton`                                             | one delete in flight; returns to All open                      |
 | `FilterTree`, `FilterNode`            | `USelect`, `UCheckboxGroup`, `UInputNumber`, `UInput`, `USwitch`, `UDropdownMenu`, `UButton` | nested groups indent with a `border-l border-default` rule; limits line in `text-xs text-muted` |
 | `TaskDrawer`                          | `USlideover`, `UFormField`, `UInput`, `UTextarea`, `USelectMenu`, `URadioGroup`, `UButton`, `USkeleton` | fields save on blur; priority as radio `p0`–`p4` |
 | `SubtaskList` (W5)                    | `UCheckbox`, `UButton` (link), `UInput`                         | progress "1 of 3 done"; add on Enter                           |
@@ -423,7 +424,7 @@ Every screen is designed in each of these, in both themes:
 | Loading        | calendar: seven skeleton cells until the worker answers the span; drawer: two skeleton blocks              |
 | Populated      | the view's rows, cards or placements; closed items struck through in `text-muted`                          |
 | Offline        | "Offline" warning badge; writes apply locally and the "N waiting" badge counts them; nothing blocks        |
-| Write refused  | an error toast with the reason (`useFail`); the field or row goes back to the server's value               |
+| Write refused  | an error toast with the reason (`useFail`); the field or row goes back to the server's value. The view form keeps its input and shows the refusal inside the form |
 | Sync refused   | error alert "Sync refused" with the server's text and Sync now; the "N refused" badge                      |
 | Conflict       | no merge dialog: fields merge last-write-wins (ADR 0004). A rule change sent against a stale version is refused and shows as a write refusal |
 | View problem   | warning alert "This view cannot be shown" with the filter problem, or "This view no longer exists."        |
