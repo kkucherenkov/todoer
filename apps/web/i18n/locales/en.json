@@ -60,7 +60,11 @@
   "nav": {
     "title": "Views",
     "all": "All open",
-    "problem": "This view has a problem"
+    "problem": "This view has a problem",
+    "today": "Today",
+    "upcoming": "Upcoming",
+    "projects": "Projects",
+    "saved": "Saved views"
   },
   "view": {
     "problem": "This view cannot be shown",

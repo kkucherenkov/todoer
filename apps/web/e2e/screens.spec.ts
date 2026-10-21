@@ -12,8 +12,11 @@ test('the sidebar lists views, and a sync that fails shows why', async ({
   await page.goto('/');
   await expect(count(page)).toBeVisible();
   const nav = page.getByRole('navigation', { name: 'Views' });
+  // The built-ins carry their counts; saved views follow in rank order.
   await expect(nav.getByRole('link')).toHaveText([
-    'All open',
+    /^All open\s*0$/,
+    /^Today\s*0$/,
+    /^Upcoming\s*0$/,
     'First view',
     'Second view',
   ]);

@@ -30,7 +30,9 @@ test('view form: create, edit, raw JSON, delete', async ({
   await pick('value-n', 'home');
   await pick('view-sort', 'Due date');
   await dialog.getByTestId('view-save').click();
-  await expect(nav.getByRole('link', { name: 'Home' })).toBeVisible();
+  await expect(
+    nav.getByRole('link', { name: 'Home', exact: true }),
+  ).toBeVisible();
   await expect(page).toHaveURL(/\/views\/[0-9a-f-]+$/);
   await expect(page.getByTestId('task-title')).toHaveText(['Sweep']);
   await expect
@@ -64,7 +66,9 @@ test('view form: create, edit, raw JSON, delete', async ({
   await page.getByTestId('delete-view').click();
   await page.getByTestId('confirm-delete').click();
   await expect(page).toHaveURL(/\/$/);
-  await expect(nav.getByRole('link', { name: 'Home' })).toHaveCount(0);
+  await expect(
+    nav.getByRole('link', { name: 'Home', exact: true }),
+  ).toHaveCount(0);
   await expect.poll(async () => (await viewNames()).length).toBe(0);
 });
 

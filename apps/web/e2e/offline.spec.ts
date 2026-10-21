@@ -155,7 +155,7 @@ test('two tabs: a mark shows in the other, each tab keeps to its own view', asyn
   const open = (p: Page, name: string) =>
     p
       .getByRole('navigation', { name: 'Views' })
-      .getByRole('link', { name })
+      .getByRole('link', { name, exact: true })
       .click();
   await open(page, 'Home');
   await expect(page).toHaveURL(new RegExp(`/views/${home}$`));

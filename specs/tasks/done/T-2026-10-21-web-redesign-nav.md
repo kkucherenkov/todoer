@@ -2,11 +2,11 @@
 
 - Created: 2026-10-21
 - Owner: Codex (Web)
-- Status: in-progress
-- Blockers: Navigation only: core task C2 must publish watchable Today,
-  Upcoming and project projections plus their unique open-task counts. The
-  coordinator approved progressive quick add as independent W2 Part 1 on
-  2026-10-21.
+- Status: done
+- Completed: 2026-10-21
+- Result: PR pending
+- Blockers: — (core C2 landed in #50; progressive quick add landed as Part 1
+  in #49)
 - Spec: [web redesign context](T-2026-10-03-web-redesign-context.md), FR-007;
   maintainer-approved rules in the
   [web UX redesign plan](../../../docs/plans/2026-10-03-plan-web-ux-redesign.md),
@@ -89,6 +89,12 @@ or silently add dates to make a new task fit the current preset.
 
 ### Known limits
 
+- Rollover is pinned in a unit test (`apps/web/app/utils/nav.spec.ts`: the
+  real engine on an in-memory replica with a fake clock, 23:59 → 00:01, then
+  a `tick`); the e2e checks only that a write changes the counts. Faking the
+  clock inside the dedicated worker from Playwright was not attempted.
+- Before the first catalog publish the navigation has no built-in entries;
+  they appear with their counts, never with counts the web computed.
 - The pending add/edit attempt lives in the tab's memory: closing the tab
   between an accepted add and a refused edit loses the structured fields; the
   task itself exists.
@@ -106,8 +112,8 @@ or silently add dates to make a new task fit the current preset.
   or offline.
 - **SC-002** A pinned clock proves Today/Upcoming rollover and a refused-write
   fixture proves draft/opId retention.
-- [ ] every FR has a test that failed before the code made it pass
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] every FR has a test that failed before the code made it pass
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
 - [x] no document still asserts the behaviour this task replaced
 - [x] dnote changelog line
@@ -118,23 +124,26 @@ or silently add dates to make a new task fit the current preset.
   record the missing core-owned projection and count contract before editing
   Web — `packages/client-core/src/engine-protocol.ts`,
   `packages/client-core/src/engine.ts`, `packages/client-core/src/operations.ts`
-- [ ] T002 [FR-001–003] Add failing-first unit and Playwright contracts for
+- [x] T002 [FR-001–003] Add failing-first unit and Playwright contracts for
   destinations, unique counts and pinned rollover, then consume the core
-  contract — `apps/web/app/components/ViewNav.vue`, `apps/web/app/pages/`,
-  `apps/web/e2e/`
+  contract — `apps/web/app/utils/nav.ts` (`navEntries`, `navPath`,
+  `routeKey`), `apps/web/app/components/ViewNav.vue`, `ViewHeader.vue`,
+  `apps/web/app/pages/today.vue`, `upcoming.vue`, `projects/[id].vue`,
+  `apps/web/e2e/nav.spec.ts`. Routes: `/` (all), `/today`, `/upcoming`,
+  `/projects/<id>` (`project:<id>`), `/views/<id>` unchanged.
 - [x] T003 [FR-004–006] Add failing-first grammar, refusal, offline and
   out-of-filter checks, then implement progressive quick add —
   `apps/web/app/components/QuickAdd.vue`, `apps/web/e2e/`
-- [ ] T004 [FR-001–006] Update affected docs, run Web unit/typecheck/lint/build
+- [x] T004 [FR-001–006] Update affected docs, run Web unit/typecheck/lint/build
   and the touched e2e specs, then record the dnote changelog line — `docs/`,
   `specs/tasks/`
-- **Checkpoint:** Part 1 may land progressive quick add independently;
-  navigation remains BLOCKED-ON-CORE C2 until the projections and counts below
-  are published.
+- **Checkpoint:** Part 1 landed progressive quick add independently (#49);
+  navigation landed on core C2 (#50).
 
 ### Open questions
 
-- Core contract required by FR-001–003: extend the public watch key from only
+- Resolved by core C2 (#50), kept for the record — core contract required by
+  FR-001–003: extend the public watch key from only
   `all | saved-view-id` to opaque built-in/project keys for `today`,
   `upcoming` and `project:<id>` (or an equivalently typed selector), and
   publish navigation entries with `{ key, kind, id?, count }`. `count` is the
