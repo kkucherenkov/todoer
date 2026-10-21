@@ -49,7 +49,7 @@ gets list items without placements. Stage 1 therefore needs a core change.
 | Web | W3 stage 3, context FR-004–007, [`T-2026-10-21-web-redesign-list`](../../specs/tasks/done/T-2026-10-21-web-redesign-list.md) | Claude (Codex ran out of usage, 2026-10-21) | W4 |
 | Web | W4 stage 4 | Claude (Codex ran out of usage, 2026-10-21) | — |
 | Web | W6 stage 6 | Antigravity | — |
-| Web | W5 stage 5 | Antigravity | — |
+| Web | W5 stage 5, [`T-2026-10-22-web-redesign-calendar`](../../specs/tasks/active/T-2026-10-22-web-redesign-calendar.md) | Claude (Antigravity reassigned 2026-10-21) | — |
 | All | W7 stage 7, reduced | Codex, Antigravity, maintainer | — |
 
 C0, C1 and W1 start in parallel. W1 can land without the calendar mode and
