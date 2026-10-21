@@ -200,7 +200,7 @@ Two pairs fail and are therefore rules, not accidents:
 
 - `--ui-text-muted` on `--ui-bg-elevated` in light mode is **4.39**. On an
   elevated surface (kanban column, muted calendar day) metadata uses
-  `text-toned`.
+  `text-toned`, and so does an inactive tab (`ui.tabs` in `app.config.ts`).
 - `--ui-text-dimmed` is **2.63** on white and **3.67** on zinc-900. It is for
   placeholders and disabled controls only, never for information.
 

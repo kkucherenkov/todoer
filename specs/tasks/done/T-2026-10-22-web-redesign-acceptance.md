@@ -2,12 +2,12 @@
 
 - Created: 2026-10-22
 - Owner: claude
-- Status: in-progress
+- Status: done
 - Blockers: —
 - Spec: [plan](../../../docs/plans/2026-10-03-plan-web-ux-redesign.md)
   "Decisions and tracks (2026-10-21)" item 3 and stage 7; maintainer
   decision 2026-10-21 (reduced acceptance); umbrella
-  [`T-2026-10-03-web-redesign-context`](T-2026-10-03-web-redesign-context.md)
+  [`T-2026-10-03-web-redesign-context`](../active/T-2026-10-03-web-redesign-context.md)
   FR-001–008, SC-001–002
 - Plan: none; the steps below are the whole change
 
@@ -71,30 +71,45 @@ the maintainer.
   axe and keyboard tests; the full web suite passes on chromium and firefox.
 - **SC-002** The report lists the matrix, axe results, keyboard paths, the
   Web ↔ terminal transcript summary, bugs fixed and open.
-- [ ] every FR has a test that failed before the code made it pass
-      (acceptance tests check existing behaviour; a fixed defect has a test
-      that failed before its fix)
+- [x] every FR has a test that failed before the code made it pass
+      (acceptance tests check existing behaviour; each of the six fixed
+      defects has a test that failed before its fix)
 - [ ] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
+- [x] no document still asserts the behaviour this task replaced
 - [ ] dnote changelog line — not written: the brief excludes it
 
 ### Steps
 
-- [ ] T001 [FR-002] Add `@axe-core/playwright` 4.13.0 (published
+- [x] T001 [FR-002] Add `@axe-core/playwright` 4.13.0 (published
       2026-08-11) — `apps/web/package.json`
-- [ ] T002 [FR-001, FR-002] Matrix and axe tests — `apps/web/e2e/acceptance.spec.ts`
-- [ ] T003 [FR-003] Keyboard and focus test — `apps/web/e2e/acceptance.spec.ts`
-- [ ] T004 [FR-004] Name the tests that prove CSP and offline reload; add
-      one if none does
-- [ ] T005 [FR-005] Web ↔ terminal run on a scratch backend and account
-- [ ] T006 [FR-006] Fix small web defects found, one commit and test each
-- [ ] T007 Gates: web unit, typecheck, lint, build, full web e2e chromium +
-      firefox; update the umbrella spec and the plan; move finished specs
-      to `specs/tasks/done/`
+- [x] T002 [FR-001, FR-002] Matrix and axe tests — `apps/web/e2e/acceptance.spec.ts`:
+      16 tests (gate and the signed-in screens per combination), all pass;
+      no axe rule disabled
+- [x] T003 [FR-003] Keyboard and focus test — `apps/web/e2e/acceptance.spec.ts`
+- [x] T004 [FR-004] CSP: the `guard` fixture fails every test on a
+      violation, and the acceptance gate test asserts the backend's
+      `Content-Security-Policy` header on the built SPA. Offline reload:
+      `offline.spec.ts` "offline, then online" (chromium) and the Firefox
+      branch of "offline: quick-add, done and a drag show at once and
+      survive a reload"
+- [x] T005 [FR-005] Web ↔ TUI run: Playwright for the web, the TUI itself
+      in tmux (`CI=0 FORCE_COLOR=1`), the CLI only to create the recurring
+      task; one backend, one account; passed. Not committed: it needs tmux
+- [x] T006 [FR-006] Fixed, one commit and test each: no `lang` on the
+      document; no document title; sidebar view names truncated; list task
+      titles truncated; focus lost on the calendar's Previous / Next /
+      Today; inactive calendar tab at 4.39:1
+- [x] T007 Gates: web unit, typecheck, lint, build, full web e2e chromium +
+      firefox; umbrella spec and plan updated
 - **Checkpoint:** the redesign is accepted within the reduced scope; touch
   and the mobile flow remain the maintainer's.
 
 ### Open questions
 
-—
+Found and left open (outside `apps/web` or larger than a small fix):
+
+- A server refusal of a queued write shows only the "N refused" badge: no
+  reason and no way to drop it in the web (the CLI has `outbox drop`).
+- The TUI's outline lists open tasks only, so a closed child cannot be
+  reopened from it; the web lists it as "Closed" (FR-004 is web-only).

@@ -1,6 +1,6 @@
 # План внедрения UX-редизайна Web
 
-Дата: 2026-10-03. Статус: in progress; C0 (#44), shell этапа 1 (#45), C1 (#48), C2 (#50) и transient layouts на любом view (#51) смёржены, этап 2 завершён (навигация — PR pending). Решения 2026-10-21 и разбивка на потоки — в разделе [Decisions and tracks](#decisions-and-tracks-2026-10-21).
+Дата: 2026-10-03. Статус: in progress; этапы 1–6 и C0–C2 смёржены, этап 7 (сокращённая приёмка) выполнен 2026-10-22 и ждёт ручной проверки touch и мобильного сценария. Решения 2026-10-21 и разбивка на потоки — в разделе [Decisions and tracks](#decisions-and-tracks-2026-10-21).
 
 Цель: перенести принятый UX в Nuxt-приложение, сохранив реальные операции core, URL-контекст, i18n, offline и синхронизацию. [Макеты и инструкция просмотра](../design/mockups/README.md) находятся в репозитории; Open Design не требуется для дальнейшей разработки. [Proposal](../proposals/2026-10-03-web-ux-redesign.md) задаёт продуктовые решения; [task spec контекста](../../specs/tasks/active/T-2026-10-03-web-redesign-context.md) — FR и критерии приёмки.
 
@@ -50,7 +50,7 @@ gets list items without placements. Stage 1 therefore needs a core change.
 | Web | W4 stage 4 | Claude (Codex ran out of usage, 2026-10-21) | — |
 | Web | W6 stage 6 | Antigravity | — |
 | Web | W5 stage 5, [`T-2026-10-22-web-redesign-calendar`](../../specs/tasks/done/T-2026-10-22-web-redesign-calendar.md) | Claude (Antigravity reassigned 2026-10-21) | — |
-| All | W7 stage 7, reduced | Codex, Antigravity, maintainer | — |
+| All | W7 stage 7, reduced, [`T-2026-10-22-web-redesign-acceptance`](../../specs/tasks/done/T-2026-10-22-web-redesign-acceptance.md) | Claude (2026-10-22); touch and the mobile flow: maintainer | — |
 
 C0, C1 and W1 start in parallel. W1 can land without the calendar mode and
 add it once C1's override ships. W1 sets the theme and the shell every other
@@ -139,12 +139,16 @@ gets its own task spec and PR, as stage 0 says.
 
 ### 7. Итоговая приёмка и использование
 
-- [ ] Web unit, typecheck, build, lint и полный Web e2e; source dependencies затронутого core — соответствующие tests/typecheck/build. `pnpm --filter @todoer/web e2e` использует тестовую БД по существующему setup, не пользовательские данные.
-- [ ] Новые экраны EN/RU × light/dark в Playwright на 390 и 1366: полная прокрутка, длинные названия, keyboard/focus, axe. Touch и мобильный сценарий пользователь проверяет вручную; screen reader и остальные ширины не проверяются (решение 2026-10-21). CSP и offline production bundle проверяются после build.
-- [ ] Общая реплика Web/TUI: parent/child → статус → progress → Undo → исключить родителя → offline → sync; дополнительно recurring occurrence и refused reparent. Не считать чтение TUI-spec подтверждением прогона.
-- [ ] Обновить task specs и proposal фактическими результатами, закрыть завершённые задачи и записать changelog. Начать пользоваться приложением; дальнейшие UX-правки оформлять по конкретным наблюдениям.
+Задача: [`T-2026-10-22-web-redesign-acceptance`](../../specs/tasks/done/T-2026-10-22-web-redesign-acceptance.md).
 
-Результат: готовый редизайн приложения, подтверждённый тестами и использованием. Текущее состояние (2026-10-22): C0, C1, C2, этапы 1 (включая cross-projection overrides, #51), 2 (#53), 3 (#52), 4 (#55) и 6 (#54) смёржены; этап 5 — PR pending; этап 7 не начат.
+- [x] Web unit, typecheck, build, lint и полный Web e2e; source dependencies затронутого core — соответствующие tests/typecheck/build. `pnpm --filter @todoer/web e2e` использует тестовую БД по существующему setup, не пользовательские данные.
+- [x] Новые экраны EN/RU × light/dark в Playwright на 390 и 1366: полная прокрутка, длинные названия, keyboard/focus, axe (`apps/web/e2e/acceptance.spec.ts`, chromium; ни одно правило axe не отключено). Touch и мобильный сценарий пользователь проверяет вручную; screen reader и остальные ширины не проверяются (решение 2026-10-21). CSP и offline production bundle проверяются после build: CSP — fixture `guard` в каждом тесте и заголовок в acceptance, offline reload — `offline.spec.ts` "offline, then online".
+- [x] Общая реплика Web/TUI: parent/child → статус → progress → Undo → исключить родителя → offline → sync; дополнительно recurring occurrence и refused reparent. Прогон 2026-10-22: Web в Playwright, сам TUI в tmux, один backend и аккаунт.
+- [ ] Обновить task specs и proposal фактическими результатами, закрыть завершённые задачи и записать changelog. Начать пользоваться приложением; дальнейшие UX-правки оформлять по конкретным наблюдениям. Task specs обновлены 2026-10-22; changelog и proposal — за пользователем, как и ручная проверка touch и мобильного сценария.
+
+Приёмка нашла и исправила шесть дефектов Web: нет `lang` и `<title>` у документа, обрезанные имена views в sidebar и названия задач в списке, потеря фокуса на Previous/Next/Today календаря, контраст неактивной вкладки Week/Month 4.39:1. Открытыми остались: отказ сервера по записи из очереди виден только бейджем «N refused» без причины и без способа сбросить; outline TUI не показывает закрытых детей.
+
+Результат: готовый редизайн приложения, подтверждённый тестами и использованием. Текущее состояние (2026-10-22): C0, C1, C2 и этапы 1 (включая cross-projection overrides, #51), 2 (#53), 3 (#52), 4 (#55), 5 (#57) и 6 (#54) смёржены; этап 7 выполнен в сокращённом объёме, ждёт ручной проверки touch и мобильного сценария.
 
 ## Порядок и зависимость работ
 
