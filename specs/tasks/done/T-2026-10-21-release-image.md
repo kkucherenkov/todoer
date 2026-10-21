@@ -62,4 +62,4 @@ publish the proven image, so the NAS stack only names a version and pulls.
 - [x] T002 [FR-001, FR-002, FR-003] Release workflow —
   `.github/workflows/release.yml`
 - [x] T003 README: running a released image on the NAS — `README.md`
-- **Checkpoint:** a `workflow_dispatch` run on `main` is green.
+- **Checkpoint:** a `workflow_dispatch` run on `main` is green — run 39642750968.

@@ -7,7 +7,7 @@ name: Release
 # `workflow_dispatch` is a dry run: build and prove, no login, no push.
 #
 # GITHUB_TOKEN with `packages: write` is the only credential. The package is
-# linked to this public repository by the image's source label and is public.
+# public and linked to this repository by the image's source label.
 
 on:
   push:
