@@ -18,7 +18,7 @@ const task = (id: string, title: string, extra: object = {}) => ({
   id,
   title,
   rank: 'a0',
-  priority: 0,
+  priority: 4,
   version: 1,
   ...extra,
 });

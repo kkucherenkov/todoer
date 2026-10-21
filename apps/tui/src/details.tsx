@@ -49,8 +49,8 @@ type Editing = null | FieldId | 'custom-rule';
 
 const dateOf = (value: unknown) => (typeof value === 'string' ? value : '');
 const priorityOf = (task: TaskDetails) => {
-  const p = Number(task.priority ?? 0);
-  return p > 0 ? `p${String(p)}` : '';
+  const p = Number(task.priority ?? 4);
+  return p < 4 ? `p${String(p)}` : '';
 };
 
 const linesOf = (text: string) => {

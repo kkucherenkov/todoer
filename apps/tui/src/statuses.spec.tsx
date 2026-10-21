@@ -30,7 +30,7 @@ async function statuses() {
         id: 't1',
         title: 'milk',
         rank: 'a0',
-        priority: 0,
+        priority: 4,
         statusId: 'doing',
         version: 1,
       },

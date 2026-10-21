@@ -35,7 +35,7 @@ const task = (title: string, rank: string, parent?: string) => ({
   id: id(title),
   title,
   rank,
-  priority: 0,
+  priority: 4,
   version: 1,
   ...(parent === undefined ? {} : { parentId: id(parent) }),
 });

@@ -10,12 +10,12 @@ export type LineFields = {
 
 /** A task as one quick-add line: `title @tags #project pN`. */
 export function lineOf(item: LineFields): string {
-  const priority = Number(item.priority ?? 0);
+  const priority = Number(item.priority ?? 4);
   return [
     String(item.title),
     ...item.tags,
     ...(item.project === null ? [] : [`#${item.project}`]),
-    ...(priority > 0 ? [`p${priority}`] : []),
+    ...(priority < 4 ? [`p${priority}`] : []),
   ].join(' ');
 }
 
@@ -33,7 +33,7 @@ export function lineChanges(item: LineFields, line: string): TaskChanges {
   }
   const project = parsed.project ?? null;
   if (project !== item.project) changes.project = project;
-  if (parsed.priority !== Number(item.priority ?? 0)) {
+  if (parsed.priority !== Number(item.priority ?? 4)) {
     changes.priority = parsed.priority;
   }
   return changes;
