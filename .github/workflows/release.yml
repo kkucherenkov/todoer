@@ -1,0 +1,93 @@
+name: Release
+
+# A `vX.Y.Z` tag publishes ghcr.io/kkucherenkov/todoer as X.Y.Z, X.Y, X and
+# latest. The image is built by the same compose file the Image job in
+# test.yml uses and must pass the same proofs before anything is pushed.
+#
+# `workflow_dispatch` is a dry run: build and prove, no login, no push.
+#
+# GITHUB_TOKEN with `packages: write` is the only credential. A new GHCR
+# package starts private; the maintainer makes it public once in the UI.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+env:
+  IMAGE: ghcr.io/kkucherenkov/todoer
+  JWT_SECRET: ci-only-secret-at-least-32-characters-long
+
+jobs:
+  release:
+    name: Build, prove and push
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Parse the tag
+        id: version
+        run: |
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ]; then
+            SEMVER=0.0.0-dispatch
+          else
+            SEMVER="${GITHUB_REF_NAME#v}"
+            echo "$SEMVER" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' \
+              || { echo "::error::tag $GITHUB_REF_NAME is not vX.Y.Z"; exit 1; }
+          fi
+          echo "semver=$SEMVER" >> "$GITHUB_OUTPUT"
+
+      # The proofs run the CLI from the checkout, as in the Image job.
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.12.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build the CLI
+        run: pnpm -w exec turbo run build --filter=@todoer/cli...
+
+      - name: Build and start the image
+        env:
+          APP_IMAGE: ${{ env.IMAGE }}:${{ steps.version.outputs.semver }}
+          APP_VERSION: ${{ steps.version.outputs.semver }}
+        run: docker compose -f docker/compose.yml --profile app up -d --build --wait
+
+      - name: Prove the walking skeleton against the container
+        env:
+          TODOER_URL: http://localhost:3000/api/v1
+        run: sh scripts/walking-skeleton.sh
+
+      - name: Check that the container serves the SPA under the CSP
+        run: |
+          curl -fsS -D headers.txt -H 'Accept: text/html' http://localhost:3000/ -o index.html
+          grep -q 'id="__nuxt"' index.html
+          grep -qi '^content-security-policy:' headers.txt
+
+      - name: Show the container's log
+        if: always()
+        run: docker compose -f docker/compose.yml --profile app logs app
+
+      - name: Push
+        if: github.event_name != 'workflow_dispatch'
+        env:
+          SEMVER: ${{ steps.version.outputs.semver }}
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          MINOR="${SEMVER%.*}"
+          for tag in "$SEMVER" "$MINOR" "${MINOR%.*}" latest; do
+            docker tag "$IMAGE:$SEMVER" "$IMAGE:$tag"
+            docker push "$IMAGE:$tag"
+          done

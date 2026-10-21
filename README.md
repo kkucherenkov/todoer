@@ -266,7 +266,23 @@ network; the app talks to Postgres over the compose network.
 
 Browsers cannot sign in over plain HTTP, so put an HTTPS proxy in front and set
 `TRUST_PROXY`; see [Serving the web client](#serving-the-web-client).
-The image is built from the repository, not published to a registry.
+
+#### A released image instead of a checkout
+
+A `vX.Y.Z` tag runs `.github/workflows/release.yml`: it builds the image,
+proves it with the walking skeleton, and pushes
+`ghcr.io/kkucherenkov/todoer` as `X.Y.Z`, `X.Y`, `X` and `latest`. A host
+without git or a build toolchain then needs only a compose file naming the
+version, with the same variables and Postgres service as above:
+
+```yaml
+  app:
+    image: ghcr.io/kkucherenkov/todoer:0.1.0
+```
+
+To update, change the version and run `docker compose pull && docker compose up -d`;
+the entrypoint applies pending migrations. Running the workflow by hand
+builds and proves the image without pushing it.
 
 ### Browsers
 

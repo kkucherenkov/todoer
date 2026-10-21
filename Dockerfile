@@ -24,6 +24,7 @@ COPY --from=build --chown=node:node /out ./
 COPY --from=build /src/packages/specs/openapi /app/packages/specs/openapi
 COPY --from=build /src/apps/web/.output/public ./web
 COPY docker/entrypoint.sh /entrypoint.sh
+LABEL org.opencontainers.image.source=https://github.com/kkucherenkov/todoer
 ARG APP_VERSION=0.0.0-dev
 ENV NODE_ENV=production WEB_ROOT=/app/apps/backend/web PORT=3000 APP_VERSION=$APP_VERSION
 USER node
