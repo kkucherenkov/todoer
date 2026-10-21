@@ -299,7 +299,8 @@ them at its top
 3. **`skip` leaves `statusId` alone.** A skipped occurrence is shown by the
    occurrence rule anyway.
 4. **Sort by priority puts 4 first, 0 last.** Quick-add's `p4` is the
-   strongest marker a user can type.
+   strongest marker a user can type. (Superseded by ADR 0019: P0 is the
+   highest and sorts first.)
 5. **A recurring task is filtered at its current occurrence:** its
    `scheduledOn` is the date `list` shows, its `dueOn` the task's own field.
 6. **The merge rewrites view filters.** Folding a tag, project or status into

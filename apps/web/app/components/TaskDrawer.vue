@@ -58,7 +58,7 @@ const draft = reactive<Draft>({
   notes: '',
   project: '',
   tags: [],
-  priority: 0,
+  priority: 4,
   scheduledOn: '',
   dueOn: '',
   statusId: '',

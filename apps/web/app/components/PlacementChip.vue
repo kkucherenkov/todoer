@@ -70,7 +70,7 @@ const actions = computed<DropdownMenuItem[]>(() => [
       class="size-3.5 shrink-0 text-muted"
     />
     <UBadge
-      v-if="Number(item.priority) > 0"
+      v-if="Number(item.priority) < 4"
       color="neutral"
       variant="subtle"
       size="sm"

@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { arrowTo, count, day, expect, test } from './fixtures';
+import { arrowTo, count, day, expect, seedTask, test } from './fixtures';
 
 /** Opens a task by URL without a reload: the router follows a popstate. */
 const visit = (page: Page, task: string) =>
@@ -233,4 +233,18 @@ test('list: quick-add, done, undo, reorder, recurring', async ({
   await visit(page, ended);
   await expect(drawer).toContainText('This series has ended');
   await expect(drawer.getByLabel('Title')).toBeDisabled();
+});
+
+test('list: P0 shows a p0 badge, P4 shows none', async ({
+  page,
+  account,
+  request,
+}) => {
+  await seedTask(request, account.token, { title: 'Urgent', priority: 0 });
+  await seedTask(request, account.token, { title: 'Plain', priority: 4 });
+  await page.goto('/');
+  const row = (title: string) => rows(page).filter({ hasText: title });
+  await expect(row('Urgent')).toContainText('p0');
+  await expect(row('Plain')).toBeVisible();
+  await expect(row('Plain')).not.toContainText(/\bp\d\b/);
 });

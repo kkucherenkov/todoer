@@ -8,7 +8,7 @@ describe('parseQuickAdd', () => {
       title: 'buy milk',
       tags: [],
       project: undefined,
-      priority: 0,
+      priority: 4,
     });
   });
 
@@ -26,7 +26,7 @@ describe('parseQuickAdd', () => {
       title: 'mail a@b.c about the invoice',
       tags: [],
       project: undefined,
-      priority: 0,
+      priority: 4,
     });
   });
 
@@ -35,8 +35,12 @@ describe('parseQuickAdd', () => {
       title: 'note',
       tags: ['@cafe\u0301'],
       project: 're\u0301sume\u0301',
-      priority: 0,
+      priority: 4,
     });
+  });
+
+  it('reads p0 as the highest priority', () => {
+    expect(parseQuickAdd('ship it p0').priority).toBe(0);
   });
 
   it('leaves p5 in the title, since priorities stop at 4', () => {
@@ -57,7 +61,7 @@ describe('planAdd', () => {
   it('has no project and no tags when none are given', () => {
     expect(planAdd('buy milk')).toEqual({
       title: 'buy milk',
-      priority: 0,
+      priority: 4,
       project: undefined,
       tags: [],
     });

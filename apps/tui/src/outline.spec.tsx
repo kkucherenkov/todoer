@@ -35,7 +35,7 @@ const task = (title: string, rank: string, parent?: string) => ({
   id: id(title),
   title,
   rank,
-  priority: 0,
+  priority: 4,
   version: 1,
   ...(parent === undefined ? {} : { parentId: id(parent) }),
 });
@@ -58,6 +58,18 @@ const order = (frame: string | undefined, ...titles: string[]) => {
 };
 
 describe('OutlinePane', () => {
+  it('labels P0 and leaves P4 unlabelled', async () => {
+    const t = await open(
+      { ...task('alpha', 'a0'), priority: 0 },
+      task('gamma', 'a1'),
+    );
+    const at = (title: string) =>
+      lines(t.lastFrame()).find((l) => l.includes(title)) ?? '';
+    expect(at('alpha')).toContain('p0');
+    expect(at('gamma')).toContain('gamma');
+    expect(at('gamma')).not.toMatch(/\bp\d\b/);
+  });
+
   it('nests a subtask under its parent and folds it with h', async () => {
     const t = await open(
       task('alpha', 'a0'),

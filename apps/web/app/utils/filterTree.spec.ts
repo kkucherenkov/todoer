@@ -211,7 +211,7 @@ describe('blank', () => {
   it('writes the rest as the brief says', () => {
     const c = catalog();
     expect(blank('project', c)).toEqual({ project: null });
-    expect(blank('priority', c)).toEqual({ priority: [4] });
+    expect(blank('priority', c)).toEqual({ priority: [0] });
     expect(blank('scheduled', c)).toEqual({ scheduled: {} });
     expect(blank('due', c)).toEqual({ due: {} });
     expect(blank('recurring', c)).toEqual({ recurring: true });

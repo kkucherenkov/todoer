@@ -138,9 +138,10 @@ Nuxt UI's defaults on the `zinc` palette, unchanged:
 ### Semantic roles in todoer
 
 **Priority.** User decision 2026-10-03: P0 is highest, P4 is lowest.
-Sort ascending (0 first). P0 is a real priority, never “none”; every value
-has a visible `pN` badge. Core currently uses the previous descending scale;
-implement the shared semantic change before porting these badges.
+Sort ascending (0 first). P0 is a real priority, never “none”; the design
+gives every value a `pN` badge. Core stores this scale since ADR 0019 (P4 is
+the default); until W2 restyles the badges, the app shows `p0`–`p3` and hides
+`p4`.
 
 | Priority | Badge | Meaning |
 | --- | --- | --- |

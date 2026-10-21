@@ -25,7 +25,7 @@ export function parseTags(text: string): string[] {
 
 export function parsePriority(text: string): number | 'invalid' {
   const t = text.trim().replace(/^p/, '');
-  if (t === '') return 0;
+  if (t === '') return 4;
   const n = Number(t);
   return Number.isInteger(n) && n >= 0 && n <= 4 ? n : 'invalid';
 }

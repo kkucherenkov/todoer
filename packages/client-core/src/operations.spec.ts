@@ -54,7 +54,7 @@ function put(store: Store, table: string, row: Record<string, unknown>): void {
 const task = (id: string, extra: Record<string, unknown> = {}) => ({
   id,
   title: id,
-  priority: 0,
+  priority: 4,
   rank: 'a0',
   ...extra,
 });
@@ -132,20 +132,29 @@ describe('viewTasks', () => {
     ]);
   });
 
-  it('sorts by priority (4 first) and due (nulls last), ending in rank then id', () => {
+  it('sorts by priority (0 first) and due (nulls last), ending in rank then id', () => {
     const store = openStore(':memory:');
-    put(store, 'task', task('a', { priority: 1, dueOn: '2026-10-09' }));
-    put(store, 'task', task('b', { priority: 4 }));
-    put(store, 'task', task('c', { priority: 1, dueOn: '2026-10-03' }));
+    put(store, 'task', task('a', { priority: 3, dueOn: '2026-10-09' }));
+    put(store, 'task', task('b', { priority: 0 }));
+    put(store, 'task', task('c', { priority: 3, dueOn: '2026-10-03' }));
     put(
       store,
       'task',
-      task('d', { priority: 1, dueOn: '2026-10-03', rank: 'a1' }),
+      task('d', { priority: 3, dueOn: '2026-10-03', rank: 'a1' }),
     );
     const sorted = (sort: string) =>
       ids(viewTasks(store, TODAY, { ...ALL_OPEN, sort }));
     expect(sorted('priority')).toEqual(['b', 'a', 'c', 'd']);
     expect(sorted('due')).toEqual(['c', 'd', 'a', 'b']);
+  });
+
+  it('breaks a priority tie by rank', () => {
+    const store = openStore(':memory:');
+    put(store, 'task', task('x', { priority: 2, rank: 'a2' }));
+    put(store, 'task', task('y', { priority: 2, rank: 'a1' }));
+    expect(
+      ids(viewTasks(store, TODAY, { ...ALL_OPEN, sort: 'priority' })),
+    ).toEqual(['y', 'x']);
   });
 
   it('lists a recurring task once at its current occurrence', () => {
@@ -394,7 +403,7 @@ describe('listTasks', () => {
   it('keeps the store order without a view and sorts with one', () => {
     const store = openStore(':memory:');
     put(store, 'task', task('b', { rank: 'a1' }));
-    put(store, 'task', task('a', { rank: 'a2', priority: 4 }));
+    put(store, 'task', task('a', { rank: 'a2', priority: 0 }));
     put(store, 'view', {
       id: 'v',
       name: 'Hot',

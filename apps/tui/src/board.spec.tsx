@@ -27,7 +27,7 @@ const task = (id: string, statusId: string, rank: string, more = {}) => ({
   title: id,
   statusId,
   rank,
-  priority: 0,
+  priority: 4,
   version: 1,
   ...more,
 });

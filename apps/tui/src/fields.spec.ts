@@ -29,7 +29,8 @@ describe('parsePriority', () => {
   it('takes 0-4 with or without p', () => {
     expect(parsePriority('p2')).toBe(2);
     expect(parsePriority('3')).toBe(3);
-    expect(parsePriority('')).toBe(0);
+    expect(parsePriority('')).toBe(4);
+    expect(parsePriority('p0')).toBe(0);
     expect(parsePriority('p7')).toBe('invalid');
   });
 });

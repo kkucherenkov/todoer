@@ -11,8 +11,11 @@ const item = {
 describe('lineOf', () => {
   it('writes title, tags, project and priority as quick-add reads them', () => {
     expect(lineOf(item)).toBe('milk @shop #home p2');
-    expect(lineOf({ title: 'x', tags: [], project: null, priority: 0 })).toBe(
+    expect(lineOf({ title: 'x', tags: [], project: null, priority: 4 })).toBe(
       'x',
+    );
+    expect(lineOf({ title: 'x', tags: [], project: null, priority: 0 })).toBe(
+      'x p0',
     );
   });
 });
@@ -30,7 +33,21 @@ describe('lineChanges', () => {
       tags: ['@shop', '@dairy'],
     });
     expect(lineChanges(item, 'milk @shop p2')).toEqual({ project: null });
-    expect(lineChanges(item, 'milk @shop #home')).toEqual({ priority: 0 });
+    expect(lineChanges(item, 'milk @shop #home')).toEqual({ priority: 4 });
+  });
+
+  it('queues no priority change for a P4 line typed without pN', () => {
+    expect(lineChanges({ ...item, priority: 4 }, 'milk @shop #home')).toEqual(
+      {},
+    );
+  });
+
+  it('treats a missing priority as P4', () => {
+    const bare = { title: 'milk', tags: [], project: null };
+    expect(lineChanges(bare, 'milk')).toEqual({});
+    expect(lineChanges({ ...bare, priority: undefined }, 'milk p1')).toEqual({
+      priority: 1,
+    });
   });
 
   it('compares tags as a set', () => {

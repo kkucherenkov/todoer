@@ -30,7 +30,7 @@ const labels = (item: Item) =>
   [
     ...item.tags,
     ...(item.project === null ? [] : [`#${item.project}`]),
-    ...(Number(item.priority ?? 0) > 0 ? [`p${String(item.priority)}`] : []),
+    ...(Number(item.priority ?? 4) < 4 ? [`p${String(item.priority)}`] : []),
     ...(typeof item.dueOn === 'string' ? [`due ${item.dueOn}`] : []),
   ].join(' ');
 

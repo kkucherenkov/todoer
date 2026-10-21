@@ -73,7 +73,7 @@ marks:
   needs undo first.
 
 quick-add markers:
-  p0..p4      priority
+  p0..p4      priority, p0 the highest; p4 when none is given
   #project    the live, non-archived project of that name (any case);
               created if there is none. An archived project is never
               matched, so #name next to an archived project of that name
