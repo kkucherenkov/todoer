@@ -104,7 +104,7 @@ or silently add dates to make a new task fit the current preset.
   destinations, unique counts and pinned rollover, then consume the core
   contract — `apps/web/app/components/ViewNav.vue`, `apps/web/app/pages/`,
   `apps/web/e2e/`
-- [ ] T003 [FR-004–006] Add failing-first grammar, refusal, offline and
+- [x] T003 [FR-004–006] Add failing-first grammar, refusal, offline and
   out-of-filter checks, then implement progressive quick add —
   `apps/web/app/components/QuickAdd.vue`, `apps/web/e2e/`
 - [ ] T004 [FR-001–006] Update affected docs, run Web unit/typecheck/lint/build

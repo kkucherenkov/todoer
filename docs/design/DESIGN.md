@@ -340,7 +340,7 @@ library.
 | `SyncStatus`                          | `UBadge`, `UButton`                                             | task count, last synced, badges per sync state, Sync now, Sign out |
 | `UpdatePrompt`                        | `UAlert` (info)                                                 | above everything, Reload action                                |
 | `ViewBody`                            | `UAlert` (warning)                                              | a view whose filter is invalid or deleted shows why            |
-| `QuickAdd`                            | `UInput` (`size="lg"`, leading `i-lucide-plus`)                 | placeholder shows the syntax: `Buy milk #home @errand p2`; error line in `text-error` |
+| `QuickAdd`                            | `UInput`, `UButton`, `UFormField`, `USelect`                      | title and Add task first; details reveal project/tags/priority/scheduled/due; the title keeps `#project @tag pN`; refused drafts stay; an out-of-filter add links to All open |
 | `TaskList`, `TaskRow`                 | `UButton`, `UBadge`, `UDropdownMenu`                            | round check, title, parent link (W5), `#project`, `@tags`, priority, occurrence, due, status; actions menu |
 | `KanbanBoard`, `KanbanColumn`, `KanbanCard` | `UButton`, `UIcon`, `UBadge`, `UDropdownMenu`             | columns scroll horizontally; card focusable, Enter opens       |
 | `ColumnsDialog`                       | `UModal`, `UInput`, `UButton`, `UIcon`                          | rename inline, reorder with arrows, make completing, delete with inline confirm |

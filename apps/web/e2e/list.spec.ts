@@ -1,5 +1,14 @@
 import type { Page } from '@playwright/test';
-import { arrowTo, count, day, expect, seedTask, test } from './fixtures';
+import {
+  arrowTo,
+  count,
+  day,
+  expect,
+  projectId,
+  seedTask,
+  seedView,
+  test,
+} from './fixtures';
 
 /** Opens a task by URL without a reload: the router follows a popstate. */
 const visit = (page: Page, task: string) =>
@@ -21,7 +30,102 @@ type Listed = {
   dueOn: string | null;
   project: string | null;
   tags: string[];
+  scheduledOn?: string | null;
 };
+
+test('list: progressive quick add keeps grammar and structured fields', async ({
+  page,
+  account,
+  cli,
+}) => {
+  await page.goto('/');
+  await expect(count(page)).toBeVisible();
+
+  const input = page.getByRole('textbox', { name: 'Quick add' });
+  await expect(page.getByLabel('Project')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Add details' }).click();
+  await expect(page.getByLabel('Project')).toBeVisible();
+
+  await input.fill('Plan trip #home @errand p2');
+  await page.getByLabel('Tags').fill('@errand calls');
+  await page.getByLabel('Priority').click();
+  await page.getByRole('option', { name: 'p0' }).click();
+  await page.getByLabel('Scheduled').fill(day(1));
+  await page.getByLabel('Due').fill(day(2));
+  await page.getByRole('button', { name: 'Add task' }).click();
+
+  const row = rows(page).filter({ hasText: 'Plan trip' });
+  await expect(row).toContainText('#home');
+  await expect(row).toContainText('@errand');
+  await expect(row).toContainText('@calls');
+  await expect(row).toContainText('p0');
+  await expect(input).toHaveValue('');
+  await expect(page.getByLabel('Tags')).toHaveValue('');
+  await expect(page.getByLabel('Scheduled')).toHaveValue('');
+  await expect(page.getByLabel('Due')).toHaveValue('');
+
+  const listed = async () =>
+    (
+      JSON.parse(await cli(account.token, 'list', '--json')) as {
+        data: Listed[];
+      }
+    ).data;
+  await expect
+    .poll(async () =>
+      (await listed()).find((task) => task.title === 'Plan trip'),
+    )
+    .toMatchObject({
+      project: 'home',
+      tags: ['@calls', '@errand'],
+      priority: 0,
+      scheduledOn: day(1),
+      dueOn: day(2),
+    });
+
+  // Core refuses marker-only text; every revealed part of the draft stays.
+  await input.fill('#home');
+  await page.getByLabel('Tags').fill('@keep');
+  await page.getByLabel('Due').fill(day(3));
+  await page.getByRole('button', { name: 'Add task' }).click();
+  await expect(page.getByRole('alert')).toContainText('That cannot be done.');
+  await expect(input).toHaveValue('#home');
+  await expect(page.getByLabel('Tags')).toHaveValue('@keep');
+  await expect(page.getByLabel('Due')).toHaveValue(day(3));
+});
+
+test('list: an out-of-filter quick add links to the task in All open', async ({
+  page,
+  account,
+  cli,
+}) => {
+  await cli(account.token, 'add', 'Anchor #home');
+  const home = await projectId(page.request, account.token, 'home');
+  const view = await seedView(
+    page.request,
+    account.token,
+    'Home only',
+    'a0',
+    'list',
+    { project: home },
+  );
+  await page.goto(`/views/${view}`);
+  await expect(count(page)).toBeVisible();
+
+  const input = page.getByRole('textbox', { name: 'Quick add' });
+  await input.fill('Outside the filter');
+  await input.press('Enter');
+  await expect(
+    rows(page).filter({ hasText: 'Outside the filter' }),
+  ).toHaveCount(0);
+
+  const toast = page.getByText('Added to All open', { exact: true });
+  await expect(toast).toBeVisible();
+  await page.getByRole('button', { name: 'Open in All open' }).click();
+  await expect(page).toHaveURL(/^.*\/?\?task=[0-9a-f-]+$/);
+  await expect(page.getByRole('dialog').getByLabel('Title')).toHaveValue(
+    'Outside the filter',
+  );
+});
 
 test('list: quick-add, done, undo, reorder, recurring', async ({
   page,
