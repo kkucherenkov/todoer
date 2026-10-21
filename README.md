@@ -311,9 +311,10 @@ volumes:
 
 To update, change the version and run `docker compose pull && docker compose up -d`;
 the entrypoint applies pending migrations. Running the workflow by hand
-builds and proves the image without pushing it. GHCR creates the package
-private on the first push; it is made public once, in the package's
-settings on GitHub, so hosts pull it without logging in.
+builds and proves the image without pushing it. The image's
+`org.opencontainers.image.source` label links the package to this public
+repository, and the package took its visibility: hosts pull without logging
+in.
 
 ### Browsers
 

@@ -6,8 +6,8 @@ name: Release
 #
 # `workflow_dispatch` is a dry run: build and prove, no login, no push.
 #
-# GITHUB_TOKEN with `packages: write` is the only credential. A new GHCR
-# package starts private; the maintainer makes it public once in the UI.
+# GITHUB_TOKEN with `packages: write` is the only credential. The package is
+# linked to this public repository by the image's source label and is public.
 
 on:
   push:

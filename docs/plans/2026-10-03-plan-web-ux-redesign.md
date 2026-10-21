@@ -1,6 +1,6 @@
 # План внедрения UX-редизайна Web
 
-Дата: 2026-10-03. Статус: in progress; shell этапа 1 находится на review, transient cross-projection layouts ждут C1. Решения 2026-10-21 и разбивка на потоки — в разделе [Decisions and tracks](#decisions-and-tracks-2026-10-21).
+Дата: 2026-10-03. Статус: in progress; C0 (#44) и shell этапа 1 (#45) смёржены, transient cross-projection layouts ждут C1, этап 2 в работе. Решения 2026-10-21 и разбивка на потоки — в разделе [Decisions and tracks](#decisions-and-tracks-2026-10-21).
 
 Цель: перенести принятый UX в Nuxt-приложение, сохранив реальные операции core, URL-контекст, i18n, offline и синхронизацию. [Макеты и инструкция просмотра](../design/mockups/README.md) находятся в репозитории; Open Design не требуется для дальнейшей разработки. [Proposal](../proposals/2026-10-03-web-ux-redesign.md) задаёт продуктовые решения; [task spec контекста](../../specs/tasks/active/T-2026-10-03-web-redesign-context.md) — FR и критерии приёмки.
 
@@ -76,7 +76,7 @@ gets its own task spec and PR, as stage 0 says.
 - [ ] Проверить загрузку календарной projection при transient calendar: простой смены шаблона недостаточно, если watch продолжает получать list items без placements/span. При необходимости расширить общий watch-контракт отдельной core задачей.
 - [x] Сохранить `task`, calendar `mode`/`at` и остальные query, reload, Back/Forward; смена view без override использует его default. Сохранённый layout меняется только явным save.
 
-Текущий результат на review: List/Kanban переключаются на реальных задачах без изменения non-calendar saved view; Calendar остаётся рабочим для сохранённых calendar views и станет transient для остальных после C1. Обратное переключение saved calendar в List/Kanban также ждёт C1. URL/history/reload/focus закреплены unit- и `shell.spec.ts`-контрактами.
+Результат (#45, смёржен): List/Kanban переключаются на реальных задачах без изменения non-calendar saved view; Calendar остаётся рабочим для сохранённых calendar views и станет transient для остальных после C1. Обратное переключение saved calendar в List/Kanban также ждёт C1. URL/history/reload/focus закреплены unit- и `shell.spec.ts`-контрактами.
 
 ### 2. Навигация, пресеты и быстрое добавление
 
@@ -136,7 +136,7 @@ gets its own task spec and PR, as stage 0 says.
 - [ ] Общая реплика Web/TUI: parent/child → статус → progress → Undo → исключить родителя → offline → sync; дополнительно recurring occurrence и refused reparent. Не считать чтение TUI-spec подтверждением прогона.
 - [ ] Обновить task specs и proposal фактическими результатами, закрыть завершённые задачи и записать changelog. Начать пользоваться приложением; дальнейшие UX-правки оформлять по конкретным наблюдениям.
 
-Результат: готовый редизайн приложения, подтверждённый тестами и использованием. Текущее состояние — shell этапа 1 и transient List/Kanban для non-calendar views находятся на review; cross-projection overrides ждут C1, остальные этапы не начаты.
+Результат: готовый редизайн приложения, подтверждённый тестами и использованием. Текущее состояние (2026-10-21): C0 и этап 1 смёржены; cross-projection overrides ждут C1 (на review); этап 2 в работе; остальные не начаты.
 
 ## Порядок и зависимость работ
 

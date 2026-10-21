@@ -2,7 +2,9 @@
 
 - Created: 2026-10-21
 - Owner: claude
-- Status: in-progress
+- Status: done
+- Completed: 2026-10-21
+- Result: https://github.com/kkucherenkov/todoer/pull/46; tag `v0.1.0`, release run 39643187171
 - Blockers: —
 - Spec: maintainer request, 2026-10-21 — the NAS pulls a public
   `ghcr.io/kkucherenkov/todoer` image instead of building from a checkout
@@ -44,14 +46,14 @@ publish the proven image, so the NAS stack only names a version and pulls.
 ### Definition of Done
 
 - **SC-001** After the first tag, `docker pull ghcr.io/kkucherenkov/todoer:<version>`
-  works without logging in, once the maintainer has made the package public.
-- [ ] every FR has a test that failed before the code made it pass —
+  works without logging in.
+- [x] every FR has a test that failed before the code made it pass —
       not applicable: a workflow; proved by a `workflow_dispatch` run and the
       first tag
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 
