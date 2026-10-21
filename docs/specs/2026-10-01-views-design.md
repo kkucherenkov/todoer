@@ -221,6 +221,23 @@ ordinary one-off task.
   `--json`); the CLI has no command to move a task between statuses (chosen by
   the maintainer over a `move` command). Its `done`/`undo` still set `statusId`
   as the occurrence rule requires.
+- **Built-in views and the navigation (2026-10-21).** The engine's `watch.view`
+  takes a saved view's id or a built-in key, each a plain filter the evaluator
+  already runs, never stored: `all` (every open task, `manual`), `today`
+  (`{or: [{scheduled: {to: 0}}, {due: {to: 0}}]}`, sorted `due`), `upcoming`
+  (the same with `{from: 1}`, sorted `due`) and `project:<id>`
+  (`{project: <id>}`, `manual`). All default to `list`; the `watch` layout
+  override applies to them too. A recurring task matches by its current
+  occurrence, and a task scheduled today and due next week is in both Today and
+  Upcoming: the views are filters, not a partition. `project:<id>` of an unknown
+  or deleted project is published with the `deleted` problem, as a removed
+  saved view is. The keys are exported from `engine-protocol.ts` as `ALL`,
+  `TODAY`, `UPCOMING` and `PROJECT_PREFIX`. The `catalog` topic carries
+  `nav: {key, count}[]`: `all`, `today`, `upcoming`, then each live project in
+  the catalog's project order, each count the open tasks that entry's list
+  shows, subtasks included (each is its own row) and each task once. Items and
+  counts use the publishing call's local today, so the next publish after
+  midnight carries the new date. Signed out, `nav` is empty.
 
 ## Verified facts
 

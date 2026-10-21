@@ -43,18 +43,20 @@ gets list items without placements. Stage 1 therefore needs a core change.
 | --- | --- | --- | --- |
 | Core | C0 [`T-2026-10-21-core-priority-scale`](../../specs/tasks/done/T-2026-10-21-core-priority-scale.md): P0–P4 scale, migration, sort, quick-add default, CLI/TUI/Web output | Claude | W2 |
 | Core | C1 [`T-2026-10-21-core-redesign-projections`](../../specs/tasks/done/T-2026-10-21-core-redesign-projections.md): layout override on `watch`, fields of children outside the filter | Antigravity (reassigned 2026-10-21 so it does not idle until W1 lands; Claude reviews) | W1 (calendar), W3 |
+| Core | C2 [`T-2026-10-21-core-nav-projections`](../../specs/tasks/active/T-2026-10-21-core-nav-projections.md): built-in views today/upcoming/project and navigation counts | Claude | W2 (navigation) |
 | Web | W1 stage 1, with [`T-2026-10-03-web-redesign-context`](../../specs/tasks/active/T-2026-10-03-web-redesign-context.md) FR-001–003 | Codex | W2–W6 |
 | Web | W2 stage 2 | Codex | — |
-| Web | W3 stage 3, context FR-004–006 | Codex | W4 |
-| Web | W4 stage 4 | Codex | — |
+| Web | W3 stage 3, context FR-004–006 | Claude (Codex ran out of usage, 2026-10-21) | W4 |
+| Web | W4 stage 4 | Claude (Codex ran out of usage, 2026-10-21) | — |
 | Web | W6 stage 6 | Antigravity | — |
 | Web | W5 stage 5 | Antigravity | — |
 | All | W7 stage 7, reduced | Codex, Antigravity, maintainer | — |
 
 C0, C1 and W1 start in parallel. W1 can land without the calendar mode and
 add it once C1's override ships. W1 sets the theme and the shell every other
-screen sits in, so the Web stages after it wait for it. Then Codex runs
-W2 → W3 → W4 and Antigravity runs W6 → W5 at the same time. Each Web stage
+screen sits in, so the Web stages after it wait for it. Then W2 → W3 → W4
+run in order (W2 with Codex, W3 and W4 with Claude) and Antigravity runs
+W6 → W5 at the same time. Each Web stage
 gets its own task spec and PR, as stage 0 says.
 
 ## Этапы
