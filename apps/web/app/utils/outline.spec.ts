@@ -1,6 +1,12 @@
 import type { ChildItem, Item } from '@todoer/client-core';
 import { describe, expect, it } from 'vitest';
-import { canIndent, dropAfter, outline, siblings } from './outline';
+import {
+  canIndent,
+  dropAfter,
+  indentUnder,
+  outline,
+  siblings,
+} from './outline';
 
 const child = (id: string, fields: Partial<ChildItem> = {}): ChildItem => ({
   id,
@@ -95,10 +101,19 @@ describe('outline', () => {
 
   it('keeps a child whose parent is not listed in its own project', () => {
     const items = [
+      item('r', { projectId: 'pw', project: 'work' }),
       item('k', { parentId: 'gone', projectId: 'pw', project: 'work' }),
     ];
+    // One group with both: the key is the project, not the parent.
     expect(ids(outline(items, 'en'))).toEqual([
-      { project: 'work', count: 1, branches: [['k', [], []]] },
+      {
+        project: 'work',
+        count: 2,
+        branches: [
+          ['r', [], []],
+          ['k', [], []],
+        ],
+      },
     ]);
   });
 
@@ -182,6 +197,29 @@ describe('siblings', () => {
   it("is the group's roots for a root, the parent's listed children for a child", () => {
     expect(siblings(group!, 'r2')).toEqual(['r1', 'r2']);
     expect(siblings(group!, 'c2')).toEqual(['c1', 'c2']);
+  });
+
+  it('marks the first and last of each sibling run, once per outline', () => {
+    expect(Object.fromEntries(group!.edges)).toEqual({
+      r1: { first: true, last: false },
+      r2: { first: false, last: true },
+      c1: { first: true, last: false },
+      c2: { first: false, last: true },
+    });
+  });
+});
+
+describe('indentUnder', () => {
+  const [group] = outline(
+    [item('r1'), item('k', { parentId: 'gone' }), item('r2')],
+    'en',
+  );
+
+  it('is the top-level row above, if it can take a subtask', () => {
+    expect(indentUnder(group!, 0)).toBeNull();
+    expect(indentUnder(group!, 1)).toEqual({ id: 'r1', title: 'r1' });
+    // A subtask whose parent the view does not list cannot take one.
+    expect(indentUnder(group!, 2)).toBeNull();
   });
 });
 

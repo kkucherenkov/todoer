@@ -56,20 +56,6 @@ async function reparent(item: Item, parentId: string | null) {
   if (!result.ok) fail(result);
 }
 
-/** First and last among the row's siblings, for Move up/down. */
-const edge = (item: Item) => {
-  const peers = siblings(props.group, String(item.id));
-  return {
-    first: peers[0] === String(item.id),
-    last: peers[peers.length - 1] === String(item.id),
-  };
-};
-
-const above = (i: number) => {
-  const prev = props.group.branches[i - 1]?.item;
-  return prev ? { id: String(prev.id), title: String(prev.title) } : null;
-};
-
 const container = ref<HTMLElement | null>(null);
 const drag = useDrag(
   container,
@@ -78,9 +64,14 @@ const drag = useDrag(
     if (anchor !== undefined) void move(taskId, anchor);
   },
   () => props.manual,
+  (taskId, after) => dropAfter(props.group, taskId, after) !== undefined,
 );
 const line = (id: unknown) =>
-  drag.line.value === String(id) && 'border-t-2 !border-t-primary';
+  drag.line.value === String(id)
+    ? { class: 'border-t-2 !border-t-primary' }
+    : {};
+const edge = (item: Item) =>
+  props.group.edges.get(String(item.id)) ?? { first: true, last: true };
 </script>
 
 <template>
@@ -103,11 +94,15 @@ const line = (id: unknown) =>
           :item="b.item"
           :manual="manual"
           :folded="folded.isFolded(String(b.item.id))"
-          :hidden="b.nested.length"
-          :indent-under="above(i)"
+          :hidden-count="b.nested.length"
+          :indent-under="indentUnder(group, i)"
           :data-task-id="String(b.item.id)"
-          :class="line(b.item.id)"
-          v-bind="{ ...edge(b.item), ...drag.rowEvents(String(b.item.id)) }"
+          :nested="false"
+          v-bind="{
+            ...edge(b.item),
+            ...line(b.item.id),
+            ...drag.rowEvents(String(b.item.id)),
+          }"
           @mark="mark(b.item, $event)"
           @move="step(b.item, $event)"
           @open="openTask(String(b.item.id), $event)"
@@ -126,8 +121,12 @@ const line = (id: unknown) =>
             :item="n"
             :manual="manual"
             :data-task-id="String(n.id)"
-            :class="line(n.id)"
-            v-bind="{ ...edge(n), ...drag.rowEvents(String(n.id)) }"
+            nested
+            v-bind="{
+              ...edge(n),
+              ...line(n.id),
+              ...drag.rowEvents(String(n.id)),
+            }"
             @mark="mark(n, $event)"
             @move="step(n, $event)"
             @open="openTask(String(n.id), $event)"

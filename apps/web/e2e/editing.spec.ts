@@ -185,15 +185,16 @@ test('editing: subtasks in the drawer and as rows', async ({
   await check('Dishes').click();
   await expect(progress).toHaveText('1 of 2 done');
 
-  // A subtask is an ordinary row, with a link to its parent.
+  // A listed subtask is a row nested under its parent, with no parent link
+  // there; the closed one is a contextual link, not a row.
   await page.keyboard.press('Escape');
   await expect(drawer).toHaveCount(0);
   await expect(row(page, 'Floor')).toBeVisible();
   await expect(row(page, 'Dishes')).toHaveCount(0);
-  const link = row(page, 'Floor').getByRole('button', {
-    name: 'Open parent: Clean kitchen',
-  });
-  await link.click();
+  await expect(
+    row(page, 'Floor').getByRole('button', { name: /^Open parent/ }),
+  ).toHaveCount(0);
+  await row(page, 'Clean kitchen').getByTestId('task-title').click();
   await expect(drawer.getByRole('textbox', { name: 'Title' })).toHaveValue(
     'Clean kitchen',
   );

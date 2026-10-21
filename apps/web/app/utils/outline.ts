@@ -10,6 +10,8 @@ export type Group = {
   project: string | null;
   branches: Branch[];
   count: number;
+  /** Each row's place among its siblings, for Move up/down. */
+  edges: Map<string, { first: boolean; last: boolean }>;
 };
 
 const str = (v: unknown) => (typeof v === 'string' ? v : null);
@@ -29,7 +31,10 @@ export function outline(items: Item[], locale: string): Group[] {
   const nested = new Map<string, Item[]>();
   for (const i of items) {
     const p = parentOf(i);
-    if (p !== null) nested.set(p, [...(nested.get(p) ?? []), i]);
+    if (p === null) continue;
+    const kids = nested.get(p);
+    if (kids === undefined) nested.set(p, [i]);
+    else kids.push(i);
   }
   const groups = new Map<string | null, Group>();
   for (const i of items) {
@@ -37,7 +42,13 @@ export function outline(items: Item[], locale: string): Group[] {
     const projectId = str(i.projectId);
     let group = groups.get(projectId);
     if (group === undefined) {
-      group = { projectId, project: i.project, branches: [], count: 0 };
+      group = {
+        projectId,
+        project: i.project,
+        branches: [],
+        count: 0,
+        edges: new Map(),
+      };
       groups.set(projectId, group);
     }
     const kids = nested.get(String(i.id)) ?? [];
@@ -48,6 +59,13 @@ export function outline(items: Item[], locale: string): Group[] {
     });
     group.count += 1 + kids.length;
   }
+  for (const group of groups.values()) {
+    mark(
+      group.edges,
+      group.branches.map((b) => b.item),
+    );
+    for (const b of group.branches) mark(group.edges, b.nested);
+  }
   const collator = new Intl.Collator(locale);
   return [...groups.values()].sort((a, b) =>
     a.project === null
@@ -55,6 +73,12 @@ export function outline(items: Item[], locale: string): Group[] {
       : b.project === null
         ? -1
         : collator.compare(a.project, b.project),
+  );
+}
+
+function mark(edges: Group['edges'], run: Item[]) {
+  run.forEach((i, at) =>
+    edges.set(String(i.id), { first: at === 0, last: at === run.length - 1 }),
   );
 }
 
@@ -94,6 +118,18 @@ export function dropAfter(
   }
   if (after === mine.item.id) return null;
   return mine.nested.some((n) => n.id === after) ? after : undefined;
+}
+
+/** The row Indent puts the `at`-th top-level row under: the one above it,
+ *  unless that is a subtask itself (two levels). */
+export function indentUnder(
+  group: Group,
+  at: number,
+): { id: string; title: string } | null {
+  const prev = group.branches[at - 1]?.item;
+  return prev && str(prev.parentId) === null
+    ? { id: String(prev.id), title: String(prev.title) }
+    : null;
 }
 
 /** Whether the core would let `item` become a subtask: a top-level one-off

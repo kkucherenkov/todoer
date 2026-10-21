@@ -8,9 +8,11 @@ const props = defineProps<{
   manual: boolean;
   first: boolean;
   last: boolean;
-  /** The parent's children are hidden; `hidden` of them are listed. */
+  /** The parent's children are hidden; `hiddenCount` of them are listed. */
   folded?: boolean;
-  hidden?: number;
+  hiddenCount?: number;
+  /** Under its listed parent: the parent link would point right above. */
+  nested?: boolean;
   /** The row Indent puts this one under; null: none above. Indent shows
    *  only for a task the core would let become a subtask. */
   indentUnder?: { id: string; title: string } | null;
@@ -25,6 +27,16 @@ const emit = defineEmits<{
 const { t } = useI18n();
 const open = useOpenTask();
 const row = ref<HTMLElement | null>(null);
+
+// The aria-label replaces the button's text, so it names the hidden count.
+const disclosure = computed(() => {
+  const { item, folded, hiddenCount } = props;
+  if (!item.subtasks) return undefined;
+  const label = t('list.subtasksOf', { title: item.title, ...item.subtasks });
+  return folded && hiddenCount
+    ? `${label}, ${t('list.hidden', { n: hiddenCount })}`
+    : label;
+});
 
 const actions = computed<DropdownMenuItem[]>(() => [
   {
@@ -104,7 +116,7 @@ const actions = computed<DropdownMenuItem[]>(() => [
         {{ item.title }}
       </button>
       <UButton
-        v-if="item.parentTitle"
+        v-if="item.parentTitle && !nested"
         variant="link"
         color="neutral"
         size="xs"
@@ -152,14 +164,12 @@ const actions = computed<DropdownMenuItem[]>(() => [
         :icon="folded ? 'i-lucide-chevron-right' : 'i-lucide-chevron-down'"
         :aria-expanded="!folded"
         :aria-controls="`children-${item.id}`"
-        :aria-label="
-          $t('list.subtasksOf', { title: item.title, ...item.subtasks })
-        "
+        :aria-label="disclosure"
         @click="emit('fold')"
       >
         {{ item.subtasks.done }}/{{ item.subtasks.total }}
-        <span v-if="folded && hidden" class="text-muted">
-          · {{ $t('list.hidden', { n: hidden }) }}
+        <span v-if="folded && hiddenCount" class="text-muted">
+          · {{ $t('list.hidden', { n: hiddenCount }) }}
         </span>
       </UButton>
     </div>

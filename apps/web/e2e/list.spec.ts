@@ -458,8 +458,15 @@ test('list: project outline, nested and contextual children, fold', async ({
   await expect(toggle(page, 'Trip')).toHaveAttribute('aria-expanded', 'false');
   await page.getByRole('tab', { name: 'List' }).click();
   await expect(toggle(page, 'Trip')).toHaveAttribute('aria-expanded', 'false');
+  // Folded, the button names how many listed children it hides.
+  await expect(toggle(page, 'Trip')).toHaveAccessibleName(/2 hidden/);
   await toggle(page, 'Trip').click();
   await expect(row(page, 'Passport')).toBeVisible();
+  await expect(toggle(page, 'Trip')).not.toHaveAccessibleName(/hidden/);
+  // A nested row needs no parent link: its parent is right above it.
+  await expect(
+    row(page, 'Passport').getByRole('button', { name: /^Open parent/ }),
+  ).toHaveCount(0);
 
   // A closed child leaves the rows for a contextual link; its check undoes.
   await row(page, 'Passport')
@@ -610,4 +617,33 @@ test('list: indent and outdent through reparent', async ({
       async () => (await listed()).find((t) => t.title === 'Second')?.parentId,
     )
     .toBeNull();
+});
+
+test('list: a subtask added under a folded parent unfolds it', async ({
+  page,
+  account,
+  cli,
+  request,
+}) => {
+  await cli(account.token, 'add', 'Trip');
+  const trip = (
+    JSON.parse(await cli(account.token, 'list', '--json')) as {
+      data: Listed[];
+    }
+  ).data[0]!.id;
+  await seedTask(request, account.token, { title: 'Passport', parentId: trip });
+  await page.goto('/');
+  await toggle(page, 'Trip').click();
+  await expect(toggle(page, 'Trip')).toHaveAttribute('aria-expanded', 'false');
+
+  await page.getByRole('button', { name: 'Trip', exact: true }).click();
+  const add = page
+    .getByRole('dialog')
+    .getByRole('textbox', { name: 'Add subtask' });
+  await add.fill('Tickets');
+  await add.press('Enter');
+  await expect(add).toHaveValue('');
+  await page.keyboard.press('Escape');
+  await expect(toggle(page, 'Trip')).toHaveAttribute('aria-expanded', 'true');
+  await expect(row(page, 'Tickets')).toBeVisible();
 });

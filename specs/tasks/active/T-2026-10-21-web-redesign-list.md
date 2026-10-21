@@ -45,7 +45,7 @@ engine does not publish.
    occurrence for a recurring parent.
 6. **Given** a board, **When** it shows a parent and its child, **Then** the
    child is its own card in its own status column with a parent link, and the
-   parent card's disclosure lists every child, marked "On this board", "Done"
+   parent card's disclosure lists every child, marked "On this board", "Closed"
    or "Outside this filter"; column counts are cards only.
 7. **Given** a manual list, **When** a root is moved by drag or by Move
    up/down, **Then** it moves among the roots of its group; a child moves
@@ -63,16 +63,17 @@ engine does not publish.
   group with a link to the parent (← context FR-004; plan stage 3).
 - **FR-002** A parent's disclosure MUST show every live direct child from
   `Item.children`: the listed ones as rows, the others as contextual links
-  labelled "Done" or "Outside this filter". Group counts MUST count listed
-  tasks only, folded ones included, contextual links never. Parents start
-  expanded; the fold is transient and kept across layouts (← context FR-004;
-  UX.md "One unified disclosure").
+  labelled "Closed" (done or skipped, context FR-005) or "Outside this
+  filter". Group counts MUST count listed tasks only, folded ones included,
+  contextual links never. Parents start expanded; the fold is transient and
+  kept across layouts, and adding a subtask unfolds its parent (← context
+  FR-004; UX.md "One unified disclosure").
 - **FR-003** A list row and a board card MUST show a parent's progress from
   `Item.subtasks`, never counted from the listed items; the label says
   closed, not done-only (← context FR-005).
 - **FR-004** The board MUST keep a child as its own card with its own status;
   a parent card's disclosure MUST list every live direct child, marked
-  "On this board", "Done" or "Outside this filter"; contextual children add
+  "On this board", "Closed" or "Outside this filter"; contextual children add
   no card and no count (← plan stage 3; context FR-004).
 - **FR-005** Manual order MUST keep working by drag and by Move up/down,
   among outline siblings: a group's top-level rows, or one parent's listed
@@ -92,7 +93,7 @@ engine does not publish.
 
 - A child in another project than its listed parent → nested under the
   parent, its own `#project` shown (FR-001, T002)
-- Closed child of a one-off parent → a "Done" link, untickable back to open
+- Closed child of a one-off parent → a "Closed" link, its check reopens it
   through the same check (FR-002, FR-006, T002, T004)
 - Recurring parent → the check carries `on` = the parent's occurrence; an
   ended series has no occurrence and sends none (FR-006, T004)
@@ -102,7 +103,13 @@ engine does not publish.
   root; a child dropped outside its siblings → ignored (FR-005, T002)
 - Indent of a task with children, a recurring task, or under nothing →
   disabled when the row knows it, else the core's refusal (FR-006, T004)
-- Folded parent → its hidden listed children still count (FR-002, T002)
+- Folded parent → its hidden listed children still count, and the
+  disclosure's name says how many it hides (FR-002, FR-007, T002)
+- A subtask added in the drawer under a folded parent → the parent unfolds
+  (FR-002; UX.md "Creation unfolds the parent immediately", T002)
+- A drag over another group or outside the row's siblings → no insertion
+  line and no drop (FR-005, T002)
+- A nested row → no parent link, the parent is the row above (FR-001, T002)
 
 ### Definition of Done
 

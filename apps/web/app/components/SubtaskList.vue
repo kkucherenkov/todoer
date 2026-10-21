@@ -5,6 +5,7 @@ const props = defineProps<{ task: TaskDetails; readonly: boolean }>();
 const db = useDb();
 const fail = useFail();
 const open = useOpenTask();
+const folded = useFolded();
 
 const done = computed(() => props.task.subtasks.filter((s) => s.closed).length);
 const text = ref('');
@@ -29,20 +30,11 @@ async function add() {
   if (!result.ok) return fail(result);
   attempt = null;
   text.value = '';
+  // A new child is visible at once, as UX.md asks, even under a fold.
+  folded.unfold(String(props.task.id));
 }
 
-/** A subtask is ticked on the parent's occurrence (ADR 0009); a one-off
- *  parent has none, and `mark` refuses an `on` there. */
-async function tick(id: string, closed: boolean) {
-  const { occurrence } = props.task;
-  const result = await db.write({
-    kind: 'mark',
-    taskId: id,
-    mark: closed ? 'done' : 'undo',
-    ...(props.task.rrule && occurrence ? { on: occurrence } : {}),
-  });
-  if (!result.ok) fail(result);
-}
+const tick = useTick();
 </script>
 
 <template>
@@ -68,7 +60,7 @@ async function tick(id: string, closed: boolean) {
           :model-value="s.closed"
           :disabled="readonly"
           :aria-label="$t('drawer.doneLabel', { title: s.title })"
-          @update:model-value="tick(s.id, $event === true)"
+          @update:model-value="tick(task, s.id, $event === true)"
         />
         <UButton
           variant="link"
