@@ -303,9 +303,12 @@ describe('watches and writes', () => {
       expect(db!.topics.summary.value).toEqual({ tasks: 9 }),
     );
     expect(db.topics.view.value?.items).toEqual([{ title: 'mine' }]);
-    // Another span: the grid never draws the old one's data.
+    // Another span keeps the old publish, which names its own span: the
+    // grid waits for NEXT (CalendarView's ready) and never draws WEEK as it.
     db.watch('v1', null, NEXT, 'calendar');
-    expect(db.topics.view.value).toBeUndefined();
+    expect(db.topics.view.value?.span).toEqual(WEEK);
+    post(view('v1', 'next', NEXT));
+    await vi.waitFor(() => expect(db!.topics.view.value?.span).toEqual(NEXT));
   });
 
   it('on ready: the last watch is resent with its span', async () => {

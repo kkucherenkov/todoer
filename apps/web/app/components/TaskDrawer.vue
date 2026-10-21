@@ -86,9 +86,12 @@ const close = () =>
   router.replace({ query: { ...route.query, task: undefined } });
 
 // Leaving the drawer by any path commits the field being typed in: the blur
-// handler runs before the route changes and the task topic is dropped.
+// handler runs before the route changes and the task topic is dropped. Only
+// a field in a dialog: a toolbar button that changes the query (the
+// calendar's Next) keeps its focus.
 const off = router.beforeEach(() => {
-  (document.activeElement as HTMLElement | null)?.blur();
+  const focused = document.activeElement as HTMLElement | null;
+  if (id.value !== null && focused?.closest('[role="dialog"]')) focused.blur();
 });
 onScopeDispose(off);
 
