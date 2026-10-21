@@ -123,8 +123,12 @@ test('a new service worker waits for the prompt in every tab', async ({
   const b = await context.newPage();
   await b.goto('/');
   const tabs = [page, b];
-  // Survives until the tab reloads.
-  for (const tab of tabs) await tab.evaluate(() => (document.title = 'old'));
+  // Survives until the tab reloads. Not the title: the app's head manager
+  // owns it and writes it back.
+  const marked = (tab: Page) =>
+    tab.evaluate(() => (window as { old?: true }).old === true);
+  for (const tab of tabs)
+    await tab.evaluate(() => ((window as { old?: true }).old = true));
   // A new deployment, as far as the SW update check can tell: sw.js is the
   // only file the backend reads per request (index.html needs a restart).
   const file = new URL('../.output/public/sw.js', import.meta.url);
@@ -136,13 +140,13 @@ test('a new service worker waits for the prompt in every tab', async ({
     );
     for (const tab of tabs) {
       await expect(tab.getByTestId('update-available')).toBeVisible();
-      await expect(tab, 'never reloaded under the user').toHaveTitle('old');
+      expect(await marked(tab), 'never reloaded under the user').toBe(true);
     }
     // One acceptance activates it, and every tab that offered it reloads
     // onto it: a tab left on the old build would face the new worker.
     await page.getByTestId('update-available').getByRole('button').click();
     for (const tab of tabs) {
-      await expect(tab).not.toHaveTitle('old');
+      await expect.poll(() => marked(tab).catch(() => true)).toBe(false);
       await expect(tab.getByTestId('update-available')).toHaveCount(0);
     }
   } finally {
