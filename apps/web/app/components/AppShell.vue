@@ -21,6 +21,7 @@ const sync = useTopic('sync');
     <UDashboardPanel>
       <template #header>
         <UDashboardNavbar :title="$t('app.title')" />
+        <ViewHeader />
         <UAlert
           v-if="sync?.problem && sync.reached !== false"
           color="error"

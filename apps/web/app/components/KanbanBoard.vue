@@ -3,8 +3,7 @@ import type { Item } from '@todoer/client-core';
 
 const props = defineProps<{ view: string; sort: string; items: Item[] }>();
 const db = useDb();
-const route = useRoute();
-const router = useRouter();
+const openTask = useOpenTask();
 const fail = useFail();
 const marked = useMarked();
 const catalog = useTopic('catalog');
@@ -37,8 +36,8 @@ async function move(item: Item, statusId?: string, after?: string | null) {
   }
 }
 
-const open = (item: Item) =>
-  router.push({ query: { ...route.query, task: String(item.id) } });
+const open = (item: Item, opener?: HTMLElement) =>
+  openTask(String(item.id), opener);
 </script>
 
 <template>

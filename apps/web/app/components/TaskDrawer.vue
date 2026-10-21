@@ -221,9 +221,10 @@ const dates = [
     :open="id !== null"
     :title="$t('drawer.title')"
     :description="$t('drawer.description')"
-    :ui="{ description: 'sr-only' }"
+    :ui="{ description: 'sr-only', close: 'size-11' }"
     data-testid="task-drawer"
     @update:open="(open) => !open && close()"
+    @after:leave="restoreDrawerFocus()"
   >
     <template #body>
       <div v-if="task === undefined" class="flex flex-col gap-3">

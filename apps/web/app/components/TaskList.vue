@@ -3,8 +3,7 @@ import type { Item } from '@todoer/client-core';
 
 const props = defineProps<{ view: string; sort: string; items: Item[] }>();
 const db = useDb();
-const route = useRoute();
-const router = useRouter();
+const openTask = useOpenTask();
 
 const manual = computed(() => props.sort === 'manual');
 const ids = computed(() => props.items.map((i) => String(i.id)));
@@ -36,8 +35,8 @@ const step = (index: number, to: 'up' | 'down') =>
     to === 'up' ? (ids.value[index - 2] ?? null) : ids.value[index + 1]!,
   );
 
-const open = (item: Item) =>
-  router.push({ query: { ...route.query, task: String(item.id) } });
+const open = (item: Item, opener?: HTMLElement) =>
+  openTask(String(item.id), opener);
 
 const container = ref<HTMLElement | null>(null);
 const drag = useDrag(
@@ -74,7 +73,7 @@ const drag = useDrag(
         v-bind="drag.rowEvents(String(item.id))"
         @mark="mark(item, $event)"
         @move="step(i, $event)"
-        @open="open(item)"
+        @open="open(item, $event)"
       />
       <div
         v-if="drag.line.value === END"

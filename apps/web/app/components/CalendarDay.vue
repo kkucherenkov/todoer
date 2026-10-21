@@ -15,7 +15,7 @@ const props = defineProps<{
   chipEvents: (p: Placement) => Record<string, unknown>;
 }>();
 const emit = defineEmits<{
-  open: [taskId: string];
+  open: [taskId: string, opener?: HTMLElement];
   move: [p: Placement];
   more: [];
 }>();
@@ -55,7 +55,7 @@ const day = computed(() => Number(props.date.slice(8)));
         :placement="p"
         :item="items.get(p.taskId)!"
         v-bind="chipEvents(p)"
-        @open="emit('open', p.taskId)"
+        @open="emit('open', p.taskId, $event)"
         @move="emit('move', p)"
       />
     </template>

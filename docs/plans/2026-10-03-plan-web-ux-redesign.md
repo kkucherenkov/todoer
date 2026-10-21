@@ -1,6 +1,6 @@
 # План внедрения UX-редизайна Web
 
-Дата: 2026-10-03. Статус: ready; реализация не начата. Решения 2026-10-21 и разбивка на потоки — в разделе [Decisions and tracks](#decisions-and-tracks-2026-10-21).
+Дата: 2026-10-03. Статус: in progress; shell этапа 1 находится на review, transient cross-projection layouts ждут C1. Решения 2026-10-21 и разбивка на потоки — в разделе [Decisions and tracks](#decisions-and-tracks-2026-10-21).
 
 Цель: перенести принятый UX в Nuxt-приложение, сохранив реальные операции core, URL-контекст, i18n, offline и синхронизацию. [Макеты и инструкция просмотра](../design/mockups/README.md) находятся в репозитории; Open Design не требуется для дальнейшей разработки. [Proposal](../proposals/2026-10-03-web-ux-redesign.md) задаёт продуктовые решения; [task spec контекста](../../specs/tasks/active/T-2026-10-03-web-redesign-context.md) — FR и критерии приёмки.
 
@@ -71,12 +71,12 @@ gets its own task spec and PR, as stage 0 says.
 
 Источники: `mockups/theme/`, `ux.css`, `references/ViewHeader.vue`, `references/ViewModeTabs.vue`. Целевые области: `apps/web/app/app.config.ts`, assets CSS, `AppShell.vue`, `ViewNav.vue`, `ViewBody.vue`, `useDb.ts`/watch и маршруты.
 
-- [ ] Перенести семантические токены и focus/hover, не заменяя реальные sync/update/session компоненты демонстрационными.
-- [ ] Реализовать transient layout из `?layout=list|kanban|calendar` и один header с roving focus, именами/подсказками EN/RU, active state и мобильными 44px целями. Отсутствующий override использует saved layout; invalid override игнорируется.
+- [x] Перенести семантические токены и focus/hover, не заменяя реальные sync/update/session компоненты демонстрационными.
+- [x] Реализовать transient List/Kanban из `?layout=list|kanban` для non-calendar saved views и один header с тремя режимами, roving focus, именами/подсказками EN/RU, active state и мобильными 44px целями. Для saved calendar доступен только Calendar; для остальных view Calendar остаётся недоступен до C1. Отсутствующий override использует saved layout; invalid/unsupported override удаляется через replace.
 - [ ] Проверить загрузку календарной projection при transient calendar: простой смены шаблона недостаточно, если watch продолжает получать list items без placements/span. При необходимости расширить общий watch-контракт отдельной core задачей.
-- [ ] Сохранить `task`, calendar `mode`/`at` и остальные query, reload, Back/Forward; смена view без override использует его default. Сохранённый layout меняется только явным save.
+- [x] Сохранить `task`, calendar `mode`/`at` и остальные query, reload, Back/Forward; смена view без override использует его default. Сохранённый layout меняется только явным save.
 
-Результат: три режима работают на реальных задачах в одном фильтре; данные/saved view не меняются от переключения. Проверки: route/history/watch unit и `tabs.spec.ts`, `shell.spec.ts`, calendar smoke.
+Текущий результат на review: List/Kanban переключаются на реальных задачах без изменения non-calendar saved view; Calendar остаётся рабочим для сохранённых calendar views и станет transient для остальных после C1. Обратное переключение saved calendar в List/Kanban также ждёт C1. URL/history/reload/focus закреплены unit- и `shell.spec.ts`-контрактами.
 
 ### 2. Навигация, пресеты и быстрое добавление
 
@@ -136,7 +136,7 @@ gets its own task spec and PR, as stage 0 says.
 - [ ] Общая реплика Web/TUI: parent/child → статус → progress → Undo → исключить родителя → offline → sync; дополнительно recurring occurrence и refused reparent. Не считать чтение TUI-spec подтверждением прогона.
 - [ ] Обновить task specs и proposal фактическими результатами, закрыть завершённые задачи и записать changelog. Начать пользоваться приложением; дальнейшие UX-правки оформлять по конкретным наблюдениям.
 
-Результат: готовый редизайн приложения, подтверждённый тестами и использованием. Текущее состояние — подготовленные источники и план; ни один этап реализации ещё не отмечен выполненным.
+Результат: готовый редизайн приложения, подтверждённый тестами и использованием. Текущее состояние — shell этапа 1 и transient List/Kanban для non-calendar views находятся на review; cross-projection overrides ждут C1, остальные этапы не начаты.
 
 ## Порядок и зависимость работ
 

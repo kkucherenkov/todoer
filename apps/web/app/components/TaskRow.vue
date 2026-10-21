@@ -12,10 +12,11 @@ const props = defineProps<{
 const emit = defineEmits<{
   mark: [mark: 'done' | 'skip'];
   move: [to: 'up' | 'down'];
-  open: [];
+  open: [opener?: HTMLElement];
 }>();
 const { t } = useI18n();
 const open = useOpenTask();
+const row = ref<HTMLElement | null>(null);
 
 const actions = computed<DropdownMenuItem[]>(() => [
   {
@@ -42,13 +43,18 @@ const actions = computed<DropdownMenuItem[]>(() => [
   {
     label: t('list.open'),
     icon: 'i-lucide-panel-right-open',
-    onSelect: () => emit('open'),
+    onSelect: () => emit('open', row.value ?? undefined),
   },
 ]);
 </script>
 
 <template>
-  <div class="flex items-center gap-3 px-2 py-2" data-testid="task-row">
+  <div
+    ref="row"
+    tabindex="-1"
+    class="flex items-center gap-3 px-2 py-2"
+    data-testid="task-row"
+  >
     <UButton
       variant="outline"
       color="neutral"
@@ -62,8 +68,9 @@ const actions = computed<DropdownMenuItem[]>(() => [
       <button
         type="button"
         class="truncate text-left font-medium"
+        data-task-opener
         data-testid="task-title"
-        @click="emit('open')"
+        @click="emit('open', $event.currentTarget as HTMLElement)"
       >
         {{ item.title }}
       </button>

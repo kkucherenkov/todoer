@@ -1,5 +1,137 @@
 import { readdirSync, readFileSync } from 'node:fs';
-import { count, expect, signIn, swActivated, tasks, test } from './fixtures';
+import {
+  count,
+  expect,
+  seedView,
+  signIn,
+  swActivated,
+  tasks,
+  test,
+} from './fixtures';
+
+test('layout switch preserves URL history, drawer context and focus', async ({
+  page,
+  account,
+  cli,
+}) => {
+  const view = await seedView(
+    page.request,
+    account.token,
+    'Planning',
+    'a0',
+    'list',
+  );
+  const secondary = await seedView(
+    page.request,
+    account.token,
+    'Secondary',
+    'a1',
+    'kanban',
+  );
+  await cli(account.token, 'add', 'First task');
+  await cli(account.token, 'add', 'Keep context');
+  await page.goto(`/views/${view}?mode=month&at=2026-10-01&custom=kept`);
+
+  const modes = page.getByRole('tablist', { name: 'Layout' });
+  await expect(modes.getByRole('tab', { name: 'List' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(modes.getByRole('tab', { name: 'Calendar' })).toHaveAttribute(
+    'aria-disabled',
+    'true',
+  );
+
+  await modes.getByRole('tab', { name: 'List' }).press('ArrowRight');
+  await expect(modes.getByRole('tab', { name: 'Kanban' })).toBeFocused();
+  await expect(page.getByTestId('board')).toBeVisible();
+  await expect(page).toHaveURL(/layout=kanban/);
+  await expect(page).toHaveURL(/mode=month/);
+  await expect(page).toHaveURL(/at=2026-10-01/);
+  await expect(page).toHaveURL(/custom=kept/);
+  await page.reload();
+  await expect(page.getByTestId('board')).toBeVisible();
+  await expect(page).toHaveURL(/layout=kanban/);
+
+  const card = page.getByTestId('card').filter({ hasText: 'Keep context' });
+  await card.getByRole('button', { name: 'Task actions' }).click();
+  await page.getByRole('menuitem', { name: 'Open', exact: true }).click();
+  const drawer = page.getByRole('dialog');
+  await expect(drawer).toBeVisible();
+  const closeBox = await drawer
+    .getByRole('button', { name: 'Close' })
+    .boundingBox();
+  expect(closeBox?.width).toBeGreaterThanOrEqual(44);
+  expect(closeBox?.height).toBeGreaterThanOrEqual(44);
+  await page.keyboard.press('Escape');
+  await expect(drawer).toHaveCount(0);
+  await expect(card).toBeFocused();
+  await expect(page).toHaveURL(/layout=kanban/);
+  await expect(page).not.toHaveURL(/task=/);
+
+  await page
+    .getByRole('navigation', { name: 'Views' })
+    .getByRole('link', { name: 'Secondary', exact: true })
+    .click();
+  await expect(page).toHaveURL(new RegExp(`/views/${secondary}`));
+  await expect(page).not.toHaveURL(/layout=/);
+  await expect(page).toHaveURL(/custom=kept/);
+  await expect(page.getByTestId('board')).toBeVisible();
+  await page.goBack();
+  await expect(page).toHaveURL(new RegExp(`/views/${view}`));
+  await expect(page).toHaveURL(/layout=kanban/);
+  await expect(page).toHaveURL(/custom=kept/);
+
+  await modes.getByRole('tab', { name: 'List' }).click();
+  await expect(page).not.toHaveURL(/layout=/);
+  await expect(page.getByTestId('task-list')).toBeVisible();
+  await page.goBack();
+  await expect(page.getByTestId('board')).toBeVisible();
+  await page.goForward();
+  await expect(page.getByTestId('task-list')).toBeVisible();
+
+  await page.goto('/');
+  await page.goto(`/views/${view}?layout=tiles&custom=kept`);
+  await expect(page).not.toHaveURL(/layout=/);
+  await expect(page).toHaveURL(/custom=kept/);
+  await page.goBack();
+  await expect.poll(() => new URL(page.url()).pathname).toBe('/');
+});
+
+test('drawer parent navigation preserves the original task opener', async ({
+  page,
+  account,
+  cli,
+}) => {
+  await cli(account.token, 'add', 'Parent task');
+  await page.goto('/');
+  const drawer = page.getByRole('dialog');
+  const parentTitle = page
+    .getByTestId('task-row')
+    .filter({ hasText: 'Parent task' })
+    .getByTestId('task-title');
+  await parentTitle.click();
+  const add = drawer.getByRole('textbox', { name: 'Add subtask' });
+  await add.fill('Child task');
+  await add.press('Enter');
+  await expect(
+    drawer.getByRole('checkbox', { name: 'Done: Child task' }),
+  ).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  const childTitle = page
+    .getByTestId('task-row')
+    .filter({ hasText: 'Child task' })
+    .getByTestId('task-title');
+  await childTitle.click();
+  await drawer.getByTestId('subtask-of').click();
+  await expect(drawer.getByRole('textbox', { name: 'Title' })).toHaveValue(
+    'Parent task',
+  );
+  await page.keyboard.press('Escape');
+  await expect(drawer).toHaveCount(0);
+  await expect(childTitle).toBeFocused();
+});
 
 test('sees a CLI write on focus', async ({ page, account, cli }) => {
   await page.goto('/');
@@ -66,7 +198,11 @@ test('wrong password', async ({ page }, { testId }) => {
   await page.getByTestId('password').fill('not the password at all');
   await page.getByTestId('sign-in').click();
   await expect(page.getByTestId('sign-in-error')).toContainText(text('en'));
-  await page.getByRole('button', { name: 'Русский' }).click();
+  await page
+    .getByRole('switch', {
+      name: 'Interface language',
+    })
+    .click();
   await expect(page.getByTestId('sign-in-error')).toContainText(text('ru'));
 });
 
