@@ -1,4 +1,6 @@
 import type { Span } from '@todoer/client-core';
+// Imported, not auto-imported: the spec runs in plain Node.
+import { computed, watchEffect } from 'vue';
 import { fromQuery, gridSpan } from './calendar';
 
 export const LAYOUTS = ['list', 'kanban', 'calendar'] as const;
@@ -73,4 +75,27 @@ export function watchArgs(
     span: layout === 'calendar' && at ? gridSpan(mode, at) : null,
     layout: override ?? null,
   };
+}
+
+/** Sends `watch` for `view` now and whenever its arguments change. The
+ *  catalog is republished after every sync and write; only the view's saved
+ *  layout is read from it, so a publish that leaves that layout alone sends
+ *  nothing (a computed notifies only on a new value). */
+export function watchView(
+  send: (
+    view: string,
+    task: string | null,
+    span: Span | null,
+    layout: Layout | null,
+  ) => void,
+  view: () => string,
+  views: () => readonly { id: string; layout: string }[] | undefined,
+  query: () => Query,
+  today: () => string | undefined,
+) {
+  const saved = computed(() => savedLayoutOf(view(), views()));
+  watchEffect(() => {
+    const { task, span, layout } = watchArgs(query(), saved.value, today());
+    send(view(), task, span, layout);
+  });
 }
