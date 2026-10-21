@@ -131,6 +131,9 @@ erDiagram
     }
 ```
 
+`priority` reads differently since ADR 0019: 0 is the highest, 4 the default
+and "none"; the diagram above shows the original scale.
+
 `status`, `view` and the three task fields `status_id`, `origin_task_id` and
 `origin_occurrence` are specified in
 [the views design](2026-10-01-views-design.md); the server stores and validates

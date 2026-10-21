@@ -82,16 +82,20 @@ change once, for every client at the same time.
 
 - [x] T001 [FR-001–005] Design doc — `docs/specs/2026-10-21-priority-scale-design.md`;
   ADR 0019 — `docs/adr/0019-p0-is-the-highest-priority.md`
-- [ ] T002 [FR-001] Migration of tasks and the default, failing-first DB spec
-  — `apps/backend/prisma/`
-- [ ] T003 [FR-002] Filter rewrite, failing-first spec per filter shape —
-  `apps/backend/prisma/` or `apps/backend/src/scripts/`
-- [ ] T004 [P] [FR-003, FR-004] Ascending sort and the parser default —
+- [x] T002 [FR-001] Migration of tasks and the default, failing-first DB spec
+  — `apps/backend/prisma/`. Landed: one migration, `priority-migration.spec.ts`.
+- [x] T003 [FR-002] Filter rewrite, failing-first spec per filter shape —
+  `apps/backend/prisma/` or `apps/backend/src/scripts/`. Landed: in the same
+  migration as T002.
+- [x] T004 [P] [FR-003, FR-004] Ascending sort and the parser default —
   `packages/client-core/src/operations.ts`,
-  `packages/client-core/src/parse-quick-add.ts`
-- [ ] T005 [FR-005] Output and usage in the CLI and the TUI; the web's
+  `packages/client-core/src/parse-quick-add.ts`. Landed: sort key ascending,
+  parser default 4, specs for the p0 marker and the rank tie-break.
+- [x] T005 [FR-005] Output and usage in the CLI and the TUI; the web's
   current screens show `P0`–`P4` until W2 restyles them —
-  `apps/cli/src/`, `apps/tui/src/`, `apps/web/app/components/`
+  `apps/cli/src/`, `apps/tui/src/`, `apps/web/app/components/`. Landed: CLI
+  usage text; TUI and web show `p0`–`p3`, hide P4, blank/default is 4; web
+  filter editor's new priority leaf is `[0]`.
 - **Checkpoint:** every client reads and writes the new scale; the dev
   database migrated without a manual fix-up, in the cut-over order the
   design gives.
