@@ -16,8 +16,9 @@ export function useWatch(view: () => string) {
   const db = useDb();
   const route = useRoute();
   const catalog = useTopic('catalog');
-  // The worker's date, kept apart from the view topic: a watch with a new
-  // span clears that topic, and a span derived from it would never settle.
+  // The worker's date, kept apart from the view topic: a watch of another
+  // view or layout clears that topic, and a span derived from it would never
+  // settle.
   const shown = useTopic('view');
   const today = ref<string>();
   watch(shown, (v) => v && (today.value = v.today));

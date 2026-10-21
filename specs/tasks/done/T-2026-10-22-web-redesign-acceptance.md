@@ -113,3 +113,9 @@ Found and left open (outside `apps/web` or larger than a small fix):
   reason and no way to drop it in the web (the CLI has `outbox drop`).
 - The TUI's outline lists open tasks only, so a closed child cannot be
   reopened from it; the web lists it as "Closed" (FR-004 is web-only).
+- The drawer's Title is a one-line input, so a title of 120+ characters
+  scrolls inside it instead of wrapping; the matrix checks only its value.
+  A textarea that grows is a UX decision, not a small fix.
+- Tracked: tuxedo 519 (refusal), 520 (TUI closed children), 521
+  (`SubtaskList.vue` links truncate; quick add clearing late), 522 (the
+  drawer's Title).

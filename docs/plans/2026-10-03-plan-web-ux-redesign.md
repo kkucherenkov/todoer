@@ -25,7 +25,8 @@ The maintainer decided three things on 2026-10-21:
    priority are rewritten with the tasks, and the sort turns ascending. The
    core/spec task the paragraph above asks for is C0 below.
 2. **Execution is split by package.** The core dependencies are Claude's,
-   the Web stages are shared by Codex and Antigravity. No agent edits a
+   the Web stages were to be shared by Codex and Antigravity (both
+   reassigned to Claude on 2026-10-21, see the table). No agent edits a
    package it does not own; a contract both need goes through a core task
    first. The two Web agents split by screen, and both touch
    `apps/web/i18n/locales/*` and the shell: the stage that lands second
@@ -48,15 +49,15 @@ gets list items without placements. Stage 1 therefore needs a core change.
 | Web | W2 stage 2 | Codex | — |
 | Web | W3 stage 3, context FR-004–007, [`T-2026-10-21-web-redesign-list`](../../specs/tasks/done/T-2026-10-21-web-redesign-list.md) | Claude (Codex ran out of usage, 2026-10-21) | W4 |
 | Web | W4 stage 4 | Claude (Codex ran out of usage, 2026-10-21) | — |
-| Web | W6 stage 6 | Antigravity | — |
+| Web | W6 stage 6, [`T-2026-10-21-web-redesign-views`](../../specs/tasks/done/T-2026-10-21-web-redesign-views.md) | Claude (Antigravity reassigned 2026-10-21) | — |
 | Web | W5 stage 5, [`T-2026-10-22-web-redesign-calendar`](../../specs/tasks/done/T-2026-10-22-web-redesign-calendar.md) | Claude (Antigravity reassigned 2026-10-21) | — |
 | All | W7 stage 7, reduced, [`T-2026-10-22-web-redesign-acceptance`](../../specs/tasks/done/T-2026-10-22-web-redesign-acceptance.md) | Claude (2026-10-22); touch and the mobile flow: maintainer | — |
 
 C0, C1 and W1 start in parallel. W1 can land without the calendar mode and
 add it once C1's override ships. W1 sets the theme and the shell every other
 screen sits in, so the Web stages after it wait for it. Then W2 → W3 → W4
-run in order (W2 with Codex, W3 and W4 with Claude) and Antigravity runs
-W6 → W5 at the same time. Each Web stage
+run in order (W2 with Codex, W3 and W4 with Claude) and W6 → W5 run at the
+same time (planned for Antigravity, run by Claude). Each Web stage
 gets its own task spec and PR, as stage 0 says.
 
 ## Этапы
@@ -88,7 +89,7 @@ gets its own task spec and PR, as stage 0 says.
 - [x] Уникальные счётчики включают свернутых детей; локальная дата обновляется на rollover и после возвращения вкладки. Не превращать All open во Inbox.
 - [x] Добавление с title-first и прогрессивным раскрытием полей; сохранить `#project @tag pN`, отказанный draft и accepted offline запись. Задача остаётся доступной через ссылку на All open, если создана вне текущего фильтра; даты пресета не подставляются молча.
 
-Результат: Part 1 (#49) — быстрый ввод использует реальные `add`/`edit`, сохраняет minted intent при отказе, показывает принятую offline запись через общую очередь и даёт ссылку на задачу вне текущего фильтра. Навигация (PR pending, поверх C2 #50) — Все открытые `/`, Сегодня `/today`, Предстоящие `/upcoming` и проекты `/projects/<id>` открываются через `watch` с ключом core; счётчики берутся только из `catalog.nav`; rollover закреплён unit-тестом с фейковыми часами движка (`apps/web/app/utils/nav.spec.ts`), изменение счётчика после записи, `?layout=`/`?task=` на built-in и совпадение счётчика в заголовке и навигации — e2e `apps/web/e2e/nav.spec.ts`.
+Результат: Part 1 (#49) — быстрый ввод использует реальные `add`/`edit`, сохраняет minted intent при отказе, показывает принятую offline запись через общую очередь и даёт ссылку на задачу вне текущего фильтра. Навигация (#53, поверх C2 #50) — Все открытые `/`, Сегодня `/today`, Предстоящие `/upcoming` и проекты `/projects/<id>` открываются через `watch` с ключом core; счётчики берутся только из `catalog.nav`; rollover закреплён unit-тестом с фейковыми часами движка (`apps/web/app/utils/nav.spec.ts`), изменение счётчика после записи, `?layout=`/`?task=` на built-in и совпадение счётчика в заголовке и навигации — e2e `apps/web/e2e/nav.spec.ts`.
 
 ### 3. Список, доска и иерархия
 
@@ -113,7 +114,7 @@ gets its own task spec and PR, as stage 0 says.
 
 Результат: редактор сохраняет намерение при отказе и остаётся доступным с клавиатуры. Проверки: editing e2e, recurrence/refusal, повтор submit без duplicate opId.
 
-Текущий результат ([`T-2026-10-21-web-redesign-details`](../../specs/tasks/done/T-2026-10-21-web-redesign-details.md), PR pending): title/notes/даты первыми, остальное под «More details»; строка статуса сохранения с очередью; отказ поля показывает сохранённое значение, изменение и причину, Retry отправляет тот же write (тот же opId, `utils/intent.ts`); repeat и delete повторяют тот же write и держат диалог открытым при отказе; у подзадачи repeat отключён с пояснением, под живой повторяющейся серией её дата — вхождение родителя (подзадача закончившейся серии — tuxedo 514). Раскрытие свёрнутого родителя после добавления подзадачи — в W3.
+Текущий результат ([`T-2026-10-21-web-redesign-details`](../../specs/tasks/done/T-2026-10-21-web-redesign-details.md), #55): title/notes/даты первыми, остальное под «More details»; строка статуса сохранения с очередью; отказ поля показывает сохранённое значение, изменение и причину, Retry отправляет тот же write (тот же opId, `utils/intent.ts`); repeat и delete повторяют тот же write и держат диалог открытым при отказе; у подзадачи repeat отключён с пояснением, под живой повторяющейся серией её дата — вхождение родителя (подзадача закончившейся серии — tuxedo 514). Раскрытие свёрнутого родителя после добавления подзадачи — в W3.
 
 ### 5. Календарь на реальных данных
 
@@ -125,7 +126,7 @@ gets its own task spec and PR, as stage 0 says.
 
 Результат: календарь работает с той же репликой и корректными отказами. Проверки: `calendar.spec.ts`, moved-copy core tests, responsive scroll и native меню/dialog.
 
-Текущий результат W5 ([`T-2026-10-22-web-redesign-calendar`](../../specs/tasks/done/T-2026-10-22-web-redesign-calendar.md), PR pending): дни — семь колонок в широком контейнере (`@3xl`) и список дат в узком, в week и month; у каждого дня полная дата текстом; длинные названия переносятся. Move to date… при отказе остаётся открытым с датой и причиной, повтор отправляет тот же write (`utils/intent.ts`), двойной submit — одна запись; отказанный Undo переноса показывает причину; при проходящей причине (not synced yet — так в web выглядит и отказ по version, подзадачи) предлагает тот же Undo снова — после sync он проходит, при удалённом оригинале Undo больше не предлагается. Rollover закреплён unit-тестом с фейковыми часами движка (`apps/web/app/utils/calendar.spec.ts`). Drawer по-прежнему показывает текущее вхождение серии, а не выбранное в календаре. Новых core-контрактов не понадобилось.
+Текущий результат W5 ([`T-2026-10-22-web-redesign-calendar`](../../specs/tasks/done/T-2026-10-22-web-redesign-calendar.md), #57): дни — семь колонок в широком контейнере (`@3xl`) и список дат в узком, в week и month; у каждого дня полная дата текстом; длинные названия переносятся. Move to date… при отказе остаётся открытым с датой и причиной, повтор отправляет тот же write (`utils/intent.ts`), двойной submit — одна запись; отказанный Undo переноса показывает причину; при проходящей причине (not synced yet — так в web выглядит и отказ по version, подзадачи) предлагает тот же Undo снова — после sync он проходит, при удалённом оригинале Undo больше не предлагается. Rollover закреплён unit-тестом с фейковыми часами движка (`apps/web/app/utils/calendar.spec.ts`). Drawer по-прежнему показывает текущее вхождение серии, а не выбранное в календаре. Новых core-контрактов не понадобилось.
 
 ### 6. Saved views, gate и состояния
 
@@ -135,7 +136,7 @@ gets its own task spec and PR, as stage 0 says.
 - [x] Перенести вход/регистрацию на реальные db.request/session/registrationOpen, а не переход в fixture.
 - [x] Проверить empty/loading/offline/queued/refused/recovery/update в тестовых fixtures приложения; галерею состояний не включать в рабочую навигацию.
 
-Результат: реальная auth и sync видны в принятом оформлении. Task spec: [`T-2026-10-21-web-redesign-views`](../../specs/tasks/done/T-2026-10-21-web-redesign-views.md), PR pending. Проверки: views/register/screens/offline e2e и сохранение вводимых данных.
+Результат: реальная auth и sync видны в принятом оформлении. Task spec: [`T-2026-10-21-web-redesign-views`](../../specs/tasks/done/T-2026-10-21-web-redesign-views.md), #54. Проверки: views/register/screens/offline e2e и сохранение вводимых данных.
 
 ### 7. Итоговая приёмка и использование
 
@@ -152,4 +153,4 @@ gets its own task spec and PR, as stage 0 says.
 
 ## Порядок и зависимость работ
 
-C0 и C1 параллельно с 1; после 1 — 2 → 3 → 4 (Codex) параллельно с 6 → 5 (Antigravity); затем 7. Каждый этап — отдельная reviewable группа изменений; при обнаружении общей зависимости core сначала отдельная задача core, затем потребитель Web. Не переносить весь bundle в `apps/web` одним копированием. Старые W2–W5 планы описывают исходную реализацию; этот план задаёт расширенный UX и осознанное обновление тестовых контрактов.
+C0 и C1 параллельно с 1; после 1 — 2 → 3 → 4 параллельно с 6 → 5; затем 7 (исполнители — в таблице потоков). Каждый этап — отдельная reviewable группа изменений; при обнаружении общей зависимости core сначала отдельная задача core, затем потребитель Web. Не переносить весь bundle в `apps/web` одним копированием. Старые W2–W5 планы описывают исходную реализацию; этот план задаёт расширенный UX и осознанное обновление тестовых контрактов.
