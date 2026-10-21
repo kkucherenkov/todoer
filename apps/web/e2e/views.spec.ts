@@ -215,7 +215,6 @@ test('view form: a refused save keeps the form and says why', async ({
   // Firefox does not route a dedicated worker's fetch.
   test.skip(browserName !== 'chromium', 'needs the worker routed');
   void account; // signed in
-  void account;
   await page.goto('/');
   await expect(count(page)).toBeVisible();
   const nav = page.getByRole('navigation', { name: 'Views' });
