@@ -5,7 +5,7 @@ import {
   type CookieTokenSource,
 } from './auth.js';
 import { localDate } from './occurrence.js';
-import { ALL_OPEN, taskDetails, viewTasks } from './operations.js';
+import { ALL_OPEN, boardTasks, taskDetails, viewTasks } from './operations.js';
 import { RefusalError } from './protocol.js';
 import type { AccessGrant, Store } from './store.js';
 import type { Transport } from './sync.js';
@@ -27,7 +27,11 @@ import type { Result, ToWorker, Topic, Topics } from './engine-protocol.js';
 // A spy that calls through, so one test can make a computation throw.
 vi.mock('./operations.js', async (original) => {
   const actual = await original<typeof import('./operations.js')>();
-  return { ...actual, taskDetails: vi.fn(actual.taskDetails) };
+  return {
+    ...actual,
+    taskDetails: vi.fn(actual.taskDetails),
+    boardTasks: vi.fn(actual.boardTasks),
+  };
 });
 
 type Op = Parameters<Store['enqueue']>[0];
@@ -121,6 +125,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.mocked(taskDetails).mockReset();
+  vi.mocked(boardTasks).mockReset();
   vi.restoreAllMocks();
   store.close();
   vi.unstubAllGlobals();
@@ -845,8 +850,131 @@ describe('watches and view topics', () => {
   });
 });
 
+describe('built-in views and navigation', () => {
+  const P = uuid(0x91);
+  const Q = uuid(0x92);
+  const day = (n: number) =>
+    localDate(new Date(NOW.getTime() + n * 86_400_000));
+  const today = day(0);
+  const project = (id: string, name: string, extra: Fields = {}) =>
+    ['project', { id, name, ...extra }] as [string, Fields];
+  const sorted = (key: string) => titles(key)?.slice().sort();
+  const nav = () => last('catalog')?.nav;
+
+  it('today: what is scheduled or due on or before today, nothing dated tomorrow', async () => {
+    const srv = server(
+      TODO,
+      taskRow(1, { scheduledOn: day(-1) }),
+      taskRow(2, { dueOn: today }),
+      taskRow(3, { scheduledOn: day(1) }),
+      taskRow(4),
+    );
+    const e = await signedIn(srv);
+    await e.handle({ kind: 'watch', view: 'today', task: null }, 'A');
+    expect(lastView('today')).toMatchObject({
+      layout: 'list',
+      sort: 'due',
+      problem: null,
+    });
+    expect(sorted('today')).toEqual(['t1', 't2']);
+  });
+
+  it('upcoming: what is scheduled or due after today, a recurring task by its current occurrence; the two overlap', async () => {
+    const srv = server(
+      TODO,
+      taskRow(1, { dueOn: day(1) }),
+      taskRow(2, { rrule: 'FREQ=DAILY', dtstart: day(1) }),
+      taskRow(3, { scheduledOn: today, dueOn: day(7) }),
+      taskRow(4, { dueOn: today }),
+    );
+    const e = await signedIn(srv);
+    await e.handle({ kind: 'watch', view: 'upcoming', task: null }, 'A');
+    await e.handle({ kind: 'watch', view: 'today', task: null }, 'B');
+    expect(lastView('upcoming')).toMatchObject({ sort: 'due', problem: null });
+    expect(sorted('upcoming')).toEqual(['t1', 't2', 't3']);
+    expect(sorted('today')).toEqual(['t3', 't4']);
+  });
+
+  it('project:<id>: its open tasks in any layout, sorted manual', async () => {
+    const srv = server(
+      TODO,
+      project(P, 'Home'),
+      project(Q, 'Work'),
+      taskRow(1, { projectId: P }),
+      taskRow(2, { projectId: P }),
+      taskRow(3, { projectId: Q }),
+    );
+    const e = await signedIn(srv);
+    const key = `project:${P}`;
+    await e.handle({ kind: 'watch', view: key, task: null }, 'A');
+    expect(lastView(key)).toMatchObject({ layout: 'list', sort: 'manual' });
+    expect(sorted(key)).toEqual(['t1', 't2']);
+    await e.handle(
+      { kind: 'watch', view: key, task: null, layout: 'kanban' },
+      'A',
+    );
+    expect(lastView(key)?.layout).toBe('kanban');
+    expect(sorted(key)).toEqual(['t1', 't2']);
+  });
+
+  it('project:<id> of an unknown or a deleted project is published as deleted', async () => {
+    const srv = server(
+      TODO,
+      project(P, 'Gone', { deletedAt: EARLIER }),
+      taskRow(1),
+    );
+    const e = await signedIn(srv);
+    for (const key of [`project:${P}`, `project:${Q}`, 'project:']) {
+      await e.handle({ kind: 'watch', view: key, task: null }, 'A');
+      expect(lastView(key)).toMatchObject({ problem: 'deleted', items: [] });
+    }
+  });
+
+  it('the catalog counts each entry of the navigation, subtasks included, each task once', async () => {
+    const srv = server(
+      TODO,
+      project(P, 'Work'),
+      project(Q, 'Home'),
+      taskRow(1, { dueOn: today }),
+      taskRow(2, { parentId: uuid(1), dueOn: today }),
+      taskRow(3, { projectId: P, scheduledOn: today, dueOn: today }),
+      taskRow(4, { projectId: Q, dueOn: day(1) }),
+    );
+    await signedIn(srv);
+    expect(nav()).toEqual([
+      { key: 'all', count: 4 },
+      { key: 'today', count: 3 },
+      { key: 'upcoming', count: 1 },
+      { key: `project:${Q}`, count: 1 },
+      { key: `project:${P}`, count: 1 },
+    ]);
+  });
+
+  it('with no projects the navigation holds the three built-ins', async () => {
+    await signedIn(server(TODO, taskRow(1)));
+    expect(nav()).toEqual([
+      { key: 'all', count: 1 },
+      { key: 'today', count: 0 },
+      { key: 'upcoming', count: 0 },
+    ]);
+  });
+
+  it('the day changes: the next publish moves a task due tomorrow into today and its count', async () => {
+    const srv = server(TODO, taskRow(1, { dueOn: day(1) }));
+    const e = await signedIn(srv);
+    await e.handle({ kind: 'watch', view: 'today', task: null }, 'A');
+    expect(titles('today')).toEqual([]);
+    expect(nav()?.find((n) => n.key === 'today')?.count).toBe(0);
+    clock = new Date(NOW.getTime() + 86_400_000);
+    await e.handle({ kind: 'sync', reason: 'tick' });
+    expect(titles('today')).toEqual(['t1']);
+    expect(nav()?.find((n) => n.key === 'today')?.count).toBe(1);
+    expect(nav()?.find((n) => n.key === 'upcoming')?.count).toBe(0);
+  });
+});
+
 describe('a session that is not signed in', () => {
-  const EMPTY = { views: [], statuses: [], projects: [], tags: [] };
+  const EMPTY = { views: [], statuses: [], projects: [], tags: [], nav: [] };
 
   it('publishes nothing of the replica after signOut, and replaces what was shown', async () => {
     const srv = server(TODO, taskRow(1), viewRow(uuid(0x71)));
@@ -917,6 +1045,22 @@ describe('publication that throws', () => {
     expect(titles('all')).toContain('milk');
     expect(last('task')).toEqual({ id: BAD, task: null });
     expect(error).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps a saved kanban view's layout on the problem it publishes", async () => {
+    const V = uuid(0x71);
+    const srv = server(TODO, viewRow(V, { layout: 'kanban' }), taskRow(1));
+    const e = await signedIn(srv);
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    vi.mocked(boardTasks).mockImplementation(() => {
+      throw new Error('boom');
+    });
+    await e.handle({ kind: 'watch', view: V, task: null }, 'A');
+    expect(lastView(V)).toMatchObject({
+      problem: 'unavailable',
+      layout: 'kanban',
+      items: [],
+    });
   });
 });
 

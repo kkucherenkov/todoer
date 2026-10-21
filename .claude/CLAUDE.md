@@ -152,8 +152,10 @@ pnpm lint                        # ESLint in every package, then Prettier
 The production image (backend + SPA) sits behind the compose profile `app`:
 `JWT_SECRET=<32+ chars> docker compose -f docker/compose.yml --profile app up -d --build`.
 
-The web's Playwright suite needs an empty `*_e2e` database (never `todoer`), a
-built backend, CLI and SPA, and `playwright install chromium firefox` once:
+The web's Playwright suite needs an empty `*_e2e` database (never `todoer`)
+with `prisma migrate deploy` applied to it (CI does it in
+`.github/workflows/test.yml`), a built backend, CLI and SPA, and
+`playwright install chromium firefox` once:
 `DATABASE_URL=…/todoer_e2e JWT_SECRET=<32+ chars> pnpm --filter @todoer/web e2e`.
 
 `pnpm --filter @todoer/cli test` alone runs against whatever

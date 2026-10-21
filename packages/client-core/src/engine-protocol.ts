@@ -80,6 +80,12 @@ export type Write =
 
 /** The view key of the built-in "All open" (departure 8). */
 export const ALL = 'all';
+/** Built-in view keys: open tasks scheduled or due on or before today, and
+ *  after it (a task in both is in both). */
+export const TODAY = 'today';
+export const UPCOMING = 'upcoming';
+/** `project:<id>`: a live project's open tasks; an unknown id is `deleted`. */
+export const PROJECT_PREFIX = 'project:';
 
 export type Command =
   | { kind: 'signIn'; email: string; password: string }

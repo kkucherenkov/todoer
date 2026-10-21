@@ -51,7 +51,14 @@ const isGroup = computed(
 const kind = computed(() => Object.keys(core.value.node)[0] as string);
 
 const rows = computed<Catalog>(
-  () => catalog.value ?? { views: [], statuses: [], projects: [], tags: [] },
+  () =>
+    catalog.value ?? {
+      views: [],
+      statuses: [],
+      projects: [],
+      tags: [],
+      nav: [],
+    },
 );
 
 const choices = (list: { id: string; name: string }[], value: string) =>
