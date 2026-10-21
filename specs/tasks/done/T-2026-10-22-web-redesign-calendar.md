@@ -61,9 +61,11 @@ how a person reads days and recovers from refusals.
   runs, close on success, and resend the same minted write when the same move
   is retried (← plan rules; context FR-007; UX.md "refusal keeps the move
   dialog open").
-- **FR-004** A refused Undo of a move MUST show the core's reason and offer
-  the same undo write again, so an Undo refused before the sync succeeds after
-  it (← plan stage 5 "Undo до/после sync"; context FR-006).
+- **FR-004** A refused Undo of a move MUST show the core's reason. When the
+  refusal can pass (a copy not synced yet, one with subtasks, an unanswered
+  request) it MUST offer the same undo write again, so an Undo refused before
+  the sync succeeds after it; when it cannot (the copy or its original is
+  gone) it MUST NOT (← plan stage 5 "Undo до/после sync"; context FR-006).
 - **FR-005** The calendar MUST keep week/month `mode` and `at` in the URL,
   Today navigation, the core's span limit, the transient `?layout=calendar`
   and the `watchView` re-watch rules, and follow the local date across
@@ -72,11 +74,13 @@ how a person reads days and recovers from refusals.
 ### Edge cases
 
 - A move retried after a refusal → same opId, one copy, not two
-  (FR-003, T003).
-- A closed placement reached through a stale dialog → no write
-  (FR-002, T003).
-- Undo of a copy with a live subtask, or whose original is gone → the
-  core's reason, the copy stays (FR-004, T004).
+  (FR-003, T003; `intent.spec.ts`).
+- Move to date… on an occurrence closed since the dialog opened → the dialog
+  holds the old placement, so the core refuses ("already done — undo it
+  first"), the reason shows and the dialog stays open (FR-003, T003).
+- Two quick submits of Move → one write (FR-003, T003; `exclusive.spec.ts`).
+- Undo of a copy with a live subtask → the core's reason and the same Undo
+  again; whose original is gone → the reason, no Undo (FR-004, T004).
 - Month mode on a phone → 28–42 days in one column, muted days of the
   neighbouring months still labelled (FR-001, T002).
 - Midnight between Sunday and Monday with no `at` → next week's span; with
@@ -90,9 +94,13 @@ how a person reads days and recovers from refusals.
   by its date, moves a placement by drag or by keyboard, and recovers from a
   refused move or Undo without re-entering the date.
 - [x] every FR has a test that failed before the code made it pass —
-      except FR-005 and the subtask/original refusals of FR-004, which the
-      code already met: their tests pin it (characterization), recorded in
-      the steps
+      except these characterization tests, which pin what the code already
+      did: FR-002 closed placements and separate scheduled/due (the existing
+      `calendar: placements, navigation`), FR-005 rollover (unit, mutation
+      checked by review), and FR-004's Undo refusal with subtasks. FR-003's
+      same-opId retry and double-submit guard are pinned by `intent.spec.ts`
+      and `exclusive.spec.ts`, which go red when a retry mints a new opId or
+      the guard is removed (checked by mutation)
 - [ ] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint` — tick after the PR's CI; locally web
       test, typecheck, `pnpm lint`, build and the calendar, offline, shell
@@ -105,7 +113,7 @@ how a person reads days and recovers from refusals.
 - [x] T001 [FR-005] Failing-first unit spec: midnight rollover re-watches the
   next week's span without `at`, keeps it with `at` —
   `apps/web/app/utils/calendar.spec.ts` on a real engine with a fake clock
-  (`apps/web/app/db/clockEngine.ts`, shared with `nav.spec.ts`). It passed
+  (`apps/web/app/db/clockEngine.testing.ts`, shared with `nav.spec.ts`). It passed
   at once: `watchView` already re-watched on a new date; the test pins it
 - [x] T002 [FR-001–002] Failing-first e2e for the grid/list layout, full date
   labels and wrapped titles, then the container-query grid and labels —
@@ -113,9 +121,10 @@ how a person reads days and recovers from refusals.
   `apps/web/e2e/calendar.spec.ts`
 - [x] T003 [FR-003] Failing-first e2e for a refused Move to date… (a second
   tab marks the occurrence done), then the dialog's pending/refusal/close and
-  the held move write — `MoveDateDialog.vue`, `CalendarView.vue`. The held
-  write is local to `CalendarView`: `utils/intent.ts` returns only the result,
-  and Undo needs the minted copy id
+  the held move write — `MoveDateDialog.vue`, `CalendarView.vue`. The move
+  goes through `createIntent` (`utils/intent.ts`), which now hands back the
+  write it sent so Undo reads the copy id; the dialog's guard is
+  `utils/exclusive.ts`
 - [x] T004 [FR-004] Failing-first e2e for Undo refusals (not synced yet,
   subtask, original gone) and the re-offered Undo — `CalendarView.vue`,
   `apps/web/e2e/calendar.spec.ts`, `apps/web/e2e/offline.spec.ts`. The

@@ -363,7 +363,7 @@ library.
 | `SubtaskList` (W5)                    | `UCheckbox`, `UButton` (link), `UInput`                         | progress "1 of 3 done"; add on Enter                           |
 | `RecurrenceDialog` (W5)               | `UModal`, `USelect`, `UInputNumber`, `UCheckboxGroup`, `UInput`, `UAlert` | presets, weekdays, start, raw RRULE in mono, preview list or problem alert |
 | `DeleteTaskDialog` (W5)               | `UModal`, `UButton`, `UAlert`                                   | Cancel has focus so Enter alone deletes nothing; "This cannot be undone."; a refusal stays in the dialog as an alert |
-| toasts (`useMarked`, `useFail`, calendar moves) | `useToast()`                                          | title, task title as description, Undo action; refusals in `error`; a refused calendar Undo offers the same Undo again |
+| toasts (`useMarked`, `useFail`, calendar moves) | `useToast()`                                          | title, task title as description, Undo action; refusals in `error`; a refused calendar Undo offers the same Undo again while its reason can pass |
 
 **Focus ring.** Nuxt UI 4.11 draws focus as a 3 px outline in the component's
 colour at 25 % opacity. Measured against the surface that is 1.5–2.3:1, below
