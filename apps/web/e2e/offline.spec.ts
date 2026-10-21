@@ -180,7 +180,7 @@ test('two tabs: a mark shows in the other, each tab keeps to its own view', asyn
   await expect(titles(page)()).resolves.toEqual(['Mop', 'Weed']);
 });
 
-test('offline: a moved occurrence shows at once, Undo waits for the sync', async ({
+test('offline: a moved occurrence shows at once, its Undo goes through after the sync', async ({
   page,
   context,
   account,
@@ -224,22 +224,39 @@ test('offline: a moved occurrence shows at once, Undo waits for the sync', async
 
   // The copy is not on the server yet, so the core refuses to undo it.
   await page.getByRole('button', { name: 'Undo' }).last().click();
-  await expect(
-    page.locator('[data-slot="description"]', { hasText: 'not synced yet' }),
-  ).toBeVisible();
-  await page.reload();
-  await expect(chip(to)).toHaveCount(2);
+  const refused = page.locator('[data-slot="description"]', {
+    hasText: 'not synced yet',
+  });
+  await expect(refused).toBeVisible();
 
-  // Firefox: no `online` event (see the first test); it ends here.
-  if (browserName === 'firefox') return;
+  // Firefox: no `online` event (see the first test); it checks the reload.
+  if (browserName === 'firefox') {
+    await page.reload();
+    await expect(chip(to)).toHaveCount(2);
+    return;
+  }
+  // The refusal offers the same Undo; once the sync lands it goes through.
+  const again = page.getByRole('button', { name: 'Undo' }).last();
+  await again.hover(); // the toast waits while the pointer is on it
   await context.setOffline(false);
   await expect(page.getByTestId('pending')).toHaveCount(0, { timeout: 15_000 });
-  const listed = JSON.parse(await cli(account.token, 'list', '--json')) as {
-    data: { title: string; scheduledOn: string | null; rrule: string | null }[];
-  };
+  const listed = async () =>
+    (
+      JSON.parse(await cli(account.token, 'list', '--json')) as {
+        data: {
+          title: string;
+          scheduledOn: string | null;
+          rrule: string | null;
+        }[];
+      }
+    ).data;
   expect(
-    listed.data.some((t) => t.rrule === null && t.scheduledOn === to),
+    (await listed()).some((t) => t.rrule === null && t.scheduledOn === to),
   ).toBe(true);
+  await again.click();
+  await expect(chip(from)).toHaveCount(1);
+  await expect(chip(to)).toHaveCount(1);
+  await expect.poll(async () => (await listed()).length).toBe(1);
 });
 
 test('offline: a delete shows at once, an unsynced task cannot be deleted', async ({

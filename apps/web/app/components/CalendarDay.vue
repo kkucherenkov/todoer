@@ -26,7 +26,6 @@ const shown = computed(() =>
     : props.placements.slice(0, props.limit),
 );
 const hidden = computed(() => props.placements.length - shown.value.length);
-const day = computed(() => Number(props.date.slice(8)));
 </script>
 
 <template>
@@ -47,7 +46,7 @@ const day = computed(() => Number(props.date.slice(8)));
       class="text-xs"
       :class="today ? 'font-bold text-primary' : 'text-muted'"
     >
-      {{ day }}
+      {{ label }}
     </span>
     <template v-for="p in shown" :key="`${p.taskId}:${p.kind}:${p.occurrence}`">
       <PlacementChip
