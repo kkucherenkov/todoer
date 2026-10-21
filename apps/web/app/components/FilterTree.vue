@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { filterSize, type Filter } from '@todoer/client-core';
-import { TREE } from '~/utils/filterTree';
+import type { Filter } from '@todoer/client-core';
+import { limitsOf, TREE } from '~/utils/filterTree';
 
 const filter = defineModel<Filter>({ required: true });
 
@@ -11,14 +11,14 @@ provide(TREE, {
   },
 });
 
-const size = computed(() => filterSize(filter.value));
+const limits = computed(() => limitsOf(filter.value));
 </script>
 
 <template>
   <div class="flex flex-col gap-2">
     <FilterNode :node="filter" :path="[]" />
     <p class="text-xs text-muted" data-testid="filter-limits">
-      {{ $t('filterTree.limits', size) }}
+      {{ $t('filterTree.limits', limits) }}
     </p>
   </div>
 </template>

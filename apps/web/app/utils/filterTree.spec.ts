@@ -14,8 +14,7 @@ import {
   canToggleNot,
   children,
   editable,
-  LIMIT_DEPTH,
-  LIMIT_NODES,
+  limitsOf,
   options,
   remove,
   replace,
@@ -25,6 +24,7 @@ import {
 } from './filterTree';
 import { FILTER_MAX_DEPTH, FILTER_MAX_NODES } from '@todoer/specs';
 import { filterOf, type Template } from './templates';
+import { readFileSync } from 'node:fs';
 
 const ID = '0192f3a0-0000-7000-8000-000000000001';
 const ID2 = '0192f3a0-0000-7000-8000-000000000002';
@@ -301,8 +301,24 @@ describe('options', () => {
 });
 
 describe('filter limits', () => {
-  it('derives from @todoer/specs constants', () => {
-    expect(LIMIT_DEPTH).toBe(FILTER_MAX_DEPTH);
-    expect(LIMIT_NODES).toBe(FILTER_MAX_NODES);
+  const message = (locale: string) =>
+    (
+      JSON.parse(
+        readFileSync(
+          new URL(`../../i18n/locales/${locale}.json`, import.meta.url),
+          'utf8',
+        ),
+      ) as { filterTree: { limits: string } }
+    ).filterTree.limits;
+
+  it.each(['en', 'ru'])('%s shows the limits the specs enforce', (locale) => {
+    const text = message(locale);
+    expect(text, 'no limit written into the words').not.toMatch(/\d/);
+    const shown = text.replace(
+      /\{(\w+)\}/g,
+      (_, k: string) => `${limitsOf({ tag: ID })[k as 'nodes']}`,
+    );
+    expect(shown).toContain(`1/${FILTER_MAX_NODES}`);
+    expect(shown).toContain(`1/${FILTER_MAX_DEPTH}`);
   });
 });

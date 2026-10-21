@@ -26,17 +26,24 @@ const KEYS = new Set<string>([
   'due',
   'recurring',
 ]);
-export const LIMIT_DEPTH = FILTER_MAX_DEPTH;
-export const LIMIT_NODES = FILTER_MAX_NODES;
 // One level and one node past what filterProblem allows, so a tree that is
 // over the limits can still be drawn and trimmed.
-const MAX_DEPTH = LIMIT_DEPTH + 1;
-const MAX_NODES = LIMIT_NODES + 1;
+const MAX_DEPTH = FILTER_MAX_DEPTH + 1;
+const MAX_NODES = FILTER_MAX_NODES + 1;
+
+/** The tree's size and the limits it is held to, as `filterTree.limits`
+ *  words them. */
+export const limitsOf = (filter: Filter) => ({
+  ...filterSize(filter),
+  maxNodes: FILTER_MAX_NODES,
+  maxDepth: FILTER_MAX_DEPTH,
+});
 
 /**
  * Whether the tree can be drawn: every node one known key with the right
  * container (arrays under and/or, an object under not). Leaf values may be
- * invalid; filterProblem says so. Bounded at depth 9 and 257 nodes.
+ * invalid; filterProblem says so. Bounded one level and one node past
+ * FILTER_MAX_DEPTH and FILTER_MAX_NODES.
  */
 export function editable(filter: unknown): filter is Filter {
   let nodes = 0;
@@ -177,9 +184,9 @@ export function canAdd(root: Filter, path: Path): boolean {
   const { nodes, depth } = filterSize(root);
   return (
     isGroup(at(root, path)) &&
-    nodes < LIMIT_NODES &&
-    path.length + 2 <= LIMIT_DEPTH &&
-    depth <= LIMIT_DEPTH
+    nodes < FILTER_MAX_NODES &&
+    path.length + 2 <= FILTER_MAX_DEPTH &&
+    depth <= FILTER_MAX_DEPTH
   );
 }
 
@@ -187,5 +194,5 @@ export function canAdd(root: Filter, path: Path): boolean {
  * and a level, an unwrap never does. */
 export function canToggleNot(root: Filter, path: Path): boolean {
   const { nodes, depth } = filterSize(toggleNot(root, path));
-  return nodes <= LIMIT_NODES && depth <= LIMIT_DEPTH;
+  return nodes <= FILTER_MAX_NODES && depth <= FILTER_MAX_DEPTH;
 }

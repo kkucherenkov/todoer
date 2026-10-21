@@ -268,7 +268,7 @@
     "from": "From",
     "to": "To",
     "hint": "0 = today, −1 = yesterday",
-    "limits": "{nodes}/256 conditions · depth {depth}/8",
+    "limits": "{nodes}/{maxNodes} conditions · depth {depth}/{maxDepth}",
     "bound": {
       "label": "bound",
       "none": "None",

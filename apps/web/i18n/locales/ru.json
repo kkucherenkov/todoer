@@ -268,7 +268,7 @@
     "from": "С",
     "to": "По",
     "hint": "0 = сегодня, −1 = вчера",
-    "limits": "{nodes}/256 условий · глубина {depth}/8",
+    "limits": "{nodes}/{maxNodes} условий · глубина {depth}/{maxDepth}",
     "bound": {
       "label": "граница",
       "none": "Нет",
