@@ -45,19 +45,19 @@ Deliver the redesigned saved view editing, filter tree builder, access gate (sig
 - **SC-001** Views can be created, edited with FilterTree (including P0 priority leaf) and raw JSON, and deleted, with full keyboard and validation support in EN and RU.
 - **SC-002** Sign-in and owner registration operate on live engine requests, handle errors and password mismatch gracefully, and guard the app shell.
 - **SC-003** Offline, queued writes, sync refusal, recovery, and update prompts behave accurately in tests without demo galleries in the main UI.
-- [ ] every FR has a test that failed before the code made it pass
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] every FR has a test that failed before the code made it pass
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
+- [x] no document still asserts the behaviour this task replaced
 - [ ] dnote changelog line
 
 ### Steps
 
-- [ ] T001 [FR-001–002] Link `@todoer/specs` in `apps/web/package.json` to source `FILTER_MAX_DEPTH` and `FILTER_MAX_NODES`, update `filterTree.ts`, and verify filterTree unit tests — `apps/web/package.json`, `apps/web/app/utils/filterTree.ts`, `apps/web/app/utils/filterTree.spec.ts`
-- [ ] T002 [FR-001–002] Align `ViewForm.vue`, `FilterTree.vue`, and `FilterNode.vue` with redesign styling, reactive computed start kinds, and e2e contract coverage for priority leaf and limits — `apps/web/app/components/ViewForm.vue`, `apps/web/app/components/FilterNode.vue`, `apps/web/e2e/views.spec.ts`
-- [ ] T003 [FR-003–004] Align `AppGate.vue`, `SignInForm.vue`, and `RegisterForm.vue` with design layout tokens (`max-w-sm mx-auto py-12`), ensuring strict real session and db.request handling — `apps/web/app/components/AppGate.vue`, `apps/web/app/components/SignInForm.vue`, `apps/web/app/components/RegisterForm.vue`, `apps/web/e2e/register.spec.ts`
-- [ ] T004 [FR-005–007] Verify and refine `SyncStatus.vue`, `UpdatePrompt.vue`, and states handling (empty, loading, offline, queued, refused, recovery, update) in unit and e2e test contracts — `apps/web/app/components/SyncStatus.vue`, `apps/web/app/components/UpdatePrompt.vue`, `apps/web/e2e/screens.spec.ts`, `apps/web/e2e/offline.spec.ts`
-- [ ] T005 [FR-001–007] Verify i18n keys for EN and RU, execute quality gates (`pnpm --filter @todoer/web test`, `typecheck`, `build`, `pnpm lint`), and prepare `.superpowers/w6-report.md` — `apps/web/i18n/locales/*`, `.superpowers/w6-report.md`
+- [x] T001 [FR-001–002] Link `@todoer/specs` in `apps/web/package.json` to source `FILTER_MAX_DEPTH` and `FILTER_MAX_NODES`, update `filterTree.ts`, and verify filterTree unit tests — `apps/web/package.json`, `apps/web/app/utils/filterTree.ts`, `apps/web/app/utils/filterTree.spec.ts`
+- [x] T002 [FR-001–002] Align `ViewForm.vue`, `FilterTree.vue`, and `FilterNode.vue` with redesign styling, reactive computed start kinds, and e2e contract coverage for priority leaf and limits — `apps/web/app/components/ViewForm.vue`, `apps/web/app/components/FilterNode.vue`, `apps/web/e2e/views.spec.ts`
+- [x] T003 [FR-003–004] Align `AppGate.vue`, `SignInForm.vue`, and `RegisterForm.vue` with design layout tokens (`max-w-sm mx-auto py-12`), ensuring strict real session and db.request handling — `apps/web/app/components/AppGate.vue`, `apps/web/app/components/SignInForm.vue`, `apps/web/app/components/RegisterForm.vue`, `apps/web/e2e/register.spec.ts`
+- [x] T004 [FR-005–007] Verify and refine `SyncStatus.vue`, `UpdatePrompt.vue`, and states handling (empty, loading, offline, queued, refused, recovery, update) in unit and e2e test contracts — `apps/web/app/components/SyncStatus.vue`, `apps/web/app/components/UpdatePrompt.vue`, `apps/web/e2e/screens.spec.ts`, `apps/web/e2e/offline.spec.ts`
+- [x] T005 [FR-001–007] Verify i18n keys for EN and RU, execute quality gates (`pnpm --filter @todoer/web test`, `typecheck`, `build`, `pnpm lint`), and prepare `.superpowers/w6-report.md` — `apps/web/i18n/locales/*`, `.superpowers/w6-report.md`
 - **Checkpoint:** Stage W6 components, utils, specs, and gates pass cleanly.
 
 ### Open questions
