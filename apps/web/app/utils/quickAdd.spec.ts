@@ -148,6 +148,22 @@ describe('createQuickAddSubmitter', () => {
     expect(writes[2]!.opId).not.toBe(writes[1]!.opId);
   });
 
+  it('renames the created task when the title changes after a refused edit', async () => {
+    const db = database([success, failure, success]);
+    const submit = createQuickAddSubmitter(db);
+    const draft = { ...blank(), text: 'Draft title', dueOn: '2026-10-24' };
+
+    await submit(draft);
+    await submit({ ...draft, text: 'Final title #home' });
+
+    const writes = db.write.mock.calls.map(([write]) => write);
+    expect(writes.map((write) => write.kind)).toEqual(['add', 'edit', 'edit']);
+    expect(writes[2]).toMatchObject({
+      taskId: 'task-1',
+      changes: { title: 'Final title', dueOn: '2026-10-24' },
+    });
+  });
+
   it('creates a second task for a second identical add after success', async () => {
     const db = database([success, success]);
     const submit = createQuickAddSubmitter(db);

@@ -126,14 +126,18 @@ export function createQuickAddSubmitter(db: QuickAddWriter) {
       add.landed = true;
     }
 
-    const key = JSON.stringify(plan.changes);
-    if (plan.changes !== null && edit?.key !== key) {
-      edit = { key, write: editWrite(db, taskId, plan.changes) };
+    // The task exists, so a title typed after it landed reaches it as an
+    // edit; markers in that text are not re-read (task spec, Known limits).
+    const changes =
+      plan.addText === add.text
+        ? plan.changes
+        : { ...plan.changes, title: parseQuickAdd(plan.addText).title };
+    const key = JSON.stringify(changes);
+    if (changes !== null && edit?.key !== key) {
+      edit = { key, write: editWrite(db, taskId, changes) };
     }
     const result =
-      plan.changes === null
-        ? ({ ok: true } as const)
-        : await db.write(edit!.write);
+      changes === null ? ({ ok: true } as const) : await db.write(edit!.write);
     if (result.ok) {
       add = null;
       edit = null;

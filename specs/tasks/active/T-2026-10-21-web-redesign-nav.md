@@ -92,8 +92,9 @@ or silently add dates to make a new task fit the current preset.
 - The pending add/edit attempt lives in the tab's memory: closing the tab
   between an accepted add and a refused edit loses the structured fields; the
   task itself exists.
-- After an accepted add, a changed title is not re-applied by the retried
-  edit; only the structured fields are.
+- After an accepted add, a changed title reaches the task as an edit of its
+  title; `#project`, `@tag` and `pN` typed into it then are not re-read — use
+  the fields.
 - A `#name` in the title creates that project even when the Project field
   overrides it. Fixing it needs core `add` to accept the changes in one write —
   a core follow-up, not this stage.
