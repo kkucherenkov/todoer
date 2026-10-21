@@ -360,7 +360,7 @@ export async function seedTask(
           kind: 'create',
           table: 'task',
           id,
-          fields: { priority: 0, rank: 'a0', ...fields },
+          fields: { priority: 4, rank: 'a0', ...fields },
           ts: new Date().toISOString(),
         },
       ],
