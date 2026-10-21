@@ -144,7 +144,18 @@
     "progress": "{done} of {total} done",
     "doneLabel": "Done: {title}",
     "addSubtask": "Add subtask",
-    "subtaskOf": "Subtask of {title}"
+    "subtaskOf": "Subtask of {title}",
+    "more": "More details",
+    "blurHint": "Changes save when you leave a field.",
+    "saving": "Saving…",
+    "saved": "Saved on this device",
+    "waiting": "{n} waiting to sync",
+    "savedValue": "Saved value: {value}",
+    "yourChange": "Your change: {value}",
+    "retry": "Retry change",
+    "noDate": "No date",
+    "childRule": "Subtasks cannot have their own repeat rule.",
+    "ruleParent": "Repeats with its parent"
   },
   "recurrence": {
     "title": "Repeat",

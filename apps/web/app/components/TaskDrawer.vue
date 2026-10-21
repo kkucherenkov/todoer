@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import { ALL, type TaskChanges } from '@todoer/client-core';
+import type { Draft as WriteDraft } from '~/db/client';
+import { createIntent } from '~/utils/intent';
 
 const db = useDb();
 const open = useOpenTask();
@@ -10,6 +12,7 @@ const fail = useFail();
 const { t } = useI18n();
 const topic = useTopic('task');
 const catalog = useTopic('catalog');
+const sync = useTopic('sync');
 
 const id = computed(() =>
   typeof route.query.task === 'string' ? route.query.task : null,
@@ -23,6 +26,10 @@ const readonly = computed(
   () => !!task.value?.rrule && task.value.occurrence === null,
 );
 const recurring = computed(() => !!task.value?.rrule);
+// Scheduled by a rule: its own, or a subtask's parent's (ADR 0009).
+const ruled = computed(
+  () => recurring.value || (task.value?.occurrence ?? null) !== null,
+);
 /** The occurrence this task is a moved copy of; null for any other task. */
 const movedFrom = computed(() => {
   const k = task.value;
@@ -42,8 +49,8 @@ const server = computed(() => {
     project: k.project ?? '',
     tags: k.tags,
     priority: Number(k.priority),
-    // A recurring task is scheduled by its current occurrence.
-    scheduledOn: k.rrule
+    // A task scheduled by a rule shows its current occurrence.
+    scheduledOn: ruled.value
       ? (k.occurrence ?? '')
       : typeof k.scheduledOn === 'string'
         ? k.scheduledOn
@@ -95,44 +102,129 @@ watch(task, (now, before) => {
   void close();
 });
 
+const undoMove = createIntent(db);
 /** The copy is deleted and its occurrence reopened, so the drawer has
  *  nothing left to show; a refusal stays here with its reason. */
 async function returnToSeries() {
   if (id.value === null) return;
   returning.value = true;
-  const result = await db.write({ kind: 'undoMove', taskId: id.value });
+  const result = await undoMove({ kind: 'undoMove', taskId: id.value });
   returning.value = false;
   if (result.ok) void close();
   else fail(result);
 }
 
 const confirmingDelete = ref(false);
+const deleteError = ref<string | null>(null);
 const editingRule = ref(false);
+const more = useState('drawer-more', () => false);
+const del = createIntent(db);
 
-/** The task and its live subtasks go in one batch; a refusal (a subtask
- *  another device added) stays here with its reason. */
+const reasonOf = ({ failure }: { failure: { kind: string; detail: string } }) =>
+  [t(`errors.${failure.kind}`), failure.detail].filter(Boolean).join(' ');
+
+/** The task and its live subtasks go in one batch, with no undo. A refusal
+ *  (not synced yet) keeps the dialog open with its reason; confirming again
+ *  resends the same write. */
 async function deleteTask() {
-  if (id.value === null) return;
-  confirmingDelete.value = false;
+  if (id.value === null || deleting.value) return;
   deleting.value = true;
-  const result = await db.write({ kind: 'deleteTask', taskId: id.value });
+  const result = await del({ kind: 'deleteTask', taskId: id.value });
   deleting.value = false;
-  if (!result.ok) return void fail(result);
+  // A refusal that lands after Cancel has no dialog to show it in.
+  if (!result.ok) {
+    if (confirmingDelete.value) deleteError.value = reasonOf(result);
+    return;
+  }
+  confirmingDelete.value = false;
   toast.add({ title: t('deleteTask.done') });
   void close();
+}
+function closeDelete() {
+  confirmingDelete.value = false;
+  deleteError.value = null;
 }
 
 const same = (a: unknown, b: unknown) =>
   JSON.stringify(a) === JSON.stringify(b);
 
-/** One field, one `edit` with one change; a refusal puts the field back. */
+// What the status line says: a write in flight, then saved on this device.
+const saving = ref(0);
+const saved = ref(false);
+/** The last refused field write: the field shows the saved value again,
+ *  this keeps the person's one, and Retry resends the same write. */
+const refused = ref<{
+  key: keyof Draft;
+  write: WriteDraft;
+  saved: string;
+  wanted: string;
+  reason: string;
+} | null>(null);
+watch(id, () => {
+  saved.value = false;
+  refused.value = null;
+});
+// A refused write that had in fact landed (a late answer) needs no retry.
+watch(server, (now) => {
+  const r = refused.value;
+  if (r && now && shown(r.key, now[r.key]) === r.wanted) refused.value = null;
+});
+// One held write per field, so a refusal of one survives another's save.
+const intents = new Map<keyof Draft, ReturnType<typeof createIntent>>();
+const intentOf = (key: keyof Draft) =>
+  intents.get(key) ?? intents.set(key, createIntent(db)).get(key)!;
+
+function shown(key: keyof Draft, value: unknown): string {
+  if (key === 'project') return String(value) || t('drawer.noProject');
+  if (key === 'priority') return `p${String(value)}`;
+  if (key === 'tags') return (value as string[]).join(' ');
+  if (key === 'scheduledOn' || key === 'dueOn')
+    return String(value) || t('drawer.noDate');
+  if (key === 'statusId')
+    return statuses.value.find((s) => s.value === value)?.label ?? '';
+  return String(value);
+}
+
+async function send(key: keyof Draft, write: WriteDraft, wanted: string) {
+  if (!server.value) return null;
+  saving.value++;
+  const result = await intentOf(key)(write);
+  saving.value--;
+  // The saved value as it is now: a publish may have landed meanwhile.
+  const from = server.value;
+  if (!from) return result;
+  if (result.ok) {
+    saved.value = true;
+    if (refused.value?.key === key) refused.value = null;
+    return result;
+  }
+  refused.value = {
+    key,
+    write,
+    saved: shown(key, from[key]),
+    wanted,
+    reason: reasonOf(result),
+  };
+  Object.assign(draft, { [key]: structuredClone(toRaw(from[key])) });
+  // Already saved (a late answer to a write that applied): nothing to retry.
+  if (refused.value.saved === wanted) refused.value = null;
+  return result;
+}
+
+const retry = () => {
+  const r = refused.value;
+  if (r) void send(r.key, r.write, r.wanted);
+};
+
+/** One field, one `edit` with one change. */
 async function commit(key: keyof Draft, changes: TaskChanges) {
   const from = server.value;
   if (!from || id.value === null || same(draft[key], from[key])) return;
-  const result = await db.write({ kind: 'edit', taskId: id.value, changes });
-  if (result.ok) return;
-  fail(result);
-  Object.assign(draft, { [key]: structuredClone(toRaw(from[key])) });
+  await send(
+    key,
+    { kind: 'edit', taskId: id.value, changes },
+    shown(key, draft[key]),
+  );
 }
 
 function saveTitle() {
@@ -179,16 +271,12 @@ function createTag(name: string) {
 async function saveStatus() {
   const from = server.value;
   if (!from || id.value === null || draft.statusId === from.statusId) return;
-  const result = await db.write({
-    kind: 'move',
-    taskId: id.value,
-    view: ALL,
-    statusId: draft.statusId,
-  });
-  if (!result.ok) {
-    fail(result);
-    draft.statusId = from.statusId;
-  } else if (result.note?.occurrence && result.note.next) {
+  const result = await send(
+    'statusId',
+    { kind: 'move', taskId: id.value, view: ALL, statusId: draft.statusId },
+    shown('statusId', draft.statusId),
+  );
+  if (result?.ok && result.note?.occurrence && result.note.next) {
     toast.add({
       title: t('list.doneRecurring', {
         occurrence: result.note.occurrence,
@@ -235,6 +323,39 @@ const dates = [
         {{ $t('drawer.notFound') }}
       </p>
       <form v-else class="flex flex-col gap-4" @submit.prevent>
+        <p role="status" class="text-sm text-muted" data-testid="save-status">
+          <template v-if="saving > 0">{{ $t('drawer.saving') }}</template>
+          <template v-else>
+            <template v-if="saved">
+              {{ $t('drawer.saved') }}
+              <template v-if="sync?.pending">
+                · {{ $t('drawer.waiting', { n: sync.pending }) }}
+              </template>
+              ·
+            </template>
+            {{ $t('drawer.blurHint') }}
+          </template>
+        </p>
+        <div
+          v-if="refused"
+          role="alert"
+          class="flex flex-col gap-1 rounded-md border border-error/40 bg-error/10 p-3 text-sm"
+          data-testid="refused"
+        >
+          <p>{{ $t('drawer.savedValue', { value: refused.saved }) }}</p>
+          <p>{{ $t('drawer.yourChange', { value: refused.wanted }) }}</p>
+          <p class="text-muted">{{ refused.reason }}</p>
+          <UButton
+            variant="outline"
+            color="neutral"
+            size="sm"
+            class="self-start"
+            :loading="saving > 0"
+            @click="retry"
+          >
+            {{ $t('drawer.retry') }}
+          </UButton>
+        </div>
         <p v-if="readonly" role="status" class="text-sm text-muted">
           {{ $t('drawer.ended') }}
         </p>
@@ -271,6 +392,7 @@ const dates = [
           <UInput
             v-model="draft.title"
             class="w-full"
+            size="lg"
             :disabled="readonly"
             @blur="saveTitle"
           />
@@ -284,92 +406,131 @@ const dates = [
             @blur="commit('notes', { notes: draft.notes })"
           />
         </UFormField>
-        <UFormField :label="$t('drawer.project')">
-          <USelectMenu
-            v-model="draft.project"
-            v-model:open="projectOpen"
-            class="w-full"
-            value-key="value"
-            :items="projects"
-            :disabled="readonly"
-            create-item
-            @update:model-value="
-              commit('project', { project: draft.project || null })
-            "
-            @create="createProject"
-          />
-        </UFormField>
-        <UFormField :label="$t('drawer.tags')">
-          <USelectMenu
-            v-model="draft.tags"
-            class="w-full"
-            multiple
-            :items="tags"
-            :disabled="readonly"
-            create-item
-            @update:model-value="commit('tags', { tags: [...draft.tags] })"
-            @create="createTag"
-          />
-        </UFormField>
-        <URadioGroup
-          v-model="draft.priority"
-          :legend="$t('drawer.priority')"
-          orientation="horizontal"
-          :items="priorities"
-          :disabled="readonly"
-          @update:model-value="commit('priority', { priority: draft.priority })"
-        />
-        <UFormField v-for="[key, label] in dates" :key="key" :label="$t(label)">
-          <p
-            v-if="key === 'scheduledOn' && recurring"
-            class="text-sm"
-            data-testid="rule"
+        <div class="grid gap-4 sm:grid-cols-2">
+          <UFormField
+            v-for="[key, label] in dates"
+            :key="key"
+            :label="$t(label)"
           >
-            {{ draft.scheduledOn }}
-            <span class="text-muted">
-              {{ $t('drawer.rule', { rule: task.rrule }) }}
-            </span>
-          </p>
-          <div v-else class="flex items-center gap-2">
-            <UInput
-              v-model="draft[key]"
-              type="date"
-              :disabled="readonly"
-              @change="saveDate(key)"
+            <p
+              v-if="key === 'scheduledOn' && ruled"
+              class="text-sm"
+              data-testid="rule"
+            >
+              {{ draft.scheduledOn }}
+              <span class="text-muted">
+                {{
+                  task.rrule
+                    ? $t('drawer.rule', { rule: task.rrule })
+                    : $t('drawer.ruleParent')
+                }}
+              </span>
+            </p>
+            <div v-else class="flex items-center gap-2">
+              <UInput
+                v-model="draft[key]"
+                type="date"
+                :disabled="readonly"
+                @change="saveDate(key)"
+              />
+              <UButton
+                v-if="draft[key] !== ''"
+                variant="ghost"
+                color="neutral"
+                icon="i-lucide-x"
+                :disabled="readonly"
+                :aria-label="$t('drawer.clear', { field: $t(label) })"
+                @click="clearDate(key)"
+              />
+            </div>
+          </UFormField>
+        </div>
+        <details
+          :open="more"
+          class="group rounded-md border border-default"
+          @toggle="more = ($event.target as HTMLDetailsElement).open"
+        >
+          <summary
+            class="flex min-h-11 cursor-pointer items-center gap-2 px-3 text-sm font-medium"
+          >
+            <UIcon
+              name="i-lucide-chevron-right"
+              class="size-4 transition-transform group-open:rotate-90"
             />
-            <UButton
-              v-if="draft[key] !== ''"
-              variant="ghost"
-              color="neutral"
-              icon="i-lucide-x"
+            {{ $t('drawer.more') }}
+          </summary>
+          <div class="flex flex-col gap-4 px-3 pb-3">
+            <UFormField :label="$t('drawer.project')">
+              <USelectMenu
+                v-model="draft.project"
+                v-model:open="projectOpen"
+                class="w-full"
+                value-key="value"
+                :items="projects"
+                :disabled="readonly"
+                create-item
+                @update:model-value="
+                  commit('project', { project: draft.project || null })
+                "
+                @create="createProject"
+              />
+            </UFormField>
+            <UFormField :label="$t('drawer.tags')">
+              <USelectMenu
+                v-model="draft.tags"
+                class="w-full"
+                multiple
+                :items="tags"
+                :disabled="readonly"
+                create-item
+                @update:model-value="commit('tags', { tags: [...draft.tags] })"
+                @create="createTag"
+              />
+            </UFormField>
+            <URadioGroup
+              v-model="draft.priority"
+              :legend="$t('drawer.priority')"
+              orientation="horizontal"
+              :items="priorities"
               :disabled="readonly"
-              :aria-label="$t('drawer.clear', { field: $t(label) })"
-              @click="clearDate(key)"
+              @update:model-value="
+                commit('priority', { priority: draft.priority })
+              "
             />
+            <UFormField v-if="statuses.length > 0" :label="$t('drawer.status')">
+              <USelectMenu
+                v-model="draft.statusId"
+                class="w-full"
+                value-key="value"
+                :items="statuses"
+                :search-input="false"
+                :disabled="readonly"
+                @update:model-value="saveStatus"
+              />
+            </UFormField>
+            <div v-if="movedFrom === null" class="flex flex-col gap-1">
+              <UButton
+                variant="outline"
+                color="neutral"
+                size="sm"
+                icon="i-lucide-repeat"
+                class="self-start"
+                :disabled="!!task.parentId"
+                :aria-describedby="task.parentId ? 'child-rule' : undefined"
+                @click="editingRule = true"
+              >
+                {{ recurring ? $t('drawer.editRepeat') : $t('drawer.repeat') }}
+              </UButton>
+              <p
+                v-if="task.parentId"
+                id="child-rule"
+                class="text-sm text-muted"
+              >
+                {{ $t('drawer.childRule') }}
+              </p>
+            </div>
           </div>
-          <UButton
-            v-if="key === 'scheduledOn' && !task.parentId && movedFrom === null"
-            variant="outline"
-            color="neutral"
-            size="sm"
-            icon="i-lucide-repeat"
-            class="mt-2"
-            @click="editingRule = true"
-          >
-            {{ recurring ? $t('drawer.editRepeat') : $t('drawer.repeat') }}
-          </UButton>
-        </UFormField>
-        <UFormField v-if="statuses.length > 0" :label="$t('drawer.status')">
-          <USelectMenu
-            v-model="draft.statusId"
-            class="w-full"
-            value-key="value"
-            :items="statuses"
-            :search-input="false"
-            :disabled="readonly"
-            @update:model-value="saveStatus"
-          />
-        </UFormField>
+        </details>
         <SubtaskList v-if="!task.parentId" :task="task" :readonly="readonly" />
         <UButton
           color="error"
@@ -394,7 +555,9 @@ const dates = [
     :open="confirmingDelete"
     :title="String(task?.title ?? '')"
     :subtasks="task?.subtasks.length ?? 0"
+    :pending="deleting"
+    :error="deleteError"
     @confirm="deleteTask"
-    @close="confirmingDelete = false"
+    @close="closeDelete"
   />
 </template>

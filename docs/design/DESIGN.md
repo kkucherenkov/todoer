@@ -359,10 +359,10 @@ library.
 | `ViewForm`                            | `UModal`, `UForm`, `UInput`, `UDropdownMenu`, `UTextarea`, `USwitch`, `URadioGroup`, `USelect` | name, Start from, filter tree or raw JSON, layout, sort; a refused save shows in an alert inside the form, every field kept |
 | `DeleteViewDialog`                    | `UModal`, `UButton`                                             | one delete in flight; returns to All open                      |
 | `FilterTree`, `FilterNode`            | `USelect`, `UCheckboxGroup`, `UInputNumber`, `UInput`, `USwitch`, `UDropdownMenu`, `UButton` | nested groups indent with a `border-l border-default` rule; limits line in `text-xs text-muted` |
-| `TaskDrawer`                          | `USlideover`, `UFormField`, `UInput`, `UTextarea`, `USelectMenu`, `URadioGroup`, `UButton`, `USkeleton` | fields save on blur; priority as radio `p0`–`p4` |
+| `TaskDrawer`                          | `USlideover`, `UFormField`, `UInput`, `UTextarea`, `USelectMenu`, `URadioGroup`, `UButton`, `USkeleton` | title, notes and dates first, the rest under a "More details" `<details>`; fields save on blur; priority as radio `p0`–`p4` |
 | `SubtaskList` (W5)                    | `UCheckbox`, `UButton` (link), `UInput`                         | progress "1 of 3 done"; add on Enter                           |
 | `RecurrenceDialog` (W5)               | `UModal`, `USelect`, `UInputNumber`, `UCheckboxGroup`, `UInput`, `UAlert` | presets, weekdays, start, raw RRULE in mono, preview list or problem alert |
-| `DeleteTaskDialog` (W5)               | `UModal`, `UButton`                                             | Delete has focus so Enter confirms; "This cannot be undone."   |
+| `DeleteTaskDialog` (W5)               | `UModal`, `UButton`, `UAlert`                                   | Cancel has focus so Enter alone deletes nothing; "This cannot be undone."; a refusal stays in the dialog as an alert |
 | toasts (`useMarked`, `useFail`, calendar moves) | `useToast()`                                          | title, task title as description, Undo action; refusals in `error` |
 
 **Focus ring.** Nuxt UI 4.11 draws focus as a 3 px outline in the component's
@@ -400,8 +400,9 @@ The app's own focusable cards and chips already use
     Delete with an inline confirm.
   - Filter tree: every node's operator, value, Not switch, Add menu and
     Remove button are form controls.
-  - Overlays: Escape closes the drawer and every dialog. In the delete
-    dialog (W5) the Delete button has focus, so Enter confirms.
+  - Overlays: Escape closes the drawer and every dialog; over the drawer it
+    closes only the top dialog and returns focus to its trigger. In the
+    delete dialog Cancel has focus, so Enter alone deletes nothing.
   - Drawer fields commit on blur, so Tab moves on and saves.
 - **No global shortcuts exist today.** "Keyboard-first" in this system means
   every action is reachable and visible on focus; single-key shortcuts would
@@ -424,7 +425,7 @@ Every screen is designed in each of these, in both themes:
 | Loading        | calendar: seven skeleton cells until the worker answers the span; drawer: two skeleton blocks              |
 | Populated      | the view's rows, cards or placements; closed items struck through in `text-muted`                          |
 | Offline        | "Offline" warning badge; writes apply locally and the "N waiting" badge counts them; nothing blocks        |
-| Write refused  | an error toast with the reason (`useFail`); the field or row goes back to the server's value. The view form keeps its input and shows the refusal inside the form |
+| Write refused  | an error toast with the reason (`useFail`); the field or row goes back to the server's value. The view form keeps its input and shows the refusal inside the form. In the drawer, a panel instead: saved value, the refused change, the reason and Retry change (the same write) |
 | Sync refused   | error alert "Sync refused" with the server's text and Sync now; the "N refused" badge                      |
 | Conflict       | no merge dialog: fields merge last-write-wins (ADR 0004). A rule change sent against a stale version is refused and shows as a write refusal |
 | View problem   | warning alert "This view cannot be shown" with the filter problem, or "This view no longer exists."        |

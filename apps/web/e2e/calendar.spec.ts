@@ -223,6 +223,8 @@ test('calendar: moves and undo', async ({ page, account, cli }) => {
   await page.locator(`[data-task-id="${copy.id}"]`).click();
   await expect(page.getByText('Moved from')).toBeVisible();
   // A copy is a one-off: it cannot become a series of its own.
+  await page.getByText('More details').click();
+  await expect(page.getByRole('button', { name: 'Status' })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Repeat…' })).toHaveCount(0);
   await page.getByRole('button', { name: 'Return to series' }).click();
   await expect(page).not.toHaveURL(/task=/);
