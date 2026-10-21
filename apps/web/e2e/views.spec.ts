@@ -62,14 +62,16 @@ test('view form: create, edit, raw JSON, delete', async ({
   await expect(dialog.getByTestId('view-save')).toBeDisabled();
   await page.keyboard.press('Escape');
 
-  // Delete: confirmed, gone from the sidebar and from the CLI.
+  // Delete: confirmed, gone from the sidebar and from the CLI. A double
+  // click sends one delete: a second would be refused as a missing view.
   await page.getByTestId('delete-view').click();
-  await page.getByTestId('confirm-delete').click();
+  await page.getByTestId('confirm-delete').dblclick();
   await expect(page).toHaveURL(/\/$/);
   await expect(
     nav.getByRole('link', { name: 'Home', exact: true }),
   ).toHaveCount(0);
   await expect.poll(async () => (await viewNames()).length).toBe(0);
+  await expect(page.getByText('That cannot be done.')).toHaveCount(0);
 });
 
 test('view form: filter tree', async ({
@@ -202,4 +204,41 @@ test('view form: filter tree', async ({
   await page.getByTestId('edit-view').click();
   await expect(dialog.getByTestId('value-n')).toHaveText('Unknown (deleted?)');
   await saveUnchanged();
+});
+
+test('view form: a refused save keeps the form and says why', async ({
+  page,
+  account,
+  context,
+  browserName,
+}) => {
+  // Firefox does not route a dedicated worker's fetch.
+  test.skip(browserName !== 'chromium', 'needs the worker routed');
+  void account; // signed in
+  void account;
+  await page.goto('/');
+  await expect(count(page)).toBeVisible();
+  const nav = page.getByRole('navigation', { name: 'Views' });
+  const dialog = page.getByRole('dialog');
+  const refusal = dialog.getByTestId('view-refusal');
+
+  await page.getByTestId('new-view').click();
+  await dialog.getByTestId('view-name').fill('Refused');
+  await dialog.getByRole('radio', { name: 'Kanban' }).click();
+  // A 400 refuses the whole batch, this view's create with it.
+  await context.route('**/api/v1/sync', (route) =>
+    route.fulfill({ status: 400, body: 'refused for tests' }),
+  );
+  await dialog.getByTestId('view-save').click();
+  await expect(refusal).toHaveAttribute('role', 'alert');
+  await expect(refusal).toContainText('refused for tests');
+  await expect(dialog.getByTestId('view-name')).toHaveValue('Refused');
+  await expect(dialog.getByRole('radio', { name: 'Kanban' })).toBeChecked();
+  await expect(nav.getByRole('link', { name: 'Refused' })).toHaveCount(0);
+
+  // The same form, accepted: the alert and the dialog go.
+  await context.unroute('**/api/v1/sync');
+  await dialog.getByTestId('view-save').click();
+  await expect(dialog).toBeHidden();
+  await expect(nav.getByRole('link', { name: 'Refused' })).toBeVisible();
 });
