@@ -108,7 +108,7 @@ summary,
   color: var(--ui-text);
 }
 
-.mode-tab:hover:not([aria-disabled='true']) {
+.mode-tab:hover {
   background: var(--ui-bg-elevated);
   color: var(--ui-text-highlighted);
 }
@@ -117,11 +117,6 @@ summary,
   background: var(--ui-bg-accented);
   color: var(--ui-text-highlighted);
   box-shadow: inset 0 -2px 0 var(--ui-primary);
-}
-
-.mode-tab[aria-disabled='true'] {
-  cursor: not-allowed;
-  opacity: 0.45;
 }
 
 .locale-switch {

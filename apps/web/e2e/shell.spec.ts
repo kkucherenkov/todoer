@@ -1,7 +1,10 @@
 import { readdirSync, readFileSync } from 'node:fs';
+import type { Page } from '@playwright/test';
 import {
   count,
+  day,
   expect,
+  seedTask,
   seedView,
   signIn,
   swActivated,
@@ -37,10 +40,9 @@ test('layout switch preserves URL history, drawer context and focus', async ({
     'aria-selected',
     'true',
   );
-  await expect(modes.getByRole('tab', { name: 'Calendar' })).toHaveAttribute(
-    'aria-disabled',
-    'true',
-  );
+  await expect(
+    modes.getByRole('tab', { name: 'Calendar' }),
+  ).not.toHaveAttribute('aria-disabled');
 
   await modes.getByRole('tab', { name: 'List' }).press('ArrowRight');
   await expect(modes.getByRole('tab', { name: 'Kanban' })).toBeFocused();
@@ -96,6 +98,90 @@ test('layout switch preserves URL history, drawer context and focus', async ({
   await expect(page).toHaveURL(/custom=kept/);
   await page.goBack();
   await expect.poll(() => new URL(page.url()).pathname).toBe('/');
+});
+
+const cell = (page: Page, date: string) =>
+  page.locator(`[data-testid="calendar-day"][data-date="${date}"]`);
+const chip = (page: Page, date: string, title: string) =>
+  cell(page, date).getByTestId('placement').filter({ hasText: title });
+
+test('a saved list view shows transient Calendar placements', async ({
+  page,
+  account,
+}) => {
+  const view = await seedView(
+    page.request,
+    account.token,
+    'Planning',
+    'a0',
+    'list',
+  );
+  await seedTask(page.request, account.token, {
+    title: 'Report',
+    scheduledOn: day(),
+  });
+  const modes = page.getByRole('tablist', { name: 'Layout' });
+
+  await page.goto(`/views/${view}?layout=calendar`);
+  await expect(chip(page, day(), 'Report')).toBeVisible();
+  await expect(modes.getByRole('tab', { name: 'Calendar' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(page).toHaveURL(/layout=calendar/);
+
+  // All open has no saved calendar either.
+  await page.goto('/?layout=calendar');
+  await expect(chip(page, day(), 'Report')).toBeVisible();
+
+  // The override saved nothing: without it, the view is a list again.
+  await page.goto(`/views/${view}`);
+  await expect(page.getByTestId('task-list')).toBeVisible();
+  await expect(page.getByTestId('calendar-day')).toHaveCount(0);
+  await expect(modes.getByRole('tab', { name: 'List' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+});
+
+test('a saved calendar view switches to List and Kanban', async ({
+  page,
+  account,
+  cli,
+}) => {
+  const view = await seedView(
+    page.request,
+    account.token,
+    'Week',
+    'a0',
+    'calendar',
+  );
+  await cli(account.token, 'add', 'Plain task');
+  const modes = page.getByRole('tablist', { name: 'Layout' });
+  await page.goto(`/views/${view}?mode=month&at=2026-10-01`);
+  await expect(cell(page, '2026-10-01')).toBeVisible();
+
+  await modes.getByRole('tab', { name: 'List' }).click();
+  await expect(page).toHaveURL(/layout=list/);
+  await expect(page.getByTestId('task-row')).toHaveCount(1);
+  await expect(page.getByTestId('calendar-day')).toHaveCount(0);
+
+  await modes.getByRole('tab', { name: 'List' }).press('ArrowRight');
+  await expect(modes.getByRole('tab', { name: 'Kanban' })).toBeFocused();
+  await expect(page).toHaveURL(/layout=kanban/);
+  await expect(page.getByTestId('card')).toHaveCount(1);
+  await page.reload();
+  await expect(page.getByTestId('card')).toHaveCount(1);
+
+  // Back on the saved layout: the override is gone and so is nothing else.
+  await modes.getByRole('tab', { name: 'Kanban' }).press('ArrowRight');
+  await expect(page).not.toHaveURL(/layout=/);
+  await expect(page).toHaveURL(/mode=month/);
+  await expect(cell(page, '2026-10-01')).toBeVisible();
+
+  await page.goto(`/views/${view}`);
+  await expect(cell(page, day())).toBeVisible();
+  await expect(page.getByTestId('task-row')).toHaveCount(0);
 });
 
 test('drawer parent navigation preserves the original task opener', async ({
