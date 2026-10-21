@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import type { Item, Placement, Span, Write } from '@todoer/client-core';
+import { createIntent } from '~/utils/intent';
 
 const props = defineProps<{
   today: string;
@@ -58,27 +59,23 @@ const byDate = computed(() => {
 });
 const short = computed(() => utc({ day: 'numeric', month: 'short' }));
 
-/** The move a refusal left: retrying it resends the same write (one opId,
- *  one copy), a different move mints its own. */
-let held: { key: string; write: Write } | undefined;
+/** One move intent: a retry after a refusal resends the same write (one
+ *  opId, one copy); a different move mints its own. */
+const send = createIntent(db);
 
-/** Drag, menu and dialog end here: one write, minted once. True when the
- *  core accepted it (or nothing had to move). The toast's Undo sends the inverse (the copy's id comes
- *  from the minted move). */
+/** Drag, menu and dialog end here. True when the core accepted the move
+ *  (or nothing had to move). The toast's Undo sends the inverse: the copy's
+ *  id comes from the sent write. */
 async function move(p: Placement, to: string): Promise<boolean> {
   const item = items.value.get(p.taskId);
-  if (!item || p.closed) return false;
+  if (!item) return false;
   const plan = placeWrite(p, item, to);
   if (!plan) return true; // already on that day
-  const key = JSON.stringify(plan.write);
-  if (held?.key !== key) held = { key, write: db.mint(plan.write) };
-  const minted = held.write;
-  const result = await db.write(minted);
+  const { write: minted, ...result } = await send(plan.write);
   if (!result.ok) {
     fail(result);
     return false;
   }
-  held = undefined;
   const fmt = (date: string) => short.value.format(at(date));
   offerUndo(
     {
@@ -110,15 +107,15 @@ function offerUndo(
         label: t('list.undo'),
         onClick: () =>
           void db.write(undo).then((result) => {
-            if (!result.ok)
-              offerUndo(
-                {
-                  color: 'error',
-                  title: t(`errors.${result.failure.kind}`),
-                  description: result.failure.detail,
-                },
-                undo,
-              );
+            if (result.ok) return;
+            offerUndo(
+              {
+                color: 'error',
+                title: t(`errors.${result.failure.kind}`),
+                description: result.failure.detail,
+              },
+              undo,
+            );
           }),
       },
     ],
