@@ -1,5 +1,5 @@
 import type { Locator, Page } from '@playwright/test';
-import { arrowTo, day, expect, seedView, test } from './fixtures';
+import { arrowTo, day, expect, seedTask, seedView, test } from './fixtures';
 
 const column = (page: Page, name: string) =>
   page.getByRole('region', { name, exact: true });
@@ -142,4 +142,17 @@ test('kanban: drag, Move to, done and back, recurring, columns', async ({
   await expect(column(page, 'QA')).toHaveCount(0);
   await expect(card(page, 'Inbox', 'Card B')).toBeVisible();
   await expect.poll(() => status('Card B')).toBe('Inbox');
+});
+
+test('kanban: P0 card shows p0, P4 card shows none', async ({
+  page,
+  account,
+}) => {
+  const board = await seedView(page.request, account.token, 'Board', 'a0');
+  await seedTask(page.request, account.token, { title: 'Urgent', priority: 0 });
+  await seedTask(page.request, account.token, { title: 'Plain', priority: 4 });
+  await page.goto(`/views/${board}`);
+  await expect(card(page, 'Inbox', 'Urgent')).toContainText('p0');
+  await expect(card(page, 'Inbox', 'Plain')).toBeVisible();
+  await expect(card(page, 'Inbox', 'Plain')).not.toContainText(/\bp\d\b/);
 });
