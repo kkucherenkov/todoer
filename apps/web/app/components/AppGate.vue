@@ -24,11 +24,17 @@ watch(
   <slot
     v-if="db && engine?.state === 'ready' && session?.state === 'signed-in'"
   />
-  <main v-else class="mx-auto flex w-full max-w-sm flex-col gap-6 px-4 py-12">
-    <header class="flex items-center justify-between gap-4">
+  <!-- screens.css .gate-wrap: 384px, 64px down (32px at 700px and less). -->
+  <main
+    v-else
+    class="mx-auto my-16 flex w-full max-w-sm flex-col gap-6 px-4 max-[700px]:my-8"
+  >
+    <header class="mb-2 flex items-center justify-between gap-4">
       <h1 class="text-2xl font-semibold">{{ $t('app.title') }}</h1>
       <LocaleSwitch />
     </header>
+    <!-- Signed out, the workspace alerts are not drawn: the prompt is here. -->
+    <UpdatePrompt />
 
     <UAlert
       v-if="!db"

@@ -22,21 +22,27 @@ const sync = useTopic('sync');
       <template #header>
         <UDashboardNavbar :title="$t('app.title')" />
         <ViewHeader />
-        <UAlert
-          v-if="sync?.problem && sync.reached !== false"
-          color="error"
-          variant="subtle"
-          class="m-4 mb-0"
-          data-testid="sync-problem"
-          :title="$t('errors.syncProblem')"
-          :description="sync.problem"
-          :actions="[
-            {
-              label: $t('summary.syncNow'),
-              onClick: () => db.request({ kind: 'sync', reason: 'manual' }),
-            },
-          ]"
-        />
+        <!-- The prototype's #alerts: the sync problem and the update. -->
+        <div
+          class="flex flex-col gap-3 px-4 pt-4 empty:hidden"
+          data-testid="alerts"
+        >
+          <UAlert
+            v-if="sync?.problem && sync.reached !== false"
+            color="error"
+            variant="subtle"
+            data-testid="sync-problem"
+            :title="$t('errors.syncProblem')"
+            :description="sync.problem"
+            :actions="[
+              {
+                label: $t('summary.syncNow'),
+                onClick: () => db.request({ kind: 'sync', reason: 'manual' }),
+              },
+            ]"
+          />
+          <UpdatePrompt />
+        </div>
       </template>
       <template #body>
         <slot />

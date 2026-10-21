@@ -41,6 +41,7 @@
     },
     "lastSynced": "Last synced {when}",
     "neverSynced": "Not synced yet",
+    "savedLocally": "Saved on this device",
     "pending": "{n} waiting",
     "failed": "{n} refused",
     "offline": "Offline",
