@@ -2,7 +2,9 @@
 
 - Created: 2026-10-21
 - Owner: claude
-- Status: in-progress
+- Status: done
+- Completed: 2026-10-21
+- Result: PR pending
 - Blockers: —
 - Spec: maintainer brief w6-antigravity.md and the W6 review findings, 2026-10-21; [web redesign plan](../../../docs/plans/2026-10-03-plan-web-ux-redesign.md), stage 6; [context spec](T-2026-10-03-web-redesign-context.md), FR-001, FR-007
 - Plan: [web UX redesign](../../../docs/plans/2026-10-03-plan-web-ux-redesign.md), stage 6
@@ -82,32 +84,39 @@ what was checked.
   reason inside the form (views e2e).
 - **SC-002** The filter limits shown are the specs constants (unit test).
 - **SC-003** Footer, gate and alerts match the prototype's order and spacing.
-- [ ] every FR has a test that failed before the code made it pass
+- [x] every FR has a test that failed before the code made it pass —
+      FR-002–007 failed against the previous build; FR-001, FR-008 and
+      FR-009's offline, queued and refused states keep existing behaviour,
+      pinned by views, register, screens and offline e2e that already passed
 - [ ] gates: `PR title (conventional commit)`, `Shell tests`,
-      `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
+      `Workspace tests`, `Lint` — locally `pnpm lint` and the web unit
+      suite pass; the CI checks run once the PR exists
+- [x] no document still asserts the behaviour this task replaced
+      (`docs/design/DESIGN.md` components and states)
 - [ ] dnote changelog line (the coordinator writes it)
 
 ### Steps
 
-- [ ] T001 [FR-004] Limits from the specs constants in `filterTree.ts` and in
+- [x] T001 [FR-004] Limits from the specs constants in `filterTree.ts` and in
   the `filterTree.limits` text; a test that the shown limits come from them —
   `apps/web/app/utils/filterTree.ts`, `apps/web/app/utils/filterTree.spec.ts`,
   `apps/web/app/components/FilterTree.vue`, `apps/web/i18n/locales/*`
-- [ ] T002 [FR-001, FR-002] Inline refusal in `ViewForm`; e2e: a refused save
+- [x] T002 [FR-001, FR-002] Inline refusal in `ViewForm`; e2e: a refused save
   keeps the input and shows the reason — `apps/web/app/components/ViewForm.vue`,
   `apps/web/e2e/views.spec.ts`
-- [ ] T003 [FR-003] `DeleteViewDialog` with a pending guard, wired into the
-  view route — `apps/web/app/components/DeleteViewDialog.vue`,
+- [x] T003 [FR-003] `DeleteViewDialog` with a pending guard, wired into the
+  view route; it navigates itself, because the route unmounts it once the
+  view leaves the catalog — `apps/web/app/components/DeleteViewDialog.vue`,
   `apps/web/app/pages/views/[id].vue`
-- [ ] T004 [FR-005, FR-006] Sync footer per `ux.js`; the update prompt in the
+- [x] T004 [FR-005, FR-006] Sync footer per `ux.js`; the update prompt in the
   workspace alerts and on the gate — `apps/web/app/components/SyncStatus.vue`,
   `apps/web/app/components/AppShell.vue`, `apps/web/app/components/AppGate.vue`,
-  `apps/web/app/app.vue`, `apps/web/e2e/screens.spec.ts`
-- [ ] T005 [FR-007, FR-008] Gate spacing per `.gate-wrap` —
-  `apps/web/app/components/AppGate.vue`
-- [ ] T006 [FR-009] e2e for the empty state — `apps/web/e2e/screens.spec.ts`
-- [ ] T007 Gates: web unit, typecheck, lint, build; e2e views, register,
+  `apps/web/app/app.vue`, `apps/web/e2e/screens.spec.ts`; the prompt also
+  stays on the gate, which `tabs.spec.ts` needs while signed out
+- [x] T005 [FR-007, FR-008] Gate spacing per `.gate-wrap` —
+  `apps/web/app/components/AppGate.vue`, `apps/web/e2e/register.spec.ts`
+- [x] T006 [FR-009] e2e for the empty state — `apps/web/e2e/screens.spec.ts`
+- [x] T007 Gates: web unit, typecheck, lint, build; e2e views, register,
   screens, offline, tabs on `todoer_e2e_w6`
 - **Checkpoint:** stage 6 of the plan is ticked, with the gate output in the
   report.
