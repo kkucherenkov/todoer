@@ -14,6 +14,11 @@ const catalog = useTopic('catalog');
 const id = computed(() =>
   typeof route.query.task === 'string' ? route.query.task : null,
 );
+watch(id, async (now, before) => {
+  if (now !== null || before === null) return;
+  await nextTick();
+  restoreDrawerFocus();
+});
 /** undefined: not published yet; null: deleted or unknown. */
 const task = computed(() =>
   topic.value?.id === id.value ? topic.value.task : undefined,

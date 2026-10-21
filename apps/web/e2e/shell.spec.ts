@@ -1,5 +1,69 @@
 import { readdirSync, readFileSync } from 'node:fs';
-import { count, expect, signIn, swActivated, tasks, test } from './fixtures';
+import {
+  count,
+  expect,
+  seedView,
+  signIn,
+  swActivated,
+  tasks,
+  test,
+} from './fixtures';
+
+test('layout switch preserves URL history, drawer context and focus', async ({
+  page,
+  account,
+  cli,
+}) => {
+  const view = await seedView(
+    page.request,
+    account.token,
+    'Planning',
+    'a0',
+    'list',
+  );
+  await cli(account.token, 'add', 'Keep context');
+  await page.goto(`/views/${view}?mode=month&at=2026-10-01&custom=kept`);
+
+  const modes = page.getByRole('tablist', { name: 'Layout' });
+  await expect(modes.getByRole('tab', { name: 'List' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  );
+  await expect(modes.getByRole('tab', { name: 'Calendar' })).toHaveAttribute(
+    'aria-disabled',
+    'true',
+  );
+
+  await modes.getByRole('tab', { name: 'List' }).press('ArrowRight');
+  await expect(modes.getByRole('tab', { name: 'Kanban' })).toBeFocused();
+  await expect(page.getByTestId('board')).toBeVisible();
+  await expect(page).toHaveURL(/layout=kanban/);
+  await expect(page).toHaveURL(/mode=month/);
+  await expect(page).toHaveURL(/at=2026-10-01/);
+  await expect(page).toHaveURL(/custom=kept/);
+
+  const card = page.getByTestId('card').filter({ hasText: 'Keep context' });
+  await card.focus();
+  await card.press('Enter');
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(card).toBeFocused();
+  await expect(page).toHaveURL(/layout=kanban/);
+  await expect(page).not.toHaveURL(/task=/);
+
+  await modes.getByRole('tab', { name: 'List' }).click();
+  await expect(page).not.toHaveURL(/layout=/);
+  await expect(page.getByTestId('task-list')).toBeVisible();
+  await page.goBack();
+  await expect(page.getByTestId('board')).toBeVisible();
+  await page.goForward();
+  await expect(page.getByTestId('task-list')).toBeVisible();
+
+  await page.goto(`/views/${view}?layout=tiles&custom=kept`);
+  await expect(page).not.toHaveURL(/layout=/);
+  await expect(page).toHaveURL(/custom=kept/);
+});
 
 test('sees a CLI write on focus', async ({ page, account, cli }) => {
   await page.goto('/');
@@ -66,7 +130,11 @@ test('wrong password', async ({ page }, { testId }) => {
   await page.getByTestId('password').fill('not the password at all');
   await page.getByTestId('sign-in').click();
   await expect(page.getByTestId('sign-in-error')).toContainText(text('en'));
-  await page.getByRole('button', { name: 'Русский' }).click();
+  await page
+    .getByRole('switch', {
+      name: 'Interface language: English; switch to Russian',
+    })
+    .click();
   await expect(page.getByTestId('sign-in-error')).toContainText(text('ru'));
 });
 

@@ -10,6 +10,7 @@ const props = defineProps<{
 const db = useDb();
 const route = useRoute();
 const router = useRouter();
+const openTask = useOpenTask();
 const toast = useToast();
 const fail = useFail();
 const { t, locale } = useI18n();
@@ -94,8 +95,7 @@ const { over, chipEvents, dayEvents } = useDayDrag((p, to) => void move(p, to));
 const moving = ref<Placement | null>(null);
 
 const month = computed(() => state.value.at.slice(0, 7));
-const open = (taskId: string) =>
-  router.push({ query: { ...route.query, task: taskId } });
+const open = (taskId: string, opener?: HTMLElement) => openTask(taskId, opener);
 </script>
 
 <template>

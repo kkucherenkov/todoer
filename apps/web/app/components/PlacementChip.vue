@@ -3,9 +3,10 @@ import type { DropdownMenuItem } from '@nuxt/ui';
 import type { Item, Placement } from '@todoer/client-core';
 
 const props = defineProps<{ placement: Placement; item: Item }>();
-const emit = defineEmits<{ open: []; move: [] }>();
+const emit = defineEmits<{ open: [opener?: HTMLElement]; move: [] }>();
 const { t } = useI18n();
 const open = useOpenTask();
+const chip = ref<HTMLElement | null>(null);
 
 // Every drop has a keyboard and touch path: native DnD needs a pointer.
 const actions = computed<DropdownMenuItem[]>(() => [
@@ -37,14 +38,16 @@ const actions = computed<DropdownMenuItem[]>(() => [
 
 <template>
   <div
+    ref="chip"
     tabindex="0"
     class="flex w-full min-w-0 items-center gap-1 rounded-md border border-default bg-default px-1.5 py-1 text-left text-xs focus-visible:outline-2 focus-visible:outline-primary"
     :class="placement.closed && 'text-muted'"
     data-testid="placement"
+    data-task-opener
     :data-kind="placement.kind"
     :data-task-id="String(item.id)"
-    @click="emit('open')"
-    @keydown.enter.self="emit('open')"
+    @click="emit('open', chip ?? undefined)"
+    @keydown.enter.self="emit('open', chip ?? undefined)"
   >
     <UIcon
       v-if="placement.closed"

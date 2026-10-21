@@ -13,7 +13,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   /** `statusId` undefined: a reorder only; `after` undefined: no rank. */
   move: [item: Item, statusId?: string, after?: string | null];
-  open: [item: Item];
+  open: [item: Item, opener?: HTMLElement];
 }>();
 
 const ids = computed(() => props.items.map((i) => String(i.id)));
@@ -80,7 +80,7 @@ const drag = useDrag(container, drop);
         v-bind="drag.rowEvents(String(item.id))"
         @move-to="emit('move', item, $event)"
         @move="step(i, $event)"
-        @open="emit('open', item)"
+        @open="emit('open', item, $event)"
       />
       <div
         v-if="drag.line.value === END"

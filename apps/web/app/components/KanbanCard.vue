@@ -13,10 +13,11 @@ const props = defineProps<{
 const emit = defineEmits<{
   moveTo: [statusId: string];
   move: [to: 'up' | 'down'];
-  open: [];
+  open: [opener?: HTMLElement];
 }>();
 const { t } = useI18n();
 const open = useOpenTask();
+const card = ref<HTMLElement | null>(null);
 
 // Every drop has a keyboard and touch path: native DnD needs a pointer.
 const actions = computed<DropdownMenuItem[]>(() => [
@@ -55,16 +56,18 @@ const actions = computed<DropdownMenuItem[]>(() => [
 
 <template>
   <div
+    ref="card"
     tabindex="0"
     class="flex items-start gap-2 rounded-md border border-default bg-default p-2 focus-visible:outline-2 focus-visible:outline-primary"
     data-testid="card"
-    @keydown.enter.self="emit('open')"
+    data-task-opener
+    @keydown.enter.self="emit('open', card ?? undefined)"
   >
     <div class="flex min-w-0 flex-1 flex-col gap-1">
       <span
         class="cursor-pointer font-medium break-words"
         :class="item.closed && 'text-muted line-through'"
-        @click="emit('open')"
+        @click="emit('open', card ?? undefined)"
       >
         {{ item.title }}
       </span>

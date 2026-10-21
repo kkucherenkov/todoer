@@ -3,6 +3,7 @@ import type { NavigationMenuItem } from '@nuxt/ui';
 
 const { t } = useI18n();
 const catalog = useTopic('catalog');
+const route = useRoute();
 const creating = ref(false);
 
 // Literal names: the icon bundle is built by scanning the source.
@@ -13,11 +14,16 @@ const ICONS: Record<string, string> = {
 };
 
 const items = computed<NavigationMenuItem[]>(() => [
-  { label: t('nav.all'), icon: 'i-lucide-inbox', to: '/', exact: true },
+  {
+    label: t('nav.all'),
+    icon: 'i-lucide-inbox',
+    to: { path: '/', query: viewQuery(route.query) },
+    exact: true,
+  },
   ...(catalog.value?.views ?? []).map((v) => ({
     label: v.name,
     icon: ICONS[v.layout] ?? ICONS.list,
-    to: `/views/${v.id}`,
+    to: { path: `/views/${v.id}`, query: viewQuery(route.query) },
     ...(v.problem !== null && {
       trailingIcon: 'i-lucide-triangle-alert',
       ui: { linkTrailingIcon: 'text-warning' },

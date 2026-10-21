@@ -2,6 +2,10 @@
   "app": {
     "title": "Todoer"
   },
+  "locale": {
+    "switchToRussian": "Interface language: English; switch to Russian",
+    "switchToEnglish": "Interface language: Russian; switch to English"
+  },
   "insecure": {
     "title": "A secure connection is required",
     "body": "This app stores your tasks in the browser and needs HTTPS. Serve it through a reverse proxy that terminates TLS, or open it on localhost."
@@ -62,6 +66,13 @@
   "view": {
     "problem": "This view cannot be shown",
     "deleted": "This view no longer exists."
+  },
+  "layouts": {
+    "group": "Layout",
+    "list": "List",
+    "kanban": "Kanban",
+    "calendar": "Calendar",
+    "unavailable": "{layout} is available for saved calendar views"
   },
   "list": {
     "quickAdd": "Quick add",

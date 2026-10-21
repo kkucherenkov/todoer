@@ -2,5 +2,13 @@
 export function useOpenTask() {
   const route = useRoute();
   const router = useRouter();
-  return (id: string) => router.push({ query: { ...route.query, task: id } });
+  return (id: string, opener?: HTMLElement) => {
+    if (typeof route.query.task !== 'string') {
+      const active = document.activeElement;
+      rememberDrawerFocus(
+        opener ?? (active instanceof HTMLElement ? active : undefined),
+      );
+    }
+    return router.push({ query: { ...route.query, task: id } });
+  };
 }

@@ -12,7 +12,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   mark: [mark: 'done' | 'skip'];
   move: [to: 'up' | 'down'];
-  open: [];
+  open: [opener?: HTMLElement];
 }>();
 const { t } = useI18n();
 const open = useOpenTask();
@@ -62,8 +62,9 @@ const actions = computed<DropdownMenuItem[]>(() => [
       <button
         type="button"
         class="truncate text-left font-medium"
+        data-task-opener
         data-testid="task-title"
-        @click="emit('open')"
+        @click="emit('open', $event.currentTarget as HTMLElement)"
       >
         {{ item.title }}
       </button>
