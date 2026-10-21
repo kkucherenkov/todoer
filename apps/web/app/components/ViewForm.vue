@@ -2,6 +2,7 @@
 import {
   filterProblem,
   type Catalog,
+  type Failure,
   type Filter,
   type ViewFields,
 } from '@todoer/client-core';
@@ -13,7 +14,6 @@ type View = Catalog['views'][number];
 const open = defineModel<boolean>('open', { required: true });
 const props = defineProps<{ view?: View }>();
 const db = useDb();
-const fail = useFail();
 const { t } = useI18n();
 const catalog = useTopic('catalog');
 
@@ -36,6 +36,9 @@ const sort = ref<ViewFields['sort']>('manual');
 const raw = ref(false);
 const text = ref('');
 const saving = ref(false);
+// Shown inside the form, which stays open with what was typed (screens.js
+// #view-refusal): a toast would leave the user guessing what to change.
+const refusal = ref<Failure | null>(null);
 
 /** A "…" start holds the catalog's first id, so it is a leaf to change, not
  *  an empty one to fill. */
@@ -76,6 +79,7 @@ const parsed = computed<{ filter?: unknown; problem: string | null }>(() => {
 
 watch(open, (now) => {
   if (!now) return;
+  refusal.value = null;
   const v = props.view;
   name.value = v?.name ?? '';
   layout.value = (v?.layout as ViewFields['layout']) ?? 'list';
@@ -102,6 +106,7 @@ const canSave = computed(
 async function save() {
   if (!canSave.value) return;
   saving.value = true;
+  refusal.value = null;
   const w = db.mint({
     kind: 'saveView',
     ...(props.view && { id: props.view.id }),
@@ -114,7 +119,10 @@ async function save() {
   });
   const result = await db.write(w);
   saving.value = false;
-  if (!result.ok) return fail(result);
+  if (!result.ok) {
+    refusal.value = result.failure;
+    return;
+  }
   open.value = false;
   if (!props.view && w.kind === 'saveView') await navigateTo(`/views/${w.id}`);
 }
@@ -199,6 +207,15 @@ async function save() {
             data-testid="view-sort"
           />
         </UFormField>
+
+        <p
+          v-if="refusal"
+          class="text-sm text-error wrap-anywhere"
+          role="alert"
+          data-testid="view-refusal"
+        >
+          {{ $t(`errors.${refusal.kind}`) }} {{ refusal.detail }}
+        </p>
 
         <div class="flex justify-end gap-2">
           <UButton variant="ghost" color="neutral" @click="open = false">
