@@ -78,26 +78,26 @@ and URL history and the task drawer must preserve the user's current context.
   return from the drawer to a meaningful focus target at desktop and mobile
   widths.
 - [ ] every FR has a test that failed before the code made it pass
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 
-- [ ] T001 [FR-001–005] Trace the current shell, route/watch and drawer focus
+- [x] T001 [FR-001–005] Trace the current shell, route/watch and drawer focus
   contracts; confirm whether C1 landed before choosing the Calendar path —
   `apps/web/app/`, `origin/main`
-- [ ] T002 [FR-002–004] Add failing-first route/history/watch tests and
+- [x] T002 [FR-002–004] Add failing-first route/history/watch tests and
   implement transient layout resolution without saved-view writes —
   `apps/web/app/utils/`, `apps/web/app/components/`, `apps/web/app/pages/`
-- [ ] T003 [FR-005] Add failing-first focus/context tests and restore drawer
+- [x] T003 [FR-005] Add failing-first focus/context tests and restore drawer
   focus with a stable fallback — `apps/web/app/composables/`,
   `apps/web/app/components/TaskDrawer.vue`
-- [ ] T004 [FR-001–002] Apply the approved Nuxt UI theme and responsive shell,
+- [x] T004 [FR-001–002] Apply the approved Nuxt UI theme and responsive shell,
   then update Playwright control-name contracts — `apps/web/app/app.config.ts`,
   `apps/web/app/assets/css/main.css`, `apps/web/e2e/`
-- [ ] T005 [FR-001–005] Update affected documentation and run the Web tests,
+- [x] T005 [FR-001–005] Update affected documentation and run the Web tests,
   typecheck, workspace lint and production build — `docs/`, `specs/tasks/`
 - **Checkpoint:** W1's shell and supported transient layouts are tested and
   production-built; Calendar's remaining dependency is explicitly C1.
