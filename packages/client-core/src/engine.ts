@@ -69,8 +69,24 @@ export type EngineDeps = {
   publish: <T extends Topic>(topic: T, value: Topics[T]) => void;
 };
 
-type Watch = { view: string | null; task: string | null; span: Span | null };
-type ViewKey = { key: string | null; span: Span | null };
+type Layout = 'list' | 'kanban' | 'calendar';
+const VALID_LAYOUTS = new Set<string>(['list', 'kanban', 'calendar']);
+const validLayout = (layout: unknown): Layout | null =>
+  typeof layout === 'string' && VALID_LAYOUTS.has(layout)
+    ? (layout as Layout)
+    : null;
+
+type Watch = {
+  view: string | null;
+  task: string | null;
+  span: Span | null;
+  layout: Layout | null;
+};
+type ViewKey = {
+  key: string | null;
+  span: Span | null;
+  layout: Layout | null;
+};
 
 /** A tick this soon after a sync is dropped (the cadence is 30 s). */
 const TICK_GAP_MS = 25_000;
@@ -150,8 +166,8 @@ export function createEngine({
     key === ALL
       ? { ...ALL_OPEN, problem: null }
       : cat.views.find((v) => v.id === key);
-  const items = (spec: ViewSpec, today: string) =>
-    (spec.layout === 'kanban' ? boardTasks : viewTasks)(store, today, spec);
+  const items = (spec: ViewSpec, today: string, layout = spec.layout) =>
+    (layout === 'kanban' ? boardTasks : viewTasks)(store, today, spec);
 
   const open = () => session.state === 'signed-in';
   /** What a tab gets while no account is signed in: the replica still holds
@@ -178,19 +194,21 @@ export function createEngine({
   const publishView = (
     key: string,
     span: Span | null,
+    layoutOverride: Layout | null,
     cat: Catalog,
     today: string,
   ) => {
     if (!open()) return problemView(key, 'signed-out', today, span);
     const spec = viewSpec(key, cat);
     if (spec === undefined) return problemView(key, 'deleted', today, span);
-    const { layout, sort, problem } = spec;
+    const layout = layoutOverride ?? spec.layout;
+    const { sort, problem } = spec;
     const base = { key, layout, sort, problem, today };
     if (layout !== 'calendar') {
       return publish('view', {
         ...base,
         span: null,
-        items: problem === null ? items(spec, today) : [],
+        items: problem === null ? items(spec, today, layout) : [],
         placements: [],
       });
     }
@@ -243,15 +261,19 @@ export function createEngine({
     const today = localDate(now());
     // Two tabs on one calendar view with two spans each get theirs.
     const unique = new Map<string, ViewKey & { key: string }>();
-    for (const { key, span } of views) {
+    for (const { key, span, layout } of views) {
       if (key !== null) {
-        unique.set(`${key}:${span?.from}:${span?.to}`, { key, span });
+        unique.set(`${key}:${layout ?? ''}:${span?.from}:${span?.to}`, {
+          key,
+          span,
+          layout,
+        });
       }
     }
-    for (const { key, span } of unique.values()) {
+    for (const { key, span, layout } of unique.values()) {
       guard(
         `view:${key}`,
-        () => publishView(key, span, cat, today),
+        () => publishView(key, span, layout, cat, today),
         () => problemView(key, 'unavailable', today, span),
       );
     }
@@ -281,7 +303,7 @@ export function createEngine({
         const all = [...watches.values()];
         publishKeys(
           cat,
-          all.map((w) => ({ key: w.view, span: w.span })),
+          all.map((w) => ({ key: w.view, span: w.span, layout: w.layout })),
           all.map((w) => w.task),
         );
       },
@@ -297,7 +319,7 @@ export function createEngine({
       () =>
         publishKeys(
           open() ? catalog(store) : NONE,
-          [{ key: next.view, span: next.span }],
+          [{ key: next.view, span: next.span, layout: next.layout }],
           [next.task],
         ),
       () => undefined,
@@ -617,6 +639,7 @@ export function createEngine({
               view: command.view,
               task: command.task,
               span: command.span ?? null,
+              layout: validLayout(command.layout),
             });
             return OK;
           case 'signIn':

@@ -1685,3 +1685,109 @@ describe('delete, rule and subtask writes', () => {
     expect(store.pending()).toEqual([]);
   });
 });
+
+// ── layout override on watch (FR-001, FR-002) ───────────────────────────
+
+describe('layout override on watch', () => {
+  const V = uuid(0x71);
+  const today = localDate(NOW);
+  const day = (n: number) =>
+    new Date(Date.parse(today) + n * 86_400_000).toISOString().slice(0, 10);
+  const WEEK = { from: day(0), to: day(6) };
+  const LIST_VIEW = viewRow(V, { layout: 'list' });
+  const DAILY = taskRow(1, { rrule: 'FREQ=DAILY', dtstart: today });
+
+  it('watches a saved list view with layout calendar and span: projects calendar and preserves stored layout', async () => {
+    const srv = server(TODO, LIST_VIEW, DAILY);
+    const e = await signedIn(srv);
+    await e.handle(
+      { kind: 'watch', view: V, task: null, layout: 'calendar', span: WEEK },
+      'A',
+    );
+    expect(lastView(V)).toMatchObject({
+      key: V,
+      layout: 'calendar',
+      span: WEEK,
+      today,
+    });
+    expect(lastView(V)?.placements.length).toBeGreaterThan(0);
+    // The stored view in catalog still says list
+    const cat = last('catalog');
+    expect(cat?.views.find((v) => v.id === V)?.layout).toBe('list');
+  });
+
+  it('watches with no layout override: receives the saved layout', async () => {
+    const srv = server(TODO, LIST_VIEW, DAILY);
+    const e = await signedIn(srv);
+    await e.handle(
+      { kind: 'watch', view: V, task: null, layout: 'calendar', span: WEEK },
+      'A',
+    );
+    expect(lastView(V)?.layout).toBe('calendar');
+    // Now watch with no layout override (null/omitted)
+    await e.handle({ kind: 'watch', view: V, task: null }, 'A');
+    expect(lastView(V)).toMatchObject({
+      key: V,
+      layout: 'list',
+      span: null,
+      placements: [],
+    });
+  });
+
+  it('watches with layout kanban on a list view: publishes kanban layout and items', async () => {
+    const srv = server(TODO, LIST_VIEW, DAILY);
+    const e = await signedIn(srv);
+    await e.handle(
+      { kind: 'watch', view: V, task: null, layout: 'kanban' },
+      'A',
+    );
+    expect(lastView(V)).toMatchObject({
+      key: V,
+      layout: 'kanban',
+      span: null,
+    });
+  });
+
+  it('falls back to saved layout on invalid layout override', async () => {
+    const srv = server(TODO, LIST_VIEW, DAILY);
+    const e = await signedIn(srv);
+    await e.handle(
+      {
+        kind: 'watch',
+        view: V,
+        task: null,
+        // @ts-expect-error test invalid runtime layout
+        layout: 'invalid-layout',
+      },
+      'A',
+    );
+    expect(lastView(V)?.layout).toBe('list');
+  });
+
+  it('override calendar without a span publishes no items', async () => {
+    const srv = server(TODO, LIST_VIEW, DAILY);
+    const e = await signedIn(srv);
+    await e.handle(
+      { kind: 'watch', view: V, task: null, layout: 'calendar' },
+      'A',
+    );
+    expect(lastView(V)).toMatchObject({
+      key: V,
+      layout: 'calendar',
+      span: null,
+      items: [],
+      placements: [],
+    });
+  });
+
+  it('override equal to saved layout produces same result as no override', async () => {
+    const srv = server(TODO, LIST_VIEW, DAILY);
+    const e = await signedIn(srv);
+    await e.handle({ kind: 'watch', view: V, task: null, layout: 'list' }, 'A');
+    expect(lastView(V)).toMatchObject({
+      key: V,
+      layout: 'list',
+      span: null,
+    });
+  });
+});

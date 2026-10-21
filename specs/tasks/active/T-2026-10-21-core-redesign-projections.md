@@ -2,7 +2,7 @@
 
 - Created: 2026-10-21
 - Owner: claude
-- Status: draft
+- Status: done
 - Blockers: —
 - Spec: [web redesign plan](../../../docs/plans/2026-10-03-plan-web-ux-redesign.md),
   task C1; [T-2026-10-03-web-redesign-context](T-2026-10-03-web-redesign-context.md)
@@ -65,28 +65,27 @@ core, so the web does not grow a second reading of the replica.
 - **SC-001** A web tab can show any saved view in any of the three layouts
   and expand any parent to all its children, reading only what the engine
   publishes.
-- [ ] every FR has a test that failed before the code made it pass
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] every FR has a test that failed before the code made it pass
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 
-- [ ] T001 [FR-003] Agree the child row's shape with the W3 owner (Codex)
+- [x] T001 [FR-003] Agree the child row's shape with the W3 owner (Codex)
   before writing it; it is a public engine contract —
   `packages/client-core/src/engine-protocol.ts`
-- [ ] T002 [FR-001, FR-002] Layout override on `watch`, failing-first engine
+- [x] T002 [FR-001, FR-002] Layout override on `watch`, failing-first engine
   spec — `packages/client-core/src/engine.ts`,
   `packages/client-core/src/engine-protocol.ts`
-- [ ] T003 [FR-003] Children outside the filter, failing-first spec —
+- [x] T003 [FR-003] Children outside the filter, failing-first spec —
   `packages/client-core/src/operations.ts`
-- [ ] T004 [P] [FR-004] Status counts by display status —
+- [x] T004 [P] [FR-004] Status counts by display status —
   `packages/client-core/src/operations.ts`
 - **Checkpoint:** W1 can add the calendar mode and W3 the expansion without
   touching the core.
 
 ### Open questions
 
-- [NEEDS CLARIFICATION: FR-003, the child row's shape, settled with Codex in
-  T001.]
+- [Resolved: FR-003 child row shape settled with Codex in T001 as ChildItem: id, title, closed, statusId, projectId, priority, scheduledOn, dueOn, inView.]
