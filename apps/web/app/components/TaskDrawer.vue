@@ -131,7 +131,11 @@ async function deleteTask() {
   deleting.value = true;
   const result = await del({ kind: 'deleteTask', taskId: id.value });
   deleting.value = false;
-  if (!result.ok) return void (deleteError.value = reasonOf(result));
+  // A refusal that lands after Cancel has no dialog to show it in.
+  if (!result.ok) {
+    if (confirmingDelete.value) deleteError.value = reasonOf(result);
+    return;
+  }
   confirmingDelete.value = false;
   toast.add({ title: t('deleteTask.done') });
   void close();
@@ -182,11 +186,13 @@ function shown(key: keyof Draft, value: unknown): string {
 }
 
 async function send(key: keyof Draft, write: WriteDraft, wanted: string) {
-  const from = server.value;
-  if (!from) return null;
+  if (!server.value) return null;
   saving.value++;
   const result = await intentOf(key)(write);
   saving.value--;
+  // The saved value as it is now: a publish may have landed meanwhile.
+  const from = server.value;
+  if (!from) return result;
   if (result.ok) {
     saved.value = true;
     if (refused.value?.key === key) refused.value = null;
@@ -200,6 +206,8 @@ async function send(key: keyof Draft, write: WriteDraft, wanted: string) {
     reason: reasonOf(result),
   };
   Object.assign(draft, { [key]: structuredClone(toRaw(from[key])) });
+  // Already saved (a late answer to a write that applied): nothing to retry.
+  if (refused.value.saved === wanted) refused.value = null;
   return result;
 }
 
