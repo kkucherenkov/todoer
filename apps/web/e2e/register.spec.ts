@@ -110,3 +110,21 @@ test('an accepted registration lands in the app', async ({
   await expect(count(page)).toBeVisible();
   await expect(page.getByTestId('register-form')).toHaveCount(0);
 });
+
+test('the gate keeps the prototype spacing', async ({ page }) => {
+  // screens.css .gate-wrap: 384px wide, 64px down, 32px under the header;
+  // 32px down at 700px and less.
+  const box = async (testid: string) =>
+    (await page.getByTestId(testid).boundingBox())!;
+  const gate = page.getByRole('main');
+  await page.goto('/');
+  await expect(page.getByTestId('sign-in-form')).toBeVisible();
+  const main = (await gate.boundingBox())!;
+  expect(main.width).toBe(384);
+  expect(main.y).toBe(64);
+  const header = (await gate.locator('header').boundingBox())!;
+  expect((await box('sign-in-form')).y - (header.y + header.height)).toBe(32);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  expect((await gate.boundingBox())!.y).toBe(32);
+});
