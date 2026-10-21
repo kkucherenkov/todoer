@@ -78,8 +78,25 @@ or silently add dates to make a new task fit the current preset.
   from one engine-local date (FR-003, T002).
 - Marker-only input or an unknown/refused label → core refusal remains visible
   and the complete draft survives (FR-004–005, T003).
-- Optional controls override parsed project/tags/priority without injecting a
-  scheduled or due date (FR-004, FR-006, T003).
+- Optional project and priority controls override the parsed markers; field
+  tags are added to the title's `@tags`; no scheduled or due date is injected
+  (FR-004, FR-006, T003).
+- A field tag core's grammar would not read as a tag → refused before any
+  write, the draft stays (FR-004–005, T003).
+- The add is accepted but the structured edit is refused → the error says the
+  task was created and its details were not saved; a retry, even with changed
+  fields, edits that same task and never adds a second one (FR-005, T003).
+
+### Known limits
+
+- The pending add/edit attempt lives in the tab's memory: closing the tab
+  between an accepted add and a refused edit loses the structured fields; the
+  task itself exists.
+- After an accepted add, a changed title is not re-applied by the retried
+  edit; only the structured fields are.
+- A `#name` in the title creates that project even when the Project field
+  overrides it. Fixing it needs core `add` to accept the changes in one write —
+  a core follow-up, not this stage.
 
 ### Definition of Done
 

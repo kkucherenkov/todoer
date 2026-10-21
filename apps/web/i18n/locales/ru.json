@@ -86,6 +86,7 @@
     "quickAddOutsideTitle": "Добавлено во «Все открытые»",
     "quickAddOutsideDescription": "Текущий фильтр не показывает эту задачу.",
     "quickAddOpenAll": "Открыть во «Все открытые»",
+    "quickAddDetailsNotSaved": "Задача создана, но подробности не сохранены.",
     "markDone": "Отметить выполненной",
     "actions": "Действия с задачей",
     "skip": "Пропустить",

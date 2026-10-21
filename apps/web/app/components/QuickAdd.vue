@@ -10,7 +10,7 @@ const expanded = ref(false);
 const saving = ref(false);
 const draft = reactive<QuickAddDraft>({
   text: '',
-  project: '',
+  project: null,
   tags: '',
   priority: null,
   scheduledOn: '',
@@ -21,7 +21,7 @@ watch(draft, () => (error.value = null), { deep: true });
 const submit = createQuickAddSubmitter(db);
 
 const projects = computed(() => [
-  { label: t('list.quickAddUseSyntax'), value: '' },
+  { label: t('list.quickAddUseSyntax'), value: null },
   ...(catalog.value?.projects ?? []).map((project) => ({
     label: project.name,
     value: project.name,
@@ -37,7 +37,7 @@ const priorities = computed(() => [
 
 const clear = () => {
   draft.text = '';
-  draft.project = '';
+  draft.project = null;
   draft.tags = '';
   draft.priority = null;
   draft.scheduledOn = '';
@@ -47,7 +47,7 @@ const clear = () => {
 async function add() {
   if (draft.text.trim() === '' || saving.value) return;
   saving.value = true;
-  const { result, taskId } = await submit({ ...draft });
+  const { result, taskId, created } = await submit({ ...draft });
   saving.value = false;
   if (result.ok) {
     error.value = null;
@@ -58,6 +58,8 @@ async function add() {
       !view.value.items.some((item) => String(item.id) === taskId)
     ) {
       toast.add({
+        // The link is the only way to the task: it stays until dismissed.
+        duration: 0,
         title: t('list.quickAddOutsideTitle'),
         description: t('list.quickAddOutsideDescription'),
         actions: [
@@ -73,10 +75,13 @@ async function add() {
     return;
   }
   const { kind, detail } = result.failure;
-  error.value =
-    kind === 'invalid'
-      ? `${t('errors.invalid')} ${detail}`
-      : `${t(`errors.${kind}`)} ${detail}`;
+  error.value = [
+    created ? t('list.quickAddDetailsNotSaved') : null,
+    t(`errors.${kind}`),
+    detail,
+  ]
+    .filter(Boolean)
+    .join(' ');
 }
 </script>
 
@@ -111,7 +116,7 @@ async function add() {
       <span class="text-xs text-muted">{{ $t('list.quickAddHint') }}</span>
     </div>
     <div
-      v-if="expanded"
+      v-show="expanded"
       id="quick-add-details"
       class="grid gap-3 rounded-lg border border-default bg-muted p-3 sm:grid-cols-2 lg:grid-cols-5"
     >

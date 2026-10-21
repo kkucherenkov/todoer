@@ -42,8 +42,12 @@ test('list: progressive quick add keeps grammar and structured fields', async ({
   await expect(count(page)).toBeVisible();
 
   const input = page.getByRole('textbox', { name: 'Quick add' });
-  await expect(page.getByLabel('Project')).toHaveCount(0);
-  await page.getByRole('button', { name: 'Add details' }).click();
+  await expect(page.getByLabel('Project')).toBeHidden();
+  const details = page.getByRole('button', { name: 'Add details' });
+  // aria-controls must name an element that exists while collapsed.
+  const controlled = await details.getAttribute('aria-controls');
+  await expect(page.locator(`#${controlled}`)).toHaveCount(1);
+  await details.click();
   await expect(page.getByLabel('Project')).toBeVisible();
 
   await input.fill('Plan trip #home @errand p2');
@@ -81,6 +85,14 @@ test('list: progressive quick add keeps grammar and structured fields', async ({
       scheduledOn: day(1),
       dueOn: day(2),
     });
+
+  // A chosen project can be handed back to the title's marker.
+  await page.getByLabel('Project').click();
+  await page.getByRole('option', { name: 'home' }).click();
+  await expect(page.getByLabel('Project')).toContainText('home');
+  await page.getByLabel('Project').click();
+  await page.getByRole('option', { name: 'Use title syntax' }).click();
+  await expect(page.getByLabel('Project')).toContainText('Use title syntax');
 
   // Core refuses marker-only text; every revealed part of the draft stays.
   await input.fill('#home');
@@ -121,10 +133,21 @@ test('list: an out-of-filter quick add links to the task in All open', async ({
   const toast = page.getByText('Added to All open', { exact: true });
   await expect(toast).toBeVisible();
   await page.getByRole('button', { name: 'Open in All open' }).click();
-  await expect(page).toHaveURL(/^.*\/?\?task=[0-9a-f-]+$/);
+  await expect(page).toHaveURL(/\?task=[0-9a-f-]+$/);
+  expect(new URL(page.url()).pathname).toBe('/');
   await expect(page.getByRole('dialog').getByLabel('Title')).toHaveValue(
     'Outside the filter',
   );
+
+  // The view's filter did not leak into the task as a date.
+  const listed = (
+    JSON.parse(await cli(account.token, 'list', '--json')) as {
+      data: Listed[];
+    }
+  ).data;
+  expect(
+    listed.find((task) => task.title === 'Outside the filter'),
+  ).toMatchObject({ scheduledOn: null, dueOn: null });
 });
 
 test('list: quick-add, done, undo, reorder, recurring', async ({

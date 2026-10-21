@@ -86,6 +86,7 @@
     "quickAddOutsideTitle": "Added to All open",
     "quickAddOutsideDescription": "The current filter does not include this task.",
     "quickAddOpenAll": "Open in All open",
+    "quickAddDetailsNotSaved": "The task was created, but its details were not saved.",
     "markDone": "Mark done",
     "actions": "Task actions",
     "skip": "Skip",
