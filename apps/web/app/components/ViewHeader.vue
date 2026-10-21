@@ -1,5 +1,4 @@
 <script setup lang="ts">
-import { ALL } from '@todoer/client-core';
 import type { Layout } from '~/utils/layout';
 
 const route = useRoute();
@@ -8,9 +7,7 @@ const { t, locale } = useI18n();
 const catalog = useTopic('catalog');
 const shown = useTopic('view');
 
-const key = computed(() =>
-  route.path === '/' ? ALL : String(route.params.id ?? ''),
-);
+const key = computed(() => routeKey(route.path, String(route.params.id ?? '')));
 // The published view names the layout it was projected with; the saved one
 // is the catalog's. A switch rewatches and clears the view topic, so the
 // mode group waits on the catalog, never on that topic: it keeps its focus.
@@ -19,11 +16,13 @@ const saved = computed(() => savedLayoutOf(key.value, catalog.value?.views));
 const resolved = computed(() => resolveLayout(route.query.layout, saved.value));
 const current = computed(() => resolved.value.layout);
 const title = computed(() => {
-  if (key.value === ALL) return t('nav.all');
+  if (isBuiltIn(key.value)) return t(`nav.${key.value}`);
+  const entry = navEntries(catalog.value).find((e) => e.key === key.value);
+  if (entry) return entry.name ?? t(`nav.${entry.key}`);
   return catalog.value?.views.find((view) => view.id === key.value)?.name ?? '';
 });
 const count = computed(() => {
-  const n = shown.value?.items.length ?? 0;
+  const n = shownCount(key.value, catalog.value, shown.value?.items);
   return t(`summary.tasks.${pluralForm(locale.value, n)}`, { n });
 });
 

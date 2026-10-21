@@ -285,6 +285,8 @@ a name assembled at runtime is not bundled and renders as nothing.
 | Meaning                 | Icon                          |
 | ----------------------- | ----------------------------- |
 | All open (nav)          | `i-lucide-inbox`              |
+| Today, Upcoming (nav)   | `i-lucide-calendar-check`, `i-lucide-calendar-clock` |
+| Project (nav)           | `i-lucide-folder`             |
 | List, kanban, calendar view | `i-lucide-list`, `i-lucide-kanban`, `i-lucide-calendar` |
 | View with a problem     | `i-lucide-triangle-alert` (`text-warning`) |
 | Add, quick add          | `i-lucide-plus`               |
@@ -312,9 +314,13 @@ calendar chips. An icon-only button always has an `aria-label`.
 One shell, `UDashboardGroup`:
 
 - **Sidebar** (`UDashboardSidebar`): the app name in the header; `ViewNav`
-  (`UNavigationMenu`, vertical, labelled "Views": All open, then the saved
-  views with their layout icon, then "New view"); the footer holds the sync
-  summary and the language switch.
+  (`UNavigationMenu`, vertical, labelled "Views": All open `/`, Today
+  `/today`, Upcoming `/upcoming`, then under "Projects" each live project
+  `/projects/<id>`, each with the core's count from `catalog.nav` as a badge (the header shows the same count);
+  then under "Saved views" (RU "Сохранённые представления") the saved views `/views/<id>` with their layout
+  icon; then "New view"). The shown destination's link carries
+  `aria-current="page"`. Below `lg` the sidebar is a slideover opened by the
+  navbar's toggle; the footer holds the sync summary and the language switch.
 - **Panel** (`UDashboardPanel`): `UDashboardNavbar` with the title, the sync
   problem alert under it, then the view body: list, board or calendar.
 - **Task drawer** (`USlideover`, right side) opens over any view from the
@@ -338,7 +344,7 @@ library.
 | `SignInForm`, `RegisterForm`          | `UForm`, `UFormField`, `UInput`, `UButton`, `UAlert`            | one column; the error alert sits above the fields; the password rule is the field's help text |
 | `LocaleSwitch`                        | `UButton` × 2                                                   | current locale `solid`, other `outline`; could become a `UFieldGroup` |
 | `AppShell`                            | `UDashboardGroup`, `UDashboardSidebar`, `UDashboardPanel`, `UDashboardNavbar`, `UAlert` | see Layout                                    |
-| `ViewNav`                             | `UNavigationMenu`, `UButton`                                    | active item in `primary`; a problem view gets the warning icon |
+| `ViewNav`                             | `UNavigationMenu`, `UButton`                                    | active item in `primary`; built-ins and projects show a count badge; a problem view gets the warning icon |
 | `SyncStatus`                          | `UBadge`, `UButton`                                             | task count, last synced, badges per sync state, Sync now, Sign out |
 | `UpdatePrompt`                        | `UAlert` (info)                                                 | above everything, Reload action                                |
 | `ViewBody`                            | `UAlert` (warning)                                              | a view whose filter is invalid or deleted shows why            |

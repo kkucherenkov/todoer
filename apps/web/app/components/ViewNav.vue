@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { PROJECT_PREFIX } from '@todoer/client-core';
 import type { NavigationMenuItem } from '@nuxt/ui';
 
 const { t } = useI18n();
@@ -11,25 +12,43 @@ const ICONS: Record<string, string> = {
   list: 'i-lucide-list',
   kanban: 'i-lucide-kanban',
   calendar: 'i-lucide-calendar',
+  all: 'i-lucide-inbox',
+  today: 'i-lucide-calendar-check',
+  upcoming: 'i-lucide-calendar-clock',
+  project: 'i-lucide-folder',
 };
 
-const items = computed<NavigationMenuItem[]>(() => [
-  {
-    label: t('nav.all'),
-    icon: 'i-lucide-inbox',
-    to: { path: '/', query: viewQuery(route.query) },
-    exact: true,
-  },
-  ...(catalog.value?.views ?? []).map((v) => ({
+const link = (path: string) => ({
+  to: { path, query: viewQuery(route.query) },
+  // Exact: the link of the shown destination carries aria-current.
+  exact: true,
+});
+
+const items = computed<NavigationMenuItem[][]>(() => {
+  const entries = navEntries(catalog.value).map((e) => ({
+    ...link(e.path),
+    label: e.name ?? t(`nav.${e.key}`),
+    icon: e.name === null ? ICONS[e.key] : ICONS.project,
+    badge: e.count,
+    project: e.key.startsWith(PROJECT_PREFIX),
+  }));
+  const label = (text: string) => ({ label: text, type: 'label' as const });
+  const projects = entries.filter((e) => e.project);
+  const views = (catalog.value?.views ?? []).map((v) => ({
+    ...link(navPath(v.id)),
     label: v.name,
     icon: ICONS[v.layout] ?? ICONS.list,
-    to: { path: `/views/${v.id}`, query: viewQuery(route.query) },
     ...(v.problem !== null && {
       trailingIcon: 'i-lucide-triangle-alert',
       ui: { linkTrailingIcon: 'text-warning' },
     }),
-  })),
-]);
+  }));
+  return [
+    entries.filter((e) => !e.project),
+    projects.length ? [label(t('nav.projects')), ...projects] : [],
+    views.length ? [label(t('nav.saved')), ...views] : [],
+  ].filter((group) => group.length > 0);
+});
 </script>
 
 <template>
@@ -38,6 +57,7 @@ const items = computed<NavigationMenuItem[]>(() => [
       orientation="vertical"
       :items="items"
       :aria-label="$t('nav.title')"
+      data-testid="nav"
     />
     <UButton
       variant="ghost"
