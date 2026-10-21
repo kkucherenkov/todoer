@@ -30,11 +30,13 @@ test('a closed or unknown status keeps the sign-in form', async ({
 }) => {
   await page.goto('/');
   await expect(page.getByTestId('sign-in')).toBeVisible();
+  await expect(page.getByTestId('sign-in-form')).toBeVisible();
   await expect(page.getByTestId('register-form')).toHaveCount(0);
 
   await context.route(STATUS, (route) => route.fulfill({ status: 500 }));
   await page.reload();
   await expect(page.getByTestId('sign-in')).toBeVisible();
+  await expect(page.getByTestId('sign-in-form')).toBeVisible();
   await expect(page.getByTestId('register-form')).toHaveCount(0);
 });
 
@@ -58,6 +60,7 @@ test('an open instance shows registration; a refusal shows its reason', async ({
   await page.goto('/');
   await expect(page.getByTestId('register-form')).toBeVisible();
   await expect(page.getByTestId('sign-in')).toHaveCount(0);
+  await expect(page.getByTestId('sign-in-form')).toHaveCount(0);
 
   await page.getByTestId('email').fill('first@example.test');
   await page.getByTestId('password').fill('correct horse 9 battery!');

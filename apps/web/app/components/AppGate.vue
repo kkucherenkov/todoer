@@ -24,7 +24,7 @@ watch(
   <slot
     v-if="db && engine?.state === 'ready' && session?.state === 'signed-in'"
   />
-  <main v-else class="flex flex-col gap-6 p-6">
+  <main v-else class="mx-auto flex w-full max-w-sm flex-col gap-6 px-4 py-12">
     <header class="flex items-center justify-between gap-4">
       <h1 class="text-2xl font-semibold">{{ $t('app.title') }}</h1>
       <LocaleSwitch />
@@ -44,7 +44,7 @@ watch(
       variant="subtle"
       data-testid="engine-failed"
       :title="$t('failed.title')"
-      v-bind="engine.reason === null ? {} : { description: engine.reason }"
+      v-bind="engine.reason == null ? {} : { description: engine.reason }"
       :actions="[{ label: $t('failed.reload'), onClick: reload }]"
     />
     <div
