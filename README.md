@@ -266,7 +266,54 @@ network; the app talks to Postgres over the compose network.
 
 Browsers cannot sign in over plain HTTP, so put an HTTPS proxy in front and set
 `TRUST_PROXY`; see [Serving the web client](#serving-the-web-client).
-The image is built from the repository, not published to a registry.
+
+#### A released image instead of a checkout
+
+A `vX.Y.Z` tag runs `.github/workflows/release.yml`: it builds the image,
+proves it with the walking skeleton, and pushes
+`ghcr.io/kkucherenkov/todoer` as `X.Y.Z`, `X.Y`, `X` and `latest`. A host
+without git or a build toolchain then needs only this compose file, with the
+variables above in `.env` next to it:
+
+```yaml
+services:
+  postgres:
+    image: postgres:18.1-alpine
+    environment:
+      POSTGRES_USER: todoer
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?}
+      POSTGRES_DB: todoer
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U todoer"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  app:
+    image: ghcr.io/kkucherenkov/todoer:0.1.0
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql://todoer:${POSTGRES_PASSWORD}@postgres:5432/todoer
+      JWT_SECRET: ${JWT_SECRET:?}
+      TRUST_PROXY: ${TRUST_PROXY:-}
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+```
+
+To update, change the version and run `docker compose pull && docker compose up -d`;
+the entrypoint applies pending migrations. Running the workflow by hand
+builds and proves the image without pushing it. GHCR creates the package
+private on the first push; it is made public once, in the package's
+settings on GitHub, so hosts pull it without logging in.
 
 ### Browsers
 

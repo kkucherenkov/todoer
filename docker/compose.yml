@@ -24,6 +24,8 @@ services:
   # starts only Postgres: `docker compose -f docker/compose.yml --profile app up -d`.
   app:
     profiles: [app]
+    # The release workflow sets it to the GHCR name it pushes.
+    image: ${APP_IMAGE:-todoer-app}
     build:
       context: ..
       args:
