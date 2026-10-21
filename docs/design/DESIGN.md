@@ -228,7 +228,7 @@ RRULE field only.
 | Body, labels, controls   | `text-sm`        | 14 / 20 px         | `font-normal`   |
 | Row metadata             | `text-sm`        | 14 / 20 px         | `font-normal`, `text-muted` |
 | Section heading in drawer | `text-sm`       | 14 / 20 px         | `font-medium`   |
-| Calendar chip, day number, hints | `text-xs` | 12 / 16 px        | `font-normal`   |
+| Calendar chip, day label, hints | `text-xs` | 12 / 16 px        | `font-normal`   |
 
 Counts, dates and the sync time use `tabular-nums` so they do not jitter as
 they change. No text below 12 px. No negative letter-spacing: at 14 px it
@@ -353,9 +353,9 @@ library.
 | `ChildLinks`                          | `UCheckbox`, `button`                                           | a parent's other children: title, "Closed" / "Outside this filter" / "On this board", `#project`; never counted |
 | `KanbanBoard`, `KanbanColumn`, `KanbanCard` | `UButton`, `UIcon`, `UBadge`, `UDropdownMenu`             | columns scroll horizontally; card focusable, Enter opens; a parent card discloses all its children with `ChildLinks` |
 | `ColumnsDialog`                       | `UModal`, `UInput`, `UButton`, `UIcon`                          | rename inline, reorder with arrows, make completing, delete with inline confirm |
-| `CalendarView`, `CalendarDay`         | `UButton`, `UTabs`, `USkeleton`                                 | toolbar: previous, next, Today, title, Week/Month tabs         |
+| `CalendarView`, `CalendarDay`         | `UButton`, `UTabs`, `USkeleton`                                 | toolbar: previous, next, Today, title, Week/Month tabs; seven columns from a `@3xl` container, a list of days below it; every day shows its full date |
 | `PlacementChip`                       | `UIcon`, `UBadge`, `UDropdownMenu`                              | kind icon, title, repeat icon, priority, menu                  |
-| `MoveDateDialog`                      | `UModal`, `UInput type="date"`, `UButton`                       | the keyboard path for a calendar drag                          |
+| `MoveDateDialog`                      | `UModal`, `UInput type="date"`, `UButton`                       | the keyboard path for a calendar drag; pending while it writes, a refusal keeps it open with the date and a retry is the same write |
 | `ViewForm`                            | `UModal`, `UForm`, `UInput`, `UDropdownMenu`, `UTextarea`, `USwitch`, `URadioGroup`, `USelect` | name, Start from, filter tree or raw JSON, layout, sort; a refused save shows in an alert inside the form, every field kept |
 | `DeleteViewDialog`                    | `UModal`, `UButton`                                             | one delete in flight; returns to All open                      |
 | `FilterTree`, `FilterNode`            | `USelect`, `UCheckboxGroup`, `UInputNumber`, `UInput`, `USwitch`, `UDropdownMenu`, `UButton` | nested groups indent with a `border-l border-default` rule; limits line in `text-xs text-muted` |
@@ -363,7 +363,7 @@ library.
 | `SubtaskList` (W5)                    | `UCheckbox`, `UButton` (link), `UInput`                         | progress "1 of 3 done"; add on Enter                           |
 | `RecurrenceDialog` (W5)               | `UModal`, `USelect`, `UInputNumber`, `UCheckboxGroup`, `UInput`, `UAlert` | presets, weekdays, start, raw RRULE in mono, preview list or problem alert |
 | `DeleteTaskDialog` (W5)               | `UModal`, `UButton`, `UAlert`                                   | Cancel has focus so Enter alone deletes nothing; "This cannot be undone."; a refusal stays in the dialog as an alert |
-| toasts (`useMarked`, `useFail`, calendar moves) | `useToast()`                                          | title, task title as description, Undo action; refusals in `error` |
+| toasts (`useMarked`, `useFail`, calendar moves) | `useToast()`                                          | title, task title as description, Undo action; refusals in `error`; a refused calendar Undo offers the same Undo again |
 
 **Focus ring.** Nuxt UI 4.11 draws focus as a 3 px outline in the component's
 colour at 25 % opacity. Measured against the surface that is 1.5–2.3:1, below

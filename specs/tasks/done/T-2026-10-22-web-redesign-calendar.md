@@ -2,9 +2,11 @@
 
 - Created: 2026-10-22
 - Owner: claude
-- Status: in-progress
+- Status: done
+- Completed: 2026-10-22
+- Result: PR pending
 - Blockers: —
-- Spec: [web redesign context](T-2026-10-03-web-redesign-context.md),
+- Spec: [web redesign context](../active/T-2026-10-03-web-redesign-context.md),
   FR-001–003, FR-006–007; mockups `docs/design/mockups/calendar.vue`,
   `references/CalendarDay.vue`, `PlacementChip.vue`, `MoveDateDialog.vue`,
   `UX.md` "Calendar"; `docs/design/DESIGN.md` (calendar rows, keyboard paths)
@@ -87,28 +89,39 @@ how a person reads days and recovers from refusals.
 - **SC-001** On a phone and a desktop, in EN and RU, a person reads every day
   by its date, moves a placement by drag or by keyboard, and recovers from a
   refused move or Undo without re-entering the date.
-- [ ] every FR has a test that failed before the code made it pass
+- [x] every FR has a test that failed before the code made it pass —
+      except FR-005 and the subtask/original refusals of FR-004, which the
+      code already met: their tests pin it (characterization), recorded in
+      the steps
 - [ ] gates: `PR title (conventional commit)`, `Shell tests`,
-      `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+      `Workspace tests`, `Lint` — tick after the PR's CI; locally web
+      test, typecheck, `pnpm lint`, build and the calendar, offline, shell
+      and details e2e on chromium and firefox pass
+- [x] no document still asserts the behaviour this task replaced
+- [ ] dnote changelog line — the coordinator writes it
 
 ### Steps
 
-- [ ] T001 [FR-005] Failing-first unit spec: midnight rollover re-watches the
+- [x] T001 [FR-005] Failing-first unit spec: midnight rollover re-watches the
   next week's span without `at`, keeps it with `at` —
-  `apps/web/app/utils/layout.spec.ts`
-- [ ] T002 [FR-001–002] Failing-first e2e for the grid/list layout, full date
+  `apps/web/app/utils/calendar.spec.ts` on a real engine with a fake clock
+  (`apps/web/app/db/clockEngine.ts`, shared with `nav.spec.ts`). It passed
+  at once: `watchView` already re-watched on a new date; the test pins it
+- [x] T002 [FR-001–002] Failing-first e2e for the grid/list layout, full date
   labels and wrapped titles, then the container-query grid and labels —
   `CalendarView.vue`, `CalendarDay.vue`, `PlacementChip.vue`,
   `apps/web/e2e/calendar.spec.ts`
-- [ ] T003 [FR-003] Failing-first e2e for a refused Move to date… (a second
+- [x] T003 [FR-003] Failing-first e2e for a refused Move to date… (a second
   tab marks the occurrence done), then the dialog's pending/refusal/close and
-  the held move write — `MoveDateDialog.vue`, `CalendarView.vue`
-- [ ] T004 [FR-004] Failing-first e2e for Undo refusals (not synced yet,
+  the held move write — `MoveDateDialog.vue`, `CalendarView.vue`. The held
+  write is local to `CalendarView`: `utils/intent.ts` returns only the result,
+  and Undo needs the minted copy id
+- [x] T004 [FR-004] Failing-first e2e for Undo refusals (not synced yet,
   subtask, original gone) and the re-offered Undo — `CalendarView.vue`,
-  `apps/web/e2e/calendar.spec.ts`, `apps/web/e2e/offline.spec.ts`
-- [ ] T005 [FR-001–005] Gates (web test, typecheck, lint, build; calendar,
+  `apps/web/e2e/calendar.spec.ts`, `apps/web/e2e/offline.spec.ts`. The
+  re-offered Undo failed first; the subtask refusal already showed as a
+  failure toast and its test passed at once
+- [x] T005 [FR-001–005] Gates (web test, typecheck, lint, build; calendar,
   offline and shell e2e on chromium and firefox); update the plan's stage 5
   and `DESIGN.md` — `docs/plans/2026-10-03-plan-web-ux-redesign.md`
 - **Checkpoint:** the calendar matches the mockup on real data, and every
