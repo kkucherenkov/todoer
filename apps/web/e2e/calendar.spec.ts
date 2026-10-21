@@ -1,3 +1,4 @@
+import AxeBuilder from '@axe-core/playwright';
 import type { Page } from '@playwright/test';
 import {
   arrowTo,
@@ -536,4 +537,25 @@ test('calendar: Previous, Next and Today keep the keyboard focus', async ({
     await expect(button).toBeFocused();
   }
   await expect(title).toHaveText(week);
+});
+
+test('calendar: the Week / Month tabs keep text contrast', async ({
+  page,
+  account,
+}) => {
+  const view = await seedView(
+    page.request,
+    account.token,
+    'Week',
+    'a0',
+    'calendar',
+  );
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.goto(`/views/${view}`);
+  await expect(page.getByRole('tab', { name: 'Month' })).toBeVisible();
+  const { violations } = await new AxeBuilder({ page })
+    .include('[data-testid="calendar"] [role="tablist"]')
+    .withRules(['color-contrast'])
+    .analyze();
+  expect(violations).toEqual([]);
 });
