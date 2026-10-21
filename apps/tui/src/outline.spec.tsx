@@ -66,6 +66,7 @@ describe('OutlinePane', () => {
     const at = (title: string) =>
       lines(t.lastFrame()).find((l) => l.includes(title)) ?? '';
     expect(at('alpha')).toContain('p0');
+    expect(at('gamma')).toContain('gamma');
     expect(at('gamma')).not.toMatch(/\bp\d\b/);
   });
 

@@ -14,7 +14,7 @@ CREATE FUNCTION pg_temp.flip_priority(f jsonb) RETURNS jsonb AS $$
 BEGIN
   IF f ? 'priority' THEN
     RETURN jsonb_build_object('priority', (
-      SELECT coalesce(jsonb_agg(4 - n::int ORDER BY i), '[]'::jsonb)
+      SELECT coalesce(jsonb_agg(4 - n::int ORDER BY 4 - n::int), '[]'::jsonb)
         FROM jsonb_array_elements_text(f -> 'priority') WITH ORDINALITY AS e(n, i)
     ));
   ELSIF f ? 'and' OR f ? 'or' THEN
@@ -39,6 +39,8 @@ UPDATE "View"
        "updatedAt" = CURRENT_TIMESTAMP
  WHERE "filter"::text LIKE '%"priority"%'
    AND pg_temp.flip_priority("filter") <> "filter";
+
+DROP FUNCTION pg_temp.flip_priority(jsonb);
 
 -- AlterTable
 ALTER TABLE "Task" ALTER COLUMN "priority" SET DEFAULT 4;

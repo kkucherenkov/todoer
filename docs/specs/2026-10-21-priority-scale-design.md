@@ -69,7 +69,7 @@ One Prisma migration, plain SQL, in one transaction:
    `and`/`or`/`not` tree (`packages/specs/src/filter.ts`). Each `n` becomes
    `4 − n`; the tree around it is unchanged. Views whose filter changed get
    a new `seq` and `version + 1`, as tasks do. The walk is a temporary plpgsql function the migration
-   creates, uses and drops.
+   creates, uses and drops. Each mapped array is ordered by its new value.
 3. `ALTER TABLE "Task" ALTER COLUMN "priority" SET DEFAULT 4`.
 
 A view's `sort` needs no rewrite: `priority` stays the sort's name and now

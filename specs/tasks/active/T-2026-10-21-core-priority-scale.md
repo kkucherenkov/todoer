@@ -2,14 +2,14 @@
 
 - Created: 2026-10-21
 - Owner: claude
-- Status: ready
+- Status: in-progress
 - Blockers: —
 - Spec: maintainer request, 2026-10-03 — P0 highest, P4 lowest; maintainer
   decision, 2026-10-21 — change the stored values, not only their display;
   [web redesign plan](../../../docs/plans/2026-10-03-plan-web-ux-redesign.md),
   task C0
-- Plan: [design](../../../docs/specs/2026-10-21-priority-scale-design.md);
-  the implementation plan follows its approval
+- Plan: [design](../../../docs/specs/2026-10-21-priority-scale-design.md),
+  [implementation plan](../../../docs/plans/2026-10-21-plan-c0-priority-scale.md)
 
 ### Goal
 
@@ -92,9 +92,9 @@ change once, for every client at the same time.
   `packages/client-core/src/parse-quick-add.ts`. Landed: sort key ascending,
   parser default 4, specs for the p0 marker and the rank tie-break.
 - [x] T005 [FR-005] Output and usage in the CLI and the TUI; the web's
-  current screens show `P0`–`P4` until W2 restyles them —
+  current screens show p0–p3 and hide the default p4 until W2 restyles them —
   `apps/cli/src/`, `apps/tui/src/`, `apps/web/app/components/`. Landed: CLI
-  usage text; TUI and web show `p0`–`p3`, hide P4, blank/default is 4; web
+  usage text; TUI and web show p0–p3 and hide the default p4, blank/default is 4; web
   filter editor's new priority leaf is `[0]`.
 - **Checkpoint:** every client reads and writes the new scale; the dev
   database migrated without a manual fix-up, in the cut-over order the

@@ -75,6 +75,7 @@ describe('migration priority_p0_highest (ADR 0019)', () => {
     after.forEach((t, i) => {
       expect(t.seq).toBeGreaterThan(before[i]!.seq);
       expect(t.version).toBe(before[i]!.version + 1);
+      expect(t.fieldTs).toEqual(before[i]!.fieldTs);
     });
     expect(after[5]!.deletedAt).not.toBeNull();
   });
@@ -83,10 +84,11 @@ describe('migration priority_p0_highest (ADR 0019)', () => {
     const tag = { tag: TAG };
     const cases: [unknown, unknown][] = [
       [{ priority: [4, 0] }, { priority: [0, 4] }],
+      [{ priority: [3, 4] }, { priority: [0, 1] }],
       [{ and: [tag, { priority: [1] }] }, { and: [tag, { priority: [3] }] }],
       [
         { not: { or: [{ priority: [2, 3] }] } },
-        { not: { or: [{ priority: [2, 1] }] } },
+        { not: { or: [{ priority: [1, 2] }] } },
       ],
       [
         { or: [{ and: [{ not: { priority: [0] } }] }] },
@@ -122,6 +124,9 @@ describe('migration priority_p0_highest (ADR 0019)', () => {
   });
 
   it('defaults a new task to 4', async () => {
+    await prisma.$executeRawUnsafe(
+      'ALTER TABLE "Task" ALTER COLUMN "priority" SET DEFAULT 0',
+    );
     migrate();
     const id = uuidv7();
     await prisma.$executeRaw`
