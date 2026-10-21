@@ -70,8 +70,7 @@
     "group": "Layout",
     "list": "List",
     "kanban": "Kanban",
-    "calendar": "Calendar",
-    "unavailable": "{layout} is available for saved calendar views"
+    "calendar": "Calendar"
   },
   "list": {
     "quickAdd": "Quick add",

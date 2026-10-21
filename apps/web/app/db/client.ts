@@ -9,6 +9,7 @@ import type {
   Topics,
   Write,
 } from '@todoer/client-core';
+import { savedLayoutOf, type Layout } from '../utils/layout';
 import { id as mintId, opId as mintOpId } from './mint';
 import { CHANNEL, leaderLock, type FromLeader } from './protocol';
 
@@ -29,9 +30,14 @@ export type Db = {
   mint(draft: Draft): Write;
   /** Requests a write; a draft is minted first. A resend reuses the ids. */
   write(write: Draft | Write): Promise<Result>;
-  /** What this tab shows; publishes for other keys, or for another span,
-   *  are dropped. */
-  watch(view: string | null, task: string | null, span?: Span | null): void;
+  /** What this tab shows; `layout` overrides the saved one, null keeps it.
+   *  Publishes for another key, span or layout are dropped. */
+  watch(
+    view: string | null,
+    task: string | null,
+    span?: Span | null,
+    layout?: Layout | null,
+  ): void;
   topics: { [T in Topic]: Readonly<ShallowRef<Topics[T] | undefined>> };
   /** A message from another build arrived: this tab or the leader is stale. */
   stale: Readonly<ShallowRef<boolean>>;
@@ -77,12 +83,11 @@ export function connect(
   const stale = shallowRef(false);
   const pending = new Map<number, Pending>();
   let lastId = 0;
-  let watching: Command & { kind: 'watch'; span: Span | null } = {
-    kind: 'watch',
-    view: null,
-    task: null,
-    span: null,
-  };
+  let watching: Command & {
+    kind: 'watch';
+    span: Span | null;
+    layout: Layout | null;
+  } = { kind: 'watch', view: null, task: null, span: null, layout: null };
   const sameSpan = (a: Span | null, b: Span | null) =>
     a === b || (a?.from === b?.from && a?.to === b?.to);
   // Fire and forget: the next `ready` resends it, so nothing waits on it.
@@ -141,11 +146,16 @@ export function connect(
         if (m.topic === 'session' && m.value.state !== 'signed-in') {
           topics.view.value = topics.task.value = undefined;
         }
-        // Keyed topics: another tab's keys reach this channel too.
+        // Keyed topics: another tab's keys reach this channel too, and two
+        // tabs on one view may watch two layouts. Without an override the
+        // catalog names the saved one; the worker publishes it first.
         if (
           m.topic === 'view' &&
           (m.value.key !== watching.view ||
-            !sameSpan(m.value.span, watching.span))
+            !sameSpan(m.value.span, watching.span) ||
+            m.value.layout !==
+              (watching.layout ??
+                savedLayoutOf(watching.view, topics.catalog.value?.views)))
         ) {
           return;
         }
@@ -161,7 +171,13 @@ export function connect(
   // A hidden page shows nothing; one restored from the back-forward cache
   // shows what it did. Absent in Node (the specs).
   const hide = () =>
-    postWatch({ kind: 'watch', view: null, task: null, span: null });
+    postWatch({
+      kind: 'watch',
+      view: null,
+      task: null,
+      span: null,
+      layout: null,
+    });
   const show = (e: PageTransitionEvent) => e.persisted && postWatch(watching);
   globalThis.addEventListener?.('pagehide', hide);
   globalThis.addEventListener?.('pageshow', show);
@@ -192,12 +208,16 @@ export function connect(
     request,
     mint,
     write: (w) => request('opId' in w ? w : mint(w)),
-    watch(view, task, span = null) {
-      if (view !== watching.view || !sameSpan(span, watching.span)) {
+    watch(view, task, span = null, layout = null) {
+      if (
+        view !== watching.view ||
+        !sameSpan(span, watching.span) ||
+        layout !== watching.layout
+      ) {
         topics.view.value = undefined;
       }
       if (task !== watching.task) topics.task.value = undefined;
-      watching = { kind: 'watch', view, task, span };
+      watching = { kind: 'watch', view, task, span, layout };
       postWatch(watching);
     },
     topics,

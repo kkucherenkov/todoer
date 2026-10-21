@@ -8,17 +8,21 @@ export const isLayout = (value: unknown): value is Layout =>
 export const savedLayout = (value: unknown): Layout =>
   isLayout(value) ? value : 'list';
 
-export const layoutAvailable = (layout: Layout, saved: Layout) =>
-  saved === 'calendar' ? layout === 'calendar' : layout !== 'calendar';
+/** A key's saved layout: "All open" and a key the catalog lacks (not yet
+ *  published, or deleted) are list, as the engine projects them. */
+export const savedLayoutOf = (
+  key: string | null,
+  views: readonly { id: string; layout: string }[] | undefined,
+): Layout => savedLayout(views?.find((view) => view.id === key)?.layout);
 
-/** Resolves presentation only. It never changes the saved view. Calendar is
- * available transiently once core C1 can project the requested layout. */
+/** Resolves presentation only. It never changes the saved view: the engine
+ *  projects any layout for any view (`watch.layout`). */
 export function resolveLayout(query: unknown, savedValue: unknown) {
   const saved = savedLayout(savedValue);
   if (query === undefined) {
     return { layout: saved, normalize: false, override: undefined } as const;
   }
-  if (!isLayout(query) || !layoutAvailable(query, saved) || query === saved) {
+  if (!isLayout(query) || query === saved) {
     return { layout: saved, normalize: true, override: undefined } as const;
   }
   return { layout: query, normalize: false, override: query } as const;
@@ -42,15 +46,10 @@ export const viewQuery = <Q extends Query>(query: Q) => ({
   layout: undefined,
 });
 
-export function nextLayout(
-  current: Layout,
-  key: LayoutKey,
-  saved: Layout,
-): Layout {
-  const modes = LAYOUTS.filter((layout) => layoutAvailable(layout, saved));
-  if (key === 'Home') return modes[0]!;
-  if (key === 'End') return modes.at(-1)!;
-  const index = Math.max(0, modes.indexOf(current));
+export function nextLayout(current: Layout, key: LayoutKey): Layout {
+  if (key === 'Home') return LAYOUTS[0];
+  if (key === 'End') return LAYOUTS[LAYOUTS.length - 1]!;
   const step = key === 'ArrowRight' ? 1 : -1;
-  return modes[(index + step + modes.length) % modes.length]!;
+  const index = LAYOUTS.indexOf(current) + step + LAYOUTS.length;
+  return LAYOUTS[index % LAYOUTS.length]!;
 }

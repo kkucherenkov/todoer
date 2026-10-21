@@ -264,12 +264,13 @@ describe('watches and writes', () => {
     key: string,
     title: string,
     span: Span | null = null,
+    layout = span === null ? 'list' : 'calendar',
   ): FromWorker => ({
     type: 'publish',
     topic: 'view',
     value: {
       key,
-      layout: span === null ? 'list' : 'calendar',
+      layout,
       sort: 'manual',
       problem: null,
       today: '2026-10-02',
@@ -287,7 +288,7 @@ describe('watches and writes', () => {
   it('keeps a publish for its own span only', async () => {
     const { post } = fakeWorker();
     db = connect(BUILD);
-    db.watch('v1', null, WEEK);
+    db.watch('v1', null, WEEK, 'calendar');
     post(view('v1', 'mine', WEEK));
     await vi.waitFor(() => expect(db!.topics.view.value?.span).toEqual(WEEK));
     post(view('v1', 'other span', NEXT));
@@ -303,21 +304,72 @@ describe('watches and writes', () => {
     );
     expect(db.topics.view.value?.items).toEqual([{ title: 'mine' }]);
     // Another span: the grid never draws the old one's data.
-    db.watch('v1', null, NEXT);
+    db.watch('v1', null, NEXT, 'calendar');
     expect(db.topics.view.value).toBeUndefined();
   });
 
   it('on ready: the last watch is resent with its span', async () => {
     const { seen, post } = fakeWorker();
     db = connect(BUILD);
-    db.watch('v1', null, WEEK);
+    db.watch('v1', null, WEEK, 'calendar');
     await vi.waitFor(() => expect(requests(seen)).toHaveLength(1));
     seen.length = 0;
     post({ type: 'ready', build: BUILD });
     await vi.waitFor(() => expect(requests(seen)).toHaveLength(1));
     expect(requests(seen)).toEqual([
-      { kind: 'watch', view: 'v1', task: null, span: WEEK },
+      { kind: 'watch', view: 'v1', task: null, span: WEEK, layout: 'calendar' },
     ]);
+  });
+
+  const catalog = (layout: string): FromWorker => ({
+    type: 'publish',
+    topic: 'catalog',
+    value: {
+      views: [{ id: 'v1', layout } as never],
+      statuses: [],
+      projects: [],
+      tags: [],
+    },
+    build: BUILD,
+  });
+  /** A summary publish after the others: once it lands, they have too. */
+  const settled = async (post: (m: FromWorker) => void, tasks = 9) => {
+    post({ type: 'publish', topic: 'summary', value: { tasks }, build: BUILD });
+    await vi.waitFor(() => expect(db!.topics.summary.value).toEqual({ tasks }));
+  };
+
+  it('keeps a publish for its own layout override only', async () => {
+    const { seen, post } = fakeWorker();
+    db = connect(BUILD);
+    post(catalog('list'));
+    db.watch('v1', null, null, 'kanban');
+    await vi.waitFor(() =>
+      expect(requests(seen)).toEqual([
+        { kind: 'watch', view: 'v1', task: null, span: null, layout: 'kanban' },
+      ]),
+    );
+    post(view('v1', 'mine', null, 'kanban'));
+    post(view('v1', 'theirs', null, 'list'));
+    await settled(post);
+    expect(db.topics.view.value?.items).toEqual([{ title: 'mine' }]);
+    // Another layout: the board never draws the list's data, or back.
+    db.watch('v1', null);
+    expect(db.topics.view.value).toBeUndefined();
+    post(view('v1', 'saved', null, 'list'));
+    post(view('v1', 'override', null, 'kanban'));
+    await settled(post, 10);
+    expect(db.topics.view.value?.items).toEqual([{ title: 'saved' }]);
+  });
+
+  it('without an override, keeps the layout the catalog saved', async () => {
+    const { post } = fakeWorker();
+    db = connect(BUILD);
+    post(catalog('kanban'));
+    db.watch('v1', null);
+    post(view('v1', 'mine', null, 'kanban'));
+    post(view('v1', 'theirs', null, 'list'));
+    await settled(post);
+    expect(db.topics.view.value?.items).toEqual([{ title: 'mine' }]);
   });
 
   it('mints the copy id of a move once, and a resend reuses it', async () => {
@@ -384,7 +436,7 @@ describe('watches and writes', () => {
     post({ type: 'ready', build: BUILD });
     await vi.waitFor(() => expect(requests()).toHaveLength(2));
     expect(requests()).toEqual([
-      { kind: 'watch', view: 'v1', task: 't1', span: null },
+      { kind: 'watch', view: 'v1', task: 't1', span: null, layout: null },
       sent,
     ]);
   });

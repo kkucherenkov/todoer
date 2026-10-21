@@ -1,17 +1,14 @@
 <script setup lang="ts">
-// The watched view, drawn by its layout.
+// The watched view, drawn by the layout it was projected with.
 const view = useTopic('view');
-const route = useRoute();
-const layout = computed(
-  () => resolveLayout(route.query.layout, view.value?.layout).layout,
-);
+const layout = computed(() => view.value?.layout);
 </script>
 
 <template>
   <div
     id="view-content"
     role="tabpanel"
-    :aria-labelledby="`mode-${layout}`"
+    :aria-labelledby="layout && `mode-${layout}`"
     class="flex flex-col gap-3"
     data-testid="view"
   >

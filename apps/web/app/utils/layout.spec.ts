@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { layoutQuery, nextLayout, resolveLayout, viewQuery } from './layout';
+import {
+  layoutQuery,
+  nextLayout,
+  resolveLayout,
+  savedLayoutOf,
+  viewQuery,
+} from './layout';
 
 describe('transient layout routes', () => {
   it('uses the saved layout when the override is missing', () => {
@@ -23,8 +29,21 @@ describe('transient layout routes', () => {
     });
   });
 
-  it('normalizes invalid, repeated, redundant and unsupported overrides', () => {
-    for (const query of ['tiles', ['list', 'kanban'], null, 'calendar']) {
+  it('accepts every layout on every saved layout', () => {
+    for (const saved of ['list', 'kanban', 'calendar'] as const) {
+      for (const query of ['list', 'kanban', 'calendar'] as const) {
+        if (query === saved) continue;
+        expect(resolveLayout(query, saved)).toEqual({
+          layout: query,
+          normalize: false,
+          override: query,
+        });
+      }
+    }
+  });
+
+  it('normalizes invalid, repeated and redundant overrides', () => {
+    for (const query of ['tiles', ['list', 'kanban'], null, 'list']) {
       expect(resolveLayout(query, 'list')).toMatchObject({
         layout: 'list',
         normalize: true,
@@ -36,21 +55,22 @@ describe('transient layout routes', () => {
       normalize: true,
       override: undefined,
     });
-  });
-
-  it('normalizes every override on a saved Calendar until C1 lands', () => {
-    for (const query of ['list', 'kanban', 'calendar']) {
-      expect(resolveLayout(query, 'calendar')).toEqual({
-        layout: 'calendar',
-        normalize: true,
-        override: undefined,
-      });
-    }
     expect(resolveLayout(undefined, 'calendar')).toEqual({
       layout: 'calendar',
       normalize: false,
       override: undefined,
     });
+  });
+
+  it("reads a key's saved layout from the catalog; anything else is list", () => {
+    const views = [
+      { id: 'v1', layout: 'calendar' },
+      { id: 'v2', layout: 'tiles' },
+    ];
+    expect(savedLayoutOf('v1', views)).toBe('calendar');
+    expect(savedLayoutOf('v2', views)).toBe('list');
+    expect(savedLayoutOf('all', views)).toBe('list');
+    expect(savedLayoutOf('v1', undefined)).toBe('list');
   });
 
   it('preserves every other query while switching or changing view', () => {
@@ -73,23 +93,12 @@ describe('transient layout routes', () => {
 });
 
 describe('mode-group roving focus', () => {
-  it('wraps arrows and supports Home and End', () => {
-    expect(nextLayout('list', 'ArrowLeft', 'kanban')).toBe('kanban');
-    expect(nextLayout('kanban', 'ArrowRight', 'kanban')).toBe('list');
-    expect(nextLayout('kanban', 'Home', 'kanban')).toBe('list');
-    expect(nextLayout('list', 'End', 'kanban')).toBe('kanban');
-  });
-
-  it('skips Calendar until its saved projection is available', () => {
-    expect(nextLayout('kanban', 'ArrowRight', 'list')).toBe('list');
-    expect(nextLayout('list', 'ArrowLeft', 'list')).toBe('kanban');
-    expect(nextLayout('list', 'End', 'list')).toBe('kanban');
-  });
-
-  it('keeps roving focus on Calendar when it is the only projection', () => {
-    expect(nextLayout('calendar', 'ArrowRight', 'calendar')).toBe('calendar');
-    expect(nextLayout('calendar', 'ArrowLeft', 'calendar')).toBe('calendar');
-    expect(nextLayout('calendar', 'Home', 'calendar')).toBe('calendar');
-    expect(nextLayout('calendar', 'End', 'calendar')).toBe('calendar');
+  it('wraps arrows over all three modes and supports Home and End', () => {
+    expect(nextLayout('list', 'ArrowRight')).toBe('kanban');
+    expect(nextLayout('kanban', 'ArrowRight')).toBe('calendar');
+    expect(nextLayout('calendar', 'ArrowRight')).toBe('list');
+    expect(nextLayout('list', 'ArrowLeft')).toBe('calendar');
+    expect(nextLayout('kanban', 'Home')).toBe('list');
+    expect(nextLayout('list', 'End')).toBe('calendar');
   });
 });

@@ -11,8 +11,11 @@ const shown = useTopic('view');
 const key = computed(() =>
   route.path === '/' ? ALL : String(route.params.id ?? ''),
 );
-const ready = computed(() => shown.value?.key === key.value);
-const saved = computed(() => savedLayout(shown.value?.layout));
+// The published view names the layout it was projected with; the saved one
+// is the catalog's. A switch rewatches and clears the view topic, so the
+// mode group waits on the catalog, never on that topic: it keeps its focus.
+const ready = computed(() => catalog.value !== undefined);
+const saved = computed(() => savedLayoutOf(key.value, catalog.value?.views));
 const resolved = computed(() => resolveLayout(route.query.layout, saved.value));
 const current = computed(() => resolved.value.layout);
 const title = computed(() => {
@@ -36,7 +39,7 @@ watch(
 );
 
 function choose(layout: Layout) {
-  if (!ready.value || !layoutAvailable(layout, saved.value)) return;
+  if (!ready.value) return;
   void router.push({ query: layoutQuery(route.query, saved.value, layout) });
 }
 </script>
@@ -54,12 +57,7 @@ function choose(layout: Layout) {
         {{ title }}
       </h1>
     </div>
-    <ViewModeTabs
-      v-if="ready"
-      :layout="current"
-      :saved="saved"
-      @change="choose"
-    />
-    <p v-if="ready" class="view-count">{{ count }}</p>
+    <ViewModeTabs v-if="ready" :layout="current" @change="choose" />
+    <p v-if="shown?.key === key" class="view-count">{{ count }}</p>
   </header>
 </template>

@@ -2,11 +2,11 @@
 
 - Created: 2026-10-21
 - Owner: Codex (Web)
-- Status: paused
-- Blockers: C1 is not on `origin/main`; cross-projection overrides remain
-  unavailable (Calendar outside saved calendar views, and List/Kanban inside
-  them)
-- Spec: [web redesign context](T-2026-10-03-web-redesign-context.md), FR-001–003
+- Status: done
+- Completed: 2026-10-21
+- Result: PR pending
+- Blockers: —
+- Spec: [web redesign context](../active/T-2026-10-03-web-redesign-context.md), FR-001–003
 - Plan: [web UX redesign](../../../docs/plans/2026-10-03-plan-web-ux-redesign.md), stage 1
 
 ### Goal
@@ -31,9 +31,11 @@ and URL history and the task drawer must preserve the user's current context.
    **When** the drawer closes, **Then** all non-task query parameters survive
    and focus returns to the initiator or a stable workspace fallback.
 5. **Given** a saved calendar view, **When** Calendar is active, **Then** its
-   `mode` and `at` query survive layout and drawer navigation; a non-calendar
-   saved view does not offer transient Calendar until C1 supplies its
-   projection.
+   `mode` and `at` query survive layout and drawer navigation.
+6. **Given** a saved list view, **When** it opens with `?layout=calendar`,
+   **Then** it shows calendar placements; **given** a saved calendar view,
+   **when** the user selects List or Kanban, **then** it shows that layout's
+   projection; without the override either view opens in its saved layout.
 
 ### Requirements
 
@@ -49,11 +51,11 @@ and URL history and the task drawer must preserve the user's current context.
   invalid override, push user switches, preserve every unrelated query
   parameter, and discard the old override when navigating to another view
   (← context FR-002; redesign plan stage 1).
-- **FR-004** While C1's watch-layout projection contract is absent, Web MUST
-  keep Calendar unavailable for non-calendar saved views and MUST keep List
-  and Kanban unavailable for saved calendar views; saved calendar views MUST
-  retain `mode`/`at` and their span watch
-  (← W1 brief option (a); core C1 dependency).
+- **FR-004** Web MUST offer every layout on every view: it MUST send the
+  override in `watch.layout` (null without one), watch with a span whenever
+  the effective layout is Calendar, and accept a published view only when its
+  key, span and layout match the watch (the saved layout, from the catalog,
+  when there is no override) (← core C1 `watch.layout`).
 - **FR-005** Closing the task drawer MUST remove only `task`, preserve the
   filter/layout/calendar query, and restore focus to the opening control or,
   if it disappeared, the nearest task surface or workspace heading
@@ -65,9 +67,11 @@ and URL history and the task drawer must preserve the user's current context.
   replace it away without changing the saved view (FR-003, T002).
 - Switching back to the saved layout → remove the redundant override by push,
   so reload still derives the saved default (FR-003, T002).
-- A saved calendar opened with `layout=list|kanban` → normalize the unsupported
-  override away with replace, keep the calendar span watch, and preserve the
-  surviving `mode`/`at` query (FR-003–004, T002).
+- A saved calendar opened with `layout=list|kanban` → that projection, with no
+  span in the watch; `mode`/`at` stay in the URL for the way back
+  (FR-003–004, T006).
+- Two tabs on one view in two layouts → each keeps only its own layout's
+  publish (FR-004, T006).
 - Drawer opener disappears after a task leaves the filter → focus the nearest
   remaining task surface, then the workspace heading (FR-005, T003).
 - Mobile mode controls and drawer close control → at least 44 by 44 CSS pixels
@@ -102,9 +106,15 @@ and URL history and the task drawer must preserve the user's current context.
   `apps/web/app/assets/css/main.css`, `apps/web/e2e/`
 - [x] T005 [FR-001–005] Update affected documentation and run the Web tests,
   typecheck, workspace lint and production build — `docs/`, `specs/tasks/`
-- **Checkpoint:** W1's shell and supported transient layouts are tested and
-  production-built; Calendar's remaining dependency is explicitly C1.
+- [x] T006 [FR-003–004] After C1: failing-first unit (`layout.spec.ts`,
+  `client.spec.ts`) and e2e (`shell.spec.ts`) tests, then send
+  `watch.layout`, match publishes on layout, and remove the availability
+  restriction and its UI — `apps/web/app/utils/layout.ts`,
+  `apps/web/app/db/client.ts`, `apps/web/app/composables/useDb.ts`,
+  `apps/web/app/components/`
+- **Checkpoint:** W1's shell and all three transient layouts on every view
+  are tested and production-built.
 
 ### Open questions
 
-None. The brief selects saved-calendar-only behavior when C1 has not landed.
+None.

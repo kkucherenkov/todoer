@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { Layout, LayoutKey } from '~/utils/layout';
 
-const props = defineProps<{ layout: Layout; saved: Layout }>();
+const props = defineProps<{ layout: Layout }>();
 const emit = defineEmits<{ change: [layout: Layout] }>();
 const { t } = useI18n();
 const group = ref<HTMLElement | null>(null);
@@ -17,7 +17,6 @@ const modes = computed(() =>
         : value === 'kanban'
           ? 'i-lucide-kanban'
           : 'i-lucide-calendar',
-    available: layoutAvailable(value, props.saved),
   })),
 );
 
@@ -28,7 +27,6 @@ function focusMode(value: Layout) {
 }
 
 async function choose(value: Layout) {
-  if (!layoutAvailable(value, props.saved)) return;
   pendingFocus.value = value;
   emit('change', value);
   if (value !== props.layout) return;
@@ -50,7 +48,7 @@ watch(
 function navigate(event: KeyboardEvent, value: Layout) {
   if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
   event.preventDefault();
-  void choose(nextLayout(value, event.key as LayoutKey, props.saved));
+  void choose(nextLayout(value, event.key as LayoutKey));
 }
 </script>
 
@@ -71,13 +69,8 @@ function navigate(event: KeyboardEvent, value: Layout) {
       class="mode-tab"
       :data-layout="mode.value"
       :aria-selected="layout === mode.value"
-      :aria-disabled="!mode.available || undefined"
       :aria-label="mode.label"
-      :title="
-        mode.available
-          ? mode.label
-          : $t('layouts.unavailable', { layout: mode.label })
-      "
+      :title="mode.label"
       :tabindex="layout === mode.value ? 0 : -1"
       aria-controls="view-content"
       @click="choose(mode.value)"
