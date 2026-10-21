@@ -4,7 +4,7 @@
 - Owner: Codex (Web)
 - Status: done
 - Completed: 2026-10-21
-- Result: PR pending
+- Result: https://github.com/kkucherenkov/todoer/pull/51
 - Blockers: —
 - Spec: [web redesign context](../active/T-2026-10-03-web-redesign-context.md), FR-001–003
 - Plan: [web UX redesign](../../../docs/plans/2026-10-03-plan-web-ux-redesign.md), stage 1
