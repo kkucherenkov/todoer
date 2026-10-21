@@ -1,13 +1,6 @@
-import sqlite3InitModule, { type Sqlite3Static } from '@sqlite.org/sqlite-wasm';
-import {
-  cookieTokenSource,
-  createEngine,
-  localDate,
-  type Catalog,
-  type Transport,
-} from '@todoer/client-core';
-import { openWasmStore } from '@todoer/client-core/sqlite-wasm';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { localDate, type Catalog } from '@todoer/client-core';
+import { describe, expect, it } from 'vitest';
+import { clockEngine, row } from '../db/clockEngine';
 import { isBuiltIn, navEntries, navPath, routeKey, shownCount } from './nav';
 
 const catalog = (nav: Catalog['nav'], projects: Catalog['projects'] = []) =>
@@ -81,75 +74,27 @@ describe('the count a destination shows', () => {
 });
 
 describe('navigation counts across midnight', () => {
-  let sqlite3: Sqlite3Static;
-  beforeAll(async () => {
-    const init = sqlite3InitModule as (m: object) => Promise<Sqlite3Static>;
-    sqlite3 = await init({ print() {}, printErr() {} });
-  });
-
   it('the next tick after local midnight moves a task due tomorrow into Today, no reload', async () => {
     // A fake clock: 23:59 local, then 00:01 the next day.
-    let clock = new Date(2026, 9, 21, 23, 59);
     const tomorrow = localDate(new Date(2026, 9, 22, 12));
-    const row = (table: string, id: string, fields: object) => ({
-      table,
-      id,
-      seq: 1,
-      row: { id, deletedAt: null, version: 1, ...fields },
-    });
-    let pulled = false;
-    const send: Transport = () => {
-      const changes = pulled
-        ? []
-        : [
-            row('status', 's', {
-              name: 'To do',
-              rank: 'a0',
-              completing: false,
-            }),
-            row('task', 't', {
-              title: 'Pay rent',
-              priority: 4,
-              rank: 'a0',
-              dueOn: tomorrow,
-            }),
-          ];
-      pulled = true;
-      return Promise.resolve(
-        new Response(JSON.stringify({ cursor: 1, results: [], changes }), {
-          headers: { 'content-type': 'application/json' },
+    const { engine, clock, latest } = await clockEngine(
+      [
+        row('status', 's', { name: 'To do', rank: 'a0', completing: false }),
+        row('task', 't', {
+          title: 'Pay rent',
+          priority: 4,
+          rank: 'a0',
+          dueOn: tomorrow,
         }),
-      );
-    };
-    const grant = () => ({
-      accessToken: `${btoa(JSON.stringify({ sub: 'u1' })).replace(/=+$/, '')}.mac`,
-      accessExpiresAt: new Date(clock.getTime() + 3_600_000).toISOString(),
-    });
-    const auth = {
-      login: () => Promise.resolve(grant()),
-      register: () => Promise.resolve(grant()),
-      refresh: () => Promise.resolve(grant()),
-      logout: () => Promise.resolve(undefined),
-    };
-    let latest: Catalog | undefined;
-    const engine = createEngine({
-      store: openWasmStore(sqlite3, new sqlite3.oo1.DB(':memory:', 'c')),
-      auth,
-      tokens: cookieTokenSource(auth, () => clock),
-      send,
-      now: () => clock,
-      newId: () => crypto.randomUUID(),
-      publish: (topic, value) => {
-        if (topic === 'catalog') latest = value as Catalog;
-      },
-    });
-    await engine.start(true);
+      ],
+      new Date(2026, 9, 21, 23, 59),
+    );
     const count = (key: string) =>
-      navEntries(latest).find((e) => e.key === key)?.count;
+      navEntries(latest.catalog).find((e) => e.key === key)?.count;
     expect(count('today')).toBe(0);
     expect(count('upcoming')).toBe(1);
 
-    clock = new Date(2026, 9, 22, 0, 1);
+    clock.now = new Date(2026, 9, 22, 0, 1);
     await engine.handle({ kind: 'sync', reason: 'tick' });
     expect(count('today')).toBe(1);
     expect(count('upcoming')).toBe(0);
