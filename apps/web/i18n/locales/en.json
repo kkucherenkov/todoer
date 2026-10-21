@@ -98,7 +98,14 @@
     "doneRecurring": "Done for {occurrence}, next {next}",
     "undo": "Undo",
     "empty": "No open tasks.",
-    "openParent": "Open parent: {title}"
+    "openParent": "Open parent: {title}",
+    "subtasksOf": "Subtasks of {title}, {done} of {total} closed",
+    "hidden": "+{n} hidden",
+    "outside": "Outside this filter",
+    "childClosed": "Closed",
+    "indent": "Make subtask of {title}",
+    "indentNone": "Make subtask of the task above",
+    "outdent": "Make top-level"
   },
   "drawer": {
     "title": "Task",
@@ -191,7 +198,8 @@
     "columns": "Columns",
     "noColumns": "Columns appear after the first sync.",
     "moveTo": "Move to",
-    "completing": "Completing column"
+    "completing": "Completing column",
+    "onBoard": "On this board"
   },
   "columns": {
     "title": "Columns",

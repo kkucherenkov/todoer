@@ -17,6 +17,7 @@ const emit = defineEmits<{
 }>();
 const { t } = useI18n();
 const open = useOpenTask();
+const folded = useFolded();
 const card = ref<HTMLElement | null>(null);
 
 // Every drop has a keyboard and touch path: native DnD needs a pointer.
@@ -84,6 +85,35 @@ const actions = computed<DropdownMenuItem[]>(() => [
       >
         {{ item.parentTitle }}
       </UButton>
+      <template v-if="item.subtasks">
+        <UButton
+          variant="ghost"
+          color="neutral"
+          size="xs"
+          class="self-start tabular-nums"
+          :icon="
+            folded.isFolded(String(item.id))
+              ? 'i-lucide-chevron-right'
+              : 'i-lucide-chevron-down'
+          "
+          :aria-expanded="!folded.isFolded(String(item.id))"
+          :aria-controls="`card-children-${item.id}`"
+          :aria-label="
+            $t('list.subtasksOf', { title: item.title, ...item.subtasks })
+          "
+          @click.stop="folded.toggle(String(item.id))"
+        >
+          {{ item.subtasks.done }}/{{ item.subtasks.total }}
+        </UButton>
+        <ChildLinks
+          v-show="!folded.isFolded(String(item.id))"
+          :id="`card-children-${item.id}`"
+          :parent="item"
+          :items="item.children ?? []"
+          board
+          class="border-l border-default pl-2"
+        />
+      </template>
       <div class="flex flex-wrap gap-x-2 gap-y-1 text-sm text-muted">
         <span v-if="item.project">#{{ item.project }}</span>
         <span v-for="tag in item.tags" :key="tag">{{ tag }}</span>

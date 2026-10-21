@@ -1,4 +1,4 @@
-import type { Ref } from 'vue';
+import { ref, type Ref } from 'vue';
 import type { Placement } from '@todoer/client-core';
 
 export const DRAG_TYPE = 'application/x-todoer-task';
@@ -13,12 +13,14 @@ let dragging: string | null = null;
  * Drag a row to a gap of `container` (rows carry `data-task-id`). The gap is
  * the pointer's Y against each row's midpoint, the dragged row excluded;
  * `drop` gets the id of the row it now follows, null for first. Shared by the
- * list and, per column, the board.
+ * list and, per column, the board. `accepts` refuses a gap: no line is drawn
+ * there and the browser shows no drop.
  */
 export function useDrag(
   container: Ref<HTMLElement | null>,
   drop: (taskId: string, after: string | null) => void,
   enabled: () => boolean = () => true,
+  accepts: (taskId: string, after: string | null) => boolean = () => true,
 ) {
   /** The id of the row the insertion line is drawn above; null: no line. */
   const line = ref<string | null>(null);
@@ -58,8 +60,13 @@ export function useDrag(
     containerEvents: {
       onDragover: (e: DragEvent) => {
         if (!enabled() || dragging === null) return;
+        const { after, before } = gap(e.clientY);
+        if (!accepts(dragging, after)) {
+          line.value = null;
+          return;
+        }
         e.preventDefault();
-        line.value = gap(e.clientY).before;
+        line.value = before;
       },
       onDragleave: (e: DragEvent) => {
         if (!container.value?.contains(e.relatedTarget as Node | null)) {

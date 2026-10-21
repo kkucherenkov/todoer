@@ -301,6 +301,8 @@ a name assembled at runtime is not bundled and renders as nothing.
 | Edit, delete            | `i-lucide-pencil`, `i-lucide-trash-2` |
 | Clear a field           | `i-lucide-x`                  |
 | Parent link, subtask of | `i-lucide-corner-down-right`, `i-lucide-corner-up-left` (W5) |
+| Fold, unfold children  | `i-lucide-chevron-down`, `i-lucide-chevron-right` |
+| Indent, outdent         | `i-lucide-indent-increase`, `i-lucide-indent-decrease` |
 
 Icons are 20 px in `md` buttons, 16 px in `sm`/`xs`, 14 px (`size-3.5`) in
 calendar chips. An icon-only button always has an `aria-label`.
@@ -341,8 +343,9 @@ library.
 | `UpdatePrompt`                        | `UAlert` (info)                                                 | above everything, Reload action                                |
 | `ViewBody`                            | `UAlert` (warning)                                              | a view whose filter is invalid or deleted shows why            |
 | `QuickAdd`                            | `UInput`, `UButton`, `UFormField`, `USelect`                      | title and Add task first; details reveal project/tags/priority/scheduled/due; the title keeps `#project @tag pN`; refused drafts stay; an out-of-filter add links to All open |
-| `TaskList`, `TaskRow`                 | `UButton`, `UBadge`, `UDropdownMenu`                            | round check, title, parent link (W5), `#project`, `@tags`, priority, occurrence, due, status; actions menu |
-| `KanbanBoard`, `KanbanColumn`, `KanbanCard` | `UButton`, `UIcon`, `UBadge`, `UDropdownMenu`             | columns scroll horizontally; card focusable, Enter opens       |
+| `TaskList`, `TaskGroup`, `TaskRow`    | `UButton`, `UBadge`, `UDropdownMenu`                            | one `h2` section per project, "No project" last, with its task count; a listed subtask nests under its listed parent; round check, title, parent link (W5) unless nested under that parent, `#project`, `@tags`, priority, occurrence, due, status, progress disclosure `n/m`; actions menu with Indent/Outdent |
+| `ChildLinks`                          | `UCheckbox`, `button`                                           | a parent's other children: title, "Closed" / "Outside this filter" / "On this board", `#project`; never counted |
+| `KanbanBoard`, `KanbanColumn`, `KanbanCard` | `UButton`, `UIcon`, `UBadge`, `UDropdownMenu`             | columns scroll horizontally; card focusable, Enter opens; a parent card discloses all its children with `ChildLinks` |
 | `ColumnsDialog`                       | `UModal`, `UInput`, `UButton`, `UIcon`                          | rename inline, reorder with arrows, make completing, delete with inline confirm |
 | `CalendarView`, `CalendarDay`         | `UButton`, `UTabs`, `USkeleton`                                 | toolbar: previous, next, Today, title, Week/Month tabs         |
 | `PlacementChip`                       | `UIcon`, `UBadge`, `UDropdownMenu`                              | kind icon, title, repeat icon, priority, menu                  |
