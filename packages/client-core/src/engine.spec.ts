@@ -1813,11 +1813,20 @@ describe('layout override on watch', () => {
   it('two tabs watching the same view with different layouts each receive their own', async () => {
     const srv = server(TODO, LIST_VIEW, DAILY);
     const e = await signedIn(srv);
-    published.view = [];
     await e.handle({ kind: 'watch', view: V, task: null, layout: 'list' }, 'A');
     await e.handle(
       { kind: 'watch', view: V, task: null, layout: 'kanban' },
       'B',
+    );
+    published.view = [];
+    await e.handle(
+      {
+        kind: 'edit',
+        opId: uuid(0xa9),
+        taskId: String(DAILY[1].id),
+        changes: { title: 'Updated' },
+      },
+      'A',
     );
     const views = published.view?.filter((v) => v.key === V);
     expect(views?.some((v) => v.layout === 'list')).toBe(true);

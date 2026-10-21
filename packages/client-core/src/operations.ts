@@ -1234,6 +1234,7 @@ export type TaskDetails = Shown & {
   dtstart: string | null;
   /** Live subtasks by rank, then id. */
   subtasks: Subtask[];
+  children?: ChildItem[];
 };
 
 /** One task for the drawer: the row, labels, current occurrence, column,
@@ -1246,21 +1247,16 @@ export function taskDetails(
 ): TaskDetails | null {
   const found = due(store, today, null).find(({ row }) => row.id === id);
   if (found === undefined) return null;
-  const { notes, rrule, dtstart, occurrence } = found.row;
-  const marks = occurrences(store);
-  // A series that ended has no axis to tick on; one-off marks left from when
-  // the parent was one-off no longer apply (departure 8).
-  const ended = typeof rrule === 'string' && occurrence === null;
-  const subtasks = liveTasks(tasks(store))
-    .filter((t) => t.parentId === id)
-    .sort((a, b) => compareStrings(a.rank, b.rank) || compareIds(a, b))
-    .map((t) => ({
-      id: String(t.id),
-      title: String(t.title),
-      closed: !ended && isClosed(stateOf(marks, String(t.id))(occurrence)),
-    }));
+  const { notes, rrule, dtstart } = found.row;
+  const children = childrenOf(store, new Set());
+  const kids = children(found.row);
+  const subtasks = kids.map(({ id, title, closed }) => ({
+    id,
+    title,
+    closed,
+  }));
   return {
-    ...itemOf(titlesOf(store))(found),
+    ...itemOf(titlesOf(store), children)(found),
     notes: typeof notes === 'string' ? notes : null,
     rrule: typeof rrule === 'string' ? rrule : null,
     dtstart: typeof dtstart === 'string' ? dtstart : null,

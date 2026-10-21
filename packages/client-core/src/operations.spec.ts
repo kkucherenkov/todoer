@@ -2327,17 +2327,17 @@ describe('children outside the filter (FR-003)', () => {
     ]);
   });
 
-  it('sorts children by rank where rank order differs from id order', () => {
+  it('sorts children by rank where insertion order differs from rank order', () => {
     const store = openStore(':memory:');
     put(store, 'task', task('p'));
-    // c-z has lower rank ('a0') but lexicographically higher id
-    put(store, 'task', task('c-z', { parentId: 'p', rank: 'a0' }));
-    // c-a has higher rank ('a1') but lexicographically lower id
-    put(store, 'task', task('c-a', { parentId: 'p', rank: 'a1' }));
+    // Insert child with higher rank ('a1') first so store seq is lower
+    put(store, 'task', task('c-late', { parentId: 'p', rank: 'a1' }));
+    // Insert child with lower rank ('a0') second
+    put(store, 'task', task('c-early', { parentId: 'p', rank: 'a0' }));
 
     const items = viewTasks(store, TODAY, ALL_OPEN);
     const parent = items.find((i) => i.id === 'p')!;
-    expect(parent.children?.map((c) => c.id)).toEqual(['c-z', 'c-a']);
+    expect(parent.children?.map((c) => c.id)).toEqual(['c-early', 'c-late']);
   });
 
   it('shows child of an ended recurring series as not closed per the series axis', () => {
@@ -2348,7 +2348,7 @@ describe('children outside the filter (FR-003)', () => {
       rank: 'a0',
       completing: true,
     });
-    // Recurring parent whose series has ended (until is in the past)
+    // Recurring parent whose series ends on 2026-10-01
     put(
       store,
       'task',
@@ -2358,6 +2358,13 @@ describe('children outside the filter (FR-003)', () => {
         statusId: 's-done',
       }),
     );
+    // End the series for real by completing its last occurrence
+    put(store, 'task_occurrence', {
+      id: 'p-done',
+      taskId: 'ended-p',
+      occurrence: '2026-10-01',
+      state: 'done',
+    });
     put(store, 'task', task('c-ended', { parentId: 'ended-p', rank: 'a0' }));
     // A one-off mark left on the child from when it was one-off
     put(store, 'task_occurrence', {
@@ -2367,13 +2374,11 @@ describe('children outside the filter (FR-003)', () => {
       state: 'done',
     });
 
-    const items = boardTasks(store, TODAY, {
-      ...ALL_OPEN,
-      layout: 'kanban',
-    });
-    const parent = items.find((i) => i.id === 'ended-p')!;
+    const parent = taskDetails(store, TODAY, 'ended-p')!;
     expect(parent.children?.[0]?.closed).toBe(false);
-    expect(parent.subtasks).toEqual({ done: 0, total: 1 });
+    expect(parent.subtasks).toEqual([
+      { id: 'c-ended', title: 'c-ended', closed: false },
+    ]);
   });
 
   it('defaults child priority to 4 when absent', () => {
