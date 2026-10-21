@@ -328,6 +328,7 @@ describe('watches and writes', () => {
       views: [{ id: 'v1', layout } as never],
       statuses: [],
       projects: [],
+      nav: [],
       tags: [],
     },
     build: BUILD,
