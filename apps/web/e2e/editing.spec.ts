@@ -307,6 +307,8 @@ test('editing: recurrence', async ({ page, account, cli }) => {
   });
   await page.goto('/');
   await open('Gym');
+  // Repeat sits with the other details, which stay open from here on.
+  await drawer.getByText('More details').click();
 
   // One-off to weekly: the form previews what Save will write.
   await drawer.getByRole('button', { name: 'Repeat…' }).click();
@@ -428,8 +430,9 @@ test('editing: recurrence', async ({ page, account, cli }) => {
   await page.reload();
   await open('Pack');
   await expect(drawer).toContainText('Subtask of Move');
-  await expect(drawer.getByRole('button', { name: 'Repeat…' })).toHaveCount(0);
-  await expect(
-    drawer.getByRole('button', { name: 'Edit repeat…' }),
-  ).toHaveCount(0);
+  await drawer.getByText('More details').click();
+  await expect(drawer.getByRole('button', { name: 'Repeat…' })).toBeDisabled();
+  await expect(drawer).toContainText(
+    'Subtasks cannot have their own repeat rule.',
+  );
 });

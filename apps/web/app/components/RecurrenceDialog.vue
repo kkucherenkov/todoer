@@ -14,6 +14,7 @@ import {
   toRrule,
   type Freq,
 } from '~/utils/recurrence';
+import { createIntent } from '~/utils/intent';
 
 const props = defineProps<{ open: boolean; task: TaskDetails }>();
 const emit = defineEmits<{ close: [] }>();
@@ -128,9 +129,13 @@ function pick(value: string) {
   mode.value = now;
 }
 
+// A refused save keeps the form; saving the same rule again resends the
+// same write.
+const setRule = createIntent(db);
 async function save() {
+  if (saving.value) return;
   saving.value = true;
-  const result = await db.write({
+  const result = await setRule({
     kind: 'setRule',
     taskId: String(props.task.id),
     rule:

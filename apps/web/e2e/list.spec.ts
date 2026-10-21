@@ -258,6 +258,7 @@ test('list: quick-add, done, undo, reorder, recurring', async ({
   await drawer.getByLabel('Title').fill('Buy oat milk');
   await drawer.getByLabel('Notes').fill('Two cartons');
   await drawer.getByLabel('Notes').blur();
+  await drawer.getByText('More details').click();
   await drawer.getByRole('button', { name: 'Project' }).click();
   await page.keyboard.type('work');
   await page.getByRole('option', { name: /^Create .work.$/ }).click();
@@ -310,6 +311,7 @@ test('list: quick-add, done, undo, reorder, recurring', async ({
   await expect(drawer.getByRole('textbox', { name: 'Due' })).toHaveValue(
     day(1),
   );
+  await drawer.getByText('More details').click();
   await expect(drawer.getByRole('radio', { name: 'p3' })).toBeChecked();
   await expect(drawer.getByRole('button', { name: 'Project' })).toContainText(
     'work',

@@ -312,6 +312,7 @@ test('offline: a rule cannot be set on a task the server has not seen', async ({
   await input.press('Enter');
   const queued = await page.getByTestId('pending').textContent();
   await page.getByTestId('task-title').filter({ hasText: 'Plan' }).click();
+  await page.getByText('More details').click();
   await page.getByRole('button', { name: 'Repeat…' }).click();
   const form = page.getByRole('dialog').last();
   await form.getByRole('combobox', { name: 'Repeat' }).click();

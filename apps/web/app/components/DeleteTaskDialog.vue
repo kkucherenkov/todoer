@@ -1,5 +1,13 @@
 <script setup lang="ts">
-const props = defineProps<{ open: boolean; title: string; subtasks: number }>();
+const props = defineProps<{
+  open: boolean;
+  title: string;
+  subtasks: number;
+  /** The delete is being written. */
+  pending: boolean;
+  /** Why the last confirm was refused; confirming again retries it. */
+  error: string | null;
+}>();
 const emit = defineEmits<{ confirm: []; close: [] }>();
 
 const { locale, t } = useI18n();
@@ -39,6 +47,14 @@ const text = computed(() =>
     <template #body>
       <p>{{ text }}</p>
       <p class="mt-1 text-sm text-muted">{{ $t('deleteTask.irreversible') }}</p>
+      <UAlert
+        v-if="error"
+        class="mt-3"
+        color="error"
+        variant="subtle"
+        role="alert"
+        :title="error"
+      />
       <div class="mt-4 flex justify-end gap-2">
         <UButton
           ref="cancelButton"
@@ -50,6 +66,7 @@ const text = computed(() =>
         </UButton>
         <UButton
           color="error"
+          :loading="pending"
           data-testid="confirm-delete"
           @click="emit('confirm')"
         >
