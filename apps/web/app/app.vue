@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import * as uiLocales from '@nuxt/ui/locale';
 
-const { locale } = useI18n();
+const { locale, t } = useI18n();
 const uiLocale = computed(() => uiLocales[locale.value]);
-// The document language follows the switch: screen readers pick the voice
-// from it, and the static index.html carries none.
-useHead({ htmlAttrs: { lang: locale } });
+// The static index.html has neither a language nor a title. The language
+// follows the switch: screen readers pick the voice from it.
+useHead({ htmlAttrs: { lang: locale }, title: () => t('app.title') });
 </script>
 
 <template>
