@@ -1,7 +1,5 @@
 <script setup lang="ts">
 const route = useRoute();
-const db = useDb();
-const fail = useFail();
 const catalog = useTopic('catalog');
 const view = computed(() =>
   catalog.value?.views.find((v) => v.id === route.params.id),
@@ -9,14 +7,6 @@ const view = computed(() =>
 useWatch(() => String(route.params.id));
 const editing = ref(false);
 const deleting = ref(false);
-
-async function remove() {
-  if (!view.value) return;
-  const result = await db.write({ kind: 'deleteView', id: view.value.id });
-  if (!result.ok) return fail(result);
-  deleting.value = false;
-  await navigateTo('/');
-}
 </script>
 
 <template>
@@ -43,20 +33,7 @@ async function remove() {
         {{ $t('viewForm.delete') }}
       </UButton>
       <ViewForm v-model:open="editing" :view="view" />
-      <UModal
-        v-model:open="deleting"
-        :title="$t('viewForm.deleteTitle', { name: view.name })"
-        :description="$t('viewForm.deleteBody')"
-      >
-        <template #footer>
-          <UButton variant="ghost" color="neutral" @click="deleting = false">
-            {{ $t('viewForm.cancel') }}
-          </UButton>
-          <UButton color="error" data-testid="confirm-delete" @click="remove">
-            {{ $t('viewForm.delete') }}
-          </UButton>
-        </template>
-      </UModal>
+      <DeleteViewDialog v-model:open="deleting" :view="view" />
     </div>
     <ViewBody />
   </div>
