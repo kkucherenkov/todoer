@@ -277,9 +277,10 @@ test('offline: a delete shows at once, an unsynced task cannot be deleted', asyn
   await input.fill('Draft');
   await input.press('Enter');
   await remove('Draft');
-  await expect(
-    page.locator('[data-slot="description"]', { hasText: 'not synced yet' }),
-  ).toBeVisible();
+  // The dialog stays open with the reason.
+  await expect(dialog.last().getByRole('alert')).toContainText(
+    'not synced yet',
+  );
   await expect(rows.filter({ hasText: 'Draft' })).toBeVisible();
 
   // Firefox: no `online` event (see the first test); it ends here.
