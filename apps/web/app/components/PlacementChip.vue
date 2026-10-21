@@ -61,7 +61,7 @@ const actions = computed<DropdownMenuItem[]>(() => [
     />
     <UIcon v-else name="i-lucide-calendar" class="size-3.5 shrink-0" />
     <span
-      class="min-w-0 flex-1 truncate font-medium"
+      class="min-w-0 flex-1 font-medium break-words"
       :class="placement.closed && 'line-through'"
       data-testid="placement-title"
     >

@@ -49,7 +49,7 @@ gets list items without placements. Stage 1 therefore needs a core change.
 | Web | W3 stage 3, context FR-004–007, [`T-2026-10-21-web-redesign-list`](../../specs/tasks/done/T-2026-10-21-web-redesign-list.md) | Claude (Codex ran out of usage, 2026-10-21) | W4 |
 | Web | W4 stage 4 | Claude (Codex ran out of usage, 2026-10-21) | — |
 | Web | W6 stage 6 | Antigravity | — |
-| Web | W5 stage 5 | Antigravity | — |
+| Web | W5 stage 5, [`T-2026-10-22-web-redesign-calendar`](../../specs/tasks/done/T-2026-10-22-web-redesign-calendar.md) | Claude (Antigravity reassigned 2026-10-21) | — |
 | All | W7 stage 7, reduced | Codex, Antigravity, maintainer | — |
 
 C0, C1 and W1 start in parallel. W1 can land without the calendar mode and
@@ -119,11 +119,13 @@ gets its own task spec and PR, as stage 0 says.
 
 Источники: `calendar.vue`, `references/CalendarDay.vue`, `PlacementChip.vue`, `MoveDateDialog.vue`; области: соответствующие production-компоненты и calendar utils.
 
-- [ ] Перенести desktop grid/mobile список дней, полный date label, меню placement и доступный перенос без DnD.
-- [ ] Проверить scheduled/due отдельно, closed/skipped placements, moved occurrence без due/RRULE, Undo до/после sync, отказ при children/version/original restrictions. Данные берутся из `calendarTasks` и реальных операций.
-- [ ] Сохранить week/month `mode`/`at`, today navigation, span limits, local date rollover, drawer occurrence context и transient layout из этапа 1.
+- [x] Перенести desktop grid/mobile список дней, полный date label, меню placement и доступный перенос без DnD.
+- [x] Проверить scheduled/due отдельно, closed/skipped placements, moved occurrence без due/RRULE, Undo до/после sync, отказ при children/version/original restrictions. Данные берутся из `calendarTasks` и реальных операций.
+- [x] Сохранить week/month `mode`/`at`, today navigation, span limits, local date rollover, drawer occurrence context и transient layout из этапа 1.
 
 Результат: календарь работает с той же репликой и корректными отказами. Проверки: `calendar.spec.ts`, moved-copy core tests, responsive scroll и native меню/dialog.
+
+Текущий результат W5 ([`T-2026-10-22-web-redesign-calendar`](../../specs/tasks/done/T-2026-10-22-web-redesign-calendar.md), PR pending): дни — семь колонок в широком контейнере (`@3xl`) и список дат в узком, в week и month; у каждого дня полная дата текстом; длинные названия переносятся. Move to date… при отказе остаётся открытым с датой и причиной, повтор отправляет тот же write (`utils/intent.ts`), двойной submit — одна запись; отказанный Undo переноса показывает причину; при проходящей причине (not synced yet — так в web выглядит и отказ по version, подзадачи) предлагает тот же Undo снова — после sync он проходит, при удалённом оригинале Undo больше не предлагается. Rollover закреплён unit-тестом с фейковыми часами движка (`apps/web/app/utils/calendar.spec.ts`). Drawer по-прежнему показывает текущее вхождение серии, а не выбранное в календаре. Новых core-контрактов не понадобилось.
 
 ### 6. Saved views, gate и состояния
 
@@ -142,7 +144,7 @@ gets its own task spec and PR, as stage 0 says.
 - [ ] Общая реплика Web/TUI: parent/child → статус → progress → Undo → исключить родителя → offline → sync; дополнительно recurring occurrence и refused reparent. Не считать чтение TUI-spec подтверждением прогона.
 - [ ] Обновить task specs и proposal фактическими результатами, закрыть завершённые задачи и записать changelog. Начать пользоваться приложением; дальнейшие UX-правки оформлять по конкретным наблюдениям.
 
-Результат: готовый редизайн приложения, подтверждённый тестами и использованием. Текущее состояние (2026-10-21): C0, C1, C2, этапы 1 (включая cross-projection overrides, #51), 2 (#53), 3 (#52) и 6 (#54) смёржены; этап 4 — PR pending; остальные не начаты.
+Результат: готовый редизайн приложения, подтверждённый тестами и использованием. Текущее состояние (2026-10-22): C0, C1, C2, этапы 1 (включая cross-projection overrides, #51), 2 (#53), 3 (#52), 4 (#55) и 6 (#54) смёржены; этап 5 — PR pending; этап 7 не начат.
 
 ## Порядок и зависимость работ
 

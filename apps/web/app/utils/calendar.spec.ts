@@ -1,13 +1,17 @@
 import { MAX_SPAN_DAYS, type Item, type Placement } from '@todoer/client-core';
 import { afterEach, describe, expect, it } from 'vitest';
+import { effectScope, nextTick, ref } from 'vue';
+import { clockEngine, row } from '../db/clockEngine.testing';
 import {
   days,
   fromQuery,
   gridSpan,
   placeWrite,
   shift,
+  undoable,
   weekday,
 } from './calendar';
+import { watchView } from './layout';
 
 const zone = process.env.TZ;
 afterEach(() => {
@@ -193,5 +197,80 @@ describe('placeWrite', () => {
 
   it('a drop on the same day writes nothing', () => {
     expect(placeWrite(place({}), task, '2026-10-05')).toBeNull();
+  });
+});
+
+describe('a calendar across local midnight', () => {
+  // Sunday 23:59 local, then Monday 00:01: the week the tab shows changes.
+  const run = async (query: Record<string, unknown>) => {
+    const { engine, clock, latest } = await clockEngine(
+      [
+        row('task', 't', {
+          title: 'Pay rent',
+          priority: 4,
+          rank: 'a0',
+          scheduledOn: '2026-10-26',
+        }),
+      ],
+      new Date(2026, 9, 25, 23, 59),
+    );
+    const today = ref<string>();
+    let pending = Promise.resolve();
+    const settle = async () => {
+      await nextTick();
+      await pending;
+      today.value = latest.view?.today;
+      await nextTick();
+      await pending;
+    };
+    const scope = effectScope();
+    scope.run(() =>
+      watchView(
+        (view, task, span, layout) => {
+          pending = engine
+            .handle({ kind: 'watch', view, task, span, layout }, 'A')
+            .then(() => undefined);
+        },
+        () => 'all',
+        () => [],
+        () => ({ layout: 'calendar', ...query }),
+        () => today.value,
+      ),
+    );
+    await settle();
+    const before = latest.view!;
+    clock.now = new Date(2026, 9, 26, 0, 1);
+    await engine.handle({ kind: 'sync', reason: 'tick' });
+    await settle();
+    scope.stop();
+    return { before, after: latest.view! };
+  };
+
+  it('without `at`, the next tick re-watches the new week and places its tasks', async () => {
+    const { before, after } = await run({});
+    expect(before.span).toEqual({ from: '2026-10-19', to: '2026-10-25' });
+    expect(before.placements).toEqual([]);
+    expect(after.today).toBe('2026-10-26');
+    expect(after.span).toEqual({ from: '2026-10-26', to: '2026-11-01' });
+    expect(after.placements.map((p) => p.date)).toEqual(['2026-10-26']);
+  });
+
+  it('with `at`, the shown week stays and only today moves', async () => {
+    const { before, after } = await run({ mode: 'week', at: '2026-10-21' });
+    expect(after.today).toBe('2026-10-26');
+    expect(after.span).toEqual(before.span);
+  });
+});
+
+describe('undoable', () => {
+  it.each([
+    ['invalid', 'task c is not synced yet', true],
+    ['invalid', 'task c has subtasks', true],
+    ['unreachable', 'timeout', true],
+    ['invalid', 'the original task of c is gone', false],
+    ['invalid', 'no task c', false],
+    ['invalid', 'task c is not a moved occurrence', false],
+  ] as const)('%s "%s" → %s', (kind, detail, expected) => {
+    expect(undoable({ kind, detail })).toBe(expected);
   });
 });

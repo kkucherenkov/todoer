@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import type { Item, Placement, Span } from '@todoer/client-core';
+import type { Item, Placement, Span, Write } from '@todoer/client-core';
+import { createIntent } from '~/utils/intent';
 
 const props = defineProps<{
   today: string;
@@ -58,34 +59,65 @@ const byDate = computed(() => {
 });
 const short = computed(() => utc({ day: 'numeric', month: 'short' }));
 
-/** Drag, menu and dialog end here: one write, minted once; the toast's Undo
- *  sends the inverse with a fresh `opId` (the copy's id comes from `minted`). */
-async function move(p: Placement, to: string) {
+/** One move intent: a retry after a refusal resends the same write (one
+ *  opId, one copy); a different move mints its own. */
+const send = createIntent(db);
+
+/** Drag, menu and dialog end here. True when the core accepted the move
+ *  (or nothing had to move). The toast's Undo sends the inverse: the copy's
+ *  id comes from the sent write. */
+async function move(p: Placement, to: string): Promise<boolean> {
   const item = items.value.get(p.taskId);
-  const plan = item && placeWrite(p, item, to);
-  if (!plan) return;
-  const minted = db.mint(plan.write);
-  const result = await db.write(minted);
-  if (!result.ok) return fail(result);
+  if (!item) return false;
+  const plan = placeWrite(p, item, to);
+  if (!plan) return true; // already on that day
+  const { write: minted, ...result } = await send(plan.write);
+  if (!result.ok) {
+    fail(result);
+    return false;
+  }
   const fmt = (date: string) => short.value.format(at(date));
+  offerUndo(
+    {
+      title:
+        p.occurrence === null
+          ? t('calendar.moved', { to: fmt(to) })
+          : t('calendar.movedOccurrence', {
+              from: fmt(p.occurrence),
+              to: fmt(to),
+            }),
+      description: String(item.title),
+    },
+    db.mint(plan.undo(minted as Parameters<typeof plan.undo>[0])),
+  );
+  return true;
+}
+
+/** A toast with Undo. A refused Undo is the failure toast; when the
+ *  refusal can pass (a copy not synced yet, one with subtasks) it carries
+ *  the same Undo again, so it succeeds once the reason is gone. */
+function offerUndo(
+  shown: { title: string; description: string; color?: 'error' },
+  undo: Write,
+) {
   toast.add({
-    title:
-      p.occurrence === null
-        ? t('calendar.moved', { to: fmt(to) })
-        : t('calendar.movedOccurrence', {
-            from: fmt(p.occurrence),
-            to: fmt(to),
-          }),
-    description: String(item.title),
+    ...shown,
     actions: [
       {
         label: t('list.undo'),
         onClick: () =>
-          void db
-            .write(plan.undo(minted as Parameters<typeof plan.undo>[0]))
-            .then((undone) => {
-              if (!undone.ok) fail(undone);
-            }),
+          void db.write(undo).then((result) => {
+            if (result.ok) return;
+            if (!undoable(result.failure)) return fail(result);
+            offerUndo(
+              {
+                color: 'error',
+                title: t(`errors.${result.failure.kind}`),
+                description: result.failure.detail,
+              },
+              undo,
+            );
+          }),
       },
     ],
   });
@@ -99,7 +131,7 @@ const open = (taskId: string, opener?: HTMLElement) => openTask(taskId, opener);
 </script>
 
 <template>
-  <div class="flex flex-col gap-3" data-testid="calendar">
+  <div class="@container flex flex-col gap-3" data-testid="calendar">
     <div class="flex flex-wrap items-center gap-2">
       <UButton
         variant="outline"
@@ -133,23 +165,19 @@ const open = (taskId: string, opener?: HTMLElement) => openTask(taskId, opener);
     </div>
     <div
       v-if="!ready"
-      class="grid grid-cols-1 gap-1 sm:grid-cols-7"
+      class="grid grid-cols-1 gap-1 @3xl:grid-cols-7"
       data-testid="calendar-skeleton"
     >
       <USkeleton v-for="n in 7" :key="n" class="h-24" />
     </div>
     <template v-else>
       <div
-        class="hidden grid-cols-7 gap-1 text-center text-xs text-muted sm:grid"
+        class="hidden grid-cols-7 gap-1 text-center text-xs text-muted @3xl:grid"
       >
         <span v-for="h in heads" :key="h">{{ h }}</span>
       </div>
-      <div
-        class="grid gap-1"
-        :class="
-          state.mode === 'week' ? 'grid-cols-1 sm:grid-cols-7' : 'grid-cols-7'
-        "
-      >
+      <!-- Seven columns where they fit, a list of dated days where not. -->
+      <div class="grid grid-cols-1 gap-1 @3xl:grid-cols-7">
         <CalendarDay
           v-for="d in dates"
           :key="d"
@@ -169,10 +197,6 @@ const open = (taskId: string, opener?: HTMLElement) => openTask(taskId, opener);
         />
       </div>
     </template>
-    <MoveDateDialog
-      :placement="moving"
-      @close="moving = null"
-      @move="(p, to) => void move(p, to)"
-    />
+    <MoveDateDialog :placement="moving" :apply="move" @close="moving = null" />
   </div>
 </template>

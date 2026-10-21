@@ -1,8 +1,13 @@
 <script setup lang="ts">
 import type { Placement } from '@todoer/client-core';
+import { exclusive } from '~/utils/exclusive';
 
-const props = defineProps<{ placement: Placement | null }>();
-const emit = defineEmits<{ move: [p: Placement, to: string]; close: [] }>();
+const props = defineProps<{
+  placement: Placement | null;
+  /** The same write as a drop; true once the core accepted it. */
+  apply: (p: Placement, to: string) => Promise<boolean>;
+}>();
+const emit = defineEmits<{ close: [] }>();
 
 const date = ref('');
 watch(
@@ -10,12 +15,12 @@ watch(
   (p) => p && (date.value = p.date),
 );
 
-// The same write as a drop: a drop's day is a cell's `data-date`, this one's
-// is the input's value (a valid date or empty).
-function submit() {
-  if (props.placement && date.value) emit('move', props.placement, date.value);
-  emit('close');
-}
+// A refusal (its toast names the reason) keeps the dialog and the date, so
+// Move again is the same intent; a second submit while one runs is dropped.
+const { busy: saving, run: submit } = exclusive(async () => {
+  if (!props.placement || !date.value) return;
+  if (await props.apply(props.placement, date.value)) emit('close');
+});
 </script>
 
 <template>
@@ -31,10 +36,13 @@ function submit() {
         <UInput
           v-model="date"
           type="date"
+          required
           class="flex-1"
           :aria-label="$t('calendar.date')"
         />
-        <UButton type="submit">{{ $t('calendar.move') }}</UButton>
+        <UButton type="submit" :loading="saving" :disabled="saving || !date">
+          {{ $t('calendar.move') }}
+        </UButton>
       </form>
     </template>
   </UModal>

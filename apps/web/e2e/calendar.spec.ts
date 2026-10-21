@@ -1,5 +1,14 @@
 import type { Page } from '@playwright/test';
-import { arrowTo, day, expect, seedTask, seedView, test } from './fixtures';
+import {
+  arrowTo,
+  count,
+  day,
+  expect,
+  seedTask,
+  seedView,
+  tasks,
+  test,
+} from './fixtures';
 
 const cell = (page: Page, date: string) =>
   page.locator(`[data-testid="calendar-day"][data-date="${date}"]`);
@@ -258,4 +267,248 @@ test('calendar: P0 chip shows p0, P4 chip shows none', async ({
   await expect(chip(page, today, 'Urgent')).toContainText('p0');
   await expect(chip(page, today, 'Plain')).toBeVisible();
   await expect(chip(page, today, 'Plain')).not.toContainText(/\bp\d\b/);
+});
+
+/** The days' top-left corners, in order, rounded to whole pixels. */
+const corners = (page: Page) =>
+  page.getByTestId('calendar-day').evaluateAll((els) =>
+    els.map((el) => {
+      const r = el.getBoundingClientRect();
+      return [Math.round(r.x), Math.round(r.y)] as const;
+    }),
+  );
+const columns = async (page: Page) =>
+  new Set((await corners(page)).map(([x]) => x)).size;
+
+test('calendar: a grid on a desktop, a list of dated days on a phone', async ({
+  page,
+  account,
+}) => {
+  const today = day();
+  const long =
+    'Prepare the quarterly report for the board, with every appendix and the reviewed budget';
+  const view = await seedView(
+    page.request,
+    account.token,
+    'Week',
+    'a0',
+    'calendar',
+  );
+  await seedTask(page.request, account.token, {
+    title: long,
+    scheduledOn: today,
+  });
+  await page.setViewportSize({ width: 1366, height: 900 });
+  await page.goto(`/views/${view}`);
+
+  // Every day shows its full date as text, the name of its region.
+  const label = await cell(page, today).getAttribute('aria-label');
+  expect(label).toMatch(/\d{4}/);
+  await expect(cell(page, today)).toContainText(label!);
+  // A long title wraps rather than being cut off.
+  const title = chip(page, today, 'quarterly report').getByTestId(
+    'placement-title',
+  );
+  await expect(title).toHaveText(long);
+  expect(await title.evaluate((el) => el.scrollWidth <= el.clientWidth)).toBe(
+    true,
+  );
+
+  await expect(page.getByTestId('calendar-day')).toHaveCount(7);
+  await expect.poll(() => columns(page)).toBe(7);
+  await page.getByRole('tab', { name: 'Month' }).click();
+  await expect
+    .poll(() => page.getByTestId('calendar-day').count())
+    .toBeGreaterThanOrEqual(28);
+  await expect.poll(() => columns(page)).toBe(7);
+
+  // A phone: the same days, one under the other, nothing scrolls sideways.
+  await page.setViewportSize({ width: 390, height: 844 });
+  for (const [mode, shown] of [
+    ['Month', 28],
+    ['Week', 7],
+  ] as const) {
+    await page.getByRole('tab', { name: mode }).click();
+    const n = page.getByTestId('calendar-day');
+    if (mode === 'Week') await expect(n).toHaveCount(shown);
+    else await expect.poll(() => n.count()).toBeGreaterThanOrEqual(shown);
+    await expect.poll(() => columns(page)).toBe(1);
+    const ys = (await corners(page)).map(([, y]) => y);
+    expect(ys).toEqual([...ys].sort((a, b) => a - b));
+    await expect(cell(page, today)).toContainText(label!);
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+  }
+});
+
+test('calendar: a refused Move to date… keeps the dialog and its date', async ({
+  page,
+  context,
+  account,
+  cli,
+}) => {
+  const today = day();
+  // A day of this week, so the week on screen holds both.
+  const sunday = new Date().getDay() === 0;
+  const target = day(sunday ? -1 : 1);
+  const there = sunday ? 1 : 2; // the series stands on a later day too
+  const view = await seedView(
+    page.request,
+    account.token,
+    'Week',
+    'a0',
+    'calendar',
+  );
+  await cli(
+    account.token,
+    'add',
+    'Water plants',
+    '--rrule',
+    'FREQ=DAILY',
+    '--from',
+    today,
+  );
+  await page.goto(`/views/${view}`);
+  await expect(chip(page, today, 'Water plants')).toBeVisible();
+
+  // The dialog opens on today's occurrence…
+  await chip(page, today, 'Water plants')
+    .getByRole('button', { name: 'Placement actions' })
+    .click();
+  await page.getByRole('menuitem', { name: 'Move to date…' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel('Date', { exact: true }).fill(target);
+
+  // …which another tab of the same replica marks done meanwhile.
+  const other = await context.newPage();
+  await other.goto('/?layout=list');
+  const row = other.getByTestId('task-row').filter({ hasText: 'Water plants' });
+  await row.getByRole('button', { name: 'Mark done' }).click();
+  await expect(chip(page, today, 'Water plants')).toHaveCount(1);
+  await expect(
+    chip(page, today, 'Water plants').getByTestId('placement-title'),
+  ).toHaveClass(/line-through/);
+
+  await dialog.getByRole('button', { name: 'Move' }).click();
+  await expect(
+    page.locator('[data-slot="description"]', { hasText: 'undo it first' }),
+  ).toBeVisible();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByLabel('Date', { exact: true })).toHaveValue(target);
+
+  // Reopened elsewhere, the same Move goes through and the dialog closes.
+  await other.getByRole('button', { name: 'Undo' }).last().click();
+  await expect(
+    chip(page, today, 'Water plants').getByTestId('placement-title'),
+  ).not.toHaveClass(/line-through/);
+  await dialog.getByRole('button', { name: 'Move' }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(chip(page, target, 'Water plants')).toHaveCount(there);
+  await expect(chip(page, today, 'Water plants')).toHaveCount(0);
+});
+
+test('calendar: Undo of a moved copy names why it cannot', async ({
+  page,
+  account,
+  cli,
+}) => {
+  const today = day();
+  // A day of this week, so the week on screen holds both.
+  const sunday = new Date().getDay() === 0;
+  const target = day(sunday ? -1 : 1);
+  const there = sunday ? 1 : 2; // the series stands on a later day too
+  const view = await seedView(
+    page.request,
+    account.token,
+    'Week',
+    'a0',
+    'calendar',
+  );
+  await cli(
+    account.token,
+    'add',
+    'Water plants',
+    '--rrule',
+    'FREQ=DAILY',
+    '--from',
+    today,
+  );
+  type Listed = { id: string; title: string; rrule: string | null };
+  const listed = async () =>
+    (
+      JSON.parse(await cli(account.token, 'list', '--json')) as {
+        data: Listed[];
+      }
+    ).data.filter((t) => t.title === 'Water plants');
+  const undo = page.getByRole('button', { name: 'Undo' }).last();
+  await page.goto(`/views/${view}`);
+  await expect(chip(page, today, 'Water plants')).toBeVisible();
+
+  // A copy with a subtask: the core refuses to delete it with its Undo.
+  await chip(page, today, 'Water plants').dragTo(cell(page, target), {
+    sourcePosition: { x: 3, y: 3 },
+  });
+  await undo.hover(); // the toast waits while the pointer is on it
+  await expect.poll(async () => (await listed()).length).toBe(2);
+  const copy = (await listed()).find((t) => t.rrule === null)!;
+  await seedTask(page.request, account.token, {
+    title: 'Fetch the can',
+    parentId: copy.id,
+  });
+  await page.getByTestId('sync-now').click();
+  await expect(count(page)).toHaveText(tasks(3));
+  await undo.click();
+  await expect(
+    page.locator('[data-slot="description"]', { hasText: 'has subtasks' }),
+  ).toBeVisible();
+  await expect(chip(page, target, 'Water plants')).toHaveCount(there);
+  await expect(chip(page, today, 'Water plants')).toHaveCount(0);
+
+  // The refusal offers the same Undo. With the subtask and the series both
+  // deleted elsewhere, it is refused again: the original is gone.
+  await undo.hover();
+  const pulled = await page.request.post('/api/v1/sync', {
+    headers: { authorization: `Bearer ${account.token}` },
+    data: { since: 0, ops: [] },
+  });
+  const { changes } = (await pulled.json()) as {
+    changes: {
+      table: string;
+      id: string;
+      row: { version: number; parentId?: string | null };
+    }[];
+  };
+  const original = (await listed()).find((t) => t.rrule !== null)!;
+  const gone = await page.request.post('/api/v1/sync', {
+    headers: { authorization: `Bearer ${account.token}` },
+    data: {
+      since: 0,
+      ops: changes
+        .filter(
+          (c) =>
+            c.table === 'task' &&
+            (c.id === original.id || c.row.parentId === copy.id),
+        )
+        .map((c) => ({
+          opId: crypto.randomUUID(),
+          kind: 'delete',
+          table: 'task',
+          id: c.id,
+          baseVersion: c.row.version,
+        })),
+    },
+  });
+  expect(gone.status()).toBe(200);
+  await page.getByTestId('sync-now').click();
+  await expect(count(page)).toHaveText(tasks(1));
+  await undo.click();
+  await expect(
+    page.locator('[data-slot="description"]', { hasText: 'is gone' }),
+  ).toBeVisible();
+  // That cannot pass any more: no Undo is offered again.
+  await expect(page.getByRole('button', { name: 'Undo' })).toHaveCount(0);
+  await expect(chip(page, target, 'Water plants')).toHaveCount(1);
 });

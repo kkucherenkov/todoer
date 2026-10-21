@@ -31,9 +31,18 @@ describe('held intent', () => {
   it('resends the same write after a refusal', async () => {
     const db = fakeDb([refused]);
     const send = createIntent(db);
-    expect(await send(edit('a'))).toEqual(refused);
-    expect(await send(edit('a'))).toEqual({ ok: true });
+    expect(await send(edit('a'))).toMatchObject(refused);
+    expect(await send(edit('a'))).toMatchObject({ ok: true });
     expect(db.sent.map((w) => w.opId)).toEqual(['op-1', 'op-1']);
+  });
+
+  it('hands back the write it sent, the retry the held one', async () => {
+    const db = fakeDb([refused]);
+    const send = createIntent(db);
+    const first = await send(edit('a'));
+    const retry = await send(edit('a'));
+    expect(first.write).toBe(db.sent[0]);
+    expect(retry.write).toBe(first.write);
   });
 
   it('mints a new write for a new draft', async () => {
