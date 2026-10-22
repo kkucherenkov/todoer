@@ -5,6 +5,7 @@ import {
   visibleWidth,
 } from '@earendil-works/pi-tui';
 import type { Pane } from './pi/app-shell.js';
+import { colour, sgr } from './style.js';
 import type { Topics$ } from './topics.js';
 
 type Row = { key: string; name: string; count?: number };
@@ -14,9 +15,6 @@ const BUILT_IN: Record<string, string> = {
   today: 'Today',
   upcoming: 'Upcoming',
 };
-
-const sgr = (code: number, text: string) => `\u001b[${code}m${text}\u001b[0m`;
-const colour = () => (process.env.NO_COLOR ?? '') === '';
 
 /**
  * The left column: built-in destinations, projects, tags and saved views.
