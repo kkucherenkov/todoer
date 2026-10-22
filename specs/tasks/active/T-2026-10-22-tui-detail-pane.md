@@ -72,7 +72,7 @@ resend a refused write the same way.
 
 ### Steps
 
-- [ ] T001 [FR-001] Held intent in the client core —
+- [x] T001 [FR-001] Held intent in the client core —
   `packages/client-core/src/intent.ts` (Task 2.0)
 - [ ] T002 [FR-002, FR-003, FR-004] Fields in place — `apps/tui/src/detail-pane.ts`
   (Task 2.1)

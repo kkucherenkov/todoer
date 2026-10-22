@@ -1,27 +1,21 @@
 // Imported, not auto-imported: the spec runs in plain Node.
 import { shallowRef, type ShallowRef } from 'vue';
-import type {
-  Command,
-  Result,
-  Span,
-  ToWorker,
-  Topic,
-  Topics,
-  Write,
+import {
+  mint as coreMint,
+  type Command,
+  type Draft,
+  type Result,
+  type Span,
+  type ToWorker,
+  type Topic,
+  type Topics,
+  type Write,
 } from '@todoer/client-core';
 import { savedLayoutOf, type Layout } from '../utils/layout';
-import { id as mintId, opId as mintOpId } from './mint';
+import { id as mintId } from './mint';
 import { CHANNEL, leaderLock, type FromLeader } from './protocol';
 
-/** A write as a screen asks for it: the ids are minted here, once. A create
- *  may name its own `id` (to open it right away). */
-export type Draft<W = Write> = W extends {
-  kind: 'add' | 'saveView' | 'saveStatus' | 'moveOccurrence';
-}
-  ? Omit<W, 'opId' | 'id'> & { id?: string }
-  : W extends Write
-    ? Omit<W, 'opId'>
-    : never;
+export type { Draft };
 
 export type Db = {
   request(command: Command): Promise<Result>;
@@ -196,13 +190,7 @@ export function connect(
     });
   }
 
-  const mint = (draft: Draft): Write =>
-    draft.kind === 'add' ||
-    draft.kind === 'saveView' ||
-    draft.kind === 'saveStatus' ||
-    draft.kind === 'moveOccurrence'
-      ? { id: mintId(), ...draft, opId: mintOpId() }
-      : { ...draft, opId: mintOpId() };
+  const mint = (draft: Draft): Write => coreMint(draft, mintId);
 
   return {
     request,

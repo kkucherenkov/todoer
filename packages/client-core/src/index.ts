@@ -14,6 +14,7 @@ export * from './operations.js';
 export * from './rank.js';
 export * from './engine-protocol.js';
 export * from './engine.js';
+export * from './intent.js';
 export {
   WEEKDAYS,
   filterProblem,
