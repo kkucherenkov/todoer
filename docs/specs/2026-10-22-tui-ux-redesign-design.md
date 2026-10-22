@@ -245,8 +245,10 @@ client would have to compute counts.
   it, so the render tests cover overlays at every width.
 - Three layouts (Q5) and two status lines (Q16) mean render tests at several
   widths. Without them the narrow modes will rot.
-- The tag view is a contract change in the core and the specs. It lands
-  first, or step 1's sidebar ships without tags.
+- The tag view changes the client core only: `{tag: uuid}` is already a
+  filter in `@todoer/specs`, and the watch key never reaches the server. It
+  lands first, or step 1's sidebar ships without tags. The web's navigation
+  must learn the `tag:` key in the same change, or its sidebar links break.
 
 ## Deferred
 
