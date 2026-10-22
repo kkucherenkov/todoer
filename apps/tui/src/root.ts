@@ -51,7 +51,7 @@ type Screen = Pane & { hints: string; inserting?: boolean };
  * outline; below 90 the focused detail pane takes the screen and the board
  * shows one status column at a time. Keys go to the focused pane, except the
  * global ones in NORMAL mode. The root watches the engine for the sidebar's
- * key and the selected task.
+ * key and the selected task; a focused detail pane keeps its task.
  */
 export class Root implements Pane {
   private readonly sidebar: Sidebar;
@@ -143,8 +143,11 @@ export class Root implements Pane {
       : this.outline;
   }
 
-  /** Shows and watches the task under the drawn list's cursor. */
+  /** Shows and watches the task under the drawn list's cursor. A focused
+   *  detail pane stays on its task, even when a save moves it out of the
+   *  view, until the focus leaves it. */
   private select(): void {
+    if (this.focusOn === 'detail') return;
     const { taskId } = this.list;
     if (taskId === this.taskId) return;
     this.taskId = taskId;
@@ -161,11 +164,18 @@ export class Root implements Pane {
   }
 
   private setFocus(next: Focus): void {
+    const left = this.focusOn === 'detail' && next !== 'detail';
     this.focusOn = next;
     this.sidebar.focus(next === 'sidebar');
     this.outline.focus(next === 'outline');
     this.board.focus(next === 'outline');
     this.detail.focus(next === 'detail');
+    if (!left) return;
+    // The board's cursor follows a card the details moved to another column.
+    if (this.list === this.board && this.taskId !== null) {
+      this.board.reveal(this.taskId);
+    }
+    this.select();
   }
 
   /** Opens a screen over the outline column, which takes the focus. */
@@ -221,8 +231,10 @@ export class Root implements Pane {
     (this.mode !== 'three' && this.focusOn === 'sidebar') ||
     (this.focusOn === 'detail' && (this.mode === 'one' || this.wide));
 
+  /** Not while the details edit a field: a view deleted meanwhile keeps
+   *  the editor and its focus. */
   private closeOverlay(): boolean {
-    if (!this.overlay()) return false;
+    if (!this.overlay() || this.detail.holding) return false;
     this.setFocus('outline');
     return true;
   }

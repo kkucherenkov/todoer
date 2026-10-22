@@ -87,6 +87,17 @@ export class Board implements Pane {
     this.sync();
   }
 
+  /** Puts the cursor on `taskId`'s card, if the board shows it. */
+  reveal(taskId: string): void {
+    const at = this.where().cols.findIndex((c) =>
+      c.items.some((i) => i.id === taskId),
+    );
+    if (at < 0) return;
+    this.col = at;
+    this.follow = taskId;
+    this.sync();
+  }
+
   private view = () => this.deps.tui.topics.view(this.key);
 
   /** The columns and where the cursor is among them. */

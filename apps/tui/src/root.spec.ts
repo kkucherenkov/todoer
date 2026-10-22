@@ -327,6 +327,22 @@ describe('Root', () => {
     expect(t.watched().at(-1)).toBe('all');
   });
 
+  it('at 80, a view deleted under an open editor keeps it and its focus', async () => {
+    const t = await mount([view, task('milk')], { width: 80 });
+    await t.press('[', KEY.enter, KEY.enter);
+    expect(t.text().at(-2)).toMatch(/^INSERT/);
+    await t.engine.handle(
+      { kind: 'deleteView', opId: t.newId(), id: 'v1' },
+      'tui',
+    );
+    await t.settle();
+    expect(t.root.current).toBe('all');
+    expect(t.root.focusAt).toBe('detail');
+    expect(t.text().at(-2)).toMatch(/^INSERT/);
+    await t.press('X', KEY.enter);
+    expect(t.store.rows('task')[0]?.title).toBe('milkX');
+  });
+
   it('says why a view cannot be shown', async () => {
     const t = await mount([{ ...view, filter: { bogus: true } }, task('milk')]);
     await t.press('[');
