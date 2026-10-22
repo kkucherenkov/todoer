@@ -4,8 +4,9 @@ The terminal client is redrawn around a full-height, three-column screen:
 navigation on the left, the outline in the middle, a fixed detail pane on the
 right. Fields are edited in place. `tuxedo` is the UX reference. The TUI
 moves from Ink 8 to `@earendil-works/pi-tui` 1.4.0, after two throwaway
-spikes showed it hosts the screen with two small, contained workarounds. Decided in a design interview on 2026-10-22. This document
-amends [the TUI client design](2026-10-03-tui-client-design.md); where the
+spikes showed it hosts the screen with two small, contained workarounds.
+
+Decided in a design interview on 2026-10-22. This document amends [the TUI client design](2026-10-03-tui-client-design.md); where the
 two disagree, this one wins for layout and interaction.
 
 ## Terms
@@ -39,7 +40,7 @@ reinvent widgets. Tuxedo items 434 (status bar does not fit 80 columns) and
 
 ### Toolkit: pi-tui 1.4.0, after two spikes (Q1, Q4)
 
-**Decision.** Before any production change, a throwaway spike builds the
+**Decision (as first asked, then revised below).** Before any production change, a throwaway spike builds the
 three-column screen on `@mariozechner/pi-tui` 0.73.1: alternate screen,
 columns at full height, a scrolling outline, the detail pane with `Input` and
 `Editor` placed on a field's own row, resizing from 140×36 down to 60×20, and
@@ -48,7 +49,8 @@ chosen **only if all of that works with zero workarounds of `pi-tui` itself**:
 no monkey-patching, no reaching into its render state, no own key parser in
 place of its own, no escape codes written behind its back. Layout code written
 on its public `Component` API does not count as a workaround. If the spike
-fails the bar, the TUI stays on Ink 8 and is re-laid out there.
+fails the bar, the TUI stays on Ink 8 and is re-laid out there. The result
+below relaxed this bar and chose `pi-tui`.
 
 **Rejected.** Moving to `pi-tui` outright (A): `pi-tui` is a line renderer
 for scrollback output. Its `Container` stacks only vertically, `render(width)`
@@ -71,12 +73,14 @@ steps. It still needed raw `?1049h`/`?1049l`, a cursor home after entering,
 and a synthesized Ctrl+E. Its diff rewrote every row on each cursor move.
 
 The second spike ran the same code on 1.1.0 and 1.4.0:
+
 - 178 tmux steps with 0 mismatches, and 8 `node:test` tests passed;
 - `TuiAltScreen` removes the raw escape codes and the cursor home;
 - `Input({ prompt: "" })` removes the prompt hack;
 - the diff is per row: j/k rewrites about 13 rows of 36 instead of all of them.
 
 Two workarounds remain in both versions:
+
 - a synthesized Ctrl+E after `Input.setValue`, because there is no public way
   to put the cursor at the end;
 - an Esc check around `Editor`, which has no `onEscape`.
@@ -92,7 +96,8 @@ code, and none of the three exists there today. Cost: the screens and the
 React glue to the engine's topics (`context.tsx`, `use-write.ts`) are
 rewritten, and the tests move from `ink-testing-library` to `render(width)`
 in `node:test`. The pure modules carry over: `outline-tree`, `board-columns`,
-`fields`, `line`, `status-line`, `topics`, `session`, `editor`. Most screens
+`fields`, `line`, `status-line`, `session`, `editor`, and the store under
+`topics` (its React hook goes). Most screens
 are redrawn by this redesign anyway.
 
 Why 1.4.0 rather than the older 1.1.0: 1.4.0 restores the terminal on an
@@ -101,6 +106,7 @@ hook, where 1.1.0 left it broken. It is one day old, so a regression is
 possible; the exact pin and bumps in their own PRs contain that.
 
 Constraints that follow:
+
 - the app handles SIGTERM itself, because neither version restores the
   terminal on signal death;
 - exit goes through `stop({ preserveScreen: true })`, because the default
@@ -122,9 +128,11 @@ switch the fixed pane exists to avoid.
 
 ### The sidebar mirrors the web's navigation, tags added in the core (Q6)
 
-**Decision.** The sidebar lists All open, Today, Upcoming, each project and
-the saved views, each with its count from the core's `catalog.nav`. These are
-the same `watch` keys and counts the web uses, and the TUI counts nothing
+**Decision.** The sidebar lists All open, Today, Upcoming and each project,
+each with its count from the core's `catalog.nav` (the navigation projection
+added by core task C2), then the saved views from `catalog.views`, which
+carry no count, as in the web (my call: no core change for view counts).
+These are the same `watch` keys the web uses, and the TUI counts nothing
 itself. Tags are added as a core built-in view `tag:<id>` with a `catalog.nav`
 count, a client-core task in the pattern of C2, so the web gets it too.
 Selecting a row watches that key.
@@ -138,32 +146,43 @@ client would have to compute counts.
 
 - **Narrow terminals (Q5 A).**
   - ≥ 120 columns: three columns.
-  - 90–119: the sidebar collapses and opens on a key, drawn over the outline.
+  - 90–119: the sidebar is hidden. Focusing it opens it as an overlay over
+    the outline (my call). Tab cycles sidebar → outline → detail pane at
+    every width.
   - < 90: only the outline. Enter shows the details full screen and Esc goes back.
 
-  Navigation goes first and details second. The outline stays put in every mode.
+  Navigation goes first and details second. The outline stays put in every
+  mode.
 - **Editing (Q3 A).** Every field is edited in the detail pane. Tab moves
   focus from the outline into the pane, and j/k moves over the fields. Enter
   turns the field's own row into an input in the same place. Enter saves and
-  Esc cancels.
+  Esc cancels. Notes use the multi-line `Editor`: Enter saves and
+  Shift+Enter or Alt+Enter inserts a newline (my call, `Editor`'s own default).
 - **Detail pane contents (Q7 A).** A flat list of every field: title,
   project, tags, priority, status, scheduled, due, repeat, notes. Below it the
   subtasks with checkboxes and the progress from the core. Nothing is folded.
-- **A refused edit (Q8 A).** As in the web (W4): the field is marked ✗, and
+- **A refused edit (Q8 A).** As in the web's task drawer (stage W4 of the web
+  redesign): the field is marked ✗, and
   under it shows "saved → yours · reason". `r` resends the same write with the
   same opId (the held intent in the core); Esc discards it. The person's input
   is never lost.
 - **Keys (Q9 A).** Two modes, NORMAL and INSERT, named in the status line,
-  with hints that follow the focus.
+  with hints that follow the focus. Esc closes the innermost thing first
+  (my call): an open input or the `Editor`, then a refusal shown under its
+  field, then an overlay (sidebar, card details, the full-screen details
+  below 90 columns), then the `/` filter.
 - **Kanban (Q10 B).** The board takes the outline and detail columns. Enter
-  opens a card's details over it. On narrow terminals one status column shows
-  at a time, switched with ←/→.
+  opens a card's details over it. Between 90 and 119 columns it keeps that
+  layout. Below 90 one status column shows at a time, switched with ←/→
+  (my call on the 90 boundary, matching Q5).
 - **Outline row (Q11 C).** One line per task: status marker, priority, title
   truncated with "…", and short fields on the right (#project, due, subtask
   progress). The row under the cursor shows its full title.
 - **How the cursor row expands (Q13 B).** The full title is drawn as an
   overlay over the rows below it, so no outline row ever changes position.
-  The hidden rows reappear as soon as the cursor moves.
+  The hidden rows reappear as soon as the cursor moves. It shows at most
+  three lines, the last ending with "…" (the detail pane has the rest). Near
+  the bottom of the pane it grows upward instead (my call).
 - **New task (Q12 A).** `n` opens an input line in the outline under the
   cursor, where the task will appear, using the quick-add grammar
   (`#project @tag pN`, dates). Enter creates it and Esc cancels.
@@ -180,7 +199,9 @@ client would have to compute counts.
   separate design.
 - **Work split (Q15 A).** One PR each, in order:
   - step 0: the core `tag:<id>` built-in view and count;
-  - step 1: the frame on `pi-tui`: layout, sidebar, outline, status lines, modes;
+  - step 1: the frame on `pi-tui`: layout, sidebar, outline, status lines and
+    modes, plus straight ports of today's details, board, status and help
+    screens, so nothing is lost when Ink goes (my call);
   - step 2: the detail pane with in-place editing and refusals;
   - step 3: quick add in place and the kanban.
 
