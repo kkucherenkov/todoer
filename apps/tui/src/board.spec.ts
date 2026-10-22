@@ -108,7 +108,14 @@ describe('BoardPane', () => {
   });
 
   it('moves a card right with L, the cursor follows it, and into Done marks it done', async () => {
-    const t = await open();
+    // A card already in Doing: the cursor must follow alpha, not row 0.
+    const t = await open({
+      tasks: [
+        task('alpha', 'todo', 'a0'),
+        task('beta', 'todo', 'a1'),
+        task('aardvark', 'doing', 'Zz'),
+      ],
+    });
     await t.press('L');
     expect(row(t, 'alpha')?.statusId).toBe('doing');
     expect(cursor(t)).toContain('alpha');

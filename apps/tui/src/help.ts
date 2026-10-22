@@ -11,7 +11,7 @@ const HELP = [
   'e         details         dd y    delete',
   'Tab       next pane       [ ] v   views',
   'S         statuses        r       sync now',
-  '?         this help       q       quit',
+  '?         this help       q       quit, back in details',
 ];
 
 /** The help screen; any key closes it. */

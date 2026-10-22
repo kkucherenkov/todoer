@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fakeServer, KEY, renderApp } from './test-kit.js';
 import { Root } from './root.js';
 
@@ -37,7 +37,10 @@ const AT = { title: 0, project: 1, priority: 3, status: 4, due: 6, repeat: 7 };
 const down = (n: number) => Array<string>(n).fill('j');
 
 /** At 80 columns `e` shows the details full screen and Esc closes them. */
-async function details(rows: Record<string, unknown>[] = [task('milk')]) {
+async function details(
+  rows: Record<string, unknown>[] = [task('milk')],
+  quit: () => void = () => undefined,
+) {
   const t = await renderApp({
     width: 80,
     rows: 24,
@@ -46,7 +49,7 @@ async function details(rows: Record<string, unknown>[] = [task('milk')]) {
       status('s2', 'Doing', 'a1'),
       ...rows,
     ]),
-    app: (tui, size) => new Root({ tui, ...size, quit: () => undefined }),
+    app: (tui, size) => new Root({ tui, ...size, quit }),
   });
   cleanup = t.cleanup;
   await t.engine.handle({ kind: 'sync', reason: 'manual' }, 'tui');
@@ -155,6 +158,30 @@ describe('DetailsScreen', () => {
     await t.press(...down(AT.repeat), KEY.enter);
     expect(t.lastFrame()).toContain('a subtask repeats with its parent');
     expect(t.server.sent.length).toBe(sent);
+  });
+
+  it('keeps the field editor in the frame under many subtasks', async () => {
+    const subs = Array.from({ length: 12 }, (_, i) =>
+      task(`sub${String(i)}`, { parentId: id('milk') }),
+    );
+    const t = await details([task('milk'), ...subs]);
+    await t.press(KEY.enter);
+    expect(t.lastFrame()).toContain('Title: milk');
+  });
+
+  it('leaves with q like Esc, back on the same task', async () => {
+    const quit = vi.fn();
+    const t = await details(
+      [task('milk'), task('bread', { rank: 'a1' })],
+      quit,
+    );
+    await t.press(KEY.escape, 'j', KEY.enter);
+    expect(t.lastFrame()).toContain('Repeat');
+    await t.press('q');
+    expect(quit).not.toHaveBeenCalled();
+    expect(t.lastFrame()).not.toContain('Repeat');
+    expect(t.lastFrame()).toMatch(/▸ ○ bread/);
+    expect(t.lastFrame()).toContain('j/k move');
   });
 
   it('edits the notes in $VISUAL', async () => {

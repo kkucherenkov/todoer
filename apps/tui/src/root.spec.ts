@@ -290,7 +290,7 @@ describe('Root', () => {
       t
         .text()
         .at(-1)
-        ?.match(/Esc back/g),
+        ?.match(/Esc q back/g),
     ).toHaveLength(1);
     await t.press(KEY.escape);
     expect(t.frame()).not.toContain('Priority');

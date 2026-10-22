@@ -29,7 +29,7 @@ const HINTS: Record<Focus | 'INSERT' | 'board', string> = {
     'j/k move · o new · x done · dd delete · > < indent · J/K move · m status · e details · Tab focus · [ ] views · r sync · ? help · q quit',
   board:
     'h/l column · j/k card · H/L move · J/K order · o new · x done · m status · e details · Tab focus · [ ] views · r sync · ? help · q quit',
-  detail: 'j/k field · Enter edit · Tab focus · q quit',
+  detail: 'j/k field · Enter edit · Tab focus',
 };
 
 /** A screen drawn in the outline column (help, view picker, statuses);
@@ -234,6 +234,9 @@ export class Root implements Pane {
       const at = CYCLE.indexOf(this.focusOn);
       this.setFocus(CYCLE[(at + 1) % CYCLE.length] ?? 'outline');
     } else if (data === 'e') this.setFocus('detail');
+    // In the details `q` goes back, as Esc does (the Ink screen's keys).
+    else if (data === 'q' && this.focusOn === 'detail')
+      this.escape.some((close) => close());
     else if (data === 'q') this.deps.quit();
     else if (data === ']') this.step(1);
     else if (data === '[') this.step(-1);
@@ -287,6 +290,7 @@ export class Root implements Pane {
     const body = rows - 2;
     this.outline.height = body;
     this.board.height = body;
+    this.detail.height = body;
     const { inserting, list } = this;
     const hints = inserting
       ? HINTS.INSERT
@@ -294,7 +298,11 @@ export class Root implements Pane {
         (this.focusOn === 'outline' && list === this.board
           ? HINTS.board
           : HINTS[this.focusOn]) +
-          (this.overlay() || this.focusOn === 'detail' ? ' · Esc back' : ''));
+          (this.focusOn === 'detail'
+            ? ' · Esc q back'
+            : this.overlay()
+              ? ' · Esc back'
+              : ''));
     const status = renderStatus(width, {
       mode: inserting ? 'INSERT' : 'NORMAL',
       sync: this.deps.tui.topics.get('sync'),

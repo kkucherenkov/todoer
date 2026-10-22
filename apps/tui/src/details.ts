@@ -93,6 +93,8 @@ function shownOf(
  * its own, as one write. PR 2 turns these rows into in-place editors.
  */
 export class Details implements Pane {
+  /** Rows the pane shows; an open editor keeps its rows inside them. */
+  height: number | undefined;
   private taskId: string | null = null;
   private at = 0;
   private focused = false;
@@ -308,7 +310,8 @@ export class Details implements Pane {
       ?.statuses.find((s) => s.id === task.column)?.name;
     const shown = shownOf(task, name);
     const cursor = this.focused && this.open === null;
-    return [
+    const below = this.open?.render(width) ?? [];
+    const lines = [
       sgr(1, shown.title),
       ...FIELDS.map((f, i) => {
         const value = shown[f.id] || '—';
@@ -321,8 +324,11 @@ export class Details implements Pane {
             sgr(2, 'Subtasks'),
             ...task.subtasks.map((s) => `${s.closed ? '✓' : '·'} ${s.title}`),
           ]),
-      ...(this.open?.render(width) ?? []),
     ];
+    // ponytail: subtasks past the height are cut, not scrolled; PR 2 redoes the pane
+    const room =
+      this.height === undefined ? lines.length : this.height - below.length;
+    return [...lines.slice(0, Math.max(1, room)), ...below];
   }
 
   invalidate(): void {}
