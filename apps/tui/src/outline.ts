@@ -27,6 +27,9 @@ const OVERLAY = 3;
 const RED = 31;
 const YELLOW = 33;
 
+/** What a filter compares: NFC, case-folded; nothing else is folded. */
+const fold = (text: string) => text.normalize('NFC').toLowerCase();
+
 /** Alt-arrow, in the modifyOtherKeys form and as ESC ESC [ A/B. */
 const alt = (data: string, dir: 'up' | 'down') =>
   matchesKey(data, Key.alt(dir)) ||
@@ -59,14 +62,18 @@ type Deps = {
  * (manual views only), `n` (or `o`) and `O` add a task or a subtask on an
  * input row where it will appear (below the cursor's group; a sorted view
  * then places it by its sort), and the shared task keys
- * (`TaskKeys`). The caller watches the view's key with the engine and tells this
- * pane which one with `show`.
+ * (`TaskKeys`). `filter` keeps the rows whose title contains it, and the
+ * parents of matching subtasks, dimmed. The caller watches the view's key
+ * with the engine and tells this pane which one with `show`.
  */
 export class Outline implements Pane {
   /** Rows the pane shows; unset, as many as there are tasks. The root sets
    *  it from the layout so the list scrolls instead of overflowing. */
   height: number | undefined;
   private key = 'all';
+  private query = '';
+  /** Parents shown only for a matching subtask. */
+  private context: ReadonlySet<string> = new Set();
   private folded: ReadonlySet<string> = new Set();
   // The cursor follows its task across a move or a re-parent; when the task
   // leaves the view (done, deleted) it stays at the same place.
@@ -121,9 +128,20 @@ export class Outline implements Pane {
     this.focused = on;
   }
 
+  /** The `/` text; '' shows every row. */
+  get filter(): string {
+    return this.query;
+  }
+
+  set filter(text: string) {
+    this.query = text;
+    this.sync();
+  }
+
   /** Points the pane at another view's key. */
   show(key: string): void {
     this.key = key;
+    this.query = '';
     this.cursor = { at: 0 };
     this.top = 0;
     this.sync();
@@ -131,7 +149,29 @@ export class Outline implements Pane {
 
   private view = () => this.deps.tui.topics.view(this.key);
   private items = (): Item[] => this.view()?.items ?? [];
-  private rows = (): OutlineRow[] => outline(this.items(), this.folded);
+  private rows(): OutlineRow[] {
+    const items = this.items();
+    if (this.query === '') {
+      this.context = new Set();
+      return outline(items, this.folded);
+    }
+    const q = fold(this.query);
+    const hits = new Set(
+      items.filter((i) => fold(String(i.title)).includes(q)).map((i) => i.id),
+    );
+    const parents = new Set(
+      items.filter((i) => hits.has(i.id)).map((i) => i.parentId),
+    );
+    this.context = new Set(
+      [...parents].filter(
+        (p): p is string => typeof p === 'string' && !hits.has(p),
+      ),
+    );
+    return outline(
+      items.filter((i) => hits.has(i.id) || parents.has(i.id)),
+      this.folded,
+    );
+  }
 
   /** Where the cursor is now: on its task, else at the same place. */
   private resolve(rows: OutlineRow[]): number {
@@ -383,8 +423,9 @@ export class Outline implements Pane {
       1,
       width - headWidth - (meta === '' ? 0 : visibleWidth(meta) + 1),
     );
+    const dim = r.item.closed || this.context.has(String(r.item.id));
     const style = (text: string) =>
-      cursor ? sgr(1, text) : r.item.closed ? sgr(2, text) : text;
+      cursor ? sgr(1, text) : dim ? sgr(2, text) : text;
     const tail = meta === '' ? '' : ` ${sgr(2, meta)}`;
     if (!cursor || visibleWidth(title) <= room) {
       return [head + style(truncateToWidth(title, room, '…', true)) + tail];
@@ -421,7 +462,10 @@ export class Outline implements Pane {
         : `${head}○ ${a.input.render(room)[0] ?? ''}`;
     return a.refusal === null
       ? [first]
-      : [first, `${head}  ${sgr(2, a.refusal.detail)}`];
+      : [
+          first,
+          `${head}  ${sgr(2, truncateToWidth(a.refusal.detail, room, '…'))}`,
+        ];
   }
 
   render(width: number): string[] {

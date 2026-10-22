@@ -474,6 +474,13 @@ describe('Outline n adds in place', () => {
     expect(t.text()[1]).toMatch(/^▸ ○ milk/);
   });
 
+  it('cuts a long reason with …', async () => {
+    const t = await open1(task('alpha', 'a0'));
+    t.server.state.refuse = () => 'x'.repeat(200);
+    await t.press('n', 'milk', KEY.enter);
+    expect(t.text()[2]?.trimEnd()).toMatch(/x…$/);
+  });
+
   it('Esc discards a refused add', async () => {
     const t = await open1(task('alpha', 'a0'));
     t.server.state.refuse = () => 'title taken';
@@ -491,6 +498,58 @@ describe('Outline n adds in place', () => {
     expect(t.text()[0]).toMatch(/○ new:/);
     await t.press('solo', KEY.enter);
     expect(t.text()[0]).toMatch(/^▸ ○ solo/);
+  });
+});
+
+describe('Outline filter', () => {
+  it('/milk keeps the matching rows', async () => {
+    const t = await open1(
+      task('buy milk', 'a0'),
+      task('bread', 'a1'),
+      task('Milk shake', 'a2'),
+    );
+    t.outline.filter = 'milk';
+    const frame = t.text().join('\n');
+    expect(frame).toContain('buy milk');
+    expect(frame).toContain('Milk shake');
+    expect(frame).not.toContain('bread');
+    t.outline.filter = 'zzz';
+    expect(t.text()).toEqual([expect.stringContaining('nothing here')]);
+  });
+
+  it('a matching subtask keeps its parent, dimmed', async () => {
+    const t = await open1(
+      task('groceries', 'a0'),
+      task('bread', 'a1'),
+      task('milk', 'a2', 'groceries'),
+    );
+    await t.press('j');
+    t.outline.filter = 'milk';
+    const lines = t.text();
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toContain('groceries');
+    expect(lines[1]).toContain('milk');
+    expect(t.lines()[0]).toContain(`${ESC}[2mgroceries`);
+    expect(t.selected.at(-1)).toBe(id('milk'));
+  });
+
+  it('clearing the filter restores the rows', async () => {
+    const t = await open1(task('milk', 'a0'), task('bread', 'a1'));
+    const before = t.text();
+    t.outline.filter = 'bread';
+    expect(t.text()).not.toEqual(before);
+    t.outline.filter = '';
+    expect(t.text()).toEqual(before);
+  });
+
+  it('Ё and ё match', async () => {
+    const t = await open1(task('Ёлка', 'a0'), task('ель', 'a1'));
+    t.outline.filter = 'ёлка';
+    expect(t.text().join('\n')).toContain('Ёлка');
+    expect(t.text().join('\n')).not.toContain('ель');
+    // Decomposed (е + U+0308) matches the composed letter after NFC.
+    t.outline.filter = 'е\u0308Л';
+    expect(t.text().join('\n')).toContain('Ёлка');
   });
 });
 

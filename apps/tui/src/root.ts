@@ -1,4 +1,10 @@
-import { Key, matchesKey, sliceByColumn } from '@earendil-works/pi-tui';
+import {
+  Key,
+  matchesKey,
+  sliceByColumn,
+  visibleWidth,
+  type Input,
+} from '@earendil-works/pi-tui';
 import { ALL } from '@todoer/client-core';
 import { Board } from './board.js';
 import { DetailPane } from './detail-pane.js';
@@ -12,17 +18,22 @@ import { renderStatus } from './status-bar.js';
 import { Statuses } from './statuses.js';
 import { colour, sgr } from './style.js';
 import type { Tui } from './tui.js';
+import { lineInput } from './ui/line-input.js';
 import { Picker } from './ui/picker.js';
 
 export type Focus = 'sidebar' | 'outline' | 'detail';
 
 const CYCLE: Focus[] = ['sidebar', 'outline', 'detail'];
 
-const HINTS: Record<Exclude<Focus, 'detail'> | 'INSERT' | 'board', string> = {
+const HINTS: Record<
+  Exclude<Focus, 'detail'> | 'INSERT' | 'search' | 'board',
+  string
+> = {
   INSERT: 'Enter save · Esc cancel',
+  search: 'Enter keep · Esc clear',
   sidebar: 'j/k move · Enter open · Tab focus · ? help · q quit',
   outline:
-    'j/k move · n new · x done · dd delete · > < indent · J/K move · m status · e details · Tab focus · [ ] views · r sync · ? help · q quit',
+    'j/k move · n new · / filter · x done · dd delete · > < indent · m status · e details · Tab focus · [ ] views · r sync · ? help · q quit',
   board:
     'h/l column · j/k card · H/L move · J/K order · n new · x done · m status · Enter details · Tab focus · [ ] views · r sync · ? help · q quit',
 };
@@ -48,6 +59,8 @@ export class Root implements Pane {
   private readonly board: Board;
   private readonly detail: DetailPane;
   private screen: Screen | null = null;
+  /** The `/` input, in the top status line. */
+  private search: Input | null = null;
   private focusOn: Focus = 'outline';
   private taskId: string | null = null;
   private watching = '';
@@ -61,7 +74,7 @@ export class Root implements Pane {
     () => this.focusOn === 'detail' && this.detail.discard(),
     () => this.closeOverlay(),
     () => this.leaveDetail(),
-    // Task 3.3: the `/` filter goes here, last.
+    () => this.clearFilter(),
   ];
 
   constructor(
@@ -186,7 +199,10 @@ export class Root implements Pane {
 
   private get inserting(): boolean {
     return (
-      this.screen?.inserting ?? (this.list.inserting || this.detail.inserting)
+      this.search !== null ||
+      this.screen?.inserting ||
+      this.list.inserting ||
+      this.detail.inserting
     );
   }
 
@@ -208,6 +224,27 @@ export class Root implements Pane {
   private closeOverlay(): boolean {
     if (!this.overlay()) return false;
     this.setFocus('outline');
+    return true;
+  }
+
+  /** `/`: an input in the top status line; each key filters the outline,
+   *  Enter keeps the filter, Esc clears it. */
+  private find(): void {
+    this.setFocus('outline');
+    this.search = lineInput({
+      label: '',
+      initial: this.outline.filter,
+      onSubmit: () => (this.search = null),
+      onCancel: () => {
+        this.search = null;
+        this.outline.filter = '';
+      },
+    });
+  }
+
+  private clearFilter(): boolean {
+    if (this.outline.filter === '') return false;
+    this.outline.filter = '';
     return true;
   }
 
@@ -243,7 +280,8 @@ export class Root implements Pane {
       if (!(this.focusOn === 'detail' && this.detail.retry())) {
         void tui.engine.handle({ kind: 'sync', reason: 'manual' }, 'tui');
       }
-    } else if (data === 'v') this.open(this.viewPicker());
+    } else if (data === '/' && this.list === this.outline) this.find();
+    else if (data === 'v') this.open(this.viewPicker());
     else if (data === '?') this.open(new Help(this.close));
     else if (data === 'S')
       this.open(new Statuses({ tui, onClose: this.close }));
@@ -260,6 +298,11 @@ export class Root implements Pane {
       return;
     }
     if (this.screen !== null) return this.screen.handleInput?.(data);
+    if (this.search !== null) {
+      this.search.handleInput(data);
+      if (this.search !== null) this.outline.filter = this.search.getValue();
+      return;
+    }
     if (this.holding) {
       if (this.focusOn === 'detail') this.detail.handleInput(data);
       else this.list.handleInput(data);
@@ -312,23 +355,32 @@ export class Root implements Pane {
       });
     const { inserting, list } = this;
     const hints =
-      this.focusOn === 'detail'
-        ? this.detail.hints
-        : this.screen === null &&
-            list === this.outline &&
-            this.outline.hints !== undefined
-          ? this.outline.hints
-          : inserting
-            ? HINTS.INSERT
-            : (this.screen?.hints ??
-              (this.focusOn === 'outline' && list === this.board
-                ? HINTS.board
-                : HINTS[this.focusOn]) + (this.overlay() ? ' · Esc back' : ''));
+      this.search !== null
+        ? HINTS.search
+        : this.focusOn === 'detail'
+          ? this.detail.hints
+          : this.screen === null &&
+              list === this.outline &&
+              this.outline.hints !== undefined
+            ? this.outline.hints
+            : inserting
+              ? HINTS.INSERT
+              : (this.screen?.hints ??
+                (this.focusOn === 'outline' && list === this.board
+                  ? HINTS.board
+                  : HINTS[this.focusOn]) +
+                  (this.overlay() ? ' · Esc back' : ''));
     const status = renderStatus(width, {
       mode: inserting ? 'INSERT' : 'NORMAL',
       sync: this.deps.tui.topics.get('sync'),
       message: this.deps.tui.status.message,
       hints,
+      ...(this.search === null
+        ? {}
+        : {
+            // `INSERT · /` stands before the input.
+            prompt: `/${this.search.render(Math.max(1, width - visibleWidth('INSERT · /')))[0] ?? ''}`,
+          }),
     });
     if (this.mode === 'one' && this.focusOn === 'detail') {
       const lines = this.detail.render(width - 2);
@@ -338,7 +390,11 @@ export class Root implements Pane {
     const listWidth = wide ? w.outline + w.detail : w.outline;
     let middle = framed(
       'outline',
-      list === this.board ? 'Board' : 'Tasks',
+      list === this.board
+        ? 'Board'
+        : this.outline.filter === ''
+          ? 'Tasks'
+          : `Tasks /${this.outline.filter}`,
       (this.screen ?? list).render(listWidth - 2),
       listWidth,
     );

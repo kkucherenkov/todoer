@@ -2,7 +2,9 @@
 
 - Created: 2026-10-22
 - Owner: claude
-- Status: in-progress
+- Status: done
+- Completed: 2026-10-22
+- Result: PR pending
 - Blockers: —
 - Spec: [TUI UX redesign design](../../../docs/specs/2026-10-22-tui-ux-redesign-design.md)
   (Q8, Q9, Q10, Q12, Q17, "Pane boxes")
@@ -100,21 +102,21 @@ client-side `/` filter.
 - **SC-001** A person adds a task where it will appear, reads and moves a
   board with every card reachable, and narrows a long outline, at 80, 100 and
   140 columns.
-- [ ] every FR has a test that failed before the code made it pass
+- [x] every FR has a test that failed before the code made it pass
 - [ ] gates: `PR title (conventional commit)`, `Shell tests`,
-      `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
+      `Workspace tests`, `Lint` (CI on the PR)
+- [x] no document still asserts the behaviour this task replaced
 - [ ] dnote changelog line
 
 ### Steps
 
-- [ ] T001 [FR-001, FR-002, FR-003] `n` adds in place — `apps/tui/src/outline.ts`
+- [x] T001 [FR-001, FR-002, FR-003] `n` adds in place — `apps/tui/src/outline.ts`
   (Task 3.1)
-- [ ] T002 [FR-004, FR-005, FR-006, FR-007] The board across two columns —
+- [x] T002 [FR-004, FR-005, FR-006, FR-007] The board across two columns —
   `apps/tui/src/board.ts`, `apps/tui/src/root.ts` (Task 3.2)
-- [ ] T003 [FR-008, FR-009] `/` filters the outline — `apps/tui/src/outline.ts`,
+- [x] T003 [FR-008, FR-009] `/` filters the outline — `apps/tui/src/outline.ts`,
   `apps/tui/src/root.ts` (Task 3.3)
-- [ ] T004 [FR-010] Help, hints, README and the design doc — `apps/tui/src/help.ts`,
+- [x] T004 [FR-010] Help, hints, README and the design doc — `apps/tui/src/help.ts`,
   `apps/tui/README.md`, `docs/specs/2026-10-22-tui-ux-redesign-design.md`
 - **Checkpoint:** each of the scenarios above passes in a spec and in a tmux
   look at 140×36, 100×30 and 80×24.

@@ -35,5 +35,8 @@ A kanban view draws the board across the outline and detail columns; Enter
 shows the card's details over it and Esc closes them. Below 90 columns it
 shows one status column at a time, ←/→ for the next.
 
+`/` filters the outline by a piece of the title, typed in the top status
+line; Enter keeps the filter (the Tasks box shows it) and Esc clears it.
+
 Development: `pnpm -w exec turbo run build test --filter=@todoer/tui...`.
 Tests need no database.

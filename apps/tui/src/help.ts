@@ -9,7 +9,7 @@ const HELP = [
   'H L       board column    s       skip occurrence',
   '> <       re-parent       m       status',
   'e         details         dd y    delete',
-  'Enter     card details    (on the board)',
+  'Enter     card details    /       filter, Esc clears',
   'Tab       next pane       [ ] v   views',
   'S         statuses        r       sync, retry a ✗',
   '?         this help       q       quit, back in details',

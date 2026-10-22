@@ -375,6 +375,68 @@ describe('Root', () => {
     expect(t.frame()).not.toContain('eggs');
   });
 
+  describe('/ filter', () => {
+    const rows = () => [
+      task('buy milk'),
+      task('bread', 'a1'),
+      task('milk shake', 'a2'),
+    ];
+
+    it('/ types the filter in the top status line and Enter keeps it', async () => {
+      const t = await mount(rows());
+      const counts = () =>
+        t
+          .text()
+          .slice(1, 4)
+          .map((l) => l.slice(0, 24));
+      const before = counts();
+      await t.press('/');
+      expect(t.text().at(-2)).toMatch(/^INSERT · \//);
+      await t.press('m', 'i', 'l', 'k');
+      expect(t.text().at(-2)).toMatch(/^INSERT · \/milk/);
+      expect(t.text()[0]).toMatch(/╭─ Tasks \/milk ─+╮/);
+      expect(t.frame()).not.toContain('bread');
+      expect(counts()).toEqual(before);
+      await t.press(KEY.enter);
+      expect(t.text().at(-2)).toMatch(/^NORMAL · synced/);
+      expect(t.frame()).not.toContain('bread');
+      // NORMAL keys act on the filtered rows.
+      await t.press('j');
+      expect(cursorLine(t.text())).toContain('milk shake');
+      // Another view starts unfiltered.
+      await t.press(']');
+      expect(t.text()[0]).toMatch(/╭─ Tasks ─+╮/);
+    });
+
+    it('Esc in the input clears the filter', async () => {
+      const t = await mount(rows());
+      await t.press('/', 'b', 'r', KEY.escape);
+      expect(t.text().at(-2)).toMatch(/^NORMAL/);
+      expect(t.frame()).toContain('buy milk');
+      expect(t.text()[0]).toMatch(/╭─ Tasks ─+╮/);
+    });
+
+    it('Esc clears a kept filter last, after an overlay', async () => {
+      const t = await mount(rows(), { width: 100, height: 30 });
+      await t.press('/', 'milk', KEY.enter, KEY.tab, KEY.tab);
+      expect(t.root.focusAt).toBe('sidebar');
+      await t.press(KEY.escape);
+      expect(t.root.focusAt).toBe('outline');
+      expect(t.frame()).not.toContain('bread');
+      await t.press(KEY.escape);
+      expect(t.frame()).toContain('bread');
+    });
+
+    it('a refused add takes Esc before the filter', async () => {
+      const t = await mount(rows());
+      await t.press('/', 'milk', KEY.enter);
+      t.server.state.refuse = () => 'title taken';
+      await t.press('n', 'milk tea', KEY.enter, KEY.escape);
+      expect(t.frame()).not.toContain('milk tea');
+      expect(t.frame()).not.toContain('bread');
+    });
+  });
+
   it('at 140, Esc in the detail pane gives the focus back to the outline', async () => {
     const t = await mount([task('milk')]);
     await t.press('e');

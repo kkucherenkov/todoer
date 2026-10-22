@@ -227,11 +227,18 @@ client would have to compute counts.
   alone.
 - **Status line (Q16 B).** Two lines. The top line shows the mode and sync
   state: synced, offline, N queued, N refused, then the reason a request was
-  refused for now (403, 429), cut first when the line is short. The bottom line shows the key
+  refused for now (403, 429), cut first when the line is short; while `/` is
+  typed it shows the input instead. The bottom line shows the key
   hints for the focus, truncated at the right and never wrapped.
 - **Search (Q17 A).** `/` filters the current outline by a substring of the
   title on the client, and Esc clears it. Search across all tasks is a
-  separate design.
+  separate design. The input sits in the top status line (INSERT); each key
+  narrows the rows, matching case-insensitively after `normalize('NFC')`
+  and folding nothing else (`ё` is not `е`). A matching subtask keeps its
+  parent row, dimmed. Enter keeps the filter in NORMAL and the Tasks box
+  title shows it (`Tasks /milk`); Esc in the input, or last in the Esc order,
+  clears it, and so does picking another view. The sidebar counts stay the
+  core's.
 - **Work split (Q15 A).** One PR each, in order:
   - step 0: the core `tag:<id>` built-in view and count;
   - step 1: the frame on `pi-tui`: layout, sidebar, outline, status lines and
