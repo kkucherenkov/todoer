@@ -2,7 +2,8 @@
 
 - Created: 2026-10-22
 - Owner: claude
-- Status: in-progress
+- Status: done
+- Completed: 2026-10-22
 - Blockers: —
 - Spec: [TUI UX redesign design](../../../docs/specs/2026-10-22-tui-ux-redesign-design.md),
   Q6; [plan](../../../docs/plans/2026-10-22-plan-tui-ux-redesign.md), PR 0
@@ -56,11 +57,11 @@ and count it, and the web navigation to show it.
 
 - **SC-001** A client renders tag entries with counts and opens any of them,
   reading only what the engine publishes.
-- [ ] every FR has a test that failed before the code made it pass
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] every FR has a test that failed before the code made it pass
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 
