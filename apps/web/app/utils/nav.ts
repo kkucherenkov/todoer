@@ -1,6 +1,7 @@
 import {
   ALL,
   PROJECT_PREFIX,
+  TAG_PREFIX,
   TODAY,
   UPCOMING,
   type Catalog,
@@ -21,31 +22,43 @@ const PATHS: Record<string, string> = {
   [UPCOMING]: '/upcoming',
 };
 
-/** The route of a watch key: a built-in, `project:<id>` or a saved view id. */
+/** The route of a watch key: a built-in, `project:<id>`, `tag:<id>` or a
+ *  saved view id. */
 export const navPath = (key: string) =>
   PATHS[key] ??
   (key.startsWith(PROJECT_PREFIX)
     ? `/projects/${key.slice(PROJECT_PREFIX.length)}`
-    : `/views/${key}`);
+    : key.startsWith(TAG_PREFIX)
+      ? `/tags/${key.slice(TAG_PREFIX.length)}`
+      : `/views/${key}`);
 
 /** The watch key of a route: the inverse of navPath. */
 export function routeKey(path: string, id?: string) {
   const builtIn = Object.keys(PATHS).find((key) => PATHS[key] === path);
   if (builtIn) return builtIn;
-  return path.startsWith('/projects/') ? `${PROJECT_PREFIX}${id}` : String(id);
+  if (path.startsWith('/projects/')) return `${PROJECT_PREFIX}${id}`;
+  return path.startsWith('/tags/') ? `${TAG_PREFIX}${id}` : String(id);
 }
 
 /** `catalog.nav` as it is: no second reading of the replica. */
 export function navEntries(catalog: Catalog | undefined): NavEntry[] {
-  const names = new Map(
-    (catalog?.projects ?? []).map((p) => [`${PROJECT_PREFIX}${p.id}`, p.name]),
+  const names = new Map<string, string>([
+    ...(catalog?.projects ?? []).map(
+      (p) => [PROJECT_PREFIX + p.id, p.name] as const,
+    ),
+    ...(catalog?.tags ?? []).map((t) => [TAG_PREFIX + t.id, t.name] as const),
+  ]);
+  return (
+    (catalog?.nav ?? [])
+      // A tag the catalog does not list has no name to show.
+      .filter(({ key }) => !key.startsWith(TAG_PREFIX) || names.has(key))
+      .map(({ key, count }) => ({
+        key,
+        count,
+        path: navPath(key),
+        name: names.get(key) ?? null,
+      }))
   );
-  return (catalog?.nav ?? []).map(({ key, count }) => ({
-    key,
-    count,
-    path: navPath(key),
-    name: names.get(key) ?? null,
-  }));
 }
 
 /** A key the screen labels itself (`nav.<key>`), before any catalog. */

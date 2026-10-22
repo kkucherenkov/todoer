@@ -930,6 +930,94 @@ describe('built-in views and navigation', () => {
     }
   });
 
+  const tag = (id: string, name: string, extra: Fields = {}) =>
+    ['tag', { id, name, ...extra }] as [string, Fields];
+  const link = (n: number, task: number, tagId: string) =>
+    [
+      'task_tag',
+      { id: uuid(n), taskId: uuid(task), tagId, attached: true },
+    ] as [string, Fields];
+
+  it('tag:<id>: its open tasks in any layout, sorted manual', async () => {
+    const srv = server(
+      TODO,
+      tag(P, 'home'),
+      taskRow(1),
+      taskRow(2),
+      taskRow(3),
+      link(0xa1, 1, P),
+      link(0xa2, 2, P),
+    );
+    const e = await signedIn(srv);
+    await e.handle({
+      kind: 'mark',
+      opId: uuid(0xb2),
+      taskId: uuid(2),
+      mark: 'done',
+    });
+    const key = `tag:${P}`;
+    await e.handle({ kind: 'watch', view: key, task: null }, 'A');
+    expect(lastView(key)).toMatchObject({ layout: 'list', sort: 'manual' });
+    expect(sorted(key)).toEqual(['t1']);
+    await e.handle(
+      { kind: 'watch', view: key, task: null, layout: 'kanban' },
+      'A',
+    );
+    expect(lastView(key)?.layout).toBe('kanban');
+  });
+
+  it('tag:<id> of an unknown or a deleted tag is published as deleted', async () => {
+    const srv = server(
+      TODO,
+      tag(P, 'gone', { deletedAt: EARLIER }),
+      taskRow(1),
+    );
+    const e = await signedIn(srv);
+    for (const key of [`tag:${P}`, `tag:${Q}`, 'tag:']) {
+      await e.handle({ kind: 'watch', view: key, task: null }, 'A');
+      expect(lastView(key)).toMatchObject({ problem: 'deleted', items: [] });
+    }
+  });
+
+  it('the catalog lists tags after projects, each with its count', async () => {
+    const [A, B, Z, L] = [uuid(0x93), uuid(0x94), uuid(0x95), uuid(0x96)];
+    const srv = server(
+      TODO,
+      project(B, 'B'),
+      project(A, 'A'),
+      tag(Z, 'zeta'),
+      tag(L, 'alpha'),
+      taskRow(1),
+      taskRow(2, { parentId: uuid(1) }),
+      taskRow(3),
+      link(0xa1, 1, L),
+      link(0xa2, 2, L),
+      link(0xa3, 2, Z),
+      link(0xa4, 3, Z),
+    );
+    const e = await signedIn(srv);
+    expect(nav()).toEqual([
+      { key: 'all', count: 3 },
+      { key: 'today', count: 0 },
+      { key: 'upcoming', count: 0 },
+      { key: `project:${A}`, count: 0 },
+      { key: `project:${B}`, count: 0 },
+      { key: `tag:${L}`, count: 2 },
+      { key: `tag:${Z}`, count: 2 },
+    ]);
+    // A task detached from a tag leaves its count on the next publish.
+    await e.handle({
+      kind: 'edit',
+      opId: uuid(0xb1),
+      taskId: uuid(2),
+      changes: { tags: ['zeta'] },
+    });
+    const count = (id: string) =>
+      nav()?.find((n) => n.key === `tag:${id}`)?.count;
+    expect(count(L)).toBe(1);
+    expect(count(Z)).toBe(2);
+  });
+
   it('the catalog counts each entry of the navigation, subtasks included, each task once', async () => {
     const srv = server(
       TODO,
