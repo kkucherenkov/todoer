@@ -62,8 +62,14 @@ export class Board implements Pane {
     deps.tui.topics.subscribe(() => this.sync());
   }
 
+  /** Not while the add waits for its answer: no key is typed then. */
   get inserting(): boolean {
-    return this.adding !== null || this.keys.inserting;
+    return (this.adding !== null && !this.saving) || this.keys.inserting;
+  }
+
+  /** While the add waits; undefined otherwise. */
+  get hints(): string | undefined {
+    return this.saving ? 'saving…' : undefined;
   }
 
   get holding(): boolean {

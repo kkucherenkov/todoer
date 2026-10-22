@@ -2,6 +2,7 @@ import {
   Key,
   matchesKey,
   sliceByColumn,
+  truncateToWidth,
   visibleWidth,
   type Input,
 } from '@earendil-works/pi-tui';
@@ -26,14 +27,18 @@ export type Focus = 'sidebar' | 'outline' | 'detail';
 const CYCLE: Focus[] = ['sidebar', 'outline', 'detail'];
 
 const HINTS: Record<
-  Exclude<Focus, 'detail'> | 'INSERT' | 'search' | 'board',
+  Exclude<Focus, 'detail'> | 'INSERT' | 'search' | 'board' | 'narrow',
   string
 > = {
   INSERT: 'Enter save · Esc cancel',
   search: 'Enter keep · Esc clear',
   sidebar: 'j/k move · Enter open · Tab focus · ? help · q quit',
   outline:
-    'j/k move · n new · / filter · x done · dd delete · > < indent · m status · e details · Tab focus · [ ] views · r sync · ? help · q quit',
+    'j/k move · n new · Enter i edit · / filter · x done · dd delete · > < indent · m status · e details · Tab focus · r sync · ? help · q quit',
+  // Below 90 columns Enter opens the details; `i` edits the line. The
+  // rest is in the help.
+  narrow:
+    'j/k move · n new · Enter details · i edit · x done · / filter · ? help · q quit',
   board:
     'h/l column · j/k card · H/L move · J/K order · n new · x done · m status · Enter details · Tab focus · [ ] views · r sync · ? help · q quit',
 };
@@ -294,8 +299,9 @@ export class Root implements Pane {
       }
     } else if (data === '/' && this.list === this.outline) this.find();
     else if (data === 'v') this.open(this.viewPicker());
-    else if (data === '?') this.open(new Help(this.close));
-    else if (data === 'S')
+    else if (data === '?') {
+      this.open(new Help(this.close, this.mode === 'one'));
+    } else if (data === 'S')
       this.open(new Statuses({ tui, onClose: this.close }));
     else return false;
     return true;
@@ -343,7 +349,7 @@ export class Root implements Pane {
       return [
         'Not signed in. Run `todoer login`, then start todoer-tui again.',
         sgr(2, 'q quit'),
-      ];
+      ].map((l) => truncateToWidth(l, width, '…', true));
     }
     const w = widths(width, this.mode);
     const body = rows - 2;
@@ -371,17 +377,18 @@ export class Root implements Pane {
         ? HINTS.search
         : this.focusOn === 'detail'
           ? this.detail.hints
-          : this.screen === null &&
-              list === this.outline &&
-              this.outline.hints !== undefined
-            ? this.outline.hints
+          : this.screen === null && list.hints !== undefined
+            ? list.hints
             : inserting
               ? HINTS.INSERT
               : (this.screen?.hints ??
-                (this.focusOn === 'outline' && list === this.board
-                  ? HINTS.board
-                  : HINTS[this.focusOn]) +
-                  (this.overlay() ? ' · Esc back' : ''));
+                (this.focusOn !== 'outline'
+                  ? HINTS[this.focusOn]
+                  : list === this.board
+                    ? HINTS.board
+                    : this.mode === 'one'
+                      ? HINTS.narrow
+                      : HINTS.outline) + (this.overlay() ? ' · Esc back' : ''));
     const status = renderStatus(width, {
       mode: inserting ? 'INSERT' : 'NORMAL',
       sync: this.deps.tui.topics.get('sync'),
