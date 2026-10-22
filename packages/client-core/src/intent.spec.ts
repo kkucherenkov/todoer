@@ -65,10 +65,26 @@ describe('mint', () => {
   let n = 0;
   const newId = () => `id-${++n}`;
 
-  it('gives a create an id and an opId', () => {
-    const w = mint({ kind: 'saveStatus', name: 's' }, newId);
+  const creates: Draft[] = [
+    { kind: 'add', text: 't' },
+    {
+      kind: 'saveView',
+      fields: { name: 'v', layout: 'list', sort: 'manual', filter: null },
+    },
+    { kind: 'saveStatus', name: 's' },
+    { kind: 'moveOccurrence', taskId: 't', occurrence: 'o', to: 'd' },
+  ];
+  it.each(creates)('gives $kind an id different from its opId', (draft) => {
+    const w = mint(draft, newId);
     expect(w).toHaveProperty('id');
     expect(w).toHaveProperty('opId');
+    expect((w as { id: string }).id).not.toBe(w.opId);
+  });
+
+  it('keeps the id a create names', () => {
+    expect(mint({ kind: 'add', text: 't', id: 'mine' }, newId)).toMatchObject({
+      id: 'mine',
+    });
   });
 
   it('gives an edit an opId only', () => {

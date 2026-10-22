@@ -30,7 +30,9 @@ resend a refused write the same way.
    the field is marked `✗` with the person's value, and under it
    `saved → yours · reason`; `r` resends the same write with the same `opId`
    and Esc discards it.
-5. **Given** a refusal for task A, **When** the user has selected task B by the
+5. **Given** a subtask row under the cursor, **When** the user presses x or
+   space, **Then** it is ticked at the parent's occurrence.
+6. **Given** a refusal for task A, **When** the user has selected task B by the
    time it arrives, **Then** B shows no `✗` and A shows it when selected again.
 
 ### Requirements
@@ -40,7 +42,8 @@ resend a refused write the same way.
   from there (← design, Q8)
 - **FR-002** The detail pane MUST list title, project, tags, priority, status,
   scheduled, due, repeat and notes as one flat list, then the subtasks with
-  their progress; j/k moves over them (← Q7)
+  their progress; j/k moves over them, and x or space on a subtask row ticks
+  it at the parent's occurrence (← Q7)
 - **FR-003** Enter MUST turn the field's own row into an input in place; Enter
   saves, Esc cancels; notes use the `Editor` where Shift+Enter or Alt+Enter
   inserts a newline (← Q3)
@@ -54,6 +57,8 @@ resend a refused write the same way.
 
 ### Edge cases
 
+- A subtask of a repeating task ticked from the pane marks the parent's
+  current occurrence, not the whole task (FR-002, T002)
 - A refusal arriving after the cursor moved to another task shows only on the
   task it belongs to (FR-005, T003)
 - A resize mid-edit keeps the typed text and the field (FR-003, T002)
