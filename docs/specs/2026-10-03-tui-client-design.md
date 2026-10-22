@@ -179,17 +179,23 @@ a sign-in screen, the mouse.
   | `h` `l` `←` `→` | fold, unfold | neighbouring column |
   | `J` `K` `Alt-↑` `Alt-↓` | move the task (manual sort only) | move in the column |
   | `H` `L` | — | move to the neighbouring column |
-  | `Tab` `Shift-Tab` | indent under the nearest top-level task above, outdent | — |
+  | `Tab` `Shift-Tab` | indent under the nearest top-level task above, outdent (superseded¹) | — |
   | `o` `O` | new task below, new subtask below | new task below the card |
-  | `Enter` `i` | edit the line in place | edit the line in place |
+  | `Enter` `i` | edit the line in place (superseded¹) | edit the line in place (superseded¹) |
   | `x` `Space` | done, undo | done, undo |
   | `s` | skip a recurring occurrence | skip |
   | `m` | status picker | status picker |
-  | `e` | details panel | details panel |
+  | `e` | details panel (superseded¹) | details panel |
   | `dd` | delete, confirmed with `y` | delete |
   | `S` | statuses screen | statuses screen |
   | `[` `]` `v` | previous, next view, view picker | the same |
   | `r` `?` `q` | sync now, help, quit | the same |
+
+  ¹ _Superseded by the [2026-10-22 redesign](2026-10-22-tui-ux-redesign-design.md):_ `>` and `<` re-parent, and Tab moves the
+  focus between the panes. Enter and `i` edit the line from 90 columns;
+  below 90 Enter opens the task's details and `i` edits the line. On the
+  board Enter opens the card's details over it. `e` focuses the detail
+  column (full screen below 90).
 
   "Below" holds in a manual view: a `move` anchored on the cursor follows the
   add. A view with another sort places the new task by that sort.
@@ -200,7 +206,8 @@ a sign-in screen, the mouse.
   queued offline write is) and keeps the typed text on a refusal, whose
   reason the status bar shows.
 - **The details panel.** It takes the main pane; a side-by-side layout from
-  120 columns is deferred.
+  120 columns is deferred. _Superseded by the [2026-10-22 redesign](2026-10-22-tui-ux-redesign-design.md):_ the detail pane
+  stands beside the outline from 90 columns and takes the screen below.
   Each field saves on its own as one `editTask` (or `setRecurrence`), with no
   Save step. Dates are `YYYY-MM-DD`, empty clears, and an unparsable value is
   reported on the status line and not saved. Recurrence offers presets (daily,
@@ -295,7 +302,9 @@ the TUI to the stack table in `.claude/CLAUDE.md`.
   terminals. The vim keys (`J`, `K`) are the fallback that always works. The
   outline also takes a bare `\e[Z` as `Shift-Tab`, for terminals that send
   it without Ink reporting `shift`; under tmux on macOS both `Shift-Tab` and
-  `Alt-↑`/`Alt-↓` work.
+  `Alt-↑`/`Alt-↓` work. _Superseded by the [2026-10-22 redesign](2026-10-22-tui-ux-redesign-design.md):_ no key is bound to
+  `Shift-Tab` any more (`>`/`<` re-parent); `Alt-↑`/`Alt-↓` are matched in
+  their modifyOtherKeys form and as `ESC ESC [ A`/`B`.
 
 ## Deferred
 

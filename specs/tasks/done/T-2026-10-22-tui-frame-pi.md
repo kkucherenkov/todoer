@@ -38,8 +38,8 @@ place and quick add come in PR 2 and PR 3.
 - **FR-001** The TUI MUST run on pi-tui 1.4.0 with no Ink or React dependency
   (← design, Toolkit)
 - **FR-002** The frame MUST be three columns at ≥ 120, sidebar as an overlay
-  at 90–119 and outline only below 90; below 60×12 it shows one "too small"
-  line (← Q2, Q5)
+  at 90–119 and outline only below 90; below 60×12 (60×14 since #65) it
+  shows one "too small" line (← Q2, Q5)
 - **FR-003** The sidebar MUST list views, projects, tags and saved views with
   the core's counts, saved views without one (← Q6)
 - **FR-004** Outline rows MUST be one line each; the cursor row shows up to
