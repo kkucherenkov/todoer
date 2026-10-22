@@ -383,7 +383,7 @@ describe('Root', () => {
     expect(t.root.focusAt).toBe('outline');
   });
 
-  it('a kanban view draws the board, and the details follow its card', async () => {
+  it('a kanban view draws the board, and Enter shows its card’s details', async () => {
     const board = { ...view, layout: 'kanban' };
     const t = await mount([
       { ...status, id: 's2', name: 'Doing', rank: 'a1' },
@@ -393,9 +393,11 @@ describe('Root', () => {
     ]);
     await t.press('[');
     expect(t.frame()).toMatch(/To do \(1\)\s+Doing \(1\)/);
+    await t.press(KEY.enter);
     expect(t.frame()).toMatch(/Due\s+2026-10-08/);
-    await t.press('l');
+    await t.press(KEY.escape, 'l', KEY.enter);
     expect(t.frame()).toMatch(/Due\s+2026-10-09/);
+    await t.press(KEY.escape);
     expect(t.text().at(-1)).toContain('H/L move');
   });
 

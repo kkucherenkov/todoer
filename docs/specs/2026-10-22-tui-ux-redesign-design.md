@@ -131,7 +131,7 @@ switch the fixed pane exists to avoid.
 **Decision.** After running the borderless frame the maintainer asked for a
 box around each pane and a highlight on the active one: without borders the
 outline's right-aligned `#project` read as part of the details beside it. Each
-visible pane (`Views`, `Tasks`, `Details`; the board keeps `Tasks`) is drawn in
+visible pane (`Views`, `Tasks`, `Details`, and `Board` for a kanban view) is drawn in
 a rounded box with its title in the top border. The boxes sit side by side with
 no gap, so a pane's content is two cells narrower and two rows shorter than
 its column. The overlay sidebar (90–119) and the full-screen details (< 90)
@@ -194,10 +194,14 @@ client would have to compute counts.
   (my call): an open input or the `Editor`, then a refusal shown under its
   field, then an overlay (sidebar, card details, the full-screen details
   below 90 columns), then the `/` filter.
-- **Kanban (Q10 B).** The board takes the outline and detail columns. Enter
-  opens a card's details over it. Between 90 and 119 columns it keeps that
-  layout. Below 90 one status column shows at a time, switched with ←/→
-  (my call on the 90 boundary, matching Q5).
+- **Kanban (Q10 B).** The board takes the outline and detail columns, in
+  one box titled `Board`; the sidebar box stays. Enter opens a card's details
+  boxed over the board's right side, and Esc closes them with the cursor on
+  the same card. Between 90 and 119 columns it keeps that layout. Below 90 one
+  status column shows at a time, switched with ←/→ or h/l, under the header
+  `STATUS (n/m)`, its place among the columns (my call on the 90 boundary,
+  matching Q5); Enter shows the details full screen. A column taller than the
+  box scrolls so the cursor's card is always drawn.
 - **Outline row (Q11 C).** One line per task: status marker, priority, title
   truncated with "…", and short fields on the right (#project, due, subtask
   progress). The row under the cursor shows its full title.

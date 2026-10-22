@@ -24,7 +24,7 @@ const HINTS: Record<Exclude<Focus, 'detail'> | 'INSERT' | 'board', string> = {
   outline:
     'j/k move · n new · x done · dd delete · > < indent · J/K move · m status · e details · Tab focus · [ ] views · r sync · ? help · q quit',
   board:
-    'h/l column · j/k card · H/L move · J/K order · n new · x done · m status · e details · Tab focus · [ ] views · r sync · ? help · q quit',
+    'h/l column · j/k card · H/L move · J/K order · n new · x done · m status · Enter details · Tab focus · [ ] views · r sync · ? help · q quit',
 };
 
 /** A screen drawn in the outline column (help, view picker, statuses);
@@ -33,10 +33,12 @@ type Screen = Pane & { hints: string; inserting?: boolean };
 
 /**
  * The whole screen: sidebar | outline | detail pane at full height, then the
- * two status lines. A kanban view draws the board in the outline column, as
- * do the help (`?`), the view picker (`v`) and the statuses (`S`). Below 120
- * columns a focused sidebar is drawn over the outline; below 90 the focused
- * detail pane takes the screen. Keys go to the focused pane, except the
+ * two status lines. A kanban view draws the board across the outline and
+ * detail columns, with a card's details boxed over its right side (Enter);
+ * the help (`?`), the view picker (`v`) and the statuses (`S`) take the
+ * outline's place. Below 120 columns a focused sidebar is drawn over the
+ * outline; below 90 the focused detail pane takes the screen and the board
+ * shows one status column at a time. Keys go to the focused pane, except the
  * global ones in NORMAL mode. The root watches the engine for the sidebar's
  * key and the selected task.
  */
@@ -192,10 +194,16 @@ export class Root implements Pane {
     return modeFor(this.deps.columns());
   }
 
-  /** A focused sidebar under 120 columns, the details under 90. */
+  /** The board takes the detail column too, from 90 columns. */
+  private get wide(): boolean {
+    return this.list === this.board && this.mode !== 'one';
+  }
+
+  /** A focused sidebar under 120 columns, the details under 90 or over the
+   *  board. */
   private overlay = () =>
     (this.mode !== 'three' && this.focusOn === 'sidebar') ||
-    (this.mode === 'one' && this.focusOn === 'detail');
+    (this.focusOn === 'detail' && (this.mode === 'one' || this.wide));
 
   private closeOverlay(): boolean {
     if (!this.overlay()) return false;
@@ -264,7 +272,10 @@ export class Root implements Pane {
     if (this.global(data)) return;
     if (this.focusOn === 'sidebar') this.sidebar.handleInput(data);
     else if (this.focusOn === 'detail') this.detail.handleInput(data);
-    else if (this.mode === 'one' && matchesKey(data, Key.enter)) {
+    else if (
+      (this.mode === 'one' || this.list === this.board) &&
+      matchesKey(data, Key.enter)
+    ) {
       this.setFocus('detail');
     } else this.list.handleInput(data);
   }
@@ -285,6 +296,7 @@ export class Root implements Pane {
     this.outline.height = body - 2;
     this.board.height = body - 2;
     this.detail.height = body - 2;
+    this.board.single = this.mode === 'one';
     const framed = (
       focus: Focus,
       title: string,
@@ -322,44 +334,39 @@ export class Root implements Pane {
       const lines = this.detail.render(width - 2);
       return [...framed('detail', 'Details', lines, width), ...status];
     }
-    const middle = framed(
+    const { wide } = this;
+    const listWidth = wide ? w.outline + w.detail : w.outline;
+    let middle = framed(
       'outline',
-      'Tasks',
-      (this.screen ?? list).render(w.outline - 2),
-      w.outline,
+      list === this.board ? 'Board' : 'Tasks',
+      (this.screen ?? list).render(listWidth - 2),
+      listWidth,
     );
     const side = widths(width, 'three').sidebar;
     const sidebar = (boxWidth: number) =>
       framed('sidebar', 'Views', this.sidebar.render(boxWidth - 2), boxWidth);
-    // Over the outline, which stays where it is under it.
-    const over = this.overlay() ? sidebar(side) : [];
+    const details = () =>
+      framed('detail', 'Details', this.detail.render(w.detail - 2), w.detail);
+    // Over the outline or the board, which stays where it is under it.
+    if (this.overlay() && this.focusOn === 'sidebar') {
+      const over = sidebar(side);
+      middle = over.map(
+        (l, i) =>
+          l + sliceByColumn(middle[i] ?? '', side, listWidth - side, true),
+      );
+    } else if (this.overlay()) {
+      const over = details();
+      middle = middle.map(
+        (l, i) =>
+          sliceByColumn(l, 0, listWidth - w.detail, true) + (over[i] ?? ''),
+      );
+    }
     const parts = [
       ...(w.sidebar > 0
         ? [{ lines: sidebar(w.sidebar), width: w.sidebar }]
         : []),
-      {
-        lines: this.overlay()
-          ? over.map(
-              (l, i) =>
-                l +
-                sliceByColumn(middle[i] ?? '', side, w.outline - side, true),
-            )
-          : middle,
-        width: w.outline,
-      },
-      ...(w.detail > 0
-        ? [
-            {
-              lines: framed(
-                'detail',
-                'Details',
-                this.detail.render(w.detail - 2),
-                w.detail,
-              ),
-              width: w.detail,
-            },
-          ]
-        : []),
+      { lines: middle, width: listWidth },
+      ...(w.detail > 0 && !wide ? [{ lines: details(), width: w.detail }] : []),
     ];
     return [...columns(parts, body), ...status];
   }

@@ -31,5 +31,9 @@ p1`), Enter adds it and Esc drops the row. A refused add stays in its row with
 the reason, under the same rule: Enter reopens the text, `r` resends it when
 the server kept no verdict, Esc drops it.
 
+A kanban view draws the board across the outline and detail columns; Enter
+shows the card's details over it and Esc closes them. Below 90 columns it
+shows one status column at a time, ←/→ for the next.
+
 Development: `pnpm -w exec turbo run build test --filter=@todoer/tui...`.
 Tests need no database.
