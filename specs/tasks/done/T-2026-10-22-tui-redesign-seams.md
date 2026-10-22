@@ -2,7 +2,9 @@
 
 - Created: 2026-10-22
 - Owner: claude
-- Status: in progress
+- Status: done
+- Completed: 2026-10-22
+- Result: PR pending
 - Blockers: —
 - Spec: [TUI UX redesign design](../../../docs/specs/2026-10-22-tui-ux-redesign-design.md)
   (Q3, Q8, Q9, Q10, Q14)
@@ -77,21 +79,21 @@ client's keys. This pass fixes each, with a spec that failed first.
 
 - **SC-001** Editing a task in the detail pane never moves the pane to
   another task, and every key the hints name acts.
-- [ ] every FR has a test that failed before the code made it pass
+- [x] every FR has a test that failed before the code made it pass
 - [ ] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint` (CI on the PR)
-- [ ] no document still asserts the behaviour this task replaced
+- [x] no document still asserts the behaviour this task replaced
 - [ ] dnote changelog line
 
 ### Steps
 
-- [ ] T001 [FR-001, FR-002, FR-006] Pin the detail pane to its task —
+- [x] T001 [FR-001, FR-002, FR-006] Pin the detail pane to its task —
   `apps/tui/src/root.ts`, `apps/tui/src/detail-pane.ts`, `apps/tui/src/board.ts`
-- [ ] T002 [FR-003, FR-004] One retry rule, `NO_COLOR` on the `✗` —
+- [x] T002 [FR-003, FR-004] One retry rule, `NO_COLOR` on the `✗` —
   `apps/tui/src/failure.ts`, `apps/tui/src/outline.ts`,
   `apps/tui/src/detail-pane.ts`
-- [ ] T003 [FR-005, FR-007] Width-exact signed-out line, hints and help —
+- [x] T003 [FR-005, FR-007] Width-exact signed-out line, hints and help —
   `apps/tui/src/root.ts`, `apps/tui/src/help.ts`, `apps/tui/src/board.ts`
-- [ ] T004 [FR-008] Superseded notes in the older documents
-- [ ] T005 [FR-009] Shared `alt()` and `NOT_APPLIED` —
+- [x] T004 [FR-008] Superseded notes in the older documents
+- [x] T005 [FR-009] Shared `alt()` and `NOT_APPLIED` —
   `apps/tui/src/task-keys.ts`, `packages/client-core/src/protocol.ts`
