@@ -316,7 +316,7 @@ One shell, `UDashboardGroup`:
 - **Sidebar** (`UDashboardSidebar`): the app name in the header; `ViewNav`
   (`UNavigationMenu`, vertical, labelled "Views": All open `/`, Today
   `/today`, Upcoming `/upcoming`, then under "Projects" each live project
-  `/projects/<id>`, each with the core's count from `catalog.nav` as a badge (the header shows the same count);
+  `/projects/<id>`, then under "Tags" (RU "Теги") each live tag `/tags/<id>`, every project and tag with the core's count from `catalog.nav` as a badge (the header shows the same count);
   then under "Saved views" (RU "Сохранённые представления") the saved views `/views/<id>` with their layout
   icon; then "New view"). The shown destination's link carries
   `aria-current="page"`. Below `lg` the sidebar is a slideover opened by the
@@ -344,7 +344,7 @@ library.
 | `SignInForm`, `RegisterForm`          | `UForm`, `UFormField`, `UInput`, `UButton`, `UAlert`            | one column; the error alert sits above the fields; the password rule is the field's help text |
 | `LocaleSwitch`                        | `UButton` × 2                                                   | current locale `solid`, other `outline`; could become a `UFieldGroup` |
 | `AppShell`                            | `UDashboardGroup`, `UDashboardSidebar`, `UDashboardPanel`, `UDashboardNavbar`, `UAlert` | see Layout                                    |
-| `ViewNav`                             | `UNavigationMenu`, `UButton`                                    | active item in `primary`; built-ins and projects show a count badge; a problem view gets the warning icon |
+| `ViewNav`                             | `UNavigationMenu`, `UButton`                                    | active item in `primary`; built-ins, projects and tags show a count badge; a problem view gets the warning icon |
 | `SyncStatus`                          | `UBadge`, `UButton`                                             | task count (14px/500), "Saved on this device", badges per sync state, last synced, Sync now, Sign out |
 | `UpdatePrompt`                        | `UAlert` (info)                                                 | in the workspace alerts under the header, next to the sync problem; on the gate while signed out; Reload action |
 | `ViewBody`                            | `UAlert` (warning)                                              | a view whose filter is invalid or deleted shows why            |

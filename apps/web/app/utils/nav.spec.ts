@@ -3,8 +3,11 @@ import { describe, expect, it } from 'vitest';
 import { clockEngine, row } from '../db/clockEngine.testing';
 import { isBuiltIn, navEntries, navPath, routeKey, shownCount } from './nav';
 
-const catalog = (nav: Catalog['nav'], projects: Catalog['projects'] = []) =>
-  ({ views: [], statuses: [], tags: [], projects, nav }) satisfies Catalog;
+const catalog = (
+  nav: Catalog['nav'],
+  projects: Catalog['projects'] = [],
+  tags: Catalog['tags'] = [],
+) => ({ views: [], statuses: [], tags, projects, nav }) satisfies Catalog;
 
 describe('navigation entries', () => {
   it('none before the first catalog', () => {
@@ -32,12 +35,28 @@ describe('navigation entries', () => {
     ]);
   });
 
+  it('a tag entry is named from catalog.tags; one missing there is left out', () => {
+    expect(
+      navEntries(
+        catalog(
+          [
+            { key: 'tag:t1', count: 2 },
+            { key: 'tag:gone', count: 1 },
+          ],
+          [],
+          [{ id: 't1', name: 'home' }],
+        ),
+      ),
+    ).toEqual([{ key: 'tag:t1', count: 2, path: '/tags/t1', name: 'home' }]);
+  });
+
   it('a route names the key its page watches, and back', () => {
     const cases = [
       ['/', undefined, 'all'],
       ['/today', undefined, 'today'],
       ['/upcoming', undefined, 'upcoming'],
       ['/projects/p1', 'p1', 'project:p1'],
+      ['/tags/t1', 't1', 'tag:t1'],
       ['/views/v1', 'v1', 'v1'],
     ] as const;
     for (const [path, id, key] of cases) {
@@ -68,8 +87,8 @@ describe('the count a destination shows', () => {
 
   it('only the built-in keys are labelled by the screen', () => {
     expect(
-      ['all', 'today', 'upcoming', 'project:p', 'v1'].map(isBuiltIn),
-    ).toEqual([true, true, true, false, false]);
+      ['all', 'today', 'upcoming', 'project:p', 'tag:t', 'v1'].map(isBuiltIn),
+    ).toEqual([true, true, true, false, false, false]);
   });
 });
 

@@ -88,6 +88,21 @@ test('navigation: built-in destinations and projects with core counts', async ({
   await expect(ru.getByText('Проекты')).toBeVisible();
 });
 
+test('a tag in the sidebar opens its tasks with the count from the core', async ({
+  page,
+  account,
+  cli,
+}) => {
+  // A tag keeps its marker: the sidebar lists it as `@home`.
+  await cli(account.token, 'add', 'milk @home');
+  await page.goto('/');
+  await entry(page, '@home').click();
+  await expect(page).toHaveURL(/\/tags\/[0-9a-f-]+$/);
+  await expect(titles(page)).toHaveText(['milk']);
+  await expect(entry(page, '@home')).toHaveText(/^@home\s*1$/);
+  await expect(entry(page, '@home')).toHaveAttribute('aria-current', 'page');
+});
+
 test('navigation: a write changes the counts without a reload', async ({
   page,
   account,

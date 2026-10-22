@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { PROJECT_PREFIX } from '@todoer/client-core';
+import { PROJECT_PREFIX, TAG_PREFIX } from '@todoer/client-core';
 import type { NavigationMenuItem } from '@nuxt/ui';
 
 const { t } = useI18n();
@@ -16,6 +16,7 @@ const ICONS: Record<string, string> = {
   today: 'i-lucide-calendar-check',
   upcoming: 'i-lucide-calendar-clock',
   project: 'i-lucide-folder',
+  tag: 'i-lucide-tag',
 };
 
 const link = (path: string) => ({
@@ -28,12 +29,18 @@ const items = computed<NavigationMenuItem[][]>(() => {
   const entries = navEntries(catalog.value).map((e) => ({
     ...link(e.path),
     label: e.name ?? t(`nav.${e.key}`),
-    icon: e.name === null ? ICONS[e.key] : ICONS.project,
+    icon: e.key.startsWith(TAG_PREFIX)
+      ? ICONS.tag
+      : e.name === null
+        ? ICONS[e.key]
+        : ICONS.project,
     badge: e.count,
     project: e.key.startsWith(PROJECT_PREFIX),
+    tag: e.key.startsWith(TAG_PREFIX),
   }));
   const label = (text: string) => ({ label: text, type: 'label' as const });
   const projects = entries.filter((e) => e.project);
+  const tags = entries.filter((e) => e.tag);
   const views = (catalog.value?.views ?? []).map((v) => ({
     ...link(navPath(v.id)),
     label: v.name,
@@ -44,8 +51,9 @@ const items = computed<NavigationMenuItem[][]>(() => {
     }),
   }));
   return [
-    entries.filter((e) => !e.project),
+    entries.filter((e) => !e.project && !e.tag),
     projects.length ? [label(t('nav.projects')), ...projects] : [],
+    tags.length ? [label(t('nav.tags')), ...tags] : [],
     views.length ? [label(t('nav.saved')), ...views] : [],
   ].filter((group) => group.length > 0);
 });

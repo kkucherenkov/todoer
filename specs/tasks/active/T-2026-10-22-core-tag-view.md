@@ -69,9 +69,9 @@ and count it, and the web navigation to show it.
   `operations.ts`, `engine.ts`, `engine.spec.ts`
 - [x] T002 [FR-001, FR-002] Docs: the views design names the key and the
   entries — `docs/specs/2026-10-01-views-design.md`
-- [ ] T003 [FR-003] `navEntries`, `navPath`, `routeKey`, `isBuiltIn` —
+- [x] T003 [FR-003] `navEntries`, `navPath`, `routeKey`, `isBuiltIn` —
   `apps/web/app/utils/nav.ts`, `nav.spec.ts`
-- [ ] T004 [FR-004] `pages/tags/[id].vue`, the tags group in `ViewNav`, e2e —
+- [x] T004 [FR-004] `pages/tags/[id].vue`, the tags group in `ViewNav`, e2e —
   `apps/web/app`, `apps/web/e2e/nav.spec.ts`
-- [ ] T005 [FR-004] Docs: the Navigation row — `docs/design/DESIGN.md`
+- [x] T005 [FR-004] Docs: the Navigation row — `docs/design/DESIGN.md`
 - **Checkpoint:** the web sidebar lists tags with the core's counts.
