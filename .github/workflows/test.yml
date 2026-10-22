@@ -234,8 +234,10 @@ jobs:
             echo web=true >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          if git diff --name-only HEAD^1 HEAD | grep -Eq \
-            '^(apps/(web|backend|cli)/|packages/|package\.json$|pnpm-lock\.yaml$|turbo\.json$|tsconfig\.base\.json$|\.github/workflows/test\.yml$)'; then
+          # A diff that fails runs the suite rather than skipping it.
+          files=$(git diff --name-only HEAD^1 HEAD) || { echo web=true >> "$GITHUB_OUTPUT"; exit 0; }
+          if printf '%s\n' "$files" | grep -Eq \
+            '^(apps/(web|backend|cli)/|packages/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|tsconfig\.base\.json$|\.github/workflows/test\.yml$)'; then
             echo web=true >> "$GITHUB_OUTPUT"
           else
             echo web=false >> "$GITHUB_OUTPUT"
