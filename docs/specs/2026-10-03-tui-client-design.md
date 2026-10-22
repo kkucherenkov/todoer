@@ -35,6 +35,9 @@ invocations is one command.
 
 ### Ink on Node (Q1)
 
+> Superseded on 2026-10-22: the TUI moves to `@earendil-works/pi-tui` 1.4.0,
+> see [the TUI UX redesign](2026-10-22-tui-ux-redesign-design.md).
+
 **Decision.** `apps/tui` renders with Ink 8 (React 19.3+), on the Node 24 the
 repository already runs, with `ink-testing-library` for render tests.
 
