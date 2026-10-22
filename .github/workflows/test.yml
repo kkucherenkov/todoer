@@ -253,7 +253,8 @@ jobs:
     needs: changes
     if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # The suite takes ~10 min; apt behind `--with-deps` has taken up to 17.
+    timeout-minutes: 30
 
     # As workspace-tests, but a fresh todoer_e2e: registration is owner-first,
     # so the suite needs an empty instance.
