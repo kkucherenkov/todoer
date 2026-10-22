@@ -3,8 +3,7 @@
   // Everything, specs included: this is what `typecheck` and ESLint's
   // type-aware rules read. `build` uses tsconfig.build.json.
   "compilerOptions": {
-    "noEmit": true,
-    "jsx": "react-jsx"
+    "noEmit": true
   },
   "include": ["src"]
 }

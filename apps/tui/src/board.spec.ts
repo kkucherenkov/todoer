@@ -1,9 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { App } from './app.js';
-import { fakeServer, KEY, renderTui } from './test-kit.js';
+import { fakeServer, KEY, renderApp } from './test-kit.js';
+import { Root } from './root.js';
 
 let cleanup = () => {};
 afterEach(() => cleanup());
+
+const ESC = '\u001b';
+const plain = (s: string) =>
+  s.replace(new RegExp(`${ESC}\\[[0-9;]*m`, 'g'), '');
 
 const status = (
   id: string,
@@ -21,10 +25,16 @@ const view = (sort: string) => ({
   rank: 'a0',
   version: 1,
 });
-const task = (id: string, statusId: string, rank: string, more = {}) => ({
+/** Task ids are uuids; the title names the task in a spec. */
+const ids: Record<string, string> = {};
+const id = (title: string) =>
+  (ids[title] ??= `00000000-0000-7000-9000-${Object.keys(ids)
+    .length.toString(16)
+    .padStart(12, '0')}`);
+const task = (title: string, statusId: string, rank: string, more = {}) => ({
   table: 'task',
-  id,
-  title: id,
+  id: id(title),
+  title,
   statusId,
   rank,
   priority: 4,
@@ -37,38 +47,44 @@ const STATUSES = [
   status('done', 'Done', 'a2', true),
 ];
 
+/** At 80 columns the board fills the frame. */
 async function open({
   statuses = STATUSES,
   sort = 'manual',
   tasks = [task('alpha', 'todo', 'a0'), task('beta', 'todo', 'a1')],
 } = {}) {
-  const t = await renderTui(<App />, {
+  const t = await renderApp({
+    width: 80,
+    rows: 24,
     server: fakeServer([...statuses, view(sort), ...tasks]),
+    app: (tui, size) => new Root({ tui, ...size, quit: () => undefined }),
   });
   cleanup = t.cleanup;
   await t.engine.handle({ kind: 'sync', reason: 'manual' }, 'tui');
-  await t.press(']'); // All open → Board
-  return t;
+  await t.press('['); // All open → Board, the last row
+  return { ...t, lastFrame: () => t.lines().map(plain).join('\n') };
 }
 type T = Awaited<ReturnType<typeof open>>;
-const row = (t: T, id: string) => t.store.rows('task').find((r) => r.id === id);
-/** The highlighted card's text: the pane is right of the sidebar's `││`. */
+const row = (t: T, title: string) =>
+  t.store.rows('task').find((r) => r.title === title);
+/** The highlighted card's text, up to the next column. */
 const cursor = (t: T) =>
-  (t.lastFrame() ?? '')
+  t
+    .lastFrame()
     .split('\n')
-    .map((l) => l.split('││').at(-1) ?? '')
     .find((l) => l.includes('▸ '))
-    ?.split('▸ ')[1];
+    ?.split('▸ ')[1]
+    ?.split('  ')[0];
 
 describe('BoardPane', () => {
   it('shows a column per status with its cards, a subtask named by its parent', async () => {
     const t = await open({
       tasks: [
         task('alpha', 'todo', 'a0'),
-        task('beta', 'doing', 'a0', { parentId: 'alpha' }),
+        task('beta', 'doing', 'a0', { parentId: id('alpha') }),
       ],
     });
-    const frame = t.lastFrame() ?? '';
+    const frame = t.lastFrame();
     for (const name of ['To do', 'Doing', 'Done ✓', 'alpha', 'alpha › beta']) {
       expect(frame).toContain(name);
     }
@@ -92,7 +108,14 @@ describe('BoardPane', () => {
   });
 
   it('moves a card right with L, the cursor follows it, and into Done marks it done', async () => {
-    const t = await open();
+    // A card already in Doing: the cursor must follow alpha, not row 0.
+    const t = await open({
+      tasks: [
+        task('alpha', 'todo', 'a0'),
+        task('beta', 'todo', 'a1'),
+        task('aardvark', 'doing', 'Zz'),
+      ],
+    });
     await t.press('L');
     expect(row(t, 'alpha')?.statusId).toBe('doing');
     expect(cursor(t)).toContain('alpha');
@@ -107,7 +130,7 @@ describe('BoardPane', () => {
   it('reorders within a column with J/K in a manual view', async () => {
     const t = await open();
     await t.press('J');
-    const rank = (id: string) => String(row(t, id)?.rank);
+    const rank = (title: string) => String(row(t, title)?.rank);
     expect(rank('alpha') > rank('beta')).toBe(true);
     expect(cursor(t)).toContain('alpha');
     await t.press('K');
@@ -125,8 +148,7 @@ describe('BoardPane', () => {
   it('adds a card to the current column with o', async () => {
     const t = await open();
     await t.press('l', 'o', 'gamma', KEY.enter);
-    const gamma = t.store.rows('task').find((r) => r.title === 'gamma');
-    expect(gamma?.statusId).toBe('doing');
+    expect(row(t, 'gamma')?.statusId).toBe('doing');
     expect(t.lastFrame()).not.toContain('new:');
     expect(cursor(t)).toContain('gamma');
   });
@@ -140,8 +162,7 @@ describe('BoardPane', () => {
         task('eps', 'doing', 'a1'),
       ],
     });
-    const rank = (title: string) =>
-      String(t.store.rows('task').find((r) => r.title === title)?.rank);
+    const rank = (title: string) => String(row(t, title)?.rank);
     await t.press('o', 'gamma', KEY.enter);
     expect(rank('alpha') < rank('gamma') && rank('gamma') < rank('beta')).toBe(
       true,

@@ -1,9 +1,13 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { App } from './app.js';
-import { fakeServer, KEY, renderTui } from './test-kit.js';
+import { fakeServer, KEY, renderApp } from './test-kit.js';
+import { Root } from './root.js';
 
 let cleanup = () => {};
 afterEach(() => cleanup());
+
+const ESC = '\u001b';
+const plain = (s: string) =>
+  s.replace(new RegExp(`${ESC}\\[[0-9;]*m`, 'g'), '');
 
 const status = (
   id: string,
@@ -20,14 +24,16 @@ const status = (
 });
 
 async function statuses() {
-  const t = await renderTui(<App />, {
+  const t = await renderApp({
+    width: 140,
+    rows: 36,
     server: fakeServer([
       status('todo', 'To do', 'a0'),
       status('doing', 'Doing', 'a1'),
       status('done', 'Done', 'a2', true),
       {
         table: 'task',
-        id: 't1',
+        id: '00000000-0000-7000-9000-000000000001',
         title: 'milk',
         rank: 'a0',
         priority: 4,
@@ -35,25 +41,26 @@ async function statuses() {
         version: 1,
       },
     ]),
+    app: (tui, size) => new Root({ tui, ...size, quit: () => undefined }),
   });
   cleanup = t.cleanup;
   await t.engine.handle({ kind: 'sync', reason: 'manual' }, 'tui');
   await t.press('S');
-  return t;
+  return { ...t, lastFrame: () => t.lines().map(plain).join('\n') };
 }
-const live = (t: Awaited<ReturnType<typeof statuses>>) =>
+type T = Awaited<ReturnType<typeof statuses>>;
+const live = (t: T) =>
   t.store
     .rows('status')
     .filter((r) => r.deletedAt === null)
     .sort((a, b) => String(a.rank).localeCompare(String(b.rank)));
-const names = (t: Awaited<ReturnType<typeof statuses>>) =>
-  live(t).map((s) => s.name);
+const names = (t: T) => live(t).map((s) => s.name);
 const backspaces = (n: number) => Array.from({ length: n }, () => '\u007f');
 
 describe('StatusesScreen', () => {
   it('lists the statuses in rank order with counts and closes with Esc', async () => {
     const t = await statuses();
-    const frame = t.lastFrame() ?? '';
+    const frame = t.lastFrame();
     expect(frame.indexOf('To do')).toBeLessThan(frame.indexOf('Doing'));
     expect(frame).toContain('Doing (1)');
     expect(frame).toMatch(/Done ✓ \(0\)/);

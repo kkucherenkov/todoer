@@ -13,7 +13,8 @@ const runEditor = (cmd: string, file: string): number =>
 /**
  * Edits `text` in `$VISUAL`, then `$EDITOR`, then `vi`, through a private
  * temp file. Null when the editor failed or left the text as it was. The
- * trailing newline editors add is dropped. Call it with Ink suspended.
+ * trailing newline editors add is dropped. Call it with the terminal given
+ * back (the shell's `suspend`).
  */
 export function editText(
   text: string,

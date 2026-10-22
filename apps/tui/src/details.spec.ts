@@ -1,9 +1,13 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { App } from './app.js';
-import { fakeServer, KEY, renderTui } from './test-kit.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { fakeServer, KEY, renderApp } from './test-kit.js';
+import { Root } from './root.js';
 
 let cleanup = () => {};
 afterEach(() => cleanup());
+
+const ESC = '\u001b';
+const plain = (s: string) =>
+  s.replace(new RegExp(`${ESC}\\[[0-9;]*m`, 'g'), '');
 
 const status = (id: string, name: string, rank: string) => ({
   table: 'status',
@@ -13,9 +17,14 @@ const status = (id: string, name: string, rank: string) => ({
   completing: false,
   version: 1,
 });
-const task = (id: string, title: string, extra: object = {}) => ({
+const ids: Record<string, string> = {};
+const id = (title: string) =>
+  (ids[title] ??= `00000000-0000-7000-9000-${Object.keys(ids)
+    .length.toString(16)
+    .padStart(12, '0')}`);
+const task = (title: string, extra: object = {}) => ({
   table: 'task',
-  id,
+  id: id(title),
   title,
   rank: 'a0',
   priority: 4,
@@ -27,27 +36,35 @@ const task = (id: string, title: string, extra: object = {}) => ({
 const AT = { title: 0, project: 1, priority: 3, status: 4, due: 6, repeat: 7 };
 const down = (n: number) => Array<string>(n).fill('j');
 
-async function details(rows = [task('t1', 'milk')]) {
-  const t = await renderTui(<App />, {
+/** At 80 columns `e` shows the details full screen and Esc closes them. */
+async function details(
+  rows: Record<string, unknown>[] = [task('milk')],
+  quit: () => void = () => undefined,
+) {
+  const t = await renderApp({
+    width: 80,
+    rows: 24,
     server: fakeServer([
       status('s1', 'To do', 'a0'),
       status('s2', 'Doing', 'a1'),
       ...rows,
     ]),
+    app: (tui, size) => new Root({ tui, ...size, quit }),
   });
   cleanup = t.cleanup;
   await t.engine.handle({ kind: 'sync', reason: 'manual' }, 'tui');
   await t.settle();
   await t.press('e');
-  expect(t.lastFrame()).toContain('Repeat');
-  return t;
+  const lastFrame = () => t.lines().map(plain).join('\n');
+  expect(lastFrame()).toContain('Repeat');
+  return { ...t, lastFrame };
 }
-const row = (t: Awaited<ReturnType<typeof details>>, id = 't1') =>
-  t.store.rows('task').find((r) => r.id === id);
+const row = (t: Awaited<ReturnType<typeof details>>, title = 'milk') =>
+  t.store.rows('task').find((r) => r.id === id(title));
 
 describe('DetailsScreen', () => {
   it('shows p0 for the highest priority and no label for P4', async () => {
-    const hot = await details([task('t1', 'milk', { priority: 0 })]);
+    const hot = await details([task('milk', { priority: 0 })]);
     expect(hot.lastFrame()).toContain('p0');
     hot.cleanup();
     const plain = await details();
@@ -105,8 +122,7 @@ describe('DetailsScreen', () => {
   });
 
   it('clears a date with an empty line', async () => {
-    const t = await details([task('t1', 'milk', { dueOn: '2026-10-09' })]);
-    // Ctrl-U is not a kill-line in ink-text-input; Backspace ten times is.
+    const t = await details([task('milk', { dueOn: '2026-10-09' })]);
     const erase = Array<string>(10).fill('\u007f');
     await t.press(...down(AT.due), KEY.enter, ...erase, KEY.enter);
     expect(row(t)?.dueOn).toBeNull();
@@ -131,8 +147,8 @@ describe('DetailsScreen', () => {
 
   it('refuses recurrence on a subtask and lists the subtasks', async () => {
     const t = await details([
-      task('t1', 'milk'),
-      task('t2', 'skim', { parentId: 't1' }),
+      task('milk'),
+      task('skim', { parentId: id('milk') }),
     ]);
     expect(t.lastFrame()).toContain('Subtasks');
     expect(t.lastFrame()).toContain('· skim');
@@ -142,6 +158,30 @@ describe('DetailsScreen', () => {
     await t.press(...down(AT.repeat), KEY.enter);
     expect(t.lastFrame()).toContain('a subtask repeats with its parent');
     expect(t.server.sent.length).toBe(sent);
+  });
+
+  it('keeps the field editor in the frame under many subtasks', async () => {
+    const subs = Array.from({ length: 12 }, (_, i) =>
+      task(`sub${String(i)}`, { parentId: id('milk') }),
+    );
+    const t = await details([task('milk'), ...subs]);
+    await t.press(KEY.enter);
+    expect(t.lastFrame()).toContain('Title: milk');
+  });
+
+  it('leaves with q like Esc, back on the same task', async () => {
+    const quit = vi.fn();
+    const t = await details(
+      [task('milk'), task('bread', { rank: 'a1' })],
+      quit,
+    );
+    await t.press(KEY.escape, 'j', KEY.enter);
+    expect(t.lastFrame()).toContain('Repeat');
+    await t.press('q');
+    expect(quit).not.toHaveBeenCalled();
+    expect(t.lastFrame()).not.toContain('Repeat');
+    expect(t.lastFrame()).toMatch(/▸ ○ bread/);
+    expect(t.lastFrame()).toContain('j/k move');
   });
 
   it('edits the notes in $VISUAL', async () => {
