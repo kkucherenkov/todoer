@@ -1,6 +1,6 @@
 import { visibleWidth } from '@earendil-works/pi-tui';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { KEY, fakeServer, renderApp } from './test-kit.js';
+import { KEY, NOT_APPLIED, fakeServer, renderApp } from './test-kit.js';
 import { Outline } from './outline.js';
 import { createWrite } from './write.js';
 
@@ -267,11 +267,11 @@ describe('Outline', () => {
     expect(fresh).toBeLessThan(alpha!);
   });
 
-  it('keeps the typed subtask open when the add is refused', async () => {
+  it('keeps the typed subtask in its row when the add is refused', async () => {
     const t = await open1(task('alpha', 'a0'));
     await t.press('O', '#p1', KEY.enter);
-    expect(t.frame()).toContain('new subtask:');
-    expect(t.frame()).toContain('#p1');
+    expect(t.text().join('\n')).toMatch(/✗ +#p1/);
+    expect(t.outline.inserting).toBe(false);
   });
 
   it('moves a task among its siblings with J and K in a manual view', async () => {
@@ -365,6 +365,295 @@ const ten = (long: number) =>
   );
 /** A row without the cursor mark in front of it. */
 const body = (lines: string[]) => lines.map((l) => l.slice(2));
+
+/** Task creates the server saw. */
+const adds = (t: { server: ReturnType<typeof fakeServer> }) =>
+  t.server.sent.filter((op) => op.kind === 'create' && op.table === 'task');
+
+describe('Outline n adds in place', () => {
+  it('n, text, Enter adds under the cursor with #project and @tag parsed', async () => {
+    const t = await open1(task('alpha', 'a0'), task('beta', 'a1'));
+    const before = t.text();
+    await t.press('n');
+    // The row where the task will appear; above it nothing moves, below it
+    // every row moves down one.
+    expect(t.text()[0]).toBe(before[0]);
+    expect(t.text()[1]).toMatch(/○ new:/);
+    expect(t.text()[2]?.slice(2)).toBe(before[1]?.slice(2));
+    await t.press('buy milk #home @shop p1', KEY.enter);
+    expect(adds(t)).toHaveLength(1);
+    const lines = t.text();
+    expect(lines[1]).toMatch(/^▸ ○ p1 buy milk.*#home/);
+    expect(lines[2]).toContain('beta');
+    expect(t.frame()).not.toContain('new:');
+    expect(
+      t.server.sent.some(
+        (op) =>
+          op.kind === 'create' &&
+          op.table === 'tag' &&
+          String(op.fields.name).includes('shop'),
+      ),
+    ).toBe(true);
+    expect(t.selected.at(-1)).toBe(
+      adds(t)[0]?.kind === 'create' ? adds(t)[0]?.id : undefined,
+    );
+  });
+
+  it('keeps o as n and puts the row at the end of the group', async () => {
+    const t = await open1(
+      task('alpha', 'a0'),
+      task('beta', 'a1'),
+      task('a1', 'a2', 'alpha'),
+    );
+    await t.press('o');
+    expect(t.text()[2]).toMatch(/○ new:/);
+    await t.press(KEY.escape, 'O');
+    expect(t.text()[2]).toMatch(/^ {4}○ new subtask:/);
+  });
+
+  it('scrolls to keep the input row in the pane', async () => {
+    const t = await open1(...ten(-1));
+    t.outline.height = 4;
+    await t.press('j', 'j', 'j', 'n');
+    const lines = t.text();
+    expect(lines).toHaveLength(4);
+    expect(lines[3]).toMatch(/○ new:/);
+    expect(lines[2]).toContain('t3');
+  });
+
+  it('Esc removes the input row and sends nothing', async () => {
+    const t = await open1(task('alpha', 'a0'), task('beta', 'a1'));
+    const before = t.text();
+    const sent = t.server.sent.length;
+    await t.press('n', 'milk', KEY.escape);
+    expect(t.text()).toEqual(before);
+    expect(t.server.sent).toHaveLength(sent);
+    expect(t.outline.holding).toBe(false);
+  });
+
+  it('a refused add keeps the text', async () => {
+    const t = await open1(task('alpha', 'a0'), task('beta', 'a1'));
+    t.server.state.refuse = (op) =>
+      op.kind === 'create' && op.table === 'task' ? 'title taken' : undefined;
+    await t.press('n', 'milk', KEY.enter);
+    const lines = t.text();
+    expect(lines[1]).toMatch(/✗ milk/);
+    expect(lines[2]).toContain('title taken');
+    expect(lines[3]).toContain('beta');
+    expect(t.outline.inserting).toBe(false);
+    expect(t.outline.hints).not.toContain('r retry');
+    // Permanent: r resends nothing; Enter reopens the text, a new add.
+    await t.press('r');
+    expect(adds(t)).toHaveLength(1);
+    await t.press(KEY.enter);
+    expect(t.outline.inserting).toBe(true);
+    expect(t.frame()).toContain('new: milk');
+    delete t.server.state.refuse;
+    await t.press(KEY.enter);
+    const [first, second] = adds(t);
+    expect(second?.opId).not.toBe(first?.opId);
+    expect(t.frame()).not.toContain('✗');
+    expect(t.text()[1]).toMatch(/^▸ ○ milk/);
+  });
+
+  it('r resends a retryable refusal with the same opId', async () => {
+    const t = await open1(task('alpha', 'a0'));
+    let once = true;
+    t.server.state.refuse = (op) => {
+      if (op.kind !== 'create' || op.table !== 'task' || !once) return;
+      once = false;
+      return NOT_APPLIED;
+    };
+    await t.press('n', 'milk', KEY.enter);
+    expect(t.text().join('\n')).toMatch(/✗ milk/);
+    expect(t.outline.hints).toContain('r retry');
+    await t.press('r');
+    const [first, second] = adds(t);
+    expect(second?.opId).toBe(first?.opId);
+    expect(t.frame()).not.toContain('✗');
+    expect(t.text()[1]).toMatch(/^▸ ○ milk/);
+  });
+
+  it('locks the row while the add is in flight and hides the new task', async () => {
+    const t = await open1(task('alpha', 'a0'), task('beta', 'a1'));
+    t.server.state.hold = true;
+    t.input('n', 'milk', KEY.enter);
+    await t.server.until(1);
+    t.input('x', 'y', KEY.enter, KEY.escape);
+    const lines = t.text();
+    // Only the add's row shows it, where it will stand.
+    expect(lines.filter((l) => l.includes('milk'))).toHaveLength(1);
+    expect(lines[1]).toMatch(/○ milk saving…/);
+    expect(lines[0]).toContain('alpha');
+    expect(t.outline.hints).toBe('saving…');
+    t.server.state.hold = false;
+    while (t.server.held.length > 0) t.server.held.shift()?.();
+    await t.settle();
+    expect(adds(t)).toHaveLength(1);
+    expect(t.store.rows('task').map((r) => r.title)).toContain('milk');
+    expect(t.text()[1]).toMatch(/^▸ ○ milk/);
+    expect(t.text()[2]).toContain('beta');
+  });
+
+  it('a refusal arriving after Esc during the flight is still shown', async () => {
+    const t = await open1(task('alpha', 'a0'));
+    t.server.state.refuse = () => 'title taken';
+    t.server.state.hold = true;
+    t.input('n', 'milk', KEY.enter);
+    await t.server.until(1);
+    t.input(KEY.escape);
+    t.server.state.hold = false;
+    while (t.server.held.length > 0) t.server.held.shift()?.();
+    await t.settle();
+    expect(t.text().join('\n')).toMatch(/✗ milk/);
+  });
+
+  it('O on a subtask puts the row right after it', async () => {
+    const t = await open1(
+      task('alpha', 'a0'),
+      task('beta', 'a1'),
+      task('a1', 'a2', 'alpha'),
+      task('a2', 'a3', 'alpha'),
+    );
+    await t.press('j', 'O');
+    const lines = t.text();
+    expect(lines[1]).toContain('a1');
+    expect(lines[2]).toMatch(/^ {4}○ new subtask:/);
+    expect(lines[3]).toContain('a2');
+  });
+
+  it('cuts a long refused text with … in its row', async () => {
+    const t = await open([task('alpha', 'a0')], { width: 40 });
+    t.server.state.refuse = () => 'no';
+    await t.press('n', 'm'.repeat(80), KEY.enter);
+    expect(t.text()[1]?.trimEnd()).toMatch(/m…$/);
+  });
+
+  it('resends an add that failed without a verdict with the same id and opId', async () => {
+    const t = await open1(task('alpha', 'a0'));
+    const real = t.engine.handle.bind(t.engine);
+    const sent: { id?: string; opId?: string }[] = [];
+    vi.spyOn(t.engine, 'handle').mockImplementation((command, tab) => {
+      if (command.kind !== 'add') return real(command, tab);
+      sent.push({ id: command.id, opId: command.opId });
+      return sent.length === 1
+        ? Promise.resolve({
+            ok: false,
+            failure: { kind: 'unavailable', detail: 'no answer' },
+          })
+        : real(command, tab);
+    });
+    await t.press('n', 'milk', KEY.enter);
+    expect(t.text().join('\n')).toMatch(/✗ milk/);
+    expect(t.outline.hints).toContain('r retry');
+    await t.press(KEY.enter, KEY.enter);
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).toEqual(sent[0]);
+    expect(t.text()[1]).toMatch(/^▸ ○ milk/);
+  });
+
+  it('keeps the text when the engine rejects, and the row unlocks', async () => {
+    const t = await open1(task('alpha', 'a0'));
+    vi.spyOn(t.engine, 'handle').mockRejectedValueOnce(new Error('boom'));
+    await t.press('n', 'milk', KEY.enter);
+    const frame = t.text().join('\n');
+    expect(frame).toMatch(/✗ milk/);
+    expect(frame).toContain('unexpected: boom');
+    expect(t.outline.hints).toContain('r retry');
+    await t.press('r');
+    expect(t.text()[1]).toMatch(/^▸ ○ milk/);
+  });
+
+  it('cuts a long reason with …', async () => {
+    const t = await open1(task('alpha', 'a0'));
+    t.server.state.refuse = () => 'x'.repeat(200);
+    await t.press('n', 'milk', KEY.enter);
+    expect(t.text()[2]?.trimEnd()).toMatch(/x…$/);
+  });
+
+  it('Esc discards a refused add', async () => {
+    const t = await open1(task('alpha', 'a0'));
+    t.server.state.refuse = () => 'title taken';
+    await t.press('n', 'milk', KEY.enter, KEY.enter, KEY.escape);
+    // The reopened input closes first, back to the refused row.
+    expect(t.text().join('\n')).toMatch(/✗ milk/);
+    await t.press(KEY.escape);
+    expect(t.frame()).not.toContain('milk');
+    expect(t.outline.holding).toBe(false);
+  });
+
+  it('n on an empty view puts the row first', async () => {
+    const t = await open1();
+    await t.press('n');
+    expect(t.text()[0]).toMatch(/○ new:/);
+    await t.press('solo', KEY.enter);
+    expect(t.text()[0]).toMatch(/^▸ ○ solo/);
+  });
+});
+
+describe('Outline filter', () => {
+  it('/milk keeps the matching rows', async () => {
+    const t = await open1(
+      task('buy milk', 'a0'),
+      task('bread', 'a1'),
+      task('Milk shake', 'a2'),
+    );
+    t.outline.filter = 'milk';
+    const frame = t.text().join('\n');
+    expect(frame).toContain('buy milk');
+    expect(frame).toContain('Milk shake');
+    expect(frame).not.toContain('bread');
+    t.outline.filter = 'zzz';
+    expect(t.text()).toEqual([expect.stringContaining('nothing here')]);
+  });
+
+  it('a matching subtask keeps its parent, dimmed', async () => {
+    const t = await open1(
+      task('groceries', 'a0'),
+      task('bread', 'a1'),
+      task('milk', 'a2', 'groceries'),
+    );
+    await t.press('j');
+    t.outline.filter = 'milk';
+    const lines = t.text();
+    expect(lines).toHaveLength(2);
+    expect(lines[0]).toContain('groceries');
+    expect(lines[1]).toContain('milk');
+    expect(t.lines()[0]).toContain(`${ESC}[2mgroceries`);
+    expect(t.selected.at(-1)).toBe(id('milk'));
+  });
+
+  it('clearing the filter restores the rows', async () => {
+    const t = await open1(task('milk', 'a0'), task('bread', 'a1'));
+    const before = t.text();
+    t.outline.filter = 'bread';
+    expect(t.text()).not.toEqual(before);
+    t.outline.filter = '';
+    expect(t.text()).toEqual(before);
+  });
+
+  it('pins a task added under the filter until the filter changes', async () => {
+    const t = await open1(task('buy milk', 'a0'), task('bread', 'a1'));
+    t.outline.filter = 'milk';
+    await t.press('n', 'eggs', KEY.enter);
+    expect(t.text().find((l) => l.startsWith('▸'))).toContain('eggs');
+    expect(t.selected.at(-1)).toBe(
+      t.store.rows('task').find((r) => r.title === 'eggs')?.id,
+    );
+    t.outline.filter = 'mil';
+    expect(t.text().join('\n')).not.toContain('eggs');
+  });
+
+  it('Ё and ё match', async () => {
+    const t = await open1(task('Ёлка', 'a0'), task('ель', 'a1'));
+    t.outline.filter = 'ёлка';
+    expect(t.text().join('\n')).toContain('Ёлка');
+    expect(t.text().join('\n')).not.toContain('ель');
+    // Decomposed (е + U+0308) matches the composed letter after NFC.
+    t.outline.filter = 'е\u0308Л';
+    expect(t.text().join('\n')).toContain('Ёлка');
+  });
+});
 
 describe('Outline cursor row', () => {
   it('moving the cursor never shifts a row', async () => {

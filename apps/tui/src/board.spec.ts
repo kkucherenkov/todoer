@@ -1,9 +1,13 @@
-import { afterEach, describe, expect, it } from 'vitest';
+import { visibleWidth } from '@earendil-works/pi-tui';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fakeServer, KEY, renderApp } from './test-kit.js';
 import { Root } from './root.js';
 
 let cleanup = () => {};
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.unstubAllEnvs();
+});
 
 const ESC = '\u001b';
 const plain = (s: string) =>
@@ -47,22 +51,25 @@ const STATUSES = [
   status('done', 'Done', 'a2', true),
 ];
 
-/** At 80 columns the board fills the frame. */
+/** At 100 columns the board fills the frame. */
 async function open({
   statuses = STATUSES,
   sort = 'manual',
   tasks = [task('alpha', 'todo', 'a0'), task('beta', 'todo', 'a1')],
+  width = 100,
+  rows = 30,
 } = {}) {
   const t = await renderApp({
-    width: 80,
-    rows: 24,
+    width,
+    rows,
     server: fakeServer([...statuses, view(sort), ...tasks]),
     app: (tui, size) => new Root({ tui, ...size, quit: () => undefined }),
   });
   cleanup = t.cleanup;
   await t.engine.handle({ kind: 'sync', reason: 'manual' }, 'tui');
   await t.press('['); // All open → Board, the last row
-  return { ...t, lastFrame: () => t.lines().map(plain).join('\n') };
+  const text = () => t.lines().map(plain);
+  return { ...t, text, lastFrame: () => text().join('\n') };
 }
 type T = Awaited<ReturnType<typeof open>>;
 const row = (t: T, title: string) =>
@@ -190,6 +197,23 @@ describe('BoardPane', () => {
     expect(t.store.rows('task')).toHaveLength(2);
   });
 
+  it('locks the new card’s line while the add is in flight', async () => {
+    const t = await open();
+    t.server.state.hold = true;
+    t.input('n', 'gamma', KEY.enter);
+    await t.server.until(1);
+    t.input('x', KEY.enter, KEY.escape);
+    expect(t.lastFrame()).toMatch(/new: gamma saving…/);
+    t.server.state.hold = false;
+    while (t.server.held.length > 0) t.server.held.shift()?.();
+    await t.settle();
+    const titles = t.store.rows('task').map((r) => r.title);
+    expect(titles.filter((x) => String(x).startsWith('gamma'))).toEqual([
+      'gamma',
+    ]);
+    expect(t.lastFrame()).not.toContain('new:');
+  });
+
   it('opens the status picker on a card with m', async () => {
     const t = await open();
     await t.press('m');
@@ -203,10 +227,105 @@ describe('BoardPane', () => {
       ),
       tasks: [],
     });
-    expect(t.lastFrame()).toContain('columns 1–3 of 5');
+    expect(t.lastFrame()).toContain('columns 1–4 of 5');
     expect(t.lastFrame()).not.toContain('Col e');
     await t.press('l', 'l', 'l', 'l');
-    expect(t.lastFrame()).toContain('columns 3–5 of 5');
+    expect(t.lastFrame()).toContain('columns 2–5 of 5');
     expect(t.lastFrame()).toContain('Col e');
+  });
+
+  it('scrolls a column so the cursor card is always drawn', async () => {
+    const tasks = Array.from({ length: 40 }, (_, i) =>
+      task(
+        `card${String(i).padStart(2, '0')}`,
+        'todo',
+        `a${String(i).padStart(2, '0')}`,
+      ),
+    );
+    const t = await open({ tasks, rows: 20 });
+    for (let i = 0; i < 39; i += 1) await t.press('j');
+    expect(cursor(t)).toContain('card39');
+    expect(t.text()).toHaveLength(20);
+    for (let i = 0; i < 39; i += 1) await t.press('k');
+    expect(cursor(t)).toContain('card00');
+  });
+});
+
+describe('Board layout', () => {
+  const exact = (t: T, w: number, h: number) => {
+    expect(t.text()).toHaveLength(h);
+    for (const line of t.text()) expect(visibleWidth(line)).toBe(w);
+  };
+
+  it('at 140 the board spans outline and detail and the sidebar stays', async () => {
+    const t = await open({ width: 140, rows: 36 });
+    exact(t, 140, 36);
+    expect(t.text()[0]).toMatch(/^╭─ Views ─+╮╭─ Board ─+╮$/);
+    expect(t.lastFrame()).not.toContain('Details');
+    expect(t.lastFrame()).toMatch(/To do \(2\)\s+Doing \(0\)\s+Done ✓ \(0\)/);
+  });
+
+  it('at 100 the board takes the whole width', async () => {
+    const t = await open();
+    exact(t, 100, 30);
+    expect(t.text()[0]).toMatch(/^╭─ Board ─+╮$/);
+  });
+
+  it('Enter opens card details over the board and Esc closes them with the cursor kept', async () => {
+    const t = await open({ width: 140, rows: 36 });
+    await t.press('j', KEY.enter);
+    exact(t, 140, 36);
+    // The details cover the board's right side, its border included.
+    expect(t.text()[0]).toMatch(/^╭─ Views ─+╮╭─ Board ─+╭─ Details ─+╮$/);
+    expect(t.lastFrame()).toMatch(/Title\s+beta/);
+    expect(t.lastFrame()).toContain('To do (2)');
+    await t.press(KEY.escape);
+    expect(t.text()[0]).toMatch(/^╭─ Views ─+╮╭─ Board ─+╮$/);
+    expect(t.lastFrame()).toMatch(/▸ beta/);
+    expect(t.lastFrame()).not.toMatch(/▸ alpha/);
+  });
+
+  it('at 100, the card details are boxed over the board too', async () => {
+    const t = await open();
+    await t.press(KEY.enter);
+    exact(t, 100, 30);
+    expect(t.text()[0]).toMatch(/^╭─ Board ─+╭─ Details ─+╮$/);
+    await t.press(KEY.escape);
+    expect(t.text()[0]).toMatch(/^╭─ Board ─+╮$/);
+  });
+
+  it('at 80 one column shows and → shows the next status', async () => {
+    const t = await open({
+      width: 80,
+      rows: 24,
+      tasks: [task('alpha', 'todo', 'a0'), task('gamma', 'doing', 'a0')],
+    });
+    exact(t, 80, 24);
+    expect(t.text()[0]).toMatch(/^╭─ Board ─+╮$/);
+    expect(t.lastFrame()).toContain('TO DO (1/3)');
+    expect(t.lastFrame()).toContain('alpha');
+    expect(t.lastFrame()).not.toContain('gamma');
+    await t.press(KEY.right);
+    expect(t.lastFrame()).toContain('DOING (2/3)');
+    expect(cursor(t)).toContain('gamma');
+    expect(t.lastFrame()).not.toContain('alpha');
+    await t.press('H');
+    expect(row(t, 'gamma')?.statusId).toBe('todo');
+  });
+
+  it('at 80, Enter shows the card details full screen', async () => {
+    const t = await open({ width: 80, rows: 24 });
+    await t.press(KEY.enter);
+    expect(t.text()[0]).toMatch(/^╭─ Details ─+╮$/);
+    await t.press(KEY.escape);
+    expect(t.lastFrame()).toContain('TO DO (1/3)');
+  });
+
+  it('draws no colour under NO_COLOR, the details overlay included', async () => {
+    vi.stubEnv('NO_COLOR', '1');
+    const t = await open({ width: 140, rows: 36 });
+    await t.press(KEY.enter);
+    expect(t.lines().join('')).not.toContain(`${ESC}[3`);
+    expect(t.text()[0]).toMatch(/╔═ Details ═+╗$/);
   });
 });

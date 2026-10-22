@@ -131,7 +131,7 @@ switch the fixed pane exists to avoid.
 **Decision.** After running the borderless frame the maintainer asked for a
 box around each pane and a highlight on the active one: without borders the
 outline's right-aligned `#project` read as part of the details beside it. Each
-visible pane (`Views`, `Tasks`, `Details`; the board keeps `Tasks`) is drawn in
+visible pane (`Views`, `Tasks`, `Details`, and `Board` for a kanban view) is drawn in
 a rounded box with its title in the top border. The boxes sit side by side with
 no gap, so a pane's content is two cells narrower and two rows shorter than
 its column. The overlay sidebar (90–119) and the full-screen details (< 90)
@@ -194,10 +194,14 @@ client would have to compute counts.
   (my call): an open input or the `Editor`, then a refusal shown under its
   field, then an overlay (sidebar, card details, the full-screen details
   below 90 columns), then the `/` filter.
-- **Kanban (Q10 B).** The board takes the outline and detail columns. Enter
-  opens a card's details over it. Between 90 and 119 columns it keeps that
-  layout. Below 90 one status column shows at a time, switched with ←/→
-  (my call on the 90 boundary, matching Q5).
+- **Kanban (Q10 B).** The board takes the outline and detail columns, in
+  one box titled `Board`; the sidebar box stays. Enter opens a card's details
+  boxed over the board's right side, and Esc closes them with the cursor on
+  the same card. Between 90 and 119 columns it keeps that layout. Below 90 one
+  status column shows at a time, switched with ←/→ or h/l, under the header
+  `STATUS (n/m)`, its place among the columns (my call on the 90 boundary,
+  matching Q5); Enter shows the details full screen. A column taller than the
+  box scrolls so the cursor's card is always drawn.
 - **Outline row (Q11 C).** One line per task: status marker, priority, title
   truncated with "…", and short fields on the right (#project, due, subtask
   progress). The row under the cursor shows its full title.
@@ -209,6 +213,18 @@ client would have to compute counts.
 - **New task (Q12 A).** `n` opens an input line in the outline under the
   cursor, where the task will appear, using the quick-add grammar
   (`#project @tag pN`, dates). Enter creates it and Esc cancels.
+  The row stands after the cursor's group (a subtask's with `O`), so only
+  the rows below it move; a view that sorts itself then places the task by
+  its sort. `o` stays an alias of `n` and `O` adds a subtask (my call: no
+  muscle memory breaks). A refused add follows Q8: the text stays in its row,
+  marked `✗` with the reason under it; `r` resends a retryable refusal with
+  the same opId, Enter reopens the text and saving it after a permanent
+  refusal is a new add, Esc drops the row. A failure with no verdict (no
+  answer, an unexpected error) counts as retryable: the same text is resent
+  as the same add, so a first attempt that did apply is not duplicated. From Enter until the answer (and
+  the `move` that places it in a manual view) the row shows `saving…` and
+  takes no key, and the new task shows only there, not where the engine
+  first ranks it.
 - **Look (Q14 C).** Section headers in capitals and dim separators, as in
   tuxedo. Panes are boxed (maintainer request 2026-10-22, see "Pane boxes"). Only the 16 ANSI colours, which follow the
   terminal's theme. Colour carries meaning only: priority, overdue, the
@@ -216,11 +232,19 @@ client would have to compute counts.
   alone.
 - **Status line (Q16 B).** Two lines. The top line shows the mode and sync
   state: synced, offline, N queued, N refused, then the reason a request was
-  refused for now (403, 429), cut first when the line is short. The bottom line shows the key
+  refused for now (403, 429), cut first when the line is short; while `/` is
+  typed it shows the input instead. The bottom line shows the key
   hints for the focus, truncated at the right and never wrapped.
 - **Search (Q17 A).** `/` filters the current outline by a substring of the
   title on the client, and Esc clears it. Search across all tasks is a
-  separate design.
+  separate design. The input sits in the top status line (INSERT); each key
+  narrows the rows, matching case-insensitively after `normalize('NFC')`
+  and folding nothing else (`ё` is not `е`). A matching subtask keeps its
+  parent row, dimmed. Enter keeps the filter in NORMAL and the Tasks box
+  title shows it (`Tasks /milk`); Esc in the input, or last in the Esc order,
+  clears it, and so does picking another view. A task added under the
+  filter stays among the rows, with the cursor on it, until the filter text
+  changes. The sidebar counts stay the core's.
 - **Work split (Q15 A).** One PR each, in order:
   - step 0: the core `tag:<id>` built-in view and count;
   - step 1: the frame on `pi-tui`: layout, sidebar, outline, status lines and

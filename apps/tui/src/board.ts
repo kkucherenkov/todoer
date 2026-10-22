@@ -23,21 +23,28 @@ const alt = (data: string, dir: 'up' | 'down') =>
   data === (dir === 'up' ? '\u001b\u001b[A' : '\u001b\u001b[B');
 
 /**
- * The kanban layout in the outline column: one column per status, the
- * engine's `boardTasks` (the completing column holds the tasks closed in
- * the last seven days). `H`/`L` move a card across columns, `J`/`K` within
- * one in a manual view, `o` adds a card below the current one (where the
- * sort puts it in a sorted view), and the shared task keys (`TaskKeys`).
- * PR 3 redesigns it; cards past `height` are not drawn.
+ * The kanban layout: one column per status, the engine's `boardTasks` (the
+ * completing column holds the tasks closed in the last seven days); the
+ * root draws it across the outline and detail columns. `H`/`L` move a card
+ * across columns, `J`/`K` within one in a manual view, `n` (or `o`) adds a
+ * card below the current one (where the sort puts it in a sorted view), and
+ * the shared task keys (`TaskKeys`). Past `height` the cursor's column
+ * scrolls to keep its card drawn. `single` shows one column at a time.
  */
 export class Board implements Pane {
   height: number | undefined;
+  /** One status column at a time, under `STATUS (n/m)`. */
+  single = false;
+  /** The cursor column's first drawn card. */
+  private top = 0;
   private key = 'all';
   private col = 0;
   private row = 0;
   // The card the cursor stays on after it moves; `row` once it is gone.
   private follow: string | null = null;
   private adding: Input | null = null;
+  /** The add was sent and not answered: its line takes no key. */
+  private saving = false;
   private focused = true;
   private selected: string | null = null;
   private readonly write: ReturnType<typeof createWrite>;
@@ -173,6 +180,7 @@ export class Board implements Pane {
       onCancel: () => (this.adding = null),
       onSubmit: (text) => {
         let id = '';
+        this.saving = true;
         // Open until the add is taken: a refusal keeps the text. A task
         // with no status shows in the first column (`displayStatus`), so
         // elsewhere a `move` follows the add; it also puts the card below
@@ -182,6 +190,7 @@ export class Board implements Pane {
           id = newId();
           return { kind: 'add', opId: newId(), id, text };
         }).then(async (added) => {
+          this.saving = false;
           if (!added.ok) return;
           this.adding = null;
           this.follow = id;
@@ -200,6 +209,7 @@ export class Board implements Pane {
   }
 
   handleInput(data: string): void {
+    if (this.saving) return;
     if (this.adding !== null) this.adding.handleInput(data);
     else this.dispatch(data);
     this.sync();
@@ -223,7 +233,7 @@ export class Board implements Pane {
       this.go(c, Math.min(cards.length - 1, r + 1));
     } else if (data === 'k' || matchesKey(data, Key.up)) {
       this.go(c, Math.max(0, r - 1));
-    } else if (data === 'o') this.add();
+    } else if (data === 'n' || data === 'o') this.add();
   }
 
   render(width: number): string[] {
@@ -231,24 +241,52 @@ export class Board implements Pane {
     const { from, to } = visible(
       cols.length,
       c,
-      Math.max(1, Math.floor((width + 1) / (COLUMN + 1))),
+      this.single ? 1 : Math.max(1, Math.floor((width + 1) / (COLUMN + 1))),
     );
     const shown = cols.slice(from, to);
-    const cell = (text: string) => truncateToWidth(text, COLUMN, '…', true);
+    const cell = (text: string) =>
+      truncateToWidth(text, this.single ? width : COLUMN, '…', true);
     const head = shown.map((column, k) => {
-      const name = `${column.name}${column.completing ? ' ✓' : ''} (${column.items.length})`;
+      const mark = column.completing ? ' ✓' : '';
+      const name = this.single
+        ? `${column.name.toUpperCase()}${mark} (${c + 1}/${cols.length})`
+        : `${column.name}${mark} (${column.items.length})`;
       return cell(sgr(1, from + k === c && colour() ? sgr(CYAN, name) : name));
     });
+    const scroll =
+      !this.single && (from > 0 || to < cols.length)
+        ? [sgr(2, `columns ${from + 1}–${to} of ${cols.length}`)]
+        : [];
+    const below = [
+      ...scroll,
+      ...(this.saving && this.adding !== null
+        ? [`new: ${this.adding.getValue()} ${sgr(2, 'saving…')}`]
+        : (this.adding?.render(width) ?? this.keys.render(width))),
+    ];
     const depth = Math.max(0, ...shown.map((s) => s.items.length));
-    const cards = Array.from({ length: depth }, (_, n) =>
+    const room = Math.max(
+      1,
+      this.height === undefined ? depth : this.height - below.length - 1,
+    );
+    // The cursor's column scrolls; the others show from their first card.
+    const count = cols[c]?.items.length ?? 0;
+    if (r < this.top) this.top = r;
+    else if (r >= this.top + room) this.top = r - room + 1;
+    this.top = Math.max(0, Math.min(this.top, count - room));
+    const offset = (k: number) => (from + k === c ? this.top : 0);
+    const lines = Math.min(
+      room,
+      Math.max(0, ...shown.map((s, k) => s.items.length - offset(k))),
+    );
+    const cards = Array.from({ length: lines }, (_, n) =>
       shown
         .map((column, k) => {
-          const item = column.items[n];
+          const at = n + offset(k);
+          const item = column.items[at];
           if (item === undefined) return cell('');
-          const at = from + k === c && n === r;
           const text = `${item.parentTitle === null ? '' : `${item.parentTitle} › `}${String(item.title)}`;
           // A mark as well as inverse: inverse alone is lost without colour.
-          if (at) {
+          if (from + k === c && at === r) {
             return cell(
               this.focused ? sgr(7, `▸ ${text}`) : `${sgr(2, '▸')} ${text}`,
             );
@@ -257,18 +295,7 @@ export class Board implements Pane {
         })
         .join(' '),
     );
-    const scroll =
-      from > 0 || to < cols.length
-        ? [sgr(2, `columns ${from + 1}–${to} of ${cols.length}`)]
-        : [];
-    const below = [
-      ...scroll,
-      ...(this.adding?.render(width) ?? this.keys.render(width)),
-    ];
-    const body = [head.join(' '), ...cards];
-    const room =
-      this.height === undefined ? body.length : this.height - below.length;
-    return [...body.slice(0, Math.max(1, room)), ...below].map((l) =>
+    return [head.join(' '), ...cards, ...below].map((l) =>
       truncateToWidth(l, width, '', true),
     );
   }

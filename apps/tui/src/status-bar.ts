@@ -29,7 +29,8 @@ const syncText = (sync: Topics['sync'] | undefined) => {
 
 /**
  * The two lines under the panes. The first is the mode, the sync state and
- * the status line's message; the second the hints for the focus. Each is
+ * the status line's message, or the mode and `prompt` (the `/` input); the
+ * second the hints for the focus. Each is
  * exactly `width` cells, cut at the right with `…`, never wrapped.
  */
 export function renderStatus(
@@ -39,6 +40,7 @@ export function renderStatus(
     sync: Topics['sync'] | undefined;
     message: Message | null;
     hints: string;
+    prompt?: string;
   },
 ): [string, string] {
   // An error is marked with ✗, not by its colour alone.
@@ -48,7 +50,10 @@ export function renderStatus(
       : s.message.tone === 'error'
         ? [colour() ? sgr(31, `✗ ${s.message.text}`) : `✗ ${s.message.text}`]
         : [s.message.text];
-  const top = [sgr(1, s.mode), syncText(s.sync), ...message].join(' · ');
+  const top = [
+    sgr(1, s.mode),
+    ...(s.prompt === undefined ? [syncText(s.sync), ...message] : [s.prompt]),
+  ].join(' · ');
   return [
     truncateToWidth(top, width, '…', true),
     truncateToWidth(sgr(2, s.hints), width, '…', true),

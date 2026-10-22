@@ -107,3 +107,20 @@ export function insertAfter(items: Item[], at: Item, sub: boolean): string {
   const last = items.filter((i) => parentOf(i) === top).at(-1);
   return last === undefined ? top : String(last.id);
 }
+
+/**
+ * The row index a new task takes when added from row `at` (see
+ * `insertAfter`): after `at` when it is a subtask and `sub`, else after the
+ * end of `at`'s group. An empty outline: 0.
+ */
+export function insertRow(
+  rows: OutlineRow[],
+  at: number,
+  sub: boolean,
+): number {
+  if (rows.length === 0) return 0;
+  if (sub && rows[at]?.depth === 1) return at + 1;
+  let end = at + 1;
+  while (rows[end]?.depth === 1) end += 1;
+  return end;
+}
