@@ -25,7 +25,8 @@ import {
 } from './fields.js';
 import type { Pane } from './pi/app-shell.js';
 import { withEscape } from './pi/adapter.js';
-import { sgr } from './style.js';
+import { retryable } from './failure.js';
+import { colour, sgr } from './style.js';
 import type { Tui } from './tui.js';
 import { lineInput } from './ui/line-input.js';
 import { Picker } from './ui/picker.js';
@@ -214,8 +215,8 @@ export class DetailPane implements Pane {
     return key === undefined ? undefined : this.refusals.get(key);
   }
 
-  /** `r`: resends the refused write under the cursor, same opId, when the
-   *  server kept no verdict for it; a verdict it kept it would repeat. */
+  /** `r`: resends the refused write under the cursor, same opId, when no
+   *  verdict was kept for it (`retryable`); a kept one it would repeat. */
   retry(): boolean {
     const key = this.key();
     const refusal = this.refused();
@@ -248,10 +249,19 @@ export class DetailPane implements Pane {
     void intent(draft).then((result) => {
       if (this.latest.get(key) !== draft) return;
       this.latest.delete(key);
-      if (result.ok) this.refusals.delete(key);
-      else {
-        const { detail, retryable = false } = result.failure;
-        this.refusals.set(key, { draft, detail, retryable });
+      if (result.ok) return void this.refusals.delete(key);
+      const { failure } = result;
+      // Not about the field: the status line says it; the held intent
+      // resends the same opId when the person saves again.
+      if (failure.kind === 'signed-out' || failure.kind === 'unavailable') {
+        this.say(failure.detail);
+      } else {
+        const { detail } = failure;
+        this.refusals.set(key, {
+          draft,
+          detail,
+          retryable: retryable(failure),
+        });
       }
     });
   }
@@ -537,7 +547,11 @@ export class DetailPane implements Pane {
           ...(refusal === undefined || yours === saved
             ? [label(f.label) + cursor(i, saved)]
             : [
-                label(f.label) + cursor(i, `${sgr(31, '✗')} ${String(yours)}`),
+                label(f.label) +
+                  cursor(
+                    i,
+                    `${colour() ? sgr(31, '✗') : '✗'} ${String(yours)}`,
+                  ),
                 ' '.repeat(LABEL) +
                   sgr(2, `${saved} → ${String(yours)} · ${refusal.detail}`),
               ]),

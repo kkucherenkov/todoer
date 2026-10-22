@@ -5,10 +5,14 @@ import {
   visibleWidth,
 } from '@earendil-works/pi-tui';
 import { fakeServer, KEY, NOT_APPLIED, renderApp } from './test-kit.js';
+import type { Failure } from '@todoer/client-core';
 import { Root } from './root.js';
 
 let cleanup = () => {};
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.unstubAllEnvs();
+});
 
 /** A screen row's text without the pane's box edge, so the specs read the
  *  pane's own lines. */
@@ -768,6 +772,52 @@ describe('DetailPane refusals', () => {
     await t.press('k');
     expect(detail()).toMatch(/Title\s+milk/);
     expect(detail()).toMatch(/Project\s+✗ work/);
+  });
+
+  /** The pane's next edit fails with `failure`; the opIds of its edits. */
+  const failing = (t: Details, failure: Failure) => {
+    const real = t.engine.handle.bind(t.engine);
+    const opIds: string[] = [];
+    let once = true;
+    vi.spyOn(t.engine, 'handle').mockImplementation((command, tab) => {
+      if (command.kind !== 'edit') return real(command, tab);
+      opIds.push(command.opId);
+      if (!once) return real(command, tab);
+      once = false;
+      return Promise.resolve({ ok: false, failure });
+    });
+    return opIds;
+  };
+
+  it('an unexpected failure offers r, which resends the same opId', async () => {
+    const t = await details(milk);
+    const opIds = failing(t, { kind: 'unexpected', detail: 'boom' });
+    await t.press(...toWork, KEY.enter);
+    expect(t.lastFrame()).toMatch(/^Project\s+✗ work\s*$/m);
+    expect(hints(t)).toContain('r retry');
+    await t.press('r');
+    expect(opIds).toHaveLength(2);
+    expect(opIds[1]).toBe(opIds[0]);
+    expect(t.lastFrame()).not.toContain('✗');
+  });
+
+  for (const kind of ['signed-out', 'unavailable'] as const) {
+    it(`${kind} goes to the status line, not a ✗ on the field`, async () => {
+      const t = await details(milk);
+      failing(t, { kind, detail: `the ${kind} reason` });
+      await t.press(...toWork, KEY.enter);
+      expect(t.lastFrame()).not.toMatch(/Project\s+✗/);
+      expect(mode(t)).toContain(`✗ the ${kind} reason`);
+    });
+  }
+
+  it('with NO_COLOR=1, the ✗ has no colour', async () => {
+    vi.stubEnv('NO_COLOR', '1');
+    const t = await details(milk, { server: refusing(milk) });
+    await t.press(...toWork, KEY.enter);
+    expect(t.lastFrame()).toMatch(/Project\s+✗ work/);
+    // No foreground colour: ESC [ 3x m.
+    expect(t.lines().join('\n')).not.toMatch(new RegExp(`${'\u001b'}\\[3\\dm`));
   });
 
   it('an unreachable server is not a refusal', async () => {

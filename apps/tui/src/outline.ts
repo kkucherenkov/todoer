@@ -21,6 +21,7 @@ import {
   outline,
   type OutlineRow,
 } from './outline-tree.js';
+import { retryable } from './failure.js';
 import type { Pane } from './pi/app-shell.js';
 import { colour, sgr } from './style.js';
 import { TaskKeys } from './task-keys.js';
@@ -345,12 +346,8 @@ export class Outline implements Pane {
     void this.intent(draft)
       .then(async (r) => {
         if (!r.ok) {
-          const { kind, detail, retryable } = r.failure;
           // Refused for good, or input the core turned down: a new add.
-          fail(
-            detail,
-            kind === 'refused' ? retryable === true : kind !== 'invalid',
-          );
+          fail(r.failure.detail, retryable(r.failure));
           return;
         }
         const { id } = draft;
