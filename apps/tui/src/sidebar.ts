@@ -25,6 +25,7 @@ export class Sidebar implements Pane {
   /** The key the outline shows. */
   current = 'all';
   private at = 0;
+  private focused = true;
 
   constructor(
     private readonly deps: {
@@ -68,7 +69,13 @@ export class Sidebar implements Pane {
   private clamp = (at: number, length: number) =>
     Math.max(0, Math.min(length - 1, at));
 
-  private rows = (): Row[] => this.sections().flatMap((s) => s.rows);
+  /** Every row in order; `]`/`[` step through their keys. */
+  rows = (): Row[] => this.sections().flatMap((s) => s.rows);
+
+  /** Without the focus the `▸` is dim. */
+  focus(on: boolean): void {
+    this.focused = on;
+  }
 
   handleInput(data: string): void {
     const rows = this.rows();
@@ -104,7 +111,9 @@ export class Sidebar implements Pane {
           row.key === this.current
             ? sgr(1, colour() ? sgr(36, text) : text)
             : text;
-        lines.push(`${index === this.at ? '▸' : ' '} ${styled}`);
+        const cursor =
+          index !== this.at ? ' ' : this.focused ? '▸' : sgr(2, '▸');
+        lines.push(`${cursor} ${styled}`);
         index += 1;
       }
     }

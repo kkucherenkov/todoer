@@ -64,5 +64,7 @@ export function createShell(deps: {
     },
     stop,
     rows: () => terminal.rows,
+    /** A frame for a change no key caused (a publish, a message). */
+    requestRender: () => tui.requestRender(),
   };
 }

@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-import { render } from 'ink';
+import { ProcessTerminal } from '@earendil-works/pi-tui';
 import { uuidv7 } from 'uuidv7';
 import {
   createEngine,
@@ -9,10 +9,9 @@ import {
   tokenSource,
 } from '@todoer/client-core';
 import { openReplica, readConfig } from '@todoer/client-core/node-sqlite';
-import { App } from './app.js';
-import { TuiContext } from './context.js';
+import { createShell } from './pi/app-shell.js';
+import { Root } from './root.js';
 import { cliSession } from './session.js';
-import { createKeyHold } from './key-hold.js';
 import { createStatusLine } from './status-line.js';
 import { createTopics } from './topics.js';
 
@@ -52,25 +51,30 @@ async function main(): Promise<number> {
       newId: uuidv7,
       today: () => localDate(now()),
       status: createStatusLine(),
-      keys: createKeyHold(),
     };
-    const app = render(
-      <TuiContext.Provider value={tui}>
-        <App />
-      </TuiContext.Provider>,
-      { alternateScreen: true, exitOnCtrlC: true },
-    );
+    const terminal = new ProcessTerminal();
+    let exited!: (code: number) => void;
+    const exit = new Promise<number>((resolve) => (exited = resolve));
+    // The root asks the shell to draw and to quit; the shell is made from
+    // the root, and neither callback runs before it exists.
+    const root = new Root({
+      tui,
+      rows: () => terminal.rows,
+      quit: () => shell.stop(0),
+      redraw: () => shell.requestRender(),
+    });
+    const shell = createShell({ terminal, root, onExit: exited });
+    shell.start();
     void engine.start(tokens.signedIn());
     const timer = setInterval(
       () => void engine.handle({ kind: 'sync', reason: 'tick' }, 'tui'),
       TICK_MS,
     );
     try {
-      await app.waitUntilExit();
+      return await exit;
     } finally {
       clearInterval(timer);
     }
-    return 0;
   } finally {
     store.close();
   }
@@ -81,8 +85,8 @@ main().then(
     process.exitCode = code;
   },
   (error: unknown) => {
-    // An unexpected local failure, as for the CLI: Ink has restored the
-    // terminal by the time this runs.
+    // An unexpected local failure, as for the CLI: pi-tui's exit hook
+    // restores the terminal.
     console.error(
       error instanceof Error ? (error.stack ?? error.message) : error,
     );

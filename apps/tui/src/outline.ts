@@ -59,11 +59,27 @@ export class Outline implements Pane {
   private pendingD = false;
   private deleting = false;
   private input: Input | null = null;
+  private focused = true;
   private readonly write: ReturnType<typeof createWrite>;
 
   constructor(private readonly deps: Deps) {
     this.write = createWrite(deps.tui);
     deps.tui.topics.subscribe(() => this.sync());
+  }
+
+  /** A line is being typed: every key is the input's. */
+  get inserting(): boolean {
+    return this.input !== null;
+  }
+
+  /** Waiting for the second `d` or for `y`: the next key is this pane's. */
+  get holding(): boolean {
+    return this.inserting || this.pendingD || this.deleting;
+  }
+
+  /** Without the focus the `▸` is dim. */
+  focus(on: boolean): void {
+    this.focused = on;
   }
 
   /** Points the pane at another view's key. */
@@ -295,7 +311,7 @@ export class Outline implements Pane {
       priority < 4
         ? `${priority < 2 ? paint(RED, `p${priority}`) : priority < 3 ? paint(YELLOW, `p${priority}`) : `p${priority}`} `
         : '';
-    const head = `${cursor ? sgr(1, '▸') : ' '} ${'  '.repeat(r.depth)}${item.closed ? '✓' : '○'} ${p}`;
+    const head = `${cursor ? sgr(this.focused ? 1 : 2, '▸') : ' '} ${'  '.repeat(r.depth)}${item.closed ? '✓' : '○'} ${p}`;
     // A subtask whose parent this view does not list.
     const orphan =
       r.depth === 0 && item.parentTitle !== null

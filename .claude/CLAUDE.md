@@ -127,7 +127,7 @@ and `@todoer/client-core` is upstream of every client: the CLI, the TUI and the 
 | `apps/web` | Nuxt 4 SPA. The leader tab's worker runs client-core on SQLite WASM (OPFS). Built SPA served by the backend from `WEB_ROOT`. |
 | `Dockerfile`, `docker/` | One image with the backend and the built SPA; compose service `app` behind the profile `app`, the entrypoint runs `prisma migrate deploy`. |
 | `apps/cli` | The reference client. Its primary caller is a script or an agent — see ADR 0015. |
-| `apps/tui` | The terminal client (Ink). Shares the CLI's replica and session; runs the core engine. |
+| `apps/tui` | The terminal client (pi-tui; the Ink screens not yet ported are unreachable until they are). Shares the CLI's replica and session; runs the core engine. |
 | `scripts/walking-skeleton.sh` | The end-to-end proof. CI runs it against a live backend. |
 
 Design and rationale live in `docs/specs/`, `docs/adr/` and `docs/plans/`. The
