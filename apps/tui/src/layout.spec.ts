@@ -27,6 +27,8 @@ describe('widths', () => {
       outline: 52,
       detail: 42,
     });
+    expect(widths(90, 'two')).toEqual({ sidebar: 0, outline: 58, detail: 31 });
+    expect(widths(119, 'two')).toEqual({ sidebar: 0, outline: 77, detail: 41 });
     expect(widths(100, 'two')).toEqual({ sidebar: 0, outline: 64, detail: 35 });
     expect(widths(80, 'one')).toEqual({ sidebar: 0, outline: 80, detail: 0 });
   });

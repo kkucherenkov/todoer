@@ -67,6 +67,9 @@ export class Sidebar implements Pane {
     return all.filter((s) => s.rows.length > 0);
   }
 
+  private clamp = (at: number, length: number) =>
+    Math.max(0, Math.min(length - 1, at));
+
   private rows = (): Row[] => this.sections().flatMap((s) => s.rows);
 
   handleInput(data: string): void {
@@ -75,15 +78,16 @@ export class Sidebar implements Pane {
       const row = rows[this.at];
       if (row !== undefined) this.deps.onPick(row.key);
     } else if (data === 'j' || matchesKey(data, Key.down)) {
-      this.at = Math.min(rows.length - 1, this.at + 1);
+      this.at = this.clamp(this.at + 1, rows.length);
     } else if (data === 'k' || matchesKey(data, Key.up)) {
-      this.at = Math.max(0, this.at - 1);
+      this.at = this.clamp(this.at - 1, rows.length);
     }
   }
 
   render(width: number): string[] {
     const lines: string[] = [];
     let index = 0;
+    this.at = this.clamp(this.at, this.rows().length);
     for (const { title, rows } of this.sections()) {
       if (lines.length > 0) lines.push('');
       lines.push(truncateToWidth(sgr(2, title), width, '', true));

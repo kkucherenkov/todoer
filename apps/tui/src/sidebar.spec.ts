@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createWrite } from './write.js';
 import { KEY, renderApp } from './pi/test-kit.js';
 import { Sidebar } from './sidebar.js';
+import { createTopics } from './topics.js';
 
 let cleanup = () => {};
 afterEach(() => {
@@ -95,5 +96,42 @@ describe('Sidebar', () => {
     sidebar.current = 'today';
     expect(t.frame()).not.toMatch(new RegExp(`${ESC}\\[3\\dm`));
     expect(t.frame()).toContain('Today');
+  });
+
+  it('cuts a long name to the width and keeps the count', async () => {
+    const t = await renderApp({
+      width: 30,
+      app: ({ topics }) => new Sidebar({ topics, onPick: () => undefined }),
+    });
+    cleanup = t.cleanup;
+    await createWrite(t)((newId) => ({
+      kind: 'add',
+      opId: newId(),
+      id: newId(),
+      text: `milk #${'p'.repeat(40)}`,
+    }));
+    await t.settle();
+    const row = t.lines().find((l) => l.includes('ppp')) ?? '';
+    expect(visibleWidth(row)).toBe(30);
+    expect(plain(row)).toMatch(/…\s*1$/);
+  });
+
+  it('keeps the cursor on a row: j before the catalog loads, j past the end', async () => {
+    const { t } = await seeded();
+    const marks = () => t.lines().filter((l) => l.startsWith('▸'));
+    await t.press(...Array<string>(20).fill('j'));
+    expect(marks()).toHaveLength(1);
+    expect(plain(marks()[0] ?? '')).toContain('Mine');
+    const topics = createTopics();
+    const bare = new Sidebar({ topics, onPick: () => undefined });
+    bare.handleInput('j');
+    topics.publish('catalog', {
+      views: [],
+      statuses: [],
+      projects: [],
+      tags: [],
+      nav: [{ key: 'all', count: 1 }],
+    });
+    expect(plain(bare.render(30)[1] ?? '')).toMatch(/^▸ All open/);
   });
 });
