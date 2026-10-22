@@ -25,5 +25,11 @@ or could not apply it), `r` sends the same change again. Offline, or refused
 for the session or the rate (401, 403, 429), a change is queued instead, and
 the status line says why.
 
+`n` (or `o`; `O` for a subtask) opens a new task's row in the outline where
+the task will appear; type it in the quick-add grammar (`buy milk #home @shop
+p1`), Enter adds it and Esc drops the row. A refused add stays in its row with
+the reason, under the same rule: Enter reopens the text, `r` resends it when
+the server kept no verdict, Esc drops it.
+
 Development: `pnpm -w exec turbo run build test --filter=@todoer/tui...`.
 Tests need no database.

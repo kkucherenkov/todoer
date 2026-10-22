@@ -209,6 +209,13 @@ client would have to compute counts.
 - **New task (Q12 A).** `n` opens an input line in the outline under the
   cursor, where the task will appear, using the quick-add grammar
   (`#project @tag pN`, dates). Enter creates it and Esc cancels.
+  The row stands after the cursor's group (a subtask's with `O`), so only
+  the rows below it move; a view that sorts itself then places the task by
+  its sort. `o` stays an alias of `n` and `O` adds a subtask (my call: no
+  muscle memory breaks). A refused add follows Q8: the text stays in its row,
+  marked `✗` with the reason under it; `r` resends a retryable refusal with
+  the same opId, Enter reopens the text and saving it after a permanent
+  refusal is a new add, Esc drops the row.
 - **Look (Q14 C).** Section headers in capitals and dim separators, as in
   tuxedo. Panes are boxed (maintainer request 2026-10-22, see "Pane boxes"). Only the 16 ANSI colours, which follow the
   terminal's theme. Colour carries meaning only: priority, overdue, the

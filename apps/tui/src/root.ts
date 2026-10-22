@@ -22,9 +22,9 @@ const HINTS: Record<Exclude<Focus, 'detail'> | 'INSERT' | 'board', string> = {
   INSERT: 'Enter save · Esc cancel',
   sidebar: 'j/k move · Enter open · Tab focus · ? help · q quit',
   outline:
-    'j/k move · o new · x done · dd delete · > < indent · J/K move · m status · e details · Tab focus · [ ] views · r sync · ? help · q quit',
+    'j/k move · n new · x done · dd delete · > < indent · J/K move · m status · e details · Tab focus · [ ] views · r sync · ? help · q quit',
   board:
-    'h/l column · j/k card · H/L move · J/K order · o new · x done · m status · e details · Tab focus · [ ] views · r sync · ? help · q quit',
+    'h/l column · j/k card · H/L move · J/K order · n new · x done · m status · e details · Tab focus · [ ] views · r sync · ? help · q quit',
 };
 
 /** A screen drawn in the outline column (help, view picker, statuses);
@@ -302,12 +302,16 @@ export class Root implements Pane {
     const hints =
       this.focusOn === 'detail'
         ? this.detail.hints
-        : inserting
-          ? HINTS.INSERT
-          : (this.screen?.hints ??
-            (this.focusOn === 'outline' && list === this.board
-              ? HINTS.board
-              : HINTS[this.focusOn]) + (this.overlay() ? ' · Esc back' : ''));
+        : this.screen === null &&
+            list === this.outline &&
+            this.outline.hints !== undefined
+          ? this.outline.hints
+          : inserting
+            ? HINTS.INSERT
+            : (this.screen?.hints ??
+              (this.focusOn === 'outline' && list === this.board
+                ? HINTS.board
+                : HINTS[this.focusOn]) + (this.overlay() ? ' · Esc back' : ''));
     const status = renderStatus(width, {
       mode: inserting ? 'INSERT' : 'NORMAL',
       sync: this.deps.tui.topics.get('sync'),

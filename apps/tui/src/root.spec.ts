@@ -362,6 +362,19 @@ describe('Root', () => {
     expect(t.quit).toHaveBeenCalled();
   });
 
+  it('n opens the add on its row in INSERT; a refused add shows its keys', async () => {
+    const t = await mount([task('milk'), task('bread', 'a1')]);
+    await t.press('n');
+    expect(t.text().at(-2)).toMatch(/^INSERT/);
+    t.server.state.refuse = () => 'title taken';
+    await t.press('eggs', KEY.enter);
+    expect(t.text().at(-2)).toMatch(/^NORMAL/);
+    expect(t.text().at(-1)).toMatch(/^Enter edit · Esc discard/);
+    await t.press('q', KEY.escape);
+    expect(t.quit).not.toHaveBeenCalled();
+    expect(t.frame()).not.toContain('eggs');
+  });
+
   it('at 140, Esc in the detail pane gives the focus back to the outline', async () => {
     const t = await mount([task('milk')]);
     await t.press('e');

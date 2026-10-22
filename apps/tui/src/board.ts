@@ -26,7 +26,7 @@ const alt = (data: string, dir: 'up' | 'down') =>
  * The kanban layout in the outline column: one column per status, the
  * engine's `boardTasks` (the completing column holds the tasks closed in
  * the last seven days). `H`/`L` move a card across columns, `J`/`K` within
- * one in a manual view, `o` adds a card below the current one (where the
+ * one in a manual view, `n` (or `o`) adds a card below the current one (where the
  * sort puts it in a sorted view), and the shared task keys (`TaskKeys`).
  * PR 3 redesigns it; cards past `height` are not drawn.
  */
@@ -223,7 +223,7 @@ export class Board implements Pane {
       this.go(c, Math.min(cards.length - 1, r + 1));
     } else if (data === 'k' || matchesKey(data, Key.up)) {
       this.go(c, Math.max(0, r - 1));
-    } else if (data === 'o') this.add();
+    } else if (data === 'n' || data === 'o') this.add();
   }
 
   render(width: number): string[] {
