@@ -126,6 +126,20 @@ rows it takes half the screen from the list. Details replacing the outline on
 Enter (C): it loses the list while reading a task, and that is the context
 switch the fixed pane exists to avoid.
 
+### Pane boxes (maintainer request 2026-10-22)
+
+**Decision.** After running the borderless frame the maintainer asked for a
+box around each pane and a highlight on the active one: without borders the
+outline's right-aligned `#project` read as part of the details beside it. Each
+visible pane (`Views`, `Tasks`, `Details`; the board keeps `Tasks`) is drawn in
+a rounded box with its title in the top border. The boxes sit side by side with
+no gap, so a pane's content is two cells narrower and two rows shorter than
+its column. The overlay sidebar (90–119) and the full-screen details (< 90)
+are boxed too; the two status lines stay outside, full width. The active pane
+(the focus) has a cyan border and a bold cyan title, the others are dim. Under
+`NO_COLOR` the active pane has a double border instead (colour never carries
+the meaning alone). The minimum terminal is 60×14.
+
 ### The sidebar mirrors the web's navigation, tags added in the core (Q6)
 
 **Decision.** The sidebar lists All open, Today, Upcoming and each project,
@@ -195,8 +209,8 @@ client would have to compute counts.
 - **New task (Q12 A).** `n` opens an input line in the outline under the
   cursor, where the task will appear, using the quick-add grammar
   (`#project @tag pN`, dates). Enter creates it and Esc cancels.
-- **Look (Q14 C).** No frames. Section headers in capitals and dim
-  separators, as in tuxedo. Only the 16 ANSI colours, which follow the
+- **Look (Q14 C).** Section headers in capitals and dim separators, as in
+  tuxedo. Panes are boxed (maintainer request 2026-10-22, see "Pane boxes"). Only the 16 ANSI colours, which follow the
   terminal's theme. Colour carries meaning only: priority, overdue, the
   cursor, errors. `NO_COLOR` gives monochrome, and nothing may rely on colour
   alone.

@@ -10,7 +10,10 @@ import { Root } from './root.js';
 let cleanup = () => {};
 afterEach(() => cleanup());
 
-const plain = (s: string) => stripTerminalSequences(s);
+/** A screen row's text without the pane's box edge, so the specs read the
+ *  pane's own lines. */
+const plain = (s: string) =>
+  stripTerminalSequences(s).replace(/^[│║]|[│║]$/g, '');
 
 const status = (id: string, name: string, rank: string) => ({
   table: 'status',

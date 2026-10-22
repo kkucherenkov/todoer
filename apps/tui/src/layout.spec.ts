@@ -16,27 +16,27 @@ describe('modeFor', () => {
 });
 
 describe('widths', () => {
-  it('fills the terminal minus the gaps', () => {
+  it('fills the terminal, boxes side by side', () => {
     expect(widths(140, 'three')).toEqual({
       sidebar: 24,
-      outline: 66,
+      outline: 68,
       detail: 48,
     });
     expect(widths(120, 'three')).toEqual({
       sidebar: 24,
-      outline: 52,
+      outline: 54,
       detail: 42,
     });
-    expect(widths(90, 'two')).toEqual({ sidebar: 0, outline: 58, detail: 31 });
-    expect(widths(119, 'two')).toEqual({ sidebar: 0, outline: 77, detail: 41 });
-    expect(widths(100, 'two')).toEqual({ sidebar: 0, outline: 64, detail: 35 });
+    expect(widths(90, 'two')).toEqual({ sidebar: 0, outline: 59, detail: 31 });
+    expect(widths(119, 'two')).toEqual({ sidebar: 0, outline: 78, detail: 41 });
+    expect(widths(100, 'two')).toEqual({ sidebar: 0, outline: 65, detail: 35 });
     expect(widths(80, 'one')).toEqual({ sidebar: 0, outline: 80, detail: 0 });
   });
 });
 
 describe('columns', () => {
   it.each([['plain'], ['Разобрать'], ['買い物'], ['👍🏽 done']])(
-    'zips %s to exactly rows lines of the full width',
+    'zips %s to exactly rows lines of the full width, nothing between',
     (text) => {
       const parts = [
         { lines: [text, text, text], width: 8 },
@@ -45,16 +45,16 @@ describe('columns', () => {
       ];
       const out = columns(parts, 2);
       expect(out).toHaveLength(2);
-      for (const line of out) expect(visibleWidth(line)).toBe(8 + 3 + 5 + 2);
+      for (const line of out) expect(visibleWidth(line)).toBe(8 + 3 + 5);
     },
   );
 });
 
 describe('tooSmall', () => {
   it('names the minimum', () => {
-    const message = ['Terminal too small (need 60×12)'];
+    const message = ['Terminal too small (need 60×14)'];
     expect(tooSmall(59, 30)).toEqual(message);
-    expect(tooSmall(80, 11)).toEqual(message);
-    expect(tooSmall(60, 12)).toBeNull();
+    expect(tooSmall(80, 13)).toEqual(message);
+    expect(tooSmall(60, 14)).toBeNull();
   });
 });

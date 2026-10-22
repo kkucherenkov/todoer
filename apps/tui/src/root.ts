@@ -1,12 +1,8 @@
-import {
-  Key,
-  matchesKey,
-  sliceByColumn,
-  truncateToWidth,
-} from '@earendil-works/pi-tui';
+import { Key, matchesKey, sliceByColumn } from '@earendil-works/pi-tui';
 import { ALL } from '@todoer/client-core';
 import { Board } from './board.js';
 import { DetailPane } from './detail-pane.js';
+import { box } from './frame.js';
 import { Help } from './help.js';
 import { columns, modeFor, tooSmall, widths, type Mode } from './layout.js';
 import { Outline } from './outline.js';
@@ -14,7 +10,7 @@ import type { Pane } from './pi/app-shell.js';
 import { Sidebar } from './sidebar.js';
 import { renderStatus } from './status-bar.js';
 import { Statuses } from './statuses.js';
-import { sgr } from './style.js';
+import { colour, sgr } from './style.js';
 import type { Tui } from './tui.js';
 import { Picker } from './ui/picker.js';
 
@@ -285,9 +281,23 @@ export class Root implements Pane {
     }
     const w = widths(width, this.mode);
     const body = rows - 2;
-    this.outline.height = body;
-    this.board.height = body;
-    this.detail.height = body;
+    // Each pane draws inside its box: one cell and one row less each way.
+    this.outline.height = body - 2;
+    this.board.height = body - 2;
+    this.detail.height = body - 2;
+    const framed = (
+      focus: Focus,
+      title: string,
+      lines: string[],
+      boxWidth: number,
+    ) =>
+      box(lines, {
+        width: boxWidth,
+        height: body,
+        title,
+        active: this.focusOn === focus,
+        color: colour(),
+      });
     const { inserting, list } = this;
     const hints =
       this.focusOn === 'detail'
@@ -305,31 +315,46 @@ export class Root implements Pane {
       hints,
     });
     if (this.mode === 'one' && this.focusOn === 'detail') {
-      return [
-        ...columns([{ lines: this.detail.render(width), width }], body),
-        ...status,
-      ];
+      const lines = this.detail.render(width - 2);
+      return [...framed('detail', 'Details', lines, width), ...status];
     }
-    let middle = (this.screen ?? list).render(w.outline);
-    if (this.overlay()) {
-      // Over the outline, which stays where it is under it.
-      const side = widths(width, 'three').sidebar;
-      const lines = this.sidebar.render(side);
-      middle = Array.from(
-        { length: body },
-        (_, i) =>
-          truncateToWidth(lines[i] ?? '', side, '', true) +
-          sgr(2, '│') +
-          sliceByColumn(middle[i] ?? '', side + 1, w.outline - side - 1, true),
-      );
-    }
+    const middle = framed(
+      'outline',
+      'Tasks',
+      (this.screen ?? list).render(w.outline - 2),
+      w.outline,
+    );
+    const side = widths(width, 'three').sidebar;
+    const sidebar = (boxWidth: number) =>
+      framed('sidebar', 'Views', this.sidebar.render(boxWidth - 2), boxWidth);
+    // Over the outline, which stays where it is under it.
+    const over = this.overlay() ? sidebar(side) : [];
     const parts = [
       ...(w.sidebar > 0
-        ? [{ lines: this.sidebar.render(w.sidebar), width: w.sidebar }]
+        ? [{ lines: sidebar(w.sidebar), width: w.sidebar }]
         : []),
-      { lines: middle, width: w.outline },
+      {
+        lines: this.overlay()
+          ? over.map(
+              (l, i) =>
+                l +
+                sliceByColumn(middle[i] ?? '', side, w.outline - side, true),
+            )
+          : middle,
+        width: w.outline,
+      },
       ...(w.detail > 0
-        ? [{ lines: this.detail.render(w.detail), width: w.detail }]
+        ? [
+            {
+              lines: framed(
+                'detail',
+                'Details',
+                this.detail.render(w.detail - 2),
+                w.detail,
+              ),
+              width: w.detail,
+            },
+          ]
         : []),
     ];
     return [...columns(parts, body), ...status];
