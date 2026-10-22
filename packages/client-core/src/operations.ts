@@ -98,7 +98,8 @@ export type Due = Row & {
  *
  * With `key`, the command is the unit of idempotence (plan W3, departure 2):
  * the claim is written in the same transaction as the enqueue, and a key
- * already claimed queues nothing, so a resend only flushes.
+ * already claimed queues nothing, so a resend only flushes. A command whose
+ * every op was refused gives its claim back.
  */
 export async function submit(
   store: Store,
@@ -145,6 +146,16 @@ export async function submit(
     }
     return { op, outcome: 'queued' as const };
   });
+  // Every op refused: none of the command took effect, so its id is free
+  // again and a resend (a held intent's retry) queues it once more instead
+  // of only flushing. A partly applied command keeps its claim.
+  if (
+    key !== undefined &&
+    ops.length > 0 &&
+    outcomes.every((o) => typeof o.outcome === 'object')
+  ) {
+    store.unclaim(key);
+  }
   throwRefusals(outcomes);
   return flushed.synced && outcomes.every((o) => o.outcome === 'applied');
 }

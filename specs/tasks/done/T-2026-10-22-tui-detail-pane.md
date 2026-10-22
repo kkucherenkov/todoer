@@ -2,7 +2,9 @@
 
 - Created: 2026-10-22
 - Owner: claude
-- Status: in-progress
+- Status: done
+- Completed: 2026-10-22
+- Result: PR pending
 - Blockers: —
 - Spec: [TUI UX redesign design](../../../docs/specs/2026-10-22-tui-ux-redesign-design.md)
 - Plan: [docs/plans/2026-10-22-plan-tui-ux-redesign.md](../../../docs/plans/2026-10-22-plan-tui-ux-redesign.md),
@@ -69,10 +71,10 @@ resend a refused write the same way.
 
 - **SC-001** A person edits any field of a task without leaving the pane, and
   a refused change is never lost.
-- [ ] every FR has a test that failed before the code made it pass
+- [x] every FR has a test that failed before the code made it pass
 - [ ] gates: `PR title (conventional commit)`, `Shell tests`,
-      `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
+      `Workspace tests`, `Lint` (CI on the PR)
+- [x] no document still asserts the behaviour this task replaced
 - [ ] dnote changelog line
 
 ### Steps
@@ -81,6 +83,6 @@ resend a refused write the same way.
   `packages/client-core/src/intent.ts` (Task 2.0)
 - [x] T002 [FR-002, FR-003, FR-004] Fields in place — `apps/tui/src/detail-pane.ts`
   (Task 2.1)
-- [ ] T003 [FR-005, FR-006] Refusals on the field — `apps/tui/src/detail-pane.ts`
+- [x] T003 [FR-005, FR-006] Refusals on the field — `apps/tui/src/detail-pane.ts`
   (Task 2.2)
 - **Checkpoint:** a field is edited, refused, retried and discarded in the pane.

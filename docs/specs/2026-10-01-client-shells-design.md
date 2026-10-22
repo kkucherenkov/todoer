@@ -603,7 +603,11 @@ write that finds the marker queues nothing and only flushes. Secondary op ids
 (labels, seeds, moved tasks) are still minted in the worker. A resend after a
 crash finds the marker if the first run committed, or runs fresh if it did not.
 Markers older than 7 days are pruned on each write. Resending the ops
-themselves would mint different ones against a changed replica.
+themselves would mint different ones against a changed replica. A command
+whose every op the server refused gives its marker back (2026-10-22): nothing
+of it took effect, so a retry with the same `opId` (the held intent) queues it
+again instead of flushing nothing and reporting success. A partly applied
+command keeps its marker.
 
 **3. Deleting a status moves its tasks to `statusId: null`**, meaning the first
 status, instead of to the first status's id (Q8). Same reasoning as V1

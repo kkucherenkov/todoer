@@ -11,7 +11,6 @@ import {
   createIntent,
   mint,
   type Draft,
-  type Result,
   type Rule,
   type TaskChanges,
   type TaskDetails,
@@ -66,6 +65,7 @@ const linesOf = (text: string) => {
   const n = text.split('\n').length;
   return n === 1 ? '1 line' : `${String(n)} lines`;
 };
+const keyOf = (taskId: string, field: FieldId) => `${taskId} ${field}`;
 const same = (a: unknown, b: unknown) =>
   JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
 
@@ -92,6 +92,18 @@ function shownOf(
 
 /** The field being edited, and whether it is typed into (INSERT). */
 type Open = { field: FieldId; component: Component; typing: boolean };
+/** A field write the server refused: the person's draft and why. */
+type Refusal = { draft: Draft; detail: string };
+
+/** What a draft would make of the task, to show the person's value. */
+const patchOf = (draft: Draft): Partial<TaskDetails> =>
+  draft.kind === 'edit'
+    ? draft.changes
+    : draft.kind === 'move'
+      ? { column: draft.statusId ?? null }
+      : draft.kind === 'setRule'
+        ? { rrule: draft.rule?.rrule ?? null }
+        : {};
 
 /**
  * The selected task's fields as one flat list, then its subtasks with their
@@ -99,8 +111,11 @@ type Open = { field: FieldId; component: Component; typing: boolean };
  * stands: an input on its row, a picker for the status and the repeat, the
  * multi-line `Editor` for the notes. Enter saves, Esc cancels. Each save is
  * one write, held per task and field as one intent (`createIntent`), so
- * sending it again is the same operation. x or Space on a subtask ticks it
- * at the parent's occurrence.
+ * sending it again is the same operation. A refused write stays on its
+ * field, marked ✗ with the person's value and `saved → yours · reason`
+ * under it, until `r` resends it or Esc discards it; refusals are kept per
+ * task and field, so they outlive selecting another task. x or Space on a
+ * subtask ticks it at the parent's occurrence.
  */
 export class DetailPane implements Pane {
   /** Rows the pane shows; past them it scrolls to the cursor. */
@@ -111,6 +126,7 @@ export class DetailPane implements Pane {
   private open: Open | null = null;
   /** One held intent per `taskId field`. */
   private readonly intents = new Map<string, ReturnType<typeof createIntent>>();
+  private readonly refusals = new Map<string, Refusal>();
   private readonly write: ReturnType<typeof createWrite>;
 
   constructor(
@@ -142,6 +158,9 @@ export class DetailPane implements Pane {
   /** The keys of what the cursor is on. */
   get hints(): string {
     if (this.open === null) {
+      if (this.refused() !== undefined) {
+        return 'j/k field · Enter edit · r retry · Esc discard · Tab focus · q back';
+      }
       return this.at < FIELDS.length
         ? 'j/k field · Enter edit · Tab focus · Esc q back'
         : 'j/k move · x tick · Tab focus · Esc q back';
@@ -160,10 +179,39 @@ export class DetailPane implements Pane {
 
   private close = () => (this.open = null);
 
-  /** Sends `draft` as the field's held intent. */
-  private send(taskId: string, field: FieldId, draft: Draft): Promise<Result> {
-    const { engine, newId, status } = this.deps.tui;
-    const key = `${taskId} ${field}`;
+  /** The field under the cursor, on the shown task. */
+  private key(): string | undefined {
+    const field = FIELDS[this.at];
+    return field === undefined || this.taskId === null
+      ? undefined
+      : keyOf(this.taskId, field.id);
+  }
+
+  /** The refusal under the cursor. */
+  private refused(): Refusal | undefined {
+    const key = this.key();
+    return key === undefined ? undefined : this.refusals.get(key);
+  }
+
+  /** `r`: resends the refused write under the cursor, same opId. */
+  retry(): boolean {
+    const key = this.key();
+    const refusal = this.refused();
+    if (key === undefined || refusal === undefined) return false;
+    this.send(key, refusal.draft);
+    return true;
+  }
+
+  /** Esc: drops the refusal under the cursor; the saved value shows. */
+  discard(): boolean {
+    const key = this.key();
+    return key !== undefined && this.refusals.delete(key);
+  }
+
+  /** Sends `draft` as the field's held intent; a refusal (being offline is
+   *  not one: the write is queued) is kept on the field. */
+  private send(key: string, draft: Draft): void {
+    const { engine, newId } = this.deps.tui;
     let intent = this.intents.get(key);
     if (intent === undefined) {
       intent = createIntent({
@@ -172,11 +220,11 @@ export class DetailPane implements Pane {
       });
       this.intents.set(key, intent);
     }
-    return intent(draft).then((result) => {
+    this.refusals.delete(key);
+    void intent(draft).then((result) => {
       if (!result.ok && result.failure.kind !== 'unreachable') {
-        status.say({ tone: 'error', text: result.failure.detail });
+        this.refusals.set(key, { draft, detail: result.failure.detail });
       }
-      return result;
     });
   }
 
@@ -190,7 +238,7 @@ export class DetailPane implements Pane {
     const changed = Object.entries(changes).some(([k, v]) => !same(task[k], v));
     if (changed) {
       const taskId = String(task.id);
-      void this.send(taskId, field, { kind: 'edit', taskId, changes });
+      this.send(keyOf(taskId, field), { kind: 'edit', taskId, changes });
     }
     return undefined;
   }
@@ -270,7 +318,7 @@ export class DetailPane implements Pane {
           onPick: (statusId) => {
             this.close();
             if (statusId === task.column) return;
-            void this.send(taskId, id, {
+            this.send(keyOf(taskId, id), {
               kind: 'move',
               taskId,
               view: ALL,
@@ -303,7 +351,7 @@ export class DetailPane implements Pane {
             const preset = choices.find((p) => p.id === pick);
             const setRule = (rule: Rule | null): undefined => {
               this.close();
-              void this.send(taskId, id, { kind: 'setRule', taskId, rule });
+              this.send(keyOf(taskId, id), { kind: 'setRule', taskId, rule });
               return undefined;
             };
             if (preset !== undefined) return setRule(preset.rule(dtstart));
@@ -387,7 +435,9 @@ export class DetailPane implements Pane {
         this.tick(task, this.at - FIELDS.length);
     } else if (matchesKey(data, Key.enter)) {
       const field = FIELDS[this.at];
-      if (field !== undefined) this.openField(task, field.id);
+      if (field !== undefined) {
+        this.openField(this.yours(task, field.id) ?? task, field.id);
+      }
     }
   }
 
@@ -404,11 +454,17 @@ export class DetailPane implements Pane {
     return lines.map((l) => truncateToWidth(l, width, '…', true));
   }
 
+  /** The task as the refused write on `field` would make it. */
+  private yours(task: TaskDetails, field: FieldId): TaskDetails | undefined {
+    const refusal = this.refusals.get(keyOf(String(task.id), field));
+    return refusal && { ...task, ...patchOf(refusal.draft) };
+  }
+
   private rows(task: TaskDetails, width: number): string[] {
-    const name = this.deps.tui.topics
-      .get('catalog')
-      ?.statuses.find((s) => s.id === task.column)?.name;
-    const shown = shownOf(task, name);
+    const statuses = this.deps.tui.topics.get('catalog')?.statuses;
+    const shownFor = (t: TaskDetails) =>
+      shownOf(t, statuses?.find((s) => s.id === t.column)?.name);
+    const shown = shownFor(task);
     const cursor = (i: number, text: string) =>
       this.focused && this.open === null && i === this.at ? sgr(7, text) : text;
     // The cursor's last line: the pane scrolls to keep it in view.
@@ -421,7 +477,21 @@ export class DetailPane implements Pane {
           lines.push((j === 0 ? label(f.label) : ' '.repeat(LABEL)) + l),
         );
       } else {
-        lines.push(label(f.label) + cursor(i, shown[f.id] || '—'));
+        const saved = shown[f.id] || '—';
+        const refusal = this.refusals.get(keyOf(String(task.id), f.id));
+        const yours =
+          refusal &&
+          (shownFor({ ...task, ...patchOf(refusal.draft) })[f.id] || '—');
+        // A refusal of what is saved anyway (a late answer) is not shown.
+        lines.push(
+          ...(refusal === undefined || yours === saved
+            ? [label(f.label) + cursor(i, saved)]
+            : [
+                label(f.label) + cursor(i, `${sgr(31, '✗')} ${String(yours)}`),
+                ' '.repeat(LABEL) +
+                  sgr(2, `${saved} → ${String(yours)} · ${refusal.detail}`),
+              ]),
+        );
       }
       if (i === this.at) end = lines.length;
     });

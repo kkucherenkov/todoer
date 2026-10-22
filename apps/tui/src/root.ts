@@ -60,7 +60,7 @@ export class Root implements Pane {
    * something.
    */
   private readonly escape: (() => boolean)[] = [
-    // Task 2.2: the refusal shown under its field goes here, before the overlay.
+    () => this.focusOn === 'detail' && this.detail.discard(),
     () => this.closeOverlay(),
     () => this.leaveDetail(),
     // Task 3.3: the `/` filter goes here, last.
@@ -234,9 +234,12 @@ export class Root implements Pane {
     } else if (data === 'q') this.deps.quit();
     else if (data === ']') this.step(1);
     else if (data === '[') this.step(-1);
-    else if (data === 'r')
-      void tui.engine.handle({ kind: 'sync', reason: 'manual' }, 'tui');
-    else if (data === 'v') this.open(this.viewPicker());
+    // On a refused field in the details `r` resends it; elsewhere it syncs.
+    else if (data === 'r') {
+      if (!(this.focusOn === 'detail' && this.detail.retry())) {
+        void tui.engine.handle({ kind: 'sync', reason: 'manual' }, 'tui');
+      }
+    } else if (data === 'v') this.open(this.viewPicker());
     else if (data === '?') this.open(new Help(this.close));
     else if (data === 'S')
       this.open(new Statuses({ tui, onClose: this.close }));

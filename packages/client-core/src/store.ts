@@ -221,6 +221,11 @@ export class Store {
     );
   }
 
+  /** Frees a claimed id: the command it marked took no effect. */
+  unclaim(opId: string): void {
+    this.db.run('DELETE FROM meta WHERE key = ?', [`op:${opId}`]);
+  }
+
   enqueue(op: Op): void {
     this.db.run('INSERT INTO outbox (op_id, op) VALUES (?, ?)', [
       op.opId,

@@ -379,3 +379,102 @@ describe('DetailPane', () => {
     expect(t.lastFrame()).toContain('j/k move');
   });
 });
+
+describe('DetailPane refusals', () => {
+  const refusing = (rows: Record<string, unknown>[]) => {
+    const server = fakeServer([
+      status('s1', 'To do', 'a0'),
+      project('p-home', 'home'),
+      project('p-work', 'work'),
+      ...rows,
+    ]);
+    server.state.refuse = (op) =>
+      op.kind === 'set' && op.field === 'projectId' ? 'not today' : undefined;
+    return server;
+  };
+  const projectOps = (t: Details) =>
+    t.server.sent.filter((op) => op.kind === 'set' && op.field === 'projectId');
+  const toWork = [...down(AT.project), KEY.enter, ...erase(4), 'work'];
+
+  it('a refused project change shows saved → yours · reason', async () => {
+    const rows = [task('milk', { projectId: 'p-home' })];
+    const t = await details(rows, { server: refusing(rows) });
+    await t.press(...toWork, KEY.enter);
+    const at = t.rowOf('Project');
+    expect(plain(t.lines()[at] ?? '')).toMatch(/^Project\s+✗ work\s*$/);
+    expect(plain(t.lines()[at + 1] ?? '')).toMatch(
+      /^\s+home → work · .*not today/,
+    );
+    // The fields below keep their order under the refusal line.
+    expect(t.rowOf('Tags')).toBe(at + 2);
+    expect(row(t)?.projectId).toBe('p-home');
+    expect(t.lastFrame()).toMatch(/r retry/);
+  });
+
+  it('r resends the same opId', async () => {
+    const rows = [task('milk', { projectId: 'p-home' })];
+    const t = await details(rows, { server: refusing(rows) });
+    await t.press(...toWork, KEY.enter);
+    expect(projectOps(t)).toHaveLength(1);
+    await t.press('r');
+    const ops = projectOps(t);
+    expect(ops).toHaveLength(2);
+    expect(ops[1]?.opId).toBe(ops[0]?.opId);
+    expect(t.lastFrame()).toMatch(/Project\s+✗ work/);
+  });
+
+  it('a new edit of a refused field is a new opId', async () => {
+    const rows = [task('milk', { projectId: 'p-home' })];
+    const t = await details(rows, { server: refusing(rows) });
+    await t.press(...toWork, KEY.enter);
+    await t.press(KEY.enter, 's', KEY.enter);
+    const ops = projectOps(t);
+    expect(ops).toHaveLength(2);
+    expect(ops[1]?.opId).not.toBe(ops[0]?.opId);
+    expect(t.lastFrame()).toMatch(/Project\s+✗ works/);
+  });
+
+  it('Esc discards and shows the saved value', async () => {
+    const rows = [task('milk', { projectId: 'p-home' })];
+    const t = await details(rows, { server: refusing(rows) });
+    await t.press(...toWork, KEY.enter, KEY.escape);
+    expect(t.lastFrame()).not.toContain('✗');
+    expect(t.lastFrame()).toMatch(/^Project\s+home\s*$/m);
+    // Esc took the refusal only: still in the details.
+    expect(t.lastFrame()).toContain('Repeat');
+  });
+
+  it('a refusal for task A that arrives while task B is selected shows only on A', async () => {
+    const rows = [
+      task('milk', { projectId: 'p-home' }),
+      task('bread', { rank: 'a1' }),
+    ];
+    const t = await details(rows, { server: refusing(rows), width: 140 });
+    await t.press(...toWork);
+    let release = () => {};
+    t.server.state.hold = new Promise((resolve) => (release = resolve));
+    t.input(KEY.enter, KEY.escape, 'j');
+    release();
+    await t.settle();
+    const detail = () =>
+      t
+        .lines()
+        .map((l) => plain(l).slice(140 - 48))
+        .join('\n');
+    expect(detail()).toMatch(/Title\s+bread/);
+    expect(detail()).not.toContain('✗');
+    await t.press('k');
+    expect(detail()).toMatch(/Title\s+milk/);
+    expect(detail()).toMatch(/Project\s+✗ work/);
+  });
+
+  it('an unreachable server is not a refusal', async () => {
+    const rows = [task('milk', { projectId: 'p-home' })];
+    const t = await details(rows, { server: refusing(rows) });
+    t.server.state.offline = true;
+    await t.press(...toWork, KEY.enter);
+    expect(mode(t)).toMatch(/1 queued/);
+    expect(t.lastFrame()).not.toContain('✗');
+    expect(t.lastFrame()).toMatch(/Project\s+work/);
+  });
+});
