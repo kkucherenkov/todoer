@@ -61,4 +61,24 @@ describe('box', () => {
       );
     }
   });
+
+  it('closes the bold right after the title, also without colour', () => {
+    for (const color of [true, false]) {
+      const head = box([], { ...o, active: true, color })[0] ?? '';
+      const bold = head.indexOf(`${ESC}[1m`);
+      expect(bold).toBeGreaterThan(-1);
+      const shut = head.indexOf(`${ESC}[22m`, bold);
+      expect(shut).toBeGreaterThan(bold);
+      // Closed before the next border character.
+      expect(plain(head.slice(0, shut))).toMatch(/^[╭╔][─═] Tasks$/);
+    }
+  });
+
+  it("keeps a cut title's ellipsis inside the title styling", () => {
+    const head = box([], { ...o, width: 8, active: true })[0] ?? '';
+    expect(head).toContain('Ta…');
+    expect(head.indexOf('…')).toBeLessThan(
+      head.indexOf(`${ESC}[0m`, head.indexOf('Ta')),
+    );
+  });
 });

@@ -456,6 +456,26 @@ describe('Root', () => {
       expect(t.text()[0]).toMatch(/^╭─ Tasks/);
     });
 
+    it('with NO_COLOR=1, no colour code and every bold closed on its line', async () => {
+      vi.stubEnv('NO_COLOR', '1');
+      const t = await mount([task('milk')]);
+      for (const line of t.lines()) {
+        expect(line).not.toContain(`${ESC}[3`);
+        const open = (line.match(new RegExp(`${ESC}\\[1m`, 'g')) ?? []).length;
+        const shut = (line.match(new RegExp(`${ESC}\\[(22|0)m`, 'g')) ?? [])
+          .length;
+        expect(shut).toBeGreaterThanOrEqual(open);
+        if (open > 0) {
+          expect(line.lastIndexOf(`${ESC}[1m`)).toBeLessThan(
+            Math.max(
+              line.lastIndexOf(`${ESC}[22m`),
+              line.lastIndexOf(`${ESC}[0m`),
+            ),
+          );
+        }
+      }
+    });
+
     it('with NO_COLOR=1, the active pane has a double border', async () => {
       vi.stubEnv('NO_COLOR', '1');
       const t = await mount([task('milk')]);
