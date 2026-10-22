@@ -1,0 +1,52 @@
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import type { Terminal } from '@earendil-works/pi-tui';
+import { createShell } from './app-shell.js';
+
+function fakeTerminal() {
+  const writes: string[] = [];
+  const terminal: Terminal = {
+    start: () => undefined,
+    stop: () => undefined,
+    drainInput: () => Promise.resolve(),
+    write: (data) => void writes.push(data),
+    columns: 40,
+    rows: 10,
+    kittyProtocolActive: false,
+    moveBy: () => undefined,
+    hideCursor: () => undefined,
+    showCursor: () => undefined,
+    clearLine: () => undefined,
+    clearFromCursor: () => undefined,
+    clearScreen: () => undefined,
+    setTitle: () => undefined,
+    setProgress: () => undefined,
+    setProgramStatus: () => undefined,
+  };
+  return { terminal, writes };
+}
+
+const root = { render: () => ['hello'], invalidate: () => undefined };
+
+describe('createShell', () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it('stops on SIGTERM with the screen preserved', () => {
+    const { terminal, writes } = fakeTerminal();
+    const onExit = vi.fn();
+    const shell = createShell({ terminal, root, onExit });
+    shell.start();
+    expect(writes.join('')).toContain('?1049h');
+    process.emit('SIGTERM');
+    expect(onExit).toHaveBeenCalledExactlyOnceWith(143);
+    expect(writes.join('')).toContain('?1049l');
+    expect(process.listenerCount('SIGTERM')).toBe(0);
+    shell.stop();
+    expect(onExit).toHaveBeenCalledTimes(1);
+  });
+
+  it('reports the terminal height as rows', () => {
+    const { terminal } = fakeTerminal();
+    const shell = createShell({ terminal, root, onExit: () => undefined });
+    expect(shell.rows()).toBe(10);
+  });
+});

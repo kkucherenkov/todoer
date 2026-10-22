@@ -13,6 +13,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
+    "@earendil-works/pi-tui": "1.4.0",
     "@todoer/client-core": "workspace:^",
     "@todoer/specs": "workspace:^",
     "ink": "^8.0.0",
