@@ -19,7 +19,9 @@ export const NOW = new Date('2026-10-03T10:00:00.000Z');
 /** A server that applies every op once and serves the rows it holds;
  *  `offline` makes every request fail like a dropped connection, `refuse`
  *  rejects an op with its reason (unapplied), and `hold` keeps the answer
- *  until it resolves. */
+ *  until it resolves. A refusal sticks to its opId, as the backend records
+ *  it: the same opId is refused again until a spec deletes it from
+ *  `refused`. */
 export function fakeServer(rows: Change['row'][] = []) {
   const changes: Change[] = rows.map((row, i) => ({
     table: typeof row.table === 'string' ? row.table : 'task',
@@ -34,18 +36,18 @@ export function fakeServer(rows: Change['row'][] = []) {
     hold?: Promise<void>;
   } = { offline: false };
   const seen = new Set<string>();
+  const refused = new Map<string, string>();
   const send: Transport = async (request: SyncRequest) => {
     await state.hold;
     if (state.offline) throw new TypeError('fetch failed');
-    const refused = new Map<string, string>();
     for (const op of request.ops) {
       sent.push(op);
+      if (seen.has(op.opId) || refused.has(op.opId)) continue;
       const reason = state.refuse?.(op);
       if (reason !== undefined) {
         refused.set(op.opId, reason);
         continue;
       }
-      if (seen.has(op.opId)) continue;
       seen.add(op.opId);
       const seq = changes.length + 1;
       if (op.kind === 'create') {
@@ -91,7 +93,7 @@ export function fakeServer(rows: Change['row'][] = []) {
       headers: { 'content-type': 'application/json' },
     });
   };
-  return { send, sent, state };
+  return { send, sent, state, refused };
 }
 
 export const TOKEN = `${btoa(JSON.stringify({ sub: 'u1' })).replace(/=+$/, '')}.mac`;

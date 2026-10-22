@@ -365,6 +365,26 @@ describe('DetailPane', () => {
     for (const line of t.lines()) expect(visibleWidth(line)).toBe(80);
   });
 
+  it('closes an open field when the shown task changes', async () => {
+    const t = await details(
+      [task('milk', { projectId: 'p-home' }), task('bread', { rank: 'a1' })],
+      { width: 140 },
+    );
+    await t.press(...down(AT.project), KEY.enter, 'x');
+    await t.engine.handle(
+      {
+        kind: 'deleteTask',
+        opId: '00000000-0000-7000-a000-000000000003',
+        taskId: id('milk'),
+      },
+      'tui',
+    );
+    await t.settle();
+    expect(t.lastFrame()).toMatch(/Title\s+bread/);
+    expect(mode(t)).toMatch(/^NORMAL/);
+    expect(t.lastFrame()).not.toMatch(/Project\s+homex/);
+  });
+
   it('leaves with q like Esc, back on the same task', async () => {
     const quit = vi.fn();
     const t = await details([task('milk'), task('bread', { rank: 'a1' })], {
@@ -416,6 +436,8 @@ describe('DetailPane refusals', () => {
     const t = await details(rows, { server: refusing(rows) });
     await t.press(...toWork, KEY.enter);
     expect(projectOps(t)).toHaveLength(1);
+    // The backend answers the same opId the same way, whatever changed since.
+    delete t.server.state.refuse;
     await t.press('r');
     const ops = projectOps(t);
     expect(ops).toHaveLength(2);
@@ -432,6 +454,67 @@ describe('DetailPane refusals', () => {
     expect(ops).toHaveLength(2);
     expect(ops[1]?.opId).not.toBe(ops[0]?.opId);
     expect(t.lastFrame()).toMatch(/Project\s+✗ works/);
+  });
+
+  it('an older draft refused after a newer one applied shows nothing', async () => {
+    const rows = [task('milk', { projectId: 'p-home' })];
+    const server = refusing(rows);
+    server.state.refuse = (op) =>
+      op.kind === 'set' && op.value === 'p-work' ? 'not today' : undefined;
+    const t = await details(rows, { server });
+    await t.press(...toWork);
+    let release = () => {};
+    t.server.state.hold = new Promise((resolve) => (release = resolve));
+    t.input(KEY.enter);
+    const tick = () => new Promise((resolve) => setTimeout(resolve, 30));
+    await tick();
+    // edit2's request is answered first, edit1's refusal comes last.
+    let release2 = () => {};
+    t.server.state.hold = new Promise((resolve) => (release2 = resolve));
+    t.input(KEY.enter, ...erase(10), 'shop', KEY.enter);
+    await tick();
+    release2();
+    await tick();
+    release();
+    await t.settle();
+    expect(t.lastFrame()).not.toContain('✗');
+    expect(t.lastFrame()).toMatch(/^Project\s+shop\s*$/m);
+    // The superseded draft is never sent again.
+    const first = projectOps(t).find(
+      (op) => op.kind === 'set' && op.value === 'p-work',
+    )?.opId;
+    const before = t.server.sent.filter((op) => op.opId === first).length;
+    await t.press('r');
+    expect(t.server.sent.filter((op) => op.opId === first)).toHaveLength(
+      before,
+    );
+  });
+
+  it('a new draft clears the refused one, so r cannot resend it', async () => {
+    const rows = [task('milk', { projectId: 'p-home' })];
+    const t = await details(rows, { server: refusing(rows) });
+    await t.press(...toWork, KEY.enter);
+    const first = projectOps(t)[0]?.opId;
+    let release = () => {};
+    t.server.state.hold = new Promise((resolve) => (release = resolve));
+    t.input(KEY.enter, 's', KEY.enter, 'r');
+    release();
+    await t.settle();
+    const ops = projectOps(t);
+    expect(ops.filter((op) => op.opId === first)).toHaveLength(1);
+    expect(t.lastFrame()).toMatch(/Project\s+✗ works/);
+  });
+
+  it('a lifted refusal lets r apply the same opId', async () => {
+    const rows = [task('milk', { projectId: 'p-home' })];
+    const t = await details(rows, { server: refusing(rows) });
+    await t.press(...toWork, KEY.enter);
+    delete t.server.state.refuse;
+    t.server.refused.clear();
+    await t.press('r');
+    expect(t.lastFrame()).not.toContain('✗');
+    expect(row(t)?.projectId).toBe('p-work');
+    expect(t.lastFrame()).not.toContain('r retry');
   });
 
   it('Esc discards and shows the saved value', async () => {

@@ -127,6 +127,9 @@ export class DetailPane implements Pane {
   /** One held intent per `taskId field`. */
   private readonly intents = new Map<string, ReturnType<typeof createIntent>>();
   private readonly refusals = new Map<string, Refusal>();
+  /** The last draft sent per `taskId field`: an answer to an older one is
+   *  stale, so only the latest can be refused, and retried. */
+  private readonly latest = new Map<string, Draft>();
   private readonly write: ReturnType<typeof createWrite>;
 
   constructor(
@@ -208,8 +211,8 @@ export class DetailPane implements Pane {
     return key !== undefined && this.refusals.delete(key);
   }
 
-  /** Sends `draft` as the field's held intent; a refusal (being offline is
-   *  not one: the write is queued) is kept on the field. */
+  /** Sends `draft` as the field's held intent; a refusal is kept on the
+   *  field. Offline is not one: the engine queues the write and says ok. */
   private send(key: string, draft: Draft): void {
     const { engine, newId } = this.deps.tui;
     let intent = this.intents.get(key);
@@ -220,11 +223,14 @@ export class DetailPane implements Pane {
       });
       this.intents.set(key, intent);
     }
-    this.refusals.delete(key);
+    // A new draft supersedes the refused one: `r` must not send it again.
+    if (this.refusals.get(key)?.draft !== draft) this.refusals.delete(key);
+    this.latest.set(key, draft);
     void intent(draft).then((result) => {
-      if (!result.ok && result.failure.kind !== 'unreachable') {
-        this.refusals.set(key, { draft, detail: result.failure.detail });
-      }
+      if (this.latest.get(key) !== draft) return;
+      this.latest.delete(key);
+      if (result.ok) this.refusals.delete(key);
+      else this.refusals.set(key, { draft, detail: result.failure.detail });
     });
   }
 
