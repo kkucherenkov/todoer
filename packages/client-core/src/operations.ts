@@ -12,6 +12,7 @@ import {
   type FilterTask,
   type Op,
   type OpCreate,
+  type OpResult,
   type OpSet,
   type StatusRow,
 } from '@todoer/specs';
@@ -53,6 +54,7 @@ import {
   RefusalError,
   UsageError,
   refusalOf,
+  rejected,
   throwRefusals,
 } from './protocol.js';
 import type { Row, Store } from './store.js';
@@ -98,7 +100,8 @@ export type Due = Row & {
  *
  * With `key`, the command is the unit of idempotence (plan W3, departure 2):
  * the claim is written in the same transaction as the enqueue, and a key
- * already claimed queues nothing, so a resend only flushes.
+ * already claimed queues nothing, so a resend only flushes. A command whose
+ * every op was refused gives its claim back.
  */
 export async function submit(
   store: Store,
@@ -118,7 +121,21 @@ export async function submit(
     return queued;
   });
   const opIds = ops.map((op) => op.opId);
-  const flushed = await flushOwn(store, send, opIds, command);
+  // Every op refused: none of the command took effect, so its id is free
+  // again and a resend (a held intent's retry) queues it once more instead
+  // of only flushing. A partly applied command keeps its claim. Run where
+  // the verdicts are settled, in their transaction: a crash between the two
+  // would keep a claim whose ops are gone.
+  const release = (results: OpResult[]) => {
+    if (
+      key !== undefined &&
+      ops.length > 0 &&
+      ops.every((op) => refusalOf(results.find((r) => r.opId === op.opId)))
+    ) {
+      store.unclaim(key);
+    }
+  };
+  const flushed = await flushOwn(store, send, opIds, command, release);
   const outcomes = ops.map((op) => {
     // Evaluated unconditionally, never short-circuited on `flushed.synced`:
     // a batch-refused own op is removed from the outbox (I1) even when the
@@ -137,14 +154,19 @@ export async function submit(
       store.remove(op.opId);
       return {
         op,
-        outcome: {
-          kind: 'rejected' as const,
-          reason: entry.reason ?? 'the server refused this operation',
-        },
+        outcome: rejected(entry.reason ?? 'the server refused this operation'),
       };
     }
     return { op, outcome: 'queued' as const };
   });
+  // An op another invocation sent and that failed is settled only here.
+  if (
+    key !== undefined &&
+    ops.length > 0 &&
+    outcomes.every((o) => typeof o.outcome === 'object')
+  ) {
+    store.unclaim(key);
+  }
   throwRefusals(outcomes);
   return flushed.synced && outcomes.every((o) => o.outcome === 'applied');
 }
@@ -159,9 +181,10 @@ async function flushOwn(
   send: Transport,
   opIds: string[],
   command: string,
+  onSettle?: (results: OpResult[]) => void,
 ) {
   try {
-    return await flush(store, send, new Set(opIds));
+    return await flush(store, send, new Set(opIds), onSettle);
   } catch (error) {
     if (
       error instanceof RefusalError &&
@@ -173,6 +196,7 @@ async function flushOwn(
           : `operations ${opIds.join(', ')} are`;
       throw new RefusalError(
         `${error.message} — this command's ${which} queued and will be sent once the request is accepted — do not run ${command} again for ${opIds.length === 1 ? 'it' : 'them'}`,
+        { pending: true, cause: error },
       );
     }
     throw error;

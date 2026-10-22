@@ -206,7 +206,10 @@ a sign-in screen, the mouse.
   reported on the status line and not saved. Recurrence offers presets (daily,
   weekdays, weekly on a day, monthly on a date, none) and a raw RRULE checked
   with `parseRrule`; it is disabled for a subtask. Notes open in `$EDITOR`
-  (`vi` when unset) with the terminal handed to it.
+  (`vi` when unset) with the terminal handed to it. Superseded on
+  2026-10-22: every field is edited in place in the detail pane, the notes in
+  pi-tui's `Editor`, and `$EDITOR` is no longer used (the TUI UX redesign,
+  Q3).
 - **Changing status.** `m` opens a picker, and the choice is a `move` with
   `statusId`. Moving into the completing status closes the task, as on the
   web; the next occurrence of a recurring task is reported in the status bar.

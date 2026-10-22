@@ -14,8 +14,30 @@ import type { OpResult } from '@todoer/specs';
 
 /** Exit 1: the server refused — a 4xx, or a rejected operation. Retrying the
  *  same request cannot change the answer; something about it has to change
- *  first, and for a 401 that something is the token. */
-export class RefusalError extends Error {}
+ *  first, and for a 401 that something is the token.
+ *
+ *  `retryable`: the server recorded no verdict for any of the command's ops,
+ *  so the same opId may be sent again and be judged afresh (a batch 400/413,
+ *  or "could not be applied", whose transaction rolled back). Otherwise the
+ *  server keeps the verdict and repeats it for that opId: a new write is
+ *  needed. `pending`: the request was refused as it stands (401, 403, 429)
+ *  and the ops wait in the outbox; nothing was judged. */
+export class RefusalError extends Error {
+  readonly retryable: boolean;
+  readonly pending: boolean;
+  constructor(
+    message: string,
+    {
+      retryable = false,
+      pending = false,
+      cause,
+    }: { retryable?: boolean; pending?: boolean; cause?: unknown } = {},
+  ) {
+    super(message, cause === undefined ? undefined : { cause });
+    this.retryable = retryable;
+    this.pending = pending;
+  }
+}
 /** Exit 2: the invocation itself is wrong — an unknown command, or text that
  *  leaves no title. Nothing was sent. */
 export class UsageError extends Error {}
@@ -24,18 +46,32 @@ export class UsageError extends Error {}
 export class ConflictError extends Error {}
 
 /** Why the server did not take an operation: it was rejected, or it lost an
- *  optimistic-lock check. */
+ *  optimistic-lock check. A conflict is always recorded (not retryable). */
 export type Refusal =
-  | { kind: 'rejected'; reason: string }
+  | { kind: 'rejected'; reason: string; retryable: boolean }
   | { kind: 'conflict'; version: number | undefined };
+
+/** The reason `flush` gives every op of a batch the server refused whole
+ *  (400/413): the server recorded nothing for them. */
+export const BATCH_REFUSED =
+  'the server refused the request carrying this operation: ';
+/** The backend's reason when an op's transaction rolled back on bad data
+ *  (apps/backend/src/sync/sync.service.ts, applyOne's catch): no verdict is
+ *  recorded for it. Pinned by apps/backend/src/sync/sync.service.spec.ts;
+ *  change both together. */
+const NOT_APPLIED = 'could not be applied';
+
+/** A rejection; retryable when the server recorded no verdict for it. */
+export const rejected = (reason: string): Refusal => ({
+  kind: 'rejected',
+  reason,
+  retryable: reason === NOT_APPLIED || reason.startsWith(BATCH_REFUSED),
+});
 
 /** The refusal an `/sync` result reports, if it reports one. */
 export function refusalOf(result: OpResult | undefined): Refusal | undefined {
   if (result?.status === 'rejected') {
-    return {
-      kind: 'rejected',
-      reason: result.reason ?? 'the server refused this operation',
-    };
+    return rejected(result.reason ?? 'the server refused this operation');
   }
   if (result?.status === 'conflict') {
     return { kind: 'conflict', version: result.currentVersion };
@@ -44,7 +80,9 @@ export function refusalOf(result: OpResult | undefined): Refusal | undefined {
 }
 
 function raise(refusal: Refusal, newer: string): never {
-  if (refusal.kind === 'rejected') throw new RefusalError(refusal.reason);
+  if (refusal.kind === 'rejected') {
+    throw new RefusalError(refusal.reason, { retryable: refusal.retryable });
+  }
   throw new ConflictError(`${newer} (version ${String(refusal.version)})`);
 }
 
@@ -100,7 +138,12 @@ export function throwRefusals(
   if (applied > 0) parts.push(`${applied} other operation(s) applied`);
   if (queued > 0) parts.push(`${queued} still queued`);
   const message = parts.join('; ');
+  // Retryable only when every op was refused with no verdict kept: a partly
+  // applied command needs a new write for what is left.
+  const retryable =
+    refused.length === ops.length &&
+    refused.every((r) => r.outcome.kind === 'rejected' && r.outcome.retryable);
   throw refused.some((r) => r.outcome.kind === 'rejected')
-    ? new RefusalError(message)
+    ? new RefusalError(message, { retryable })
     : new ConflictError(message);
 }

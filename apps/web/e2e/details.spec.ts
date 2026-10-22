@@ -93,15 +93,19 @@ test('details: a subtask has no rule of its own', async ({
 
 /** Drops the next write of `kind` and answers it with a refusal, as when the
  *  worker never got it, and records every write the tab sends. The tab's
- *  channel never hears itself, so the reply is handed to its handler. */
+ *  channel never hears itself, so the reply is handed to its handler. The
+ *  refusal is retryable (no verdict kept) unless `window.retryable` is
+ *  false. */
 const refuseNext = (page: Page) =>
   page.addInitScript(() => {
     const w = window as unknown as {
       sent: { kind: string; opId: string }[];
       refuse: string | null;
+      retryable: boolean;
     };
     w.sent = [];
     w.refuse = null;
+    w.retryable = true;
     const Real = BroadcastChannel;
     class Spy extends Real {
       handler: ((e: MessageEvent) => void) | null = null;
@@ -136,7 +140,11 @@ const refuseNext = (page: Page) =>
               leader: this.leader,
               result: {
                 ok: false,
-                failure: { kind: 'refused', detail: 'late answer' },
+                failure: {
+                  kind: 'refused',
+                  detail: 'late answer',
+                  retryable: w.retryable,
+                },
               },
             },
           } as MessageEvent);
@@ -195,6 +203,53 @@ test('details: a refused change is kept and retried as the same write', async ({
   );
   expect(edits).toHaveLength(2);
   expect(edits[1]).toBe(edits[0]);
+  await expect
+    .poll(
+      async () =>
+        (
+          JSON.parse(await cli(account.token, 'list', '--json')) as {
+            data: { title: string; dueOn: string | null }[];
+          }
+        ).data.find((t) => t.title === 'Report')?.dueOn,
+    )
+    .toBe(day(2));
+});
+
+test('details: a change refused for good stays in the field and saves as a new write', async ({
+  page,
+  account,
+  cli,
+}) => {
+  await cli(account.token, 'add', 'Report');
+  await refuseNext(page);
+  await page.goto('/');
+  await openRow(page, 'Report');
+  const d = drawer(page);
+  const due = d.getByLabel('Due', { exact: true });
+  await page.evaluate(() => {
+    const w = window as unknown as { refuse: string; retryable: boolean };
+    w.refuse = 'edit';
+    w.retryable = false;
+  });
+  await due.fill(day(2));
+  await due.blur();
+  const refused = d.getByTestId('refused');
+  await expect(refused).toContainText(`Your change: ${day(2)}`);
+  await expect(refused).toContainText('Saved value: No date');
+  await expect(refused).toContainText('late answer');
+  await expect(
+    refused.getByRole('button', { name: 'Retry change' }),
+  ).toHaveCount(0);
+  await expect(due).toHaveValue(day(2));
+
+  await refused.getByRole('button', { name: 'Save again' }).click();
+  await expect(refused).toHaveCount(0);
+  await expect(d.getByTestId('save-status')).toContainText(
+    'Saved on this device',
+  );
+  const edits = await opIds(page, 'edit');
+  expect(edits).toHaveLength(2);
+  expect(edits[1]).not.toBe(edits[0]);
   await expect
     .poll(
       async () =>
@@ -290,7 +345,8 @@ test('details: a subtask of an ended series keeps a refused date', async ({
   await expect(refused).toContainText(
     'a recurring task is scheduled by its rule',
   );
-  await expect(scheduled).toHaveValue('');
+  // Refused for good: the field keeps the person's value.
+  await expect(scheduled).toHaveValue(day(1));
 });
 
 test('details: a refused repeat and return to series resend the same write', async ({

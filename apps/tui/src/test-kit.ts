@@ -16,8 +16,18 @@ import { createTopics, type Topics$ } from './topics.js';
 
 export const NOW = new Date('2026-10-03T10:00:00.000Z');
 
+/** The backend's reason for an op whose transaction rolled back: it keeps
+ *  no verdict for it, so the same opId is judged afresh. */
+export const NOT_APPLIED = 'could not be applied';
+
 /** A server that applies every op once and serves the rows it holds;
- *  `offline` makes every request fail like a dropped connection. */
+ *  `offline` makes every request fail like a dropped connection, `status`
+ *  answers every request that carries ops with that HTTP status (429, …),
+ *  `refuse` rejects an op with its reason (unapplied). A refusal other than
+ *  NOT_APPLIED sticks to its opId, as the backend records it: the same opId
+ *  is refused again until a spec deletes it from `refused`. With `hold`,
+ *  each request waits until a spec calls its `held[i]` (arrival order);
+ *  `until(n)` resolves once n requests are waiting or were. */
 export function fakeServer(rows: Change['row'][] = []) {
   const changes: Change[] = rows.map((row, i) => ({
     table: typeof row.table === 'string' ? row.table : 'task',
@@ -26,13 +36,42 @@ export function fakeServer(rows: Change['row'][] = []) {
     row: { deletedAt: null, ...row },
   }));
   const sent: Op[] = [];
-  const state = { offline: false };
+  const state: {
+    offline: boolean;
+    status?: number;
+    refuse?: (op: Op) => string | undefined;
+    hold?: boolean;
+  } = { offline: false };
   const seen = new Set<string>();
-  const send: Transport = (request: SyncRequest) => {
-    if (state.offline) return Promise.reject(new TypeError('fetch failed'));
+  const refused = new Map<string, string>();
+  const held: (() => void)[] = [];
+  const waiters: { n: number; resolve: () => void }[] = [];
+  const until = (n: number) =>
+    new Promise<void>((resolve) => {
+      if (held.length >= n) resolve();
+      else waiters.push({ n, resolve });
+    });
+  const send: Transport = async (request: SyncRequest) => {
+    if (state.hold === true) {
+      await new Promise<void>((release) => {
+        held.push(release);
+        for (const w of waiters) if (held.length >= w.n) w.resolve();
+      });
+    }
+    if (state.offline) throw new TypeError('fetch failed');
+    if (state.status !== undefined && request.ops.length > 0) {
+      return new Response('refused as it stands', { status: state.status });
+    }
+    const verdicts = new Map<string, string>();
     for (const op of request.ops) {
       sent.push(op);
       if (seen.has(op.opId)) continue;
+      const reason = refused.get(op.opId) ?? state.refuse?.(op);
+      if (reason !== undefined) {
+        verdicts.set(op.opId, reason);
+        if (reason !== NOT_APPLIED) refused.set(op.opId, reason);
+        continue;
+      }
       seen.add(op.opId);
       const seq = changes.length + 1;
       if (op.kind === 'create') {
@@ -65,17 +104,20 @@ export function fakeServer(rows: Change['row'][] = []) {
     }
     const body = {
       cursor: changes.length,
-      results: request.ops.map((op) => ({ opId: op.opId, status: 'applied' })),
+      results: request.ops.map((op) => {
+        const reason = verdicts.get(op.opId);
+        return reason === undefined
+          ? { opId: op.opId, status: 'applied' }
+          : { opId: op.opId, status: 'rejected', reason };
+      }),
       changes: changes.filter((c) => c.seq > request.since),
     };
-    return Promise.resolve(
-      new Response(JSON.stringify(body), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
-    );
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
   };
-  return { send, sent, state };
+  return { send, sent, state, refused, held, until };
 }
 
 export const TOKEN = `${btoa(JSON.stringify({ sub: 'u1' })).replace(/=+$/, '')}.mac`;
@@ -176,6 +218,10 @@ export async function renderApp({
         root.handleInput?.(key);
         await settle();
       }
+    },
+    /** Feeds `keys` without settling: a held write stays in flight. */
+    input(...keys: string[]) {
+      for (const key of keys) root.handleInput?.(key);
     },
     resize(w: number, r: number) {
       size.width = w;

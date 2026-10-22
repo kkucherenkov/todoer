@@ -221,6 +221,11 @@ export class Store {
     );
   }
 
+  /** Frees a claimed id: the command it marked took no effect. */
+  unclaim(opId: string): void {
+    this.db.run('DELETE FROM meta WHERE key = ?', [`op:${opId}`]);
+  }
+
   enqueue(op: Op): void {
     this.db.run('INSERT INTO outbox (op_id, op) VALUES (?, ?)', [
       op.opId,
@@ -358,9 +363,12 @@ export class Store {
     response: SyncResponse,
     own: ReadonlySet<string>,
     since: number,
+    /** Runs in the same transaction, after the settle. */
+    settled: () => void = () => undefined,
   ): void {
     this.transaction(() => {
       this.settle(response.results, own);
+      settled();
       if (this.cursor() < since) return;
       this.mergeChanges(response.changes);
       this.advanceCursor(response.cursor);

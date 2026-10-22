@@ -550,6 +550,76 @@ describe('replay guard', () => {
     );
   });
 
+  /** Rejects the ops `refused` names, applies the rest. */
+  const judging = (refused: (o: Op) => boolean) => {
+    const sent: Op[] = [];
+    const send: Transport = (request) => {
+      sent.push(...request.ops);
+      const results = request.ops.map((o) =>
+        refused(o)
+          ? { opId: o.opId, status: 'rejected', reason: 'no' }
+          : { opId: o.opId, status: 'applied' },
+      );
+      return Promise.resolve(
+        new Response(JSON.stringify({ cursor: 1, results, changes: [] }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+    };
+    return { sent, send };
+  };
+
+  it('gives the claim back when every op is refused, so a resend queues again', async () => {
+    const store = openStore(':memory:');
+    let refuse = true;
+    const srv = judging(() => refuse);
+    await expect(submit(store, srv.send, [op], 'x', 'k1')).rejects.toThrow(
+      'no',
+    );
+    expect(store.seen('k1')).toBe(false);
+    refuse = false;
+    await expect(submit(store, srv.send, [op], 'x', 'k1')).resolves.toBe(true);
+    expect(srv.sent.map((o) => o.opId)).toEqual(['o1', 'o1']);
+    expect(store.seen('k1')).toBe(true);
+  });
+
+  it('gives the claim back in the transaction that settles the refusal', async () => {
+    const store = openStore(':memory:');
+    const srv = judging(() => true);
+    const real = store.transaction.bind(store);
+    let calls = 0;
+    // Crash right after the second transaction (the settle) commits.
+    store.transaction = (fn) => {
+      const result = real(fn);
+      if ((calls += 1) === 2) throw new Error('crash after commit');
+      return result;
+    };
+    await expect(submit(store, srv.send, [op], 'x', 'k1')).rejects.toThrow(
+      'crash after commit',
+    );
+    expect(store.pending()).toEqual([]);
+    expect(store.seen('k1')).toBe(false);
+  });
+
+  it('keeps the claim through a resend that queued nothing', async () => {
+    const store = openStore(':memory:');
+    const srv = judging(() => false);
+    await submit(store, srv.send, [op], 'x', 'k1');
+    await submit(store, srv.send, [op], 'x', 'k1');
+    expect(store.seen('k1')).toBe(true);
+    expect(srv.sent.map((o) => o.opId)).toEqual(['o1']);
+  });
+
+  it('keeps the claim of a partly applied command', async () => {
+    const store = openStore(':memory:');
+    const srv = judging((o) => o.opId === 'o2');
+    await expect(
+      submit(store, srv.send, [op, { ...op, opId: 'o2', id: 'u' }], 'x', 'k1'),
+    ).rejects.toThrow('no');
+    expect(store.seen('k1')).toBe(true);
+  });
+
   it('add with minted ids creates the task once, even after the ops settled', async () => {
     const store = openStore(':memory:');
     const srv = fakeServer();

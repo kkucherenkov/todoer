@@ -59,8 +59,9 @@ const byDate = computed(() => {
 });
 const short = computed(() => utc({ day: 'numeric', month: 'short' }));
 
-/** One move intent: a retry after a refusal resends the same write (one
- *  opId, one copy); a different move mints its own. */
+/** One move intent: a retry after a refusal the server kept no verdict for
+ *  resends the same write (one opId, one copy); a recorded refusal drops it,
+ *  and a different move mints its own. */
 const send = createIntent(db);
 
 /** Drag, menu and dialog end here. True when the core accepted the move

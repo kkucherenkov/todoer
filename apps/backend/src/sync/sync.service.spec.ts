@@ -454,7 +454,12 @@ describe('SyncService', () => {
 
     const { results } = await service2.sync(USER, { since: 0, ops: [legal] });
 
-    expect(results[0]).toMatchObject({ status: 'rejected' });
+    // The exact reason is the clients' cue that no verdict was recorded and
+    // a resend may land: packages/client-core/src/protocol.ts, NOT_APPLIED.
+    expect(results[0]).toMatchObject({
+      status: 'rejected',
+      reason: 'could not be applied',
+    });
     expect(
       (await prisma.task.findUniqueOrThrow({ where: { id: orphan.id } }))
         .parentId,

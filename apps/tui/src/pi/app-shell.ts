@@ -66,14 +66,5 @@ export function createShell(deps: {
     rows: () => terminal.rows,
     /** A frame for a change no key caused (a publish, a message). */
     requestRender: () => tui.requestRender(),
-    /** Gives the terminal to `run` (`$EDITOR`), then takes it back. */
-    suspend(run: () => void): void {
-      tui.stop({ preserveScreen: true });
-      try {
-        run();
-      } finally {
-        tui.start();
-      }
-    },
   };
 }

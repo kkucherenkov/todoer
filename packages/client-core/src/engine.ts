@@ -106,7 +106,14 @@ const message = (error: unknown) =>
 function failure(error: unknown): Result {
   if (error instanceof UsageError) return fail('invalid', error.message);
   if (error instanceof RefusalError || error instanceof ConflictError) {
-    return fail('refused', error.message);
+    return {
+      ok: false,
+      failure: {
+        kind: 'refused',
+        detail: error.message,
+        retryable: error instanceof RefusalError && error.retryable,
+      },
+    };
   }
   // fetch rejects with a TypeError offline, a DOMException on timeout.
   if (error instanceof TypeError || error instanceof DOMException) {
@@ -649,10 +656,23 @@ export function createEngine({
     } catch (error) {
       // A refused write still pulled: merge what that brought.
       if (answered > before) afterReached();
-      throw error;
+      // Refused as it stands (401, 403, 429): the write waits in the
+      // outbox, as offline, and the sync topic says why now, as a sync run
+      // would (`once`). Nothing was judged.
+      if (!(error instanceof RefusalError && error.pending)) throw error;
+      if (!tokens.signedIn()) setSession('signed-out', 'signed-out');
+      else {
+        const why = error.cause instanceof Error ? error.cause : error;
+        sync = { ...sync, problem: why.message };
+      }
+      return OK;
     }
     const { synced, note } = done;
-    if (synced) afterReached();
+    if (synced) {
+      // The request went through: a problem an earlier one named is over.
+      if (sync.problem !== null) sync = { ...sync, problem: null };
+      afterReached();
+    }
     return note === undefined ? OK : { ok: true, note };
   };
 

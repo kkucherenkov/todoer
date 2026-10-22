@@ -59,6 +59,32 @@ describe('renderStatus', () => {
     );
   });
 
+  it('reads a sync problem as offline, its reason after the counts, cut to the width', () => {
+    const problem = 'the server refused the request: 403 Forbidden';
+    const top = (width: number) =>
+      plain(
+        renderStatus(width, {
+          mode: 'NORMAL',
+          sync: sync({ pending: 1, problem }),
+          message: null,
+          hints,
+        })[0],
+      );
+    expect(top(120)).toContain(`NORMAL · offline · 1 queued · ${problem}`);
+    expect(visibleWidth(top(40))).toBe(40);
+    expect(top(40)).toMatch(/^NORMAL · offline · 1 queued · the ser.*…$/);
+    expect(
+      plain(
+        renderStatus(80, {
+          mode: 'NORMAL',
+          sync: sync({ running: true, problem }),
+          message: null,
+          hints,
+        })[0],
+      ),
+    ).not.toContain('403');
+  });
+
   it('cuts the hints at the right with …, never wrapping', () => {
     const [, bottom] = renderStatus(30, {
       mode: 'NORMAL',

@@ -1,5 +1,5 @@
 import type { Op, OpResult, SyncRequest, SyncResponse } from '@todoer/specs';
-import { RefusalError } from './protocol.js';
+import { BATCH_REFUSED, RefusalError } from './protocol.js';
 import type { Store } from './store.js';
 
 /** One POST /sync. Injected, so the flush is testable without a network. */
@@ -112,11 +112,14 @@ async function attempt(
  * the next attempt safe (ADR 0015 §4).
  *
  * `own` names the operations the running command queued; see Store.settle.
+ * `onSettle` runs inside each transaction that settles verdicts, with every
+ * verdict so far, so what a caller derives from them commits with them.
  */
 export async function flush(
   store: Store,
   send: Transport,
   own: ReadonlySet<string> = new Set(),
+  onSettle: (results: OpResult[]) => void = () => undefined,
 ): Promise<Flushed> {
   const pending = store.pending();
   const results: OpResult[] = [];
@@ -134,15 +137,18 @@ export async function flush(
       const refused: OpResult[] = ops.map((op) => ({
         opId: op.opId,
         status: 'rejected',
-        reason: `the server refused the request carrying this operation: ${answer.detail}`,
+        reason: `${BATCH_REFUSED}${answer.detail}`,
       }));
-      store.transaction(() => store.settle(refused, own));
       results.push(...refused);
+      store.transaction(() => {
+        store.settle(refused, own);
+        onSettle(results);
+      });
       pulled = false;
       continue;
     }
-    store.applyResponse(answer, own, since);
     results.push(...answer.results);
+    store.applyResponse(answer, own, since, () => onSettle(results));
     pulled = true;
   }
   if (!pulled) {

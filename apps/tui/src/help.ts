@@ -10,7 +10,7 @@ const HELP = [
   '> <       re-parent       m       status',
   'e         details         dd y    delete',
   'Tab       next pane       [ ] v   views',
-  'S         statuses        r       sync now',
+  'S         statuses        r       sync, retry a ✗',
   '?         this help       q       quit, back in details',
 ];
 

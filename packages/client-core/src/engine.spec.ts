@@ -23,6 +23,8 @@ import {
 } from 'vitest';
 import { createEngine, dispatcher, type Engine } from './engine.js';
 import type { Result, ToWorker, Topic, Topics } from './engine-protocol.js';
+import { createIntent, mint } from './intent.js';
+import type { OpResult } from '@todoer/specs';
 
 // A spy that calls through, so one test can make a computation throw.
 vi.mock('./operations.js', async (original) => {
@@ -321,7 +323,11 @@ describe('register', () => {
     });
     expect(result).toEqual({
       ok: false,
-      failure: { kind: 'refused', detail: 'registration is closed' },
+      failure: {
+        kind: 'refused',
+        detail: 'registration is closed',
+        retryable: false,
+      },
     });
     expect(last('session')?.state).toBe('signed-out');
     expect(send).not.toHaveBeenCalled();
@@ -2137,5 +2143,209 @@ describe('layout override on watch', () => {
       'A',
     );
     expect(res).toMatchObject({ ok: true });
+  });
+});
+
+describe('refusal kinds: retryable or for good', () => {
+  const T = uuid(1);
+  const project = (opId: string, name: string) =>
+    ({
+      kind: 'edit',
+      opId,
+      taskId: T,
+      changes: { project: name },
+    }) as const;
+  const isProjectSet = (op: Op) =>
+    op.kind === 'set' && op.table === 'task' && op.field === 'projectId';
+  /** `srv` judges every op but those `refuse` answers for. */
+  const judging = (
+    srv: ReturnType<typeof server>,
+    refuse: (op: Op) => OpResult | undefined,
+  ): Transport => {
+    return async (request) => {
+      const verdicts = new Map(
+        request.ops.flatMap((op) => {
+          const v = refuse(op);
+          return v === undefined ? [] : [[op.opId, v] as const];
+        }),
+      );
+      const response = await srv.send({
+        ...request,
+        ops: request.ops.filter((op) => !verdicts.has(op.opId)),
+      });
+      const body = (await response.json()) as { results: OpResult[] };
+      return json({
+        ...body,
+        results: [...body.results, ...verdicts.values()],
+      });
+    };
+  };
+  const failureOf = (r: Result) => (r.ok ? undefined : r.failure);
+
+  it('a recorded rejection is for good', async () => {
+    const srv = server(TODO, taskRow(1), [
+      'project',
+      { id: uuid(0x91), name: 'work', rank: 'a0' },
+    ]);
+    send.mockImplementation(
+      judging(srv, (op) =>
+        isProjectSet(op)
+          ? { opId: op.opId, status: 'rejected', reason: 'nope' }
+          : undefined,
+      ),
+    );
+    const e = engine();
+    await e.start(true);
+    expect(failureOf(await e.handle(project(uuid(0xb1), 'work')))).toEqual({
+      kind: 'refused',
+      detail: 'nope',
+      retryable: false,
+    });
+  });
+
+  it('a conflict is for good', async () => {
+    const srv = server(TODO, taskRow(1));
+    send.mockImplementation(
+      judging(srv, (op) =>
+        op.kind === 'set'
+          ? { opId: op.opId, status: 'conflict', currentVersion: 9 }
+          : undefined,
+      ),
+    );
+    const e = engine();
+    await e.start(true);
+    const result = await e.handle({
+      kind: 'edit',
+      opId: uuid(0xb1),
+      taskId: T,
+      changes: { title: 'x' },
+    });
+    expect(failureOf(result)).toMatchObject({
+      kind: 'refused',
+      retryable: false,
+    });
+  });
+
+  it('"could not be applied" is retryable: no verdict was recorded', async () => {
+    const srv = server(TODO, taskRow(1));
+    send.mockImplementation(
+      judging(srv, (op) =>
+        op.kind === 'set'
+          ? {
+              opId: op.opId,
+              status: 'rejected',
+              reason: 'could not be applied',
+            }
+          : undefined,
+      ),
+    );
+    const e = engine();
+    await e.start(true);
+    const result = await e.handle({
+      kind: 'edit',
+      opId: uuid(0xb1),
+      taskId: T,
+      changes: { title: 'x' },
+    });
+    expect(failureOf(result)).toMatchObject({
+      kind: 'refused',
+      retryable: true,
+    });
+  });
+
+  it('a batch refused whole (400) is retryable, and the same opId is sent again', async () => {
+    const srv = server(TODO, taskRow(1));
+    let refuse = true;
+    send.mockImplementation((request) =>
+      refuse && request.ops.length > 0
+        ? Promise.resolve(new Response('too odd', { status: 400 }))
+        : srv.send(request),
+    );
+    const e = engine();
+    await e.start(true);
+    const write = {
+      kind: 'edit',
+      opId: uuid(0xb1),
+      taskId: T,
+      changes: { title: 'x' },
+    } as const;
+    expect(failureOf(await e.handle(write))).toMatchObject({
+      kind: 'refused',
+      retryable: true,
+    });
+    refuse = false;
+    expect(await e.handle(write)).toEqual({ ok: true });
+    expect(srv.sent.map((op) => op.opId)).toEqual([uuid(0xb1)]);
+  });
+
+  it.each([403, 429])(
+    '%i is no refusal: the write waits in the outbox, and sync says why',
+    async (status) => {
+      const srv = server(TODO, taskRow(1));
+      send.mockImplementation((request) =>
+        request.ops.length > 0
+          ? Promise.resolve(new Response('not now', { status }))
+          : srv.send(request),
+      );
+      const e = engine();
+      await e.start(true);
+      const result = await e.handle({
+        kind: 'edit',
+        opId: uuid(0xb1),
+        taskId: T,
+        changes: { title: 'x' },
+      });
+      expect(result).toEqual({ ok: true });
+      expect(store.pending().map((op) => op.opId)).toEqual([uuid(0xb1)]);
+      expect(last('sync')?.pending).toBe(1);
+      expect(last('sync')?.problem).toContain(String(status));
+      expect(last('sync')?.problem).not.toContain('do not run');
+      expect(last('session')?.state).toBe('signed-in');
+      // Accepted again: the next write that lands clears the problem.
+      send.mockImplementation(srv.send);
+      await e.handle({
+        kind: 'edit',
+        opId: uuid(0xb2),
+        taskId: T,
+        changes: { title: 'y' },
+      });
+      expect(last('sync')?.problem).toBeNull();
+    },
+  );
+
+  it('a partly applied edit is for good; saving again mints a new opId and lands', async () => {
+    const srv = server(TODO, taskRow(1));
+    let refusals = 1;
+    send.mockImplementation(
+      judging(srv, (op) =>
+        isProjectSet(op) && refusals-- > 0
+          ? { opId: op.opId, status: 'rejected', reason: 'nope' }
+          : undefined,
+      ),
+    );
+    const e = engine();
+    await e.start(true);
+    let n = 0;
+    const save = createIntent({
+      mint: (d) => mint(d, () => uuid(0xc0 + (n += 1))),
+      write: (w) => e.handle(w),
+    });
+    const draft = {
+      kind: 'edit',
+      taskId: T,
+      changes: { project: 'errands' },
+    } as const;
+    const first = await save(draft);
+    expect(failureOf(first)).toMatchObject({ retryable: false });
+    // The new project landed with the refused command.
+    expect(sentOps(srv, 'project')).toHaveLength(1);
+    const again = await save(draft);
+    expect(again.ok).toBe(true);
+    expect(again.write.opId).not.toBe(first.write.opId);
+    expect(sentOps(srv, 'project')).toHaveLength(1);
+    const projectId = store.rows('project')[0]?.id;
+    expect(store.rows('task').find((r) => r.id === T)?.projectId).toBe(
+      projectId,
+    );
   });
 });
