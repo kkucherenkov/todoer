@@ -319,6 +319,9 @@ export class Outline implements Pane {
    *  (the engine ranks an add first; refused, the task stays where the add
    *  put it), so the task shows once, where the row stood. */
   private send(a: Adding, text: string): void {
+    // Not refused for good (no answer, an unexpected error): the first
+    // attempt may have applied, so the same text goes again as the same
+    // operation and cannot add the task twice.
     if (
       a.draft === undefined ||
       a.draft.text !== text ||
@@ -335,32 +338,46 @@ export class Outline implements Pane {
     a.text = text;
     a.input = null;
     a.saving = true;
-    void this.intent(draft).then(async (r) => {
-      if (!r.ok) {
-        a.saving = false;
-        const { detail, retryable = false } = r.failure;
-        a.refusal = { detail, retryable };
-        return;
-      }
-      const { id } = draft;
-      // Under a filter it would vanish if it does not match.
-      if (this.query !== '') this.pinned.add(id);
-      const { after } = a;
-      if (after !== undefined) {
-        await this.write((newId) => ({
-          kind: 'move',
-          opId: newId(),
-          taskId: id,
-          view: this.key,
-          after,
-        }));
-      }
-      if (this.adding !== a) return;
+    const fail = (detail: string, retryable: boolean) => {
       a.saving = false;
-      this.cursor = { at: this.place(a, this.rows()), id };
-      this.adding = null;
-      this.sync();
-    });
+      a.refusal = { detail, retryable };
+    };
+    void this.intent(draft)
+      .then(async (r) => {
+        if (!r.ok) {
+          const { kind, detail, retryable } = r.failure;
+          // Refused for good, or input the core turned down: a new add.
+          fail(
+            detail,
+            kind === 'refused' ? retryable === true : kind !== 'invalid',
+          );
+          return;
+        }
+        const { id } = draft;
+        // Under a filter it would vanish if it does not match.
+        if (this.query !== '') this.pinned.add(id);
+        const { after } = a;
+        if (after !== undefined) {
+          await this.write((newId) => ({
+            kind: 'move',
+            opId: newId(),
+            taskId: id,
+            view: this.key,
+            after,
+          }));
+        }
+        if (this.adding !== a) return;
+        a.saving = false;
+        this.cursor = { at: this.place(a, this.rows()), id };
+        this.adding = null;
+        this.sync();
+      })
+      .catch((error: unknown) => {
+        fail(
+          `unexpected: ${error instanceof Error ? error.message : String(error)}`,
+          true,
+        );
+      });
   }
 
   /** The keys of a refused add's row; every other key waits. */

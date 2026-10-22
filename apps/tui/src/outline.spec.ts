@@ -529,6 +529,41 @@ describe('Outline n adds in place', () => {
     expect(t.text()[1]?.trimEnd()).toMatch(/m…$/);
   });
 
+  it('resends an add that failed without a verdict with the same id and opId', async () => {
+    const t = await open1(task('alpha', 'a0'));
+    const real = t.engine.handle.bind(t.engine);
+    const sent: { id?: string; opId?: string }[] = [];
+    vi.spyOn(t.engine, 'handle').mockImplementation((command, tab) => {
+      if (command.kind !== 'add') return real(command, tab);
+      sent.push({ id: command.id, opId: command.opId });
+      return sent.length === 1
+        ? Promise.resolve({
+            ok: false,
+            failure: { kind: 'unavailable', detail: 'no answer' },
+          })
+        : real(command, tab);
+    });
+    await t.press('n', 'milk', KEY.enter);
+    expect(t.text().join('\n')).toMatch(/✗ milk/);
+    expect(t.outline.hints).toContain('r retry');
+    await t.press(KEY.enter, KEY.enter);
+    expect(sent).toHaveLength(2);
+    expect(sent[1]).toEqual(sent[0]);
+    expect(t.text()[1]).toMatch(/^▸ ○ milk/);
+  });
+
+  it('keeps the text when the engine rejects, and the row unlocks', async () => {
+    const t = await open1(task('alpha', 'a0'));
+    vi.spyOn(t.engine, 'handle').mockRejectedValueOnce(new Error('boom'));
+    await t.press('n', 'milk', KEY.enter);
+    const frame = t.text().join('\n');
+    expect(frame).toMatch(/✗ milk/);
+    expect(frame).toContain('unexpected: boom');
+    expect(t.outline.hints).toContain('r retry');
+    await t.press('r');
+    expect(t.text()[1]).toMatch(/^▸ ○ milk/);
+  });
+
   it('cuts a long reason with …', async () => {
     const t = await open1(task('alpha', 'a0'));
     t.server.state.refuse = () => 'x'.repeat(200);

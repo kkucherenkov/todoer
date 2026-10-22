@@ -219,7 +219,9 @@ client would have to compute counts.
   muscle memory breaks). A refused add follows Q8: the text stays in its row,
   marked `✗` with the reason under it; `r` resends a retryable refusal with
   the same opId, Enter reopens the text and saving it after a permanent
-  refusal is a new add, Esc drops the row. From Enter until the answer (and
+  refusal is a new add, Esc drops the row. A failure with no verdict (no
+  answer, an unexpected error) counts as retryable: the same text is resent
+  as the same add, so a first attempt that did apply is not duplicated. From Enter until the answer (and
   the `move` that places it in a manual view) the row shows `saving…` and
   takes no key, and the new task shows only there, not where the engine
   first ranks it.
