@@ -28,6 +28,27 @@ const edit = (title: string): Draft => ({
 });
 
 describe('held intent', () => {
+  const refusal = (retryable: boolean): Result => ({
+    ok: false,
+    failure: { kind: 'refused', detail: 'no', retryable },
+  });
+
+  it('Retry change resends a retryable refusal as the same write', async () => {
+    const db = fakeDb([refusal(true)]);
+    const send = createIntent(db);
+    await send(edit('a'));
+    await send(edit('a'));
+    expect(db.sent.map((w) => w.opId)).toEqual(['op-1', 'op-1']);
+  });
+
+  it('Save again after a refusal for good is a new write', async () => {
+    const db = fakeDb([refusal(false)]);
+    const send = createIntent(db);
+    await send(edit('a'));
+    await send(edit('a'));
+    expect(db.sent.map((w) => w.opId)).toEqual(['op-1', 'op-2']);
+  });
+
   it('resends the same write after a refusal', async () => {
     const db = fakeDb([refused]);
     const send = createIntent(db);

@@ -154,6 +154,7 @@
     "savedValue": "Saved value: {value}",
     "yourChange": "Your change: {value}",
     "retry": "Retry change",
+    "saveAgain": "Save again",
     "noDate": "No date",
     "childRule": "Subtasks cannot have their own repeat rule.",
     "ruleParent": "Repeats with its parent"

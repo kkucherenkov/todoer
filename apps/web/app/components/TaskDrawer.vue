@@ -70,13 +70,29 @@ const draft = reactive<Draft>({
   dueOn: '',
   statusId: '',
 });
+/** The last refused field write. Retryable (the server kept no verdict):
+ *  the field shows the saved value again, this keeps the person's one, and
+ *  Retry resends the same write. For good: the field keeps the person's
+ *  value, and saving it again is a new write (the held intent dropped it). */
+const refused = ref<{
+  key: keyof Draft;
+  write: WriteDraft;
+  saved: string;
+  wanted: string;
+  reason: string;
+  retryable: boolean;
+  /** The field's value as the person left it. */
+  mine: unknown;
+} | null>(null);
 // A field follows the server only when its own value changed, so typing in
-// one field survives another's save.
+// one field survives another's save; a field refused for good keeps the
+// person's value.
 for (const key of Object.keys(draft) as (keyof Draft)[]) {
   watch(
     () => JSON.stringify(server.value?.[key]),
     (json) =>
       json !== undefined &&
+      !(refused.value?.key === key && !refused.value.retryable) &&
       Object.assign(draft, { [key]: JSON.parse(json) as Draft[typeof key] }),
     { immediate: true },
   );
@@ -154,15 +170,6 @@ const same = (a: unknown, b: unknown) =>
 // What the status line says: a write in flight, then saved on this device.
 const saving = ref(0);
 const saved = ref(false);
-/** The last refused field write: the field shows the saved value again,
- *  this keeps the person's one, and Retry resends the same write. */
-const refused = ref<{
-  key: keyof Draft;
-  write: WriteDraft;
-  saved: string;
-  wanted: string;
-  reason: string;
-} | null>(null);
 watch(id, () => {
   saved.value = false;
   refused.value = null;
@@ -190,6 +197,10 @@ function shown(key: keyof Draft, value: unknown): string {
 
 async function send(key: keyof Draft, write: WriteDraft, wanted: string) {
   if (!server.value) return null;
+  // A retry sends what the person had, not the saved value the field shows.
+  const r = refused.value;
+  const mine =
+    r?.key === key && r.retryable ? r.mine : structuredClone(toRaw(draft[key]));
   saving.value++;
   const result = await intentOf(key)(write);
   saving.value--;
@@ -201,14 +212,19 @@ async function send(key: keyof Draft, write: WriteDraft, wanted: string) {
     if (refused.value?.key === key) refused.value = null;
     return result;
   }
+  const retryable = result.failure.retryable === true;
   refused.value = {
     key,
     write,
     saved: shown(key, from[key]),
     wanted,
     reason: reasonOf(result),
+    retryable,
+    mine,
   };
-  Object.assign(draft, { [key]: structuredClone(toRaw(from[key])) });
+  Object.assign(draft, {
+    [key]: retryable ? structuredClone(toRaw(from[key])) : mine,
+  });
   // Already saved (a late answer to a write that applied): nothing to retry.
   if (refused.value.saved === wanted) refused.value = null;
   return result;
@@ -216,7 +232,15 @@ async function send(key: keyof Draft, write: WriteDraft, wanted: string) {
 
 const retry = () => {
   const r = refused.value;
-  if (r) void send(r.key, r.write, r.wanted);
+  if (r?.retryable) void send(r.key, r.write, r.wanted);
+};
+// Refused for good: the held intent dropped the write, so the same draft is
+// a new operation (a new opId) the server judges afresh.
+const saveAgain = () => {
+  const r = refused.value;
+  // Raw: a new mint copies the draft into a message, and a proxy is not
+  // cloneable.
+  if (r && !r.retryable) void send(r.key, toRaw(r.write), r.wanted);
 };
 
 /** One field, one `edit` with one change. */
@@ -349,6 +373,7 @@ const dates = [
           <p>{{ $t('drawer.yourChange', { value: refused.wanted }) }}</p>
           <p class="text-muted">{{ refused.reason }}</p>
           <UButton
+            v-if="refused.retryable"
             variant="outline"
             color="neutral"
             size="sm"
@@ -357,6 +382,17 @@ const dates = [
             @click="retry"
           >
             {{ $t('drawer.retry') }}
+          </UButton>
+          <UButton
+            v-else
+            variant="outline"
+            color="neutral"
+            size="sm"
+            class="self-start"
+            :loading="saving > 0"
+            @click="saveAgain"
+          >
+            {{ $t('drawer.saveAgain') }}
           </UButton>
         </div>
         <p v-if="readonly" role="status" class="text-sm text-muted">

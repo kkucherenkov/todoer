@@ -56,6 +56,12 @@ resend a refused write the same way.
   discarded with Esc; refusals are held per task and field (← Q8)
 - **FR-006** An unreachable server MUST NOT show as a refusal: the edit is
   queued and the status line shows it (← Q8)
+- **FR-007** A refusal MUST say whether it is retryable (the server kept no
+  verdict for the op). `r` in the TUI and Retry change in the web are offered
+  only then and resend the same opId; a permanent refusal (recorded
+  rejection or conflict, or a partly applied command) keeps the person's
+  value, and saving it again is a new opId. 401, 403 and 429 are no refusal:
+  the edit stays queued (← Q8, maintainer decision 2026-10-22)
 
 ### Edge cases
 
@@ -66,6 +72,9 @@ resend a refused write the same way.
 - A resize mid-edit keeps the typed text and the field (FR-003, T002)
 - A publish while an input is open keeps the text and the cursor (FR-003, T002)
 - Offline edit → queued, no `✗` (FR-006, T003)
+- A new project created, the move into it refused → permanent; saving again
+  lands with a new opId (FR-007, T004)
+- 401/403/429 → queued, no `✗` (FR-007, T004)
 
 ### Definition of Done
 
@@ -85,4 +94,7 @@ resend a refused write the same way.
   (Task 2.1)
 - [x] T003 [FR-005, FR-006] Refusals on the field — `apps/tui/src/detail-pane.ts`
   (Task 2.2)
+- [x] T004 [FR-007] Retryable or for good — `packages/client-core`,
+  `apps/tui/src/detail-pane.ts`, `apps/web/app/components/TaskDrawer.vue`
+  (fix round 1B)
 - **Checkpoint:** a field is edited, refused, retried and discarded in the pane.
