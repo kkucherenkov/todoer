@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react';
 import { ALL } from '@todoer/client-core';
 import { useTui } from './context.js';
 import { SCREENS, type Screen } from './screens.js';
-import { Sidebar, viewEntries } from './sidebar.js';
+import { Sidebar, viewEntries } from './ink-sidebar.js';
 import { StatusBar } from './status-bar.js';
 import { useTopic, useView } from './topics.js';
 import { useKeysHeld } from './key-hold.js';
