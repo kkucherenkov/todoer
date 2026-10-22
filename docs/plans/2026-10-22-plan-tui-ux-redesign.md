@@ -49,7 +49,8 @@ detail pane and in-place editing, on `@earendil-works/pi-tui`.
 - Colour: only the 16 ANSI colours; colour carries meaning only (priority,
   overdue, cursor, errors); `NO_COLOR` gives monochrome, and no meaning rests
   on colour alone.
-- No frames around panes. Section headers are in capitals.
+- No frames around panes (superseded 2026-10-22: panes are boxed, see the
+  design doc). Section headers are in capitals.
 - The TUI computes no counts: sidebar counts come from `catalog.nav`.
 - Repo rules:
   - each PR starts with a task spec in `specs/tasks/active/` and moves it to

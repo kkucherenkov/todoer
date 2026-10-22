@@ -252,7 +252,7 @@ describe('Root', () => {
   it('dims the cursor of a pane without the focus', async () => {
     const t = await mount([task('milk')]);
     const sidebarCursor = () =>
-      t.lines().find((l) => plain(l).startsWith('▸ All open')) ?? '';
+      t.lines().find((l) => plain(l).startsWith('│▸ All open')) ?? '';
     expect(sidebarCursor()).toContain(`${ESC}[2m▸`);
     await t.press(KEY.tab, KEY.tab);
     expect(sidebarCursor()).not.toContain(`${ESC}[2m▸`);
@@ -309,7 +309,8 @@ describe('Root', () => {
     const t = await mount([task('milk')]);
     await t.press(KEY.tab, KEY.tab);
     expect(t.root.focusAt).toBe('sidebar');
-    expect(t.frame()).not.toContain('│');
+    // Three whole boxes, none cut by an overlay.
+    expect(t.text()[0]).toMatch(/^╭─ Views ─+╮╭─ Tasks ─+╮╭─ Details ─+╮$/);
     expect(t.frame()).not.toContain('Esc back');
   });
 
@@ -397,6 +398,69 @@ describe('Root', () => {
       await t.press(key);
       expect(raw()).not.toContain(`${ESC}[3`);
     }
+  });
+
+  describe('pane boxes', () => {
+    const highlighted = (raw: string) =>
+      new RegExp(
+        `${ESC}\\[36m╭─ ${ESC}\\[0m${ESC}\\[1m${ESC}\\[36m(\\w+)`,
+      ).exec(raw)?.[1];
+    const exact = (
+      t: Awaited<ReturnType<typeof mount>>,
+      w: number,
+      h: number,
+    ) => {
+      expect(t.text()).toHaveLength(h);
+      for (const line of t.text()) expect(visibleWidth(line)).toBe(w);
+    };
+
+    it('at 140x36, draws Views, Tasks and Details in boxes; Tab moves the highlight', async () => {
+      const t = await mount([task('milk')]);
+      const top = () => t.text()[0] ?? '';
+      expect(top()).toMatch(/^╭─ Views ─+╮╭─ Tasks ─+╮╭─ Details ─+╮$/);
+      expect(t.text()[33]).toMatch(/^╰─+╯╰─+╯╰─+╯$/);
+      exact(t, 140, 36);
+      const raw0 = () => t.lines()[0] ?? '';
+      expect(highlighted(raw0())).toBe('Tasks');
+      await t.press(KEY.tab);
+      expect(highlighted(raw0())).toBe('Details');
+      await t.press(KEY.tab);
+      expect(highlighted(raw0())).toBe('Views');
+    });
+
+    it('at 100x30, draws the sidebar overlay boxed over the tasks', async () => {
+      const t = await mount([task('milk')], { width: 100, height: 30 });
+      exact(t, 100, 30);
+      expect(t.text()[0]).toMatch(/^╭─ Tasks ─+╮╭─ Details ─+╮$/);
+      await t.press(KEY.tab, KEY.tab);
+      exact(t, 100, 30);
+      expect(t.text()[0]).toMatch(/^╭─ Views ─+╮/);
+      expect(t.text()[27]).toMatch(/^╰─+╯/);
+      expect(highlighted(t.lines()[0] ?? '')).toBe('Views');
+    });
+
+    it('at 80x24, boxes the full-screen details', async () => {
+      const t = await mount([task('milk')], { width: 80, height: 24 });
+      exact(t, 80, 24);
+      expect(t.text()[0]).toMatch(/^╭─ Tasks ─+╮$/);
+      await t.press(KEY.enter);
+      exact(t, 80, 24);
+      expect(t.text()[0]).toMatch(/^╭─ Details ─+╮$/);
+      expect(t.text()[21]).toMatch(/^╰─+╯$/);
+    });
+
+    it('at the minimum, still shows a box with content', async () => {
+      const t = await mount([task('milk')], { width: 60, height: 14 });
+      exact(t, 60, 14);
+      expect(t.frame()).toContain('milk');
+      expect(t.text()[0]).toMatch(/^╭─ Tasks/);
+    });
+
+    it('with NO_COLOR=1, the active pane has a double border', async () => {
+      vi.stubEnv('NO_COLOR', '1');
+      const t = await mount([task('milk')]);
+      expect(t.text()[0]).toMatch(/^╭─ Views ─+╮╔═ Tasks ═+╗╭─ Details ─+╮$/);
+    });
   });
 
   it('resize(59, 30) shows the too small line; resize(140, 36) restores', async () => {

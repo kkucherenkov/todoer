@@ -10,7 +10,9 @@ todoer-tui
 
 `TODOER_URL`, `TODOER_TOKEN` and `TODOER_TIMEOUT_MS` mean what they mean for
 the CLI. The bottom line lists the keys of the focused pane, `?` lists them
-all; Tab moves the focus and `q` quits. It renders with
+all; Tab moves the focus and `q` quits. Each pane is drawn in a box and the
+focused one is highlighted (a double border under `NO_COLOR`); the smallest
+terminal is 60×14. It renders with
 `@earendil-works/pi-tui`.
 
 A task's fields are edited where they stand in the detail pane: Enter on a
