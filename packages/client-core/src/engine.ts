@@ -657,12 +657,22 @@ export function createEngine({
       // A refused write still pulled: merge what that brought.
       if (answered > before) afterReached();
       // Refused as it stands (401, 403, 429): the write waits in the
-      // outbox, as offline, and the sync topic says so. Nothing was judged.
-      if (error instanceof RefusalError && error.pending) return OK;
-      throw error;
+      // outbox, as offline, and the sync topic says why now, as a sync run
+      // would (`once`). Nothing was judged.
+      if (!(error instanceof RefusalError && error.pending)) throw error;
+      if (!tokens.signedIn()) setSession('signed-out', 'signed-out');
+      else {
+        const why = error.cause instanceof Error ? error.cause : error;
+        sync = { ...sync, problem: why.message };
+      }
+      return OK;
     }
     const { synced, note } = done;
-    if (synced) afterReached();
+    if (synced) {
+      // The request went through: a problem an earlier one named is over.
+      if (sync.problem !== null) sync = { ...sync, problem: null };
+      afterReached();
+    }
     return note === undefined ? OK : { ok: true, note };
   };
 

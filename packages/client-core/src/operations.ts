@@ -196,7 +196,7 @@ async function flushOwn(
           : `operations ${opIds.join(', ')} are`;
       throw new RefusalError(
         `${error.message} — this command's ${which} queued and will be sent once the request is accepted — do not run ${command} again for ${opIds.length === 1 ? 'it' : 'them'}`,
-        { pending: true },
+        { pending: true, cause: error },
       );
     }
     throw error;

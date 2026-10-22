@@ -20,7 +20,8 @@ field, marked `✗` with the saved value beside yours and the reason; Esc
 drops it, and Enter reopens the field with your value to save it again as a
 new change. When the server kept no verdict (it refused the request whole,
 or could not apply it), `r` sends the same change again. Offline, or refused
-for the session or the rate (401, 403, 429), a change is queued instead.
+for the session or the rate (401, 403, 429), a change is queued instead, and
+the status line says why.
 
 Development: `pnpm -w exec turbo run build test --filter=@todoer/tui...`.
 Tests need no database.

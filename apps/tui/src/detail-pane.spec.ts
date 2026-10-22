@@ -610,6 +610,9 @@ describe('DetailPane refusals', () => {
       t.server.state.status = code;
       await t.press(...toWork, KEY.enter);
       expect(mode(t)).toMatch(/1 queued/);
+      // The status line names why the write waits; the pane marks nothing.
+      expect(mode(t)).toContain(`offline · 1 queued · `);
+      expect(mode(t)).toContain(String(code));
       expect(t.lastFrame()).not.toContain('✗');
       expect(t.lastFrame()).toMatch(/^Project\s+work\s*$/m);
     });

@@ -2278,25 +2278,40 @@ describe('refusal kinds: retryable or for good', () => {
     expect(srv.sent.map((op) => op.opId)).toEqual([uuid(0xb1)]);
   });
 
-  it('429 is no refusal: the write waits in the outbox', async () => {
-    const srv = server(TODO, taskRow(1));
-    send.mockImplementation((request) =>
-      request.ops.length > 0
-        ? Promise.resolve(new Response('slow down', { status: 429 }))
-        : srv.send(request),
-    );
-    const e = engine();
-    await e.start(true);
-    const result = await e.handle({
-      kind: 'edit',
-      opId: uuid(0xb1),
-      taskId: T,
-      changes: { title: 'x' },
-    });
-    expect(result).toEqual({ ok: true });
-    expect(store.pending().map((op) => op.opId)).toEqual([uuid(0xb1)]);
-    expect(last('sync')?.pending).toBe(1);
-  });
+  it.each([403, 429])(
+    '%i is no refusal: the write waits in the outbox, and sync says why',
+    async (status) => {
+      const srv = server(TODO, taskRow(1));
+      send.mockImplementation((request) =>
+        request.ops.length > 0
+          ? Promise.resolve(new Response('not now', { status }))
+          : srv.send(request),
+      );
+      const e = engine();
+      await e.start(true);
+      const result = await e.handle({
+        kind: 'edit',
+        opId: uuid(0xb1),
+        taskId: T,
+        changes: { title: 'x' },
+      });
+      expect(result).toEqual({ ok: true });
+      expect(store.pending().map((op) => op.opId)).toEqual([uuid(0xb1)]);
+      expect(last('sync')?.pending).toBe(1);
+      expect(last('sync')?.problem).toContain(String(status));
+      expect(last('sync')?.problem).not.toContain('do not run');
+      expect(last('session')?.state).toBe('signed-in');
+      // Accepted again: the next write that lands clears the problem.
+      send.mockImplementation(srv.send);
+      await e.handle({
+        kind: 'edit',
+        opId: uuid(0xb2),
+        taskId: T,
+        changes: { title: 'y' },
+      });
+      expect(last('sync')?.problem).toBeNull();
+    },
+  );
 
   it('a partly applied edit is for good; saving again mints a new opId and lands', async () => {
     const srv = server(TODO, taskRow(1));

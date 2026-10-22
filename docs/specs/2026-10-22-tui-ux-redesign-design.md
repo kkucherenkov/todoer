@@ -173,7 +173,8 @@ client would have to compute counts.
   partly applied command are for good: `✗` and "saved → yours · reason"
   without `r`; Enter reopens the field with the person's value and saving it
   is a new write (a new opId). 401, 403 and 429 leave the edit queued and are
-  no refusal: no `✗`, the status line shows it queued.
+  no refusal: no `✗`, the status line shows it queued and names the reason
+  (`offline · 1 queued · <reason>`).
 - **Keys (Q9 A).** Two modes, NORMAL and INSERT, named in the status line,
   with hints that follow the focus. Esc closes the innermost thing first
   (my call): an open input or the `Editor`, then a refusal shown under its
@@ -200,7 +201,8 @@ client would have to compute counts.
   cursor, errors. `NO_COLOR` gives monochrome, and nothing may rely on colour
   alone.
 - **Status line (Q16 B).** Two lines. The top line shows the mode and sync
-  state: synced, offline, N queued, N refused. The bottom line shows the key
+  state: synced, offline, N queued, N refused, then the reason a request was
+  refused for now (403, 429), cut first when the line is short. The bottom line shows the key
   hints for the focus, truncated at the right and never wrapped.
 - **Search (Q17 A).** `/` filters the current outline by a substring of the
   title on the client, and Esc clears it. Search across all tasks is a

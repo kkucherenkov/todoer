@@ -25,8 +25,15 @@ import type { OpResult } from '@todoer/specs';
 export class RefusalError extends Error {
   readonly retryable: boolean;
   readonly pending: boolean;
-  constructor(message: string, { retryable = false, pending = false } = {}) {
-    super(message);
+  constructor(
+    message: string,
+    {
+      retryable = false,
+      pending = false,
+      cause,
+    }: { retryable?: boolean; pending?: boolean; cause?: unknown } = {},
+  ) {
+    super(message, cause === undefined ? undefined : { cause });
     this.retryable = retryable;
     this.pending = pending;
   }
@@ -49,7 +56,9 @@ export type Refusal =
 export const BATCH_REFUSED =
   'the server refused the request carrying this operation: ';
 /** The backend's reason when an op's transaction rolled back on bad data
- *  (sync.service.ts, applyOne's catch): no verdict is recorded for it. */
+ *  (apps/backend/src/sync/sync.service.ts, applyOne's catch): no verdict is
+ *  recorded for it. Pinned by apps/backend/src/sync/sync.service.spec.ts;
+ *  change both together. */
 const NOT_APPLIED = 'could not be applied';
 
 /** A rejection; retryable when the server recorded no verdict for it. */
