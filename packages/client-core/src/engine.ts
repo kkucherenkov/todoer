@@ -166,6 +166,7 @@ export function createEngine({
     const spec = builtInView(
       key,
       cat.projects.map((p) => p.id),
+      cat.tags.map((t) => t.id),
     );
     return spec === undefined
       ? cat.views.find((v) => v.id === key)

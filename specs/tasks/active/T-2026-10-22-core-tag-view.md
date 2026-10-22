@@ -64,10 +64,10 @@ and count it, and the web navigation to show it.
 
 ### Steps
 
-- [ ] T001 [FR-001, FR-002] `TAG_PREFIX`, `tagView`, the `builtInView` branch,
+- [x] T001 [FR-001, FR-002] `TAG_PREFIX`, `tagView`, the `builtInView` branch,
   `viewSpec` and the `nav` entries — `packages/client-core/src/engine-protocol.ts`,
   `operations.ts`, `engine.ts`, `engine.spec.ts`
-- [ ] T002 [FR-001, FR-002] Docs: the views design names the key and the
+- [x] T002 [FR-001, FR-002] Docs: the views design names the key and the
   entries — `docs/specs/2026-10-01-views-design.md`
 - [ ] T003 [FR-003] `navEntries`, `navPath`, `routeKey`, `isBuiltIn` —
   `apps/web/app/utils/nav.ts`, `nav.spec.ts`

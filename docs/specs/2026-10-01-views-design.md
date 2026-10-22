@@ -226,15 +226,15 @@ ordinary one-off task.
   already runs, never stored: `all` (every open task, `manual`), `today`
   (`{or: [{scheduled: {to: 0}}, {due: {to: 0}}]}`, sorted `due`), `upcoming`
   (the same with `{from: 1}`, sorted `due`) and `project:<id>`
-  (`{project: <id>}`, `manual`). All default to `list`; the `watch` layout
+  (`{project: <id>}`, `manual`) and `tag:<id>` (`{tag: <id>}`, `manual`). All default to `list`; the `watch` layout
   override applies to them too. A recurring task matches by its current
   occurrence, and a task scheduled today and due next week is in both Today and
-  Upcoming: the views are filters, not a partition. `project:<id>` of an unknown
-  or deleted project is published with the `deleted` problem, as a removed
+  Upcoming: the views are filters, not a partition. `project:<id>` or `tag:<id>` of an
+  unknown or deleted project or tag is published with the `deleted` problem, as a removed
   saved view is. The keys are exported from `engine-protocol.ts` as `ALL`,
-  `TODAY`, `UPCOMING` and `PROJECT_PREFIX`. The `catalog` topic carries
+  `TODAY`, `UPCOMING`, `PROJECT_PREFIX` and `TAG_PREFIX`. The `catalog` topic carries
   `nav: {key, count}[]`: `all`, `today`, `upcoming`, then each live project in
-  the catalog's project order, each count the number of open tasks matching
+  the catalog's project order, then each live tag in the catalog's tag order, each count the number of open tasks matching
   that entry's filter, subtasks included, each task once. Children shown under
   an expanded parent only because they are its `children` (outside the filter)
   are not counted. Items and

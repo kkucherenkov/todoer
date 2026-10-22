@@ -86,6 +86,8 @@ export const TODAY = 'today';
 export const UPCOMING = 'upcoming';
 /** `project:<id>`: a live project's open tasks; an unknown id is `deleted`. */
 export const PROJECT_PREFIX = 'project:';
+/** `tag:<id>`: a live tag's open tasks; an unknown id is `deleted`. */
+export const TAG_PREFIX = 'tag:';
 
 export type Command =
   | { kind: 'signIn'; email: string; password: string }

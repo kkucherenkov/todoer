@@ -15,7 +15,13 @@ import {
   type OpSet,
   type StatusRow,
 } from '@todoer/specs';
-import { ALL, PROJECT_PREFIX, TODAY, UPCOMING } from './engine-protocol.js';
+import {
+  ALL,
+  PROJECT_PREFIX,
+  TAG_PREFIX,
+  TODAY,
+  UPCOMING,
+} from './engine-protocol.js';
 import {
   currentOccurrence,
   isOccurrence,
@@ -1007,20 +1013,32 @@ export const projectView = (id: string): ViewSpec => ({
   sort: 'manual',
   layout: 'list',
 });
+export const tagView = (id: string): ViewSpec => ({
+  filter: { tag: id },
+  sort: 'manual',
+  layout: 'list',
+});
 
 /** The built-in view `key` names (engine-protocol's keys); undefined for any
- *  other key, a `project:` one of a project not in `projectIds` included. */
+ *  other key, a `project:` or `tag:` one of an id not in `projectIds` or
+ *  `tagIds` included. */
 export function builtInView(
   key: string,
   projectIds: readonly string[],
+  tagIds: readonly string[],
 ): ViewSpec | undefined {
   if (key === ALL) return ALL_OPEN;
   if (key === TODAY) return TODAY_OPEN;
   if (key === UPCOMING) return UPCOMING_OPEN;
-  const id = key.startsWith(PROJECT_PREFIX)
-    ? key.slice(PROJECT_PREFIX.length)
-    : null;
-  return id !== null && projectIds.includes(id) ? projectView(id) : undefined;
+  if (key.startsWith(PROJECT_PREFIX)) {
+    const id = key.slice(PROJECT_PREFIX.length);
+    return projectIds.includes(id) ? projectView(id) : undefined;
+  }
+  if (key.startsWith(TAG_PREFIX)) {
+    const id = key.slice(TAG_PREFIX.length);
+    return tagIds.includes(id) ? tagView(id) : undefined;
+  }
+  return undefined;
 }
 
 /** What Item and TaskDetails share; they differ in `subtasks`. `Omit` cannot
@@ -1353,6 +1371,9 @@ export function catalog(store: Store, today: string): Catalog {
           matches(spec.filter as Filter, facts, today),
         ).length
       : 0;
+  const tagList = liveTags(tagRows(store))
+    .sort(byName)
+    .map((t) => ({ id: String(t.id), name: String(t.name) }));
   const nav = [
     { key: ALL, count: count(ALL_OPEN) },
     { key: TODAY, count: count(TODAY_OPEN) },
@@ -1360,6 +1381,10 @@ export function catalog(store: Store, today: string): Catalog {
     ...projectIds.map((id) => ({
       key: PROJECT_PREFIX + id,
       count: count(projectView(id)),
+    })),
+    ...tagList.map(({ id }) => ({
+      key: TAG_PREFIX + id,
+      count: count(tagView(id)),
     })),
   ];
   return {
@@ -1384,9 +1409,7 @@ export function catalog(store: Store, today: string): Catalog {
       version: version(s),
     })),
     projects: projectList,
-    tags: liveTags(tagRows(store))
-      .sort(byName)
-      .map((t) => ({ id: String(t.id), name: String(t.name) })),
+    tags: tagList,
     nav,
   };
 }
