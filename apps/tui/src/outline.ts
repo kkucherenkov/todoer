@@ -390,10 +390,15 @@ export class Outline implements Pane {
     else if (at >= this.top + size) this.top = at - size + 1;
     this.top = Math.max(0, Math.min(this.top, rows.length - size));
     const shown = rows.slice(this.top, this.top + size);
+    const problem = this.view()?.problem ?? null;
     const lines =
-      rows.length === 0
-        ? [sgr(2, 'nothing here')]
-        : shown.map((r) => this.line(r, false, width)[0] ?? '');
+      problem !== null
+        ? [
+            `this view cannot be shown: ${colour() ? sgr(YELLOW, problem) : problem}`,
+          ]
+        : rows.length === 0
+          ? [sgr(2, 'nothing here')]
+          : shown.map((r) => this.line(r, false, width)[0] ?? '');
     const over = shown[at - this.top];
     if (over !== undefined) {
       const full = this.line(over, true, width, Math.min(OVERLAY, size));

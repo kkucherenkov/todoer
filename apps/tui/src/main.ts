@@ -60,6 +60,7 @@ async function main(): Promise<number> {
     const root = new Root({
       tui,
       rows: () => terminal.rows,
+      columns: () => terminal.columns,
       quit: () => shell.stop(0),
       redraw: () => shell.requestRender(),
     });

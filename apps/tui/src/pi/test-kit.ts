@@ -96,9 +96,12 @@ export async function renderApp({
   server?: ReturnType<typeof fakeServer>;
   width?: number;
   rows?: number;
-  /** Builds the root from the wiring and the viewport's height; the shell
+  /** Builds the root from the wiring and the viewport's size; the shell
    *  does not exist in specs. */
-  app?: (tui: Omit<Tui, 'keys'>, size: { rows: () => number }) => Pane;
+  app?: (
+    tui: Omit<Tui, 'keys'>,
+    size: { rows: () => number; columns: () => number },
+  ) => Pane;
 } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'todoer-tui-test-'));
   const store = openReplica(join(dir, 'todoer.db'));
@@ -152,7 +155,10 @@ export async function renderApp({
     status: createStatusLine(),
   };
   const size = { width, rows };
-  const root = app(tui, { rows: () => size.rows });
+  const root = app(tui, {
+    rows: () => size.rows,
+    columns: () => size.width,
+  });
   /** Until no command is in flight and nothing was published for 20 ms. */
   const settle = async () => {
     for (;;) {
@@ -167,11 +173,9 @@ export async function renderApp({
   return {
     frame: () => lines().join('\n'),
     lines,
-    /** Feeds `keys` to the root one at a time, settling after each. A key
-     *  arrives after a frame, as in the terminal. */
+    /** Feeds `keys` to the root one at a time, settling after each. */
     async press(...keys: string[]) {
       for (const key of keys) {
-        lines();
         root.handleInput?.(key);
         await settle();
       }

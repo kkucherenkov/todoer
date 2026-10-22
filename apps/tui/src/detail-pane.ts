@@ -8,8 +8,8 @@ const text = (value: unknown) =>
   typeof value === 'string' && value !== '' ? value : '—';
 
 /**
- * The selected task's fields, read only. Task 2.1 makes the rows editable
- * in place; until then a field is changed in the details screen.
+ * The selected task's fields, read only: the TUI edits no field until Task
+ * 2.1 makes these rows editable in place.
  */
 export class DetailPane implements Pane {
   private taskId: string | null = null;

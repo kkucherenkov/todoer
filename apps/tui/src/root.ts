@@ -22,7 +22,7 @@ const HINTS: Record<Focus | 'INSERT', string> = {
   INSERT: 'Enter save · Esc cancel',
   sidebar: 'j/k move · Enter open · Tab focus · q quit',
   outline:
-    'j/k move · o new · x done · dd delete · > < indent · J/K move · Tab focus · [ ] views · r sync · q quit',
+    'j/k move · o new · x done · dd delete · > < indent · J/K move · e details · Tab focus · [ ] views · r sync · q quit',
   detail: 'Tab focus · q quit',
 };
 
@@ -31,6 +31,7 @@ const UNPORTED: Record<string, string> = {
   v: 'the view picker',
   '?': 'the help',
   S: 'the statuses screen',
+  m: 'the status picker',
 };
 
 /**
@@ -45,7 +46,6 @@ export class Root implements Pane {
   private readonly outline: Outline;
   private readonly detail: DetailPane;
   private focusOn: Focus = 'outline';
-  private mode: Mode = 'three';
   private taskId: string | null = null;
   private watching = '';
 
@@ -64,6 +64,7 @@ export class Root implements Pane {
     private readonly deps: {
       tui: Omit<Tui, 'keys'>;
       rows: () => number;
+      columns: () => number;
       quit: () => void;
       /** Asks the terminal for a frame after a change no key caused. */
       redraw?: () => void;
@@ -136,6 +137,10 @@ export class Root implements Pane {
     this.outline.focus(next === 'outline');
   }
 
+  private get mode(): Mode {
+    return modeFor(this.deps.columns());
+  }
+
   /** A focused sidebar under 120 columns, the details under 90. */
   private overlay = () =>
     (this.mode !== 'three' && this.focusOn === 'sidebar') ||
@@ -160,7 +165,8 @@ export class Root implements Pane {
     if (matchesKey(data, Key.tab)) {
       const at = CYCLE.indexOf(this.focusOn);
       this.setFocus(CYCLE[(at + 1) % CYCLE.length] ?? 'outline');
-    } else if (data === 'q') this.deps.quit();
+    } else if (data === 'e') this.setFocus('detail');
+    else if (data === 'q') this.deps.quit();
     else if (data === ']') this.step(1);
     else if (data === '[') this.step(-1);
     else if (data === 'r')
@@ -177,7 +183,8 @@ export class Root implements Pane {
   handleInput(data: string): void {
     // Ctrl+C quits from anywhere, a line being typed included.
     if (matchesKey(data, Key.ctrl('c'))) return this.deps.quit();
-    if (this.signedOut()) {
+    // Nothing is drawn but the too-small line, so no key acts blind.
+    if (this.signedOut() || tooSmall(this.deps.columns(), this.deps.rows())) {
       if (data === 'q') this.deps.quit();
       return;
     }
@@ -208,7 +215,6 @@ export class Root implements Pane {
         sgr(2, 'q quit'),
       ];
     }
-    this.mode = modeFor(width);
     const w = widths(width, this.mode);
     const body = rows - 2;
     this.outline.height = body;

@@ -56,7 +56,7 @@ async function mount(
     width,
     rows: height,
     server: fakeServer([status, ...rows]),
-    app: (tui, size) => (root = new Root({ tui, rows: size.rows, quit })),
+    app: (tui, size) => (root = new Root({ tui, ...size, quit })),
   });
   cleanup = t.cleanup;
   await t.engine.handle({ kind: 'sync', reason: 'manual' }, 'tui');
@@ -183,7 +183,7 @@ describe('Root', () => {
     const redraw = vi.fn();
     const t = await renderApp({
       app: (tui, size) =>
-        new Root({ tui, rows: size.rows, quit: () => undefined, redraw }),
+        new Root({ tui, ...size, quit: () => undefined, redraw }),
     });
     cleanup = t.cleanup;
     redraw.mockClear();
@@ -249,6 +249,68 @@ describe('Root', () => {
     await t.press(KEY.escape);
     expect(t.frame()).not.toContain('Priority');
     expect(cursorLine(t.text())).toContain('bread');
+  });
+
+  it('at 100 columns, picking a row from the sidebar overlay closes it', async () => {
+    const t = await mount([task('milk')], { width: 100 });
+    await t.press(KEY.tab, KEY.tab, 'j', KEY.enter);
+    expect(t.root.current).toBe('today');
+    expect(t.root.focusAt).toBe('outline');
+    expect(t.frame()).not.toContain('VIEWS');
+  });
+
+  it('at 140, a focused sidebar is its own column, not an overlay', async () => {
+    const t = await mount([task('milk')]);
+    await t.press(KEY.tab, KEY.tab);
+    expect(t.root.focusAt).toBe('sidebar');
+    expect(t.frame()).not.toContain('│');
+    expect(t.frame()).not.toContain('Esc back');
+  });
+
+  it('falls back to All open when the watched view is deleted', async () => {
+    const t = await mount([view, task('milk')]);
+    await t.press('[');
+    expect(t.root.current).toBe('v1');
+    await t.engine.handle(
+      { kind: 'deleteView', opId: t.newId(), id: 'v1' },
+      'tui',
+    );
+    await t.settle();
+    expect(t.root.current).toBe('all');
+    expect(t.watched().at(-1)).toBe('all');
+  });
+
+  it('says why a view cannot be shown', async () => {
+    const t = await mount([{ ...view, filter: { bogus: true } }, task('milk')]);
+    await t.press('[');
+    expect(t.root.current).toBe('v1');
+    expect(t.topics.view('v1')?.problem).not.toBeNull();
+    expect(t.frame()).toMatch(/this view cannot be shown: \S/);
+  });
+
+  it('says m is not ported yet, and e focuses the detail pane', async () => {
+    const t = await mount([task('milk')]);
+    await t.press('m');
+    expect(t.status.message?.text).toMatch(/not ported yet/);
+    await t.press('e');
+    expect(t.root.focusAt).toBe('detail');
+  });
+
+  it('while too small, keys do not reach an open input', async () => {
+    const t = await mount([task('milk')]);
+    await t.press('o', 'bread');
+    t.resize(59, 30);
+    await t.press('x', KEY.enter);
+    expect(t.topics.view('all')?.items.map((i) => i.title)).toEqual(['milk']);
+    expect(t.quit).not.toHaveBeenCalled();
+    t.resize(140, 36);
+    expect(t.text().at(-2)).toMatch(/^INSERT/);
+    expect(t.frame()).toContain('new: bread');
+    await t.press(KEY.enter);
+    expect(t.frame()).toContain('bread');
+    t.resize(59, 30);
+    await t.press('q');
+    expect(t.quit).toHaveBeenCalled();
   });
 
   it('with NO_COLOR=1, no frame contains a colour', async () => {
