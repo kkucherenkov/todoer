@@ -219,7 +219,10 @@ client would have to compute counts.
   muscle memory breaks). A refused add follows Q8: the text stays in its row,
   marked `✗` with the reason under it; `r` resends a retryable refusal with
   the same opId, Enter reopens the text and saving it after a permanent
-  refusal is a new add, Esc drops the row.
+  refusal is a new add, Esc drops the row. From Enter until the answer (and
+  the `move` that places it in a manual view) the row shows `saving…` and
+  takes no key, and the new task shows only there, not where the engine
+  first ranks it.
 - **Look (Q14 C).** Section headers in capitals and dim separators, as in
   tuxedo. Panes are boxed (maintainer request 2026-10-22, see "Pane boxes"). Only the 16 ANSI colours, which follow the
   terminal's theme. Colour carries meaning only: priority, overdue, the
@@ -237,8 +240,9 @@ client would have to compute counts.
   and folding nothing else (`ё` is not `е`). A matching subtask keeps its
   parent row, dimmed. Enter keeps the filter in NORMAL and the Tasks box
   title shows it (`Tasks /milk`); Esc in the input, or last in the Esc order,
-  clears it, and so does picking another view. The sidebar counts stay the
-  core's.
+  clears it, and so does picking another view. A task added under the
+  filter stays among the rows, with the cursor on it, until the filter text
+  changes. The sidebar counts stay the core's.
 - **Work split (Q15 A).** One PR each, in order:
   - step 0: the core `tag:<id>` built-in view and count;
   - step 1: the frame on `pi-tui`: layout, sidebar, outline, status lines and

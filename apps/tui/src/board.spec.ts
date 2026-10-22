@@ -197,6 +197,23 @@ describe('BoardPane', () => {
     expect(t.store.rows('task')).toHaveLength(2);
   });
 
+  it('locks the new card’s line while the add is in flight', async () => {
+    const t = await open();
+    t.server.state.hold = true;
+    t.input('n', 'gamma', KEY.enter);
+    await t.server.until(1);
+    t.input('x', KEY.enter, KEY.escape);
+    expect(t.lastFrame()).toMatch(/new: gamma saving…/);
+    t.server.state.hold = false;
+    while (t.server.held.length > 0) t.server.held.shift()?.();
+    await t.settle();
+    const titles = t.store.rows('task').map((r) => r.title);
+    expect(titles.filter((x) => String(x).startsWith('gamma'))).toEqual([
+      'gamma',
+    ]);
+    expect(t.lastFrame()).not.toContain('new:');
+  });
+
   it('opens the status picker on a card with m', async () => {
     const t = await open();
     await t.press('m');

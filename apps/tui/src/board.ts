@@ -43,6 +43,8 @@ export class Board implements Pane {
   // The card the cursor stays on after it moves; `row` once it is gone.
   private follow: string | null = null;
   private adding: Input | null = null;
+  /** The add was sent and not answered: its line takes no key. */
+  private saving = false;
   private focused = true;
   private selected: string | null = null;
   private readonly write: ReturnType<typeof createWrite>;
@@ -178,6 +180,7 @@ export class Board implements Pane {
       onCancel: () => (this.adding = null),
       onSubmit: (text) => {
         let id = '';
+        this.saving = true;
         // Open until the add is taken: a refusal keeps the text. A task
         // with no status shows in the first column (`displayStatus`), so
         // elsewhere a `move` follows the add; it also puts the card below
@@ -187,6 +190,7 @@ export class Board implements Pane {
           id = newId();
           return { kind: 'add', opId: newId(), id, text };
         }).then(async (added) => {
+          this.saving = false;
           if (!added.ok) return;
           this.adding = null;
           this.follow = id;
@@ -205,6 +209,7 @@ export class Board implements Pane {
   }
 
   handleInput(data: string): void {
+    if (this.saving) return;
     if (this.adding !== null) this.adding.handleInput(data);
     else this.dispatch(data);
     this.sync();
@@ -254,7 +259,9 @@ export class Board implements Pane {
         : [];
     const below = [
       ...scroll,
-      ...(this.adding?.render(width) ?? this.keys.render(width)),
+      ...(this.saving && this.adding !== null
+        ? [`new: ${this.adding.getValue()} ${sgr(2, 'saving…')}`]
+        : (this.adding?.render(width) ?? this.keys.render(width))),
     ];
     const depth = Math.max(0, ...shown.map((s) => s.items.length));
     const room = Math.max(

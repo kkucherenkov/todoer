@@ -6,7 +6,13 @@ import {
   visibleWidth,
   wrapTextWithAnsi,
 } from '@earendil-works/pi-tui';
-import { createIntent, mint, type Item } from '@todoer/client-core';
+import {
+  createIntent,
+  mint,
+  type Draft,
+  type Item,
+  type Write,
+} from '@todoer/client-core';
 import {
   indentTarget,
   insertAfter,
@@ -35,7 +41,8 @@ const alt = (data: string, dir: 'up' | 'down') =>
   matchesKey(data, Key.alt(dir)) ||
   data === (dir === 'up' ? '\u001b\u001b[A' : '\u001b\u001b[B');
 
-/** A new task on the row where it will appear: typed, or refused. */
+/** A new task on the row where it will appear: typed, saving, or
+ *  refused. */
 type Adding = {
   /** The task under the cursor when it opened; the row goes after it. */
   anchor: string | undefined;
@@ -45,6 +52,10 @@ type Adding = {
   after: string | undefined;
   text: string;
   input: Input | null;
+  /** Sent and not answered yet (the `move` included): no key acts on it. */
+  saving: boolean;
+  /** The last draft sent, with the task id it names. */
+  draft: (Draft<Extract<Write, { kind: 'add' }>> & { id: string }) | undefined;
   refusal: { detail: string; retryable: boolean } | null;
 };
 
@@ -74,6 +85,8 @@ export class Outline implements Pane {
   private query = '';
   /** Parents shown only for a matching subtask. */
   private context: ReadonlySet<string> = new Set();
+  /** Tasks added under the filter: shown until its text changes. */
+  private pinned = new Set<string>();
   private folded: ReadonlySet<string> = new Set();
   // The cursor follows its task across a move or a re-parent; when the task
   // leaves the view (done, deleted) it stays at the same place.
@@ -112,6 +125,7 @@ export class Outline implements Pane {
   /** The keys of a refused add; undefined otherwise. */
   get hints(): string | undefined {
     const a = this.adding;
+    if (a?.saving === true) return 'saving…';
     if (a === null || a.input !== null || a.refusal === null) return undefined;
     return a.refusal.retryable
       ? 'r retry · Enter edit · Esc discard'
@@ -134,6 +148,7 @@ export class Outline implements Pane {
   }
 
   set filter(text: string) {
+    if (text !== this.query) this.pinned = new Set();
     this.query = text;
     this.sync();
   }
@@ -142,6 +157,7 @@ export class Outline implements Pane {
   show(key: string): void {
     this.key = key;
     this.query = '';
+    this.pinned = new Set();
     this.cursor = { at: 0 };
     this.top = 0;
     this.sync();
@@ -150,14 +166,22 @@ export class Outline implements Pane {
   private view = () => this.deps.tui.topics.view(this.key);
   private items = (): Item[] => this.view()?.items ?? [];
   private rows(): OutlineRow[] {
-    const items = this.items();
+    // The task being added stands in its add's row until it is placed.
+    const a = this.adding;
+    const saving = a?.saving === true ? a.draft?.id : undefined;
+    const items = this.items().filter((i) => i.id !== saving);
     if (this.query === '') {
       this.context = new Set();
       return outline(items, this.folded);
     }
     const q = fold(this.query);
     const hits = new Set(
-      items.filter((i) => fold(String(i.title)).includes(q)).map((i) => i.id),
+      items
+        .filter(
+          (i) =>
+            this.pinned.has(String(i.id)) || fold(String(i.title)).includes(q),
+        )
+        .map((i) => i.id),
     );
     const parents = new Set(
       items.filter((i) => hits.has(i.id)).map((i) => i.parentId),
@@ -262,6 +286,8 @@ export class Outline implements Pane {
       after,
       text: '',
       input: null,
+      saving: false,
+      draft: undefined,
       refusal: null,
     };
     this.type(this.adding);
@@ -287,39 +313,53 @@ export class Outline implements Pane {
     });
   }
 
-  /** One `add` through the held intent: the same text after a retryable
-   *  refusal is the same opId, after a permanent one a new add. Open until
-   *  the write is taken. The engine ranks an add first, so a `move` puts it
-   *  where the row stood; refused, the task stays where the add put it. */
+  /** One `add` through the held intent: the same draft (task id and
+   *  opId) only to resend a retryable refusal, else a new add. The row is
+   *  locked until the answer, and the `move` that follows it in a manual view
+   *  (the engine ranks an add first; refused, the task stays where the add
+   *  put it), so the task shows once, where the row stood. */
   private send(a: Adding, text: string): void {
+    if (
+      a.draft === undefined ||
+      a.draft.text !== text ||
+      a.refusal?.retryable !== true
+    ) {
+      a.draft = {
+        kind: 'add',
+        id: this.deps.tui.newId(),
+        text,
+        ...(a.parentId === undefined ? {} : { parentId: a.parentId }),
+      };
+    }
+    const { draft } = a;
     a.text = text;
-    void this.intent({
-      kind: 'add',
-      text,
-      ...(a.parentId === undefined ? {} : { parentId: a.parentId }),
-    }).then(async (r) => {
+    a.input = null;
+    a.saving = true;
+    void this.intent(draft).then(async (r) => {
       if (!r.ok) {
-        if (this.adding !== a) return;
-        a.input = null;
+        a.saving = false;
         const { detail, retryable = false } = r.failure;
         a.refusal = { detail, retryable };
         return;
       }
-      const id = r.write.kind === 'add' ? r.write.id : '';
-      if (this.adding === a) {
-        this.cursor = { at: this.place(a, this.rows()), id };
-        this.adding = null;
-        this.sync();
-      }
+      const { id } = draft;
+      // Under a filter it would vanish if it does not match.
+      if (this.query !== '') this.pinned.add(id);
       const { after } = a;
-      if (after === undefined) return;
-      await this.write((newId) => ({
-        kind: 'move',
-        opId: newId(),
-        taskId: id,
-        view: this.key,
-        after,
-      }));
+      if (after !== undefined) {
+        await this.write((newId) => ({
+          kind: 'move',
+          opId: newId(),
+          taskId: id,
+          view: this.key,
+          after,
+        }));
+      }
+      if (this.adding !== a) return;
+      a.saving = false;
+      this.cursor = { at: this.place(a, this.rows()), id };
+      this.adding = null;
+      this.sync();
     });
   }
 
@@ -332,6 +372,7 @@ export class Outline implements Pane {
 
   handleInput(data: string): void {
     const a = this.adding;
+    if (a?.saving === true) return;
     if (a?.input) a.input.handleInput(data);
     else if (a !== null) this.refused(a, data);
     else this.dispatch(data);
@@ -456,9 +497,10 @@ export class Outline implements Pane {
     const head = `  ${a.parentId === undefined ? '' : '  '}`;
     const room = Math.max(1, width - visibleWidth(head) - 2);
     const cross = colour() ? sgr(RED, '✗') : '✗';
-    const first =
-      a.input === null
-        ? `${head}${cross} ${a.text}`
+    const first = a.saving
+      ? `${head}○ ${truncateToWidth(a.text, room - 8, '…')} ${sgr(2, 'saving…')}`
+      : a.input === null
+        ? `${head}${cross} ${truncateToWidth(a.text, room, '…')}`
         : `${head}○ ${a.input.render(room)[0] ?? ''}`;
     return a.refusal === null
       ? [first]

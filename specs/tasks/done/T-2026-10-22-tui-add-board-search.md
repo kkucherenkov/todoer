@@ -88,14 +88,17 @@ client-side `/` filter.
   drawn (FR-001, T001)
 - A retryable refusal resent with `r` that is then accepted → the row goes,
   the cursor is on the new task (FR-003, T001)
+- Keys while the add is in flight → ignored, the row shows `saving…` and
+  the new task only there; one add is sent; the board's add line likewise
+  (FR-002, T001)
 - More cards than the board's height → the cursor card is drawn (FR-006,
   T002)
 - A filter that matches nothing → `nothing here`; the cursor's task filtered
   out → the cursor stays at the same place (FR-008, T003)
 - `Ё` and `ё` match each other (case), a decomposed `ё` matches the composed
   one (NFC) (FR-008, T003)
-- A task added while filtered that does not match is not shown until the
-  filter is cleared (FR-008, T003)
+- A task added while filtered stays shown, the cursor on it, until the
+  filter text changes (FR-008, T003)
 
 ### Definition of Done
 

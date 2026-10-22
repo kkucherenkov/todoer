@@ -474,6 +474,61 @@ describe('Outline n adds in place', () => {
     expect(t.text()[1]).toMatch(/^▸ ○ milk/);
   });
 
+  it('locks the row while the add is in flight and hides the new task', async () => {
+    const t = await open1(task('alpha', 'a0'), task('beta', 'a1'));
+    t.server.state.hold = true;
+    t.input('n', 'milk', KEY.enter);
+    await t.server.until(1);
+    t.input('x', 'y', KEY.enter, KEY.escape);
+    const lines = t.text();
+    // Only the add's row shows it, where it will stand.
+    expect(lines.filter((l) => l.includes('milk'))).toHaveLength(1);
+    expect(lines[1]).toMatch(/○ milk saving…/);
+    expect(lines[0]).toContain('alpha');
+    expect(t.outline.hints).toBe('saving…');
+    t.server.state.hold = false;
+    while (t.server.held.length > 0) t.server.held.shift()?.();
+    await t.settle();
+    expect(adds(t)).toHaveLength(1);
+    expect(t.store.rows('task').map((r) => r.title)).toContain('milk');
+    expect(t.text()[1]).toMatch(/^▸ ○ milk/);
+    expect(t.text()[2]).toContain('beta');
+  });
+
+  it('a refusal arriving after Esc during the flight is still shown', async () => {
+    const t = await open1(task('alpha', 'a0'));
+    t.server.state.refuse = () => 'title taken';
+    t.server.state.hold = true;
+    t.input('n', 'milk', KEY.enter);
+    await t.server.until(1);
+    t.input(KEY.escape);
+    t.server.state.hold = false;
+    while (t.server.held.length > 0) t.server.held.shift()?.();
+    await t.settle();
+    expect(t.text().join('\n')).toMatch(/✗ milk/);
+  });
+
+  it('O on a subtask puts the row right after it', async () => {
+    const t = await open1(
+      task('alpha', 'a0'),
+      task('beta', 'a1'),
+      task('a1', 'a2', 'alpha'),
+      task('a2', 'a3', 'alpha'),
+    );
+    await t.press('j', 'O');
+    const lines = t.text();
+    expect(lines[1]).toContain('a1');
+    expect(lines[2]).toMatch(/^ {4}○ new subtask:/);
+    expect(lines[3]).toContain('a2');
+  });
+
+  it('cuts a long refused text with … in its row', async () => {
+    const t = await open([task('alpha', 'a0')], { width: 40 });
+    t.server.state.refuse = () => 'no';
+    await t.press('n', 'm'.repeat(80), KEY.enter);
+    expect(t.text()[1]?.trimEnd()).toMatch(/m…$/);
+  });
+
   it('cuts a long reason with …', async () => {
     const t = await open1(task('alpha', 'a0'));
     t.server.state.refuse = () => 'x'.repeat(200);
@@ -540,6 +595,18 @@ describe('Outline filter', () => {
     expect(t.text()).not.toEqual(before);
     t.outline.filter = '';
     expect(t.text()).toEqual(before);
+  });
+
+  it('pins a task added under the filter until the filter changes', async () => {
+    const t = await open1(task('buy milk', 'a0'), task('bread', 'a1'));
+    t.outline.filter = 'milk';
+    await t.press('n', 'eggs', KEY.enter);
+    expect(t.text().find((l) => l.startsWith('▸'))).toContain('eggs');
+    expect(t.selected.at(-1)).toBe(
+      t.store.rows('task').find((r) => r.title === 'eggs')?.id,
+    );
+    t.outline.filter = 'mil';
+    expect(t.text().join('\n')).not.toContain('eggs');
   });
 
   it('Ё and ё match', async () => {
