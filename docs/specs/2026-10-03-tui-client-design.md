@@ -2,8 +2,8 @@
 
 A keyboard-first terminal client in the spirit of
 [todool](https://github.com/Skytrias/todool)'s list mode, next to the CLI.
-It is `apps/tui`, a new package with the binary `todoer-tui`, written with Ink
-on Node. It shares the CLI's replica and session at
+It is `apps/tui`, a new package with the binary `todoer-tui`, written on Node
+(with Ink until 2026-10-22, now with pi-tui: Q1). It shares the CLI's replica and session at
 `~/.config/todoer/todoer.db`, so `todoer login` once serves both. It runs the
 same sync engine as the web client: before the TUI is built, that engine moves
 out of `apps/web` into `@todoer/client-core`. v1 has the list and kanban
@@ -35,8 +35,11 @@ invocations is one command.
 
 ### Ink on Node (Q1)
 
-> Superseded on 2026-10-22: the TUI moves to `@earendil-works/pi-tui` 1.4.0,
-> see [the TUI UX redesign](2026-10-22-tui-ux-redesign-design.md).
+> Superseded on 2026-10-22, and done: the TUI renders with
+> `@earendil-works/pi-tui` 1.4.0, and Ink, React, `ink-text-input` and
+> `ink-testing-library` are gone from `apps/tui`; see
+> [the TUI UX redesign](2026-10-22-tui-ux-redesign-design.md). The Testing
+> and Text input points below describe v1 on Ink.
 
 **Decision.** `apps/tui` renders with Ink 8 (React 19.3+), on the Node 24 the
 repository already runs, with `ink-testing-library` for render tests.
@@ -203,7 +206,7 @@ a sign-in screen, the mouse.
   reported on the status line and not saved. Recurrence offers presets (daily,
   weekdays, weekly on a day, monthly on a date, none) and a raw RRULE checked
   with `parseRrule`; it is disabled for a subtask. Notes open in `$EDITOR`
-  (`vi` when unset) with Ink suspended.
+  (`vi` when unset) with the terminal handed to it.
 - **Changing status.** `m` opens a picker, and the choice is a `move` with
   `statusId`. Moving into the completing status closes the task, as on the
   web; the next occurrence of a recurring task is reported in the status bar.

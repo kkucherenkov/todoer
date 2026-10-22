@@ -1,6 +1,6 @@
 import {
-  Input,
   Key,
+  type Input,
   matchesKey,
   truncateToWidth,
   visibleWidth,
@@ -16,7 +16,9 @@ import {
 } from './outline-tree.js';
 import type { Pane } from './pi/app-shell.js';
 import { colour, sgr } from './style.js';
+import { TaskKeys } from './task-keys.js';
 import type { Tui } from './tui.js';
+import { lineInput } from './ui/line-input.js';
 import { createWrite } from './write.js';
 
 /** Lines the cursor row may take when its title does not fit. */
@@ -41,8 +43,8 @@ type Deps = {
  * overlay over the rows below it (above it near the bottom), so no other row
  * moves. `h`/`l` fold, `>`/`<` re-parent, `J`/`K` move among siblings
  * (manual views only), `o`/`O` add a task or a subtask below the cursor
- * (where the sort puts it in a sorted view), `x`/Space/`s` close, `dd` `y`
- * delete. The caller watches the view's key with the engine and tells this
+ * (where the sort puts it in a sorted view), and the shared task keys
+ * (`TaskKeys`). The caller watches the view's key with the engine and tells this
  * pane which one with `show`.
  */
 export class Outline implements Pane {
@@ -56,25 +58,31 @@ export class Outline implements Pane {
   private cursor: { at: number; id?: string | undefined } = { at: 0 };
   private top = 0;
   private selected: string | null = null;
-  private pendingD = false;
-  private deleting = false;
   private input: Input | null = null;
   private focused = true;
   private readonly write: ReturnType<typeof createWrite>;
+  private readonly keys: TaskKeys;
 
   constructor(private readonly deps: Deps) {
     this.write = createWrite(deps.tui);
+    this.keys = new TaskKeys({ tui: deps.tui, write: this.write });
     deps.tui.topics.subscribe(() => this.sync());
   }
 
   /** A line is being typed: every key is the input's. */
   get inserting(): boolean {
-    return this.input !== null;
+    return this.input !== null || this.keys.inserting;
   }
 
-  /** Waiting for the second `d` or for `y`: the next key is this pane's. */
+  /** An input, a picker, the second `d` or `y`: the next key is this
+   *  pane's. */
   get holding(): boolean {
-    return this.inserting || this.pendingD || this.deleting;
+    return this.input !== null || this.keys.holding;
+  }
+
+  /** The task under the cursor, as `onSelect` last said. */
+  get taskId(): string | null {
+    return this.selected;
   }
 
   /** Without the focus the `▸` is dim. */
@@ -160,49 +168,6 @@ export class Outline implements Pane {
     }));
   }
 
-  /** `x`/Space done or undo, `s` skip, `dd` then `y` delete; true when
-   *  `data` was one of them. */
-  private taskKey(data: string, item: Item): boolean {
-    const { status } = this.deps.tui;
-    const taskId = String(item.id);
-    if (this.deleting) {
-      this.deleting = false;
-      status.clear();
-      if (data === 'y') {
-        void this.write((newId) => ({
-          kind: 'deleteTask',
-          opId: newId(),
-          taskId,
-        }));
-      }
-      return true;
-    }
-    if (data === 'd') {
-      if (!this.pendingD) {
-        this.pendingD = true;
-        return true;
-      }
-      this.pendingD = false;
-      this.deleting = true;
-      status.say({
-        tone: 'info',
-        text: `delete "${String(item.title)}"? y/n`,
-      });
-      return true;
-    }
-    this.pendingD = false;
-    const mark =
-      data === 'x' || data === ' ' ? (item.closed ? 'undo' : 'done') : null;
-    if (mark === null && data !== 's') return false;
-    void this.write((newId) => ({
-      kind: 'mark',
-      opId: newId(),
-      taskId,
-      mark: mark ?? 'skip',
-    }));
-    return true;
-  }
-
   private add(rows: OutlineRow[], at: number, sub: boolean): void {
     const row = rows[at];
     const view = this.view();
@@ -217,41 +182,39 @@ export class Outline implements Pane {
       row === undefined || view === undefined || view.sort !== 'manual'
         ? undefined
         : insertAfter(view.items, row.item, sub);
-    const input = new Input({
-      prompt: sub && parentId !== undefined ? 'new subtask: ' : 'new: ',
+    this.input = lineInput({
+      label: sub && parentId !== undefined ? 'new subtask:' : 'new:',
+      onCancel: () => (this.input = null),
+      onSubmit: (text) => {
+        let id = '';
+        // Open until the write is taken: a refusal keeps the text. The engine
+        // ranks an add first, so a `move` puts it below the cursor; refused,
+        // the task stays where the add put it.
+        void this.write((newId) => {
+          id = newId();
+          return {
+            kind: 'add',
+            opId: newId(),
+            id,
+            text,
+            ...(parentId === undefined ? {} : { parentId }),
+          };
+        }).then(async (r) => {
+          if (!r.ok) return;
+          this.input = null;
+          this.cursor = { at, id };
+          this.sync();
+          if (after === undefined) return;
+          await this.write((newId) => ({
+            kind: 'move',
+            opId: newId(),
+            taskId: id,
+            view: this.key,
+            after,
+          }));
+        });
+      },
     });
-    input.focused = true;
-    input.onEscape = () => (this.input = null);
-    input.onSubmit = (text) => {
-      let id = '';
-      // Open until the write is taken: a refusal keeps the text. The engine
-      // ranks an add first, so a `move` puts it below the cursor; refused,
-      // the task stays where the add put it.
-      void this.write((newId) => {
-        id = newId();
-        return {
-          kind: 'add',
-          opId: newId(),
-          id,
-          text,
-          ...(parentId === undefined ? {} : { parentId }),
-        };
-      }).then(async (r) => {
-        if (!r.ok) return;
-        this.input = null;
-        this.cursor = { at, id };
-        this.sync();
-        if (after === undefined) return;
-        await this.write((newId) => ({
-          kind: 'move',
-          opId: newId(),
-          taskId: id,
-          view: this.key,
-          after,
-        }));
-      });
-    };
-    this.input = input;
   }
 
   handleInput(data: string): void {
@@ -270,7 +233,7 @@ export class Outline implements Pane {
     const row = rows[at];
     // Pin the cursor to the task under it before the key acts on it.
     if (row !== undefined) this.cursor = { at, id: String(row.item.id) };
-    if (row !== undefined && this.taskKey(data, row.item)) return;
+    if (this.keys.handle(data, row?.item, this.key)) return;
     status.clear();
     const taskId = row === undefined ? '' : String(row.item.id);
     // Before the arrows: Alt-↓ is also a plain ↓ to the matcher.
@@ -380,11 +343,10 @@ export class Outline implements Pane {
     const at = this.resolve(rows);
     this.cursor = { at, id: this.cursor.id };
     // A pane with a set height keeps its input line inside it.
+    const below = this.input?.render(width) ?? this.keys.render(width);
     const size = Math.max(
       1,
-      this.height === undefined
-        ? rows.length
-        : this.height - (this.input === null ? 0 : 1),
+      this.height === undefined ? rows.length : this.height - below.length,
     );
     if (at < this.top) this.top = at;
     else if (at >= this.top + size) this.top = at - size + 1;
@@ -408,7 +370,7 @@ export class Outline implements Pane {
       lines.splice(start, full.length, ...full);
       lines.length = Math.min(lines.length, size);
     }
-    if (this.input !== null) lines.push(...this.input.render(width));
+    lines.push(...below);
     return lines.map((l) => truncateToWidth(l, width, '', true));
   }
 

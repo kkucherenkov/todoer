@@ -5,46 +5,52 @@ import {
   truncateToWidth,
 } from '@earendil-works/pi-tui';
 import { ALL } from '@todoer/client-core';
-import { DetailPane } from './detail-pane.js';
+import { Board } from './board.js';
+import { Details } from './details.js';
+import { Help } from './help.js';
 import { columns, modeFor, tooSmall, widths, type Mode } from './layout.js';
 import { Outline } from './outline.js';
 import type { Pane } from './pi/app-shell.js';
 import { Sidebar } from './sidebar.js';
 import { renderStatus } from './status-bar.js';
+import { Statuses } from './statuses.js';
 import { sgr } from './style.js';
 import type { Tui } from './tui.js';
+import { Picker } from './ui/picker.js';
 
 export type Focus = 'sidebar' | 'outline' | 'detail';
 
 const CYCLE: Focus[] = ['sidebar', 'outline', 'detail'];
 
-const HINTS: Record<Focus | 'INSERT', string> = {
+const HINTS: Record<Focus | 'INSERT' | 'board', string> = {
   INSERT: 'Enter save · Esc cancel',
-  sidebar: 'j/k move · Enter open · Tab focus · q quit',
+  sidebar: 'j/k move · Enter open · Tab focus · ? help · q quit',
   outline:
-    'j/k move · o new · x done · dd delete · > < indent · J/K move · e details · Tab focus · [ ] views · r sync · q quit',
-  detail: 'Tab focus · q quit',
+    'j/k move · o new · x done · dd delete · > < indent · J/K move · m status · e details · Tab focus · [ ] views · r sync · ? help · q quit',
+  board:
+    'h/l column · j/k card · H/L move · J/K order · o new · x done · m status · e details · Tab focus · [ ] views · r sync · ? help · q quit',
+  detail: 'j/k field · Enter edit · Tab focus · q quit',
 };
 
-/** The screens Task 1.6 ports from Ink; until then the key says so. */
-const UNPORTED: Record<string, string> = {
-  v: 'the view picker',
-  '?': 'the help',
-  S: 'the statuses screen',
-  m: 'the status picker',
-};
+/** A screen drawn in the outline column (help, view picker, statuses);
+ *  while it is open every key is its. */
+type Screen = Pane & { hints: string; inserting?: boolean };
 
 /**
  * The whole screen: sidebar | outline | detail pane at full height, then the
- * two status lines. Below 120 columns a focused sidebar is drawn over the
- * outline; below 90 the focused detail pane takes the screen. Keys go to the
- * focused pane, except the global ones in NORMAL mode. The root watches the
- * engine for the sidebar's key and the outline's selected task.
+ * two status lines. A kanban view draws the board in the outline column, as
+ * do the help (`?`), the view picker (`v`) and the statuses (`S`). Below 120
+ * columns a focused sidebar is drawn over the outline; below 90 the focused
+ * detail pane takes the screen. Keys go to the focused pane, except the
+ * global ones in NORMAL mode. The root watches the engine for the sidebar's
+ * key and the selected task.
  */
 export class Root implements Pane {
   private readonly sidebar: Sidebar;
   private readonly outline: Outline;
-  private readonly detail: DetailPane;
+  private readonly board: Board;
+  private readonly detail: Details;
+  private screen: Screen | null = null;
   private focusOn: Focus = 'outline';
   private taskId: string | null = null;
   private watching = '';
@@ -57,17 +63,20 @@ export class Root implements Pane {
   private readonly escape: (() => boolean)[] = [
     // Task 2.2: the refusal shown under its field goes here, before the overlay.
     () => this.closeOverlay(),
+    () => this.leaveDetail(),
     // Task 3.3: the `/` filter goes here, last.
   ];
 
   constructor(
     private readonly deps: {
-      tui: Omit<Tui, 'keys'>;
+      tui: Tui;
       rows: () => number;
       columns: () => number;
       quit: () => void;
       /** Asks the terminal for a frame after a change no key caused. */
       redraw?: () => void;
+      /** Gives the terminal to `run` (`$EDITOR`); specs run it directly. */
+      suspend?: (run: () => void) => void;
     },
   ) {
     const { tui } = deps;
@@ -75,15 +84,13 @@ export class Root implements Pane {
       topics: tui.topics,
       onPick: (key) => this.pick(key),
     });
-    this.detail = new DetailPane({ topics: tui.topics });
-    this.outline = new Outline({
+    this.detail = new Details({
       tui,
-      onSelect: (taskId) => {
-        this.taskId = taskId;
-        this.detail.show(taskId);
-        this.watch();
-      },
+      ...(deps.suspend === undefined ? {} : { suspend: deps.suspend }),
     });
+    // Both follow the key; the details show the one the layout draws.
+    this.outline = new Outline({ tui, onSelect: () => this.select() });
+    this.board = new Board({ tui, onSelect: () => this.select() });
     this.setFocus('outline');
     this.watch();
     tui.topics.subscribe(() => {
@@ -124,9 +131,26 @@ export class Root implements Pane {
     );
   }
 
+  /** The board for a kanban view, else the outline. */
+  private get list(): Outline | Board {
+    return this.deps.tui.topics.view(this.sidebar.current)?.layout === 'kanban'
+      ? this.board
+      : this.outline;
+  }
+
+  /** Shows and watches the task under the drawn list's cursor. */
+  private select(): void {
+    const { taskId } = this.list;
+    if (taskId === this.taskId) return;
+    this.taskId = taskId;
+    this.detail.show(taskId);
+    this.watch();
+  }
+
   private pick(key: string): void {
     this.sidebar.current = key;
     this.outline.show(key);
+    this.board.show(key);
     this.watch();
     this.closeOverlay();
   }
@@ -135,6 +159,43 @@ export class Root implements Pane {
     this.focusOn = next;
     this.sidebar.focus(next === 'sidebar');
     this.outline.focus(next === 'outline');
+    this.board.focus(next === 'outline');
+    this.detail.focus(next === 'detail');
+  }
+
+  /** Opens a screen over the outline column, which takes the focus. */
+  private open(screen: Screen): void {
+    this.setFocus('outline');
+    this.screen = screen;
+  }
+
+  private close = () => (this.screen = null);
+
+  private viewPicker(): Screen {
+    const picker = new Picker({
+      title: 'View',
+      items: this.sidebar.rows().map((r) => ({ id: r.key, label: r.name })),
+      initial: this.sidebar.current,
+      onCancel: this.close,
+      onPick: (key) => {
+        this.close();
+        this.pick(key);
+      },
+    });
+    return Object.assign(picker, { hints: 'j/k move · Enter open · Esc back' });
+  }
+
+  /** A line or a picker is open in the focused pane: every key is its. */
+  private get holding(): boolean {
+    return this.focusOn === 'outline'
+      ? this.list.holding
+      : this.focusOn === 'detail' && this.detail.holding;
+  }
+
+  private get inserting(): boolean {
+    return (
+      this.screen?.inserting ?? (this.list.inserting || this.detail.inserting)
+    );
   }
 
   private get mode(): Mode {
@@ -152,6 +213,13 @@ export class Root implements Pane {
     return true;
   }
 
+  /** Esc in the detail column gives the focus back to the outline. */
+  private leaveDetail(): boolean {
+    if (this.focusOn !== 'detail') return false;
+    this.setFocus('outline');
+    return true;
+  }
+
   private step(by: number): void {
     const keys = this.sidebar.rows().map((r) => r.key);
     const at = keys.indexOf(this.sidebar.current);
@@ -161,7 +229,7 @@ export class Root implements Pane {
 
   /** NORMAL-mode keys for the whole screen; true when `data` was one. */
   private global(data: string): boolean {
-    const { engine, status } = this.deps.tui;
+    const { tui } = this.deps;
     if (matchesKey(data, Key.tab)) {
       const at = CYCLE.indexOf(this.focusOn);
       this.setFocus(CYCLE[(at + 1) % CYCLE.length] ?? 'outline');
@@ -170,13 +238,12 @@ export class Root implements Pane {
     else if (data === ']') this.step(1);
     else if (data === '[') this.step(-1);
     else if (data === 'r')
-      void engine.handle({ kind: 'sync', reason: 'manual' }, 'tui');
-    else if (data in UNPORTED) {
-      status.say({
-        tone: 'info',
-        text: `${UNPORTED[data] ?? data} is not ported yet`,
-      });
-    } else return false;
+      void tui.engine.handle({ kind: 'sync', reason: 'manual' }, 'tui');
+    else if (data === 'v') this.open(this.viewPicker());
+    else if (data === '?') this.open(new Help(this.close));
+    else if (data === 'S')
+      this.open(new Statuses({ tui, onClose: this.close }));
+    else return false;
     return true;
   }
 
@@ -188,8 +255,10 @@ export class Root implements Pane {
       if (data === 'q') this.deps.quit();
       return;
     }
-    if (this.focusOn === 'outline' && this.outline.holding) {
-      this.outline.handleInput(data);
+    if (this.screen !== null) return this.screen.handleInput?.(data);
+    if (this.holding) {
+      if (this.focusOn === 'detail') this.detail.handleInput(data);
+      else this.list.handleInput(data);
       return;
     }
     if (matchesKey(data, Key.escape)) {
@@ -198,11 +267,10 @@ export class Root implements Pane {
     }
     if (this.global(data)) return;
     if (this.focusOn === 'sidebar') this.sidebar.handleInput(data);
-    else if (this.focusOn === 'outline') {
-      if (this.mode === 'one' && matchesKey(data, Key.enter)) {
-        this.setFocus('detail');
-      } else this.outline.handleInput(data);
-    }
+    else if (this.focusOn === 'detail') this.detail.handleInput(data);
+    else if (this.mode === 'one' && matchesKey(data, Key.enter)) {
+      this.setFocus('detail');
+    } else this.list.handleInput(data);
   }
 
   render(width: number): string[] {
@@ -218,10 +286,15 @@ export class Root implements Pane {
     const w = widths(width, this.mode);
     const body = rows - 2;
     this.outline.height = body;
-    const inserting = this.outline.inserting;
-    const hints =
-      (inserting ? HINTS.INSERT : HINTS[this.focusOn]) +
-      (this.overlay() ? ' · Esc back' : '');
+    this.board.height = body;
+    const { inserting, list } = this;
+    const hints = inserting
+      ? HINTS.INSERT
+      : (this.screen?.hints ??
+        (this.focusOn === 'outline' && list === this.board
+          ? HINTS.board
+          : HINTS[this.focusOn]) +
+          (this.overlay() || this.focusOn === 'detail' ? ' · Esc back' : ''));
     const status = renderStatus(width, {
       mode: inserting ? 'INSERT' : 'NORMAL',
       sync: this.deps.tui.topics.get('sync'),
@@ -234,7 +307,7 @@ export class Root implements Pane {
         ...status,
       ];
     }
-    let middle = this.outline.render(w.outline);
+    let middle = (this.screen ?? list).render(w.outline);
     if (this.overlay()) {
       // Over the outline, which stays where it is under it.
       const side = widths(width, 'three').sidebar;

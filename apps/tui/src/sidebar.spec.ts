@@ -1,7 +1,7 @@
 import { visibleWidth } from '@earendil-works/pi-tui';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createWrite } from './write.js';
-import { KEY, renderApp } from './pi/test-kit.js';
+import { KEY, renderApp } from './test-kit.js';
 import { Sidebar } from './sidebar.js';
 import { createTopics } from './topics.js';
 

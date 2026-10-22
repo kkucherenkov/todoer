@@ -64,6 +64,22 @@ describe('createShell', () => {
     ]).toEqual(before);
   });
 
+  it('leaves the alternate screen while suspended, then returns', () => {
+    const { terminal, writes } = fakeTerminal();
+    const shell = createShell({ terminal, root, onExit: () => undefined });
+    shell.start();
+    let during = '';
+    shell.suspend(() => (during = writes.join('')));
+    expect(during.lastIndexOf('?1049l')).toBeGreaterThan(
+      during.lastIndexOf('?1049h'),
+    );
+    const after = writes.join('');
+    expect(after.lastIndexOf('?1049h')).toBeGreaterThan(
+      after.lastIndexOf('?1049l'),
+    );
+    shell.stop();
+  });
+
   it('reports the terminal height as rows', () => {
     const { terminal } = fakeTerminal();
     const shell = createShell({ terminal, root, onExit: () => undefined });

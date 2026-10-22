@@ -6,7 +6,6 @@ export type StatusLine = {
   readonly message: Message | null;
   say(message: Message): void;
   clear(): void;
-  /** A property, not a method: `useSyncExternalStore` takes it unbound. */
   subscribe: (listener: () => void) => () => void;
 };
 

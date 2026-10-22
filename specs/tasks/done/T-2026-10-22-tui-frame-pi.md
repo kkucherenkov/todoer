@@ -2,7 +2,9 @@
 
 - Created: 2026-10-22
 - Owner: claude
-- Status: in progress
+- Status: done
+- Completed: 2026-10-22
+- Result: PR pending (branch `feat/tui-frame-pi`)
 - Blockers: —
 - Spec: [TUI UX redesign design](../../../docs/specs/2026-10-22-tui-ux-redesign-design.md)
 - Plan: [docs/plans/2026-10-22-plan-tui-ux-redesign.md](../../../docs/plans/2026-10-22-plan-tui-ux-redesign.md),
@@ -62,10 +64,11 @@ place and quick add come in PR 2 and PR 3.
 ### Definition of Done
 
 - **SC-001** Every screen of today's TUI works in the new frame.
-- [ ] every FR has a test that failed before the code made it pass
+- [x] every FR has a test that failed before the code made it pass
+      (FR-001 by build and typecheck with Ink and React gone)
 - [ ] gates: `PR title (conventional commit)`, `Shell tests`,
-      `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
+      `Workspace tests`, `Lint` (CI on the PR)
+- [x] no document still asserts the behaviour this task replaced
 - [ ] dnote changelog line
 
 ### Steps
@@ -78,6 +81,6 @@ place and quick add come in PR 2 and PR 3.
   `apps/tui/src/outline.ts` (Task 1.4)
 - [x] T005 [FR-002, FR-005, FR-006, FR-007] Root, focus, modes, status bar —
   `apps/tui/src/root.ts`, `status-bar.ts` (Task 1.5)
-- [ ] T006 [FR-001] Port the remaining screens, remove Ink and React, docs
+- [x] T006 [FR-001] Port the remaining screens, remove Ink and React, docs
   (Task 1.6)
 - **Checkpoint:** the TUI runs in the new frame with every screen it had.

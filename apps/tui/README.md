@@ -9,8 +9,9 @@ todoer-tui
 ```
 
 `TODOER_URL`, `TODOER_TOKEN` and `TODOER_TIMEOUT_MS` mean what they mean for
-the CLI. The bottom line lists the keys of the focused pane; Tab moves the
-focus and `q` quits.
+the CLI. The bottom line lists the keys of the focused pane, `?` lists them
+all; Tab moves the focus and `q` quits. It renders with
+`@earendil-works/pi-tui`.
 
 Development: `pnpm -w exec turbo run build test --filter=@todoer/tui...`.
 Tests need no database.

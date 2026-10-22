@@ -55,14 +55,16 @@ async function main(): Promise<number> {
     const terminal = new ProcessTerminal();
     let exited!: (code: number) => void;
     const exit = new Promise<number>((resolve) => (exited = resolve));
-    // The root asks the shell to draw and to quit; the shell is made from
-    // the root, and neither callback runs before it exists.
+    // The root asks the shell to draw, to quit and to lend the terminal to
+    // an editor; the shell is made from the root, and no callback runs
+    // before it exists.
     const root = new Root({
       tui,
       rows: () => terminal.rows,
       columns: () => terminal.columns,
       quit: () => shell.stop(0),
       redraw: () => shell.requestRender(),
+      suspend: (run) => shell.suspend(run),
     });
     const shell = createShell({ terminal, root, onExit: exited });
     shell.start();

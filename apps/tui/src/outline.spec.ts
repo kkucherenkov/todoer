@@ -1,6 +1,6 @@
 import { visibleWidth } from '@earendil-works/pi-tui';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { KEY, fakeServer, renderApp } from './pi/test-kit.js';
+import { KEY, fakeServer, renderApp } from './test-kit.js';
 import { Outline } from './outline.js';
 import { createWrite } from './write.js';
 

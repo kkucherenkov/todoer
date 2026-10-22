@@ -1,7 +1,7 @@
 import { visibleWidth } from '@earendil-works/pi-tui';
 import type { Topics } from '@todoer/client-core';
 import { afterEach, describe, expect, it } from 'vitest';
-import { renderApp } from './pi/test-kit.js';
+import { renderApp } from './test-kit.js';
 import { renderStatus } from './status-bar.js';
 
 let cleanup = () => {};

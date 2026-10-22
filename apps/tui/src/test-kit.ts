@@ -9,10 +9,10 @@ import {
   type Transport,
 } from '@todoer/client-core';
 import { openReplica } from '@todoer/client-core/node-sqlite';
-import type { Tui } from '../tui.js';
-import type { Pane } from './app-shell.js';
-import { createStatusLine } from '../status-line.js';
-import { createTopics, type Topics$ } from '../topics.js';
+import type { Tui } from './tui.js';
+import type { Pane } from './pi/app-shell.js';
+import { createStatusLine } from './status-line.js';
+import { createTopics, type Topics$ } from './topics.js';
 
 export const NOW = new Date('2026-10-03T10:00:00.000Z');
 
@@ -98,10 +98,7 @@ export async function renderApp({
   rows?: number;
   /** Builds the root from the wiring and the viewport's size; the shell
    *  does not exist in specs. */
-  app?: (
-    tui: Omit<Tui, 'keys'>,
-    size: { rows: () => number; columns: () => number },
-  ) => Pane;
+  app?: (tui: Tui, size: { rows: () => number; columns: () => number }) => Pane;
 } = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'todoer-tui-test-'));
   const store = openReplica(join(dir, 'todoer.db'));

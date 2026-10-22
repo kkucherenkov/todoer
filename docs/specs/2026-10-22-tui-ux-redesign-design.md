@@ -229,7 +229,7 @@ client would have to compute counts.
     `preserveScreen: true`;
   - 1.4.0 adds an `exit` hook that restores the terminal after a crash;
     neither version restores it on SIGTERM.
-- `todoer-tui` today: Ink 8 + `ink-text-input`. Panes are framed to their content's height. Status line: `synced · j/k move · o new · x done · e details · m status · [ ] views · ? help · q quit`.
+- `todoer-tui` before this redesign: Ink 8 + `ink-text-input`. Panes are framed to their content's height. Status line: `synced · j/k move · o new · x done · e details · m status · [ ] views · ? help · q quit`.
 - `tuxedo` at 140×36:
   - FILTERS/PROJECTS sidebar with counts, a numbered one-line list, a DETAIL pane with fields and the RAW line;
   - the status line carries `NORMAL`, the hints, the open count, the date and the version.

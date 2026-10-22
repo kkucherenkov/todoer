@@ -1,6 +1,6 @@
 import { visibleWidth } from '@earendil-works/pi-tui';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { KEY, fakeServer, renderApp } from './pi/test-kit.js';
+import { KEY, fakeServer, renderApp } from './test-kit.js';
 import { Root } from './root.js';
 
 let cleanup = () => {};
@@ -121,10 +121,50 @@ describe('Root', () => {
     expect(t.watched().at(-1)).toBe('all');
   });
 
-  it.todo('edits a line in place with Enter (Task 2.1)');
-  it.todo('v opens the view picker (Task 1.6)');
-  it.todo('? shows the help, with > and < for re-parenting (Task 1.6)');
-  it.todo('S opens the statuses screen (Task 1.6)');
+  it('edits a line in place with Enter', async () => {
+    const t = await mount();
+    await t.press('o', 'bread', KEY.enter, KEY.enter);
+    // The editor opens on "bread" with the cursor at its end.
+    await t.press(' @shop', KEY.enter);
+    expect(t.frame()).toContain('bread');
+    expect(t.topics.view('all')?.items[0]?.tags).toEqual(['@shop']);
+    expect(t.status.message).toBeNull();
+  });
+
+  it('v opens the view picker', async () => {
+    const t = await mount([view, task('milk')]);
+    await t.press('v');
+    expect(t.frame()).toContain('View');
+    expect(t.frame()).toContain('› All open');
+    // All open, Today, Upcoming, Mine.
+    await t.press('j', 'j', 'j', KEY.enter);
+    expect(t.root.current).toBe('v1');
+    expect(t.watched().at(-1)).toBe('v1');
+    expect(t.frame()).not.toContain('› All open');
+  });
+
+  it('? shows the help, with > and < for re-parenting', async () => {
+    const t = await mount([task('milk')]);
+    await t.press('?');
+    expect(t.frame()).toMatch(/> <\s+re-parent/);
+    expect(t.frame()).toMatch(/e\s+details/);
+    expect(t.frame()).not.toContain('S-Tab');
+    expect(t.frame()).not.toMatch(/Ctrl/);
+    // Any key closes it and does nothing else.
+    await t.press('x');
+    expect(t.frame()).not.toContain('re-parent');
+    expect(t.topics.view('all')?.items.map((i) => i.title)).toEqual(['milk']);
+  });
+
+  it('S opens the statuses screen', async () => {
+    const t = await mount([task('milk')]);
+    await t.press('S');
+    expect(t.frame()).toContain('Statuses');
+    expect(t.frame()).toMatch(/To do \(\d+\)/);
+    await t.press(KEY.escape);
+    expect(t.frame()).not.toContain('To do (');
+    expect(t.frame()).toContain('milk');
+  });
 
   it('syncs on r: offline shows with the queued count', async () => {
     const t = await mount();
@@ -246,6 +286,12 @@ describe('Root', () => {
     await t.press('j', KEY.enter);
     expect(t.frame()).toContain('Priority');
     expect(t.frame()).not.toContain('milk');
+    expect(
+      t
+        .text()
+        .at(-1)
+        ?.match(/Esc back/g),
+    ).toHaveLength(1);
     await t.press(KEY.escape);
     expect(t.frame()).not.toContain('Priority');
     expect(cursorLine(t.text())).toContain('bread');
@@ -288,10 +334,12 @@ describe('Root', () => {
     expect(t.frame()).toMatch(/this view cannot be shown: \S/);
   });
 
-  it('says m is not ported yet, and e focuses the detail pane', async () => {
+  it('m opens the status picker on an outline row, and e focuses the detail pane', async () => {
     const t = await mount([task('milk')]);
     await t.press('m');
-    expect(t.status.message?.text).toMatch(/not ported yet/);
+    expect(t.frame()).toContain('› To do');
+    await t.press(KEY.escape);
+    expect(t.frame()).not.toContain('› To do');
     await t.press('e');
     expect(t.root.focusAt).toBe('detail');
   });
@@ -311,6 +359,30 @@ describe('Root', () => {
     t.resize(59, 30);
     await t.press('q');
     expect(t.quit).toHaveBeenCalled();
+  });
+
+  it('at 140, Esc in the detail pane gives the focus back to the outline', async () => {
+    const t = await mount([task('milk')]);
+    await t.press('e');
+    expect(t.root.focusAt).toBe('detail');
+    await t.press(KEY.escape);
+    expect(t.root.focusAt).toBe('outline');
+  });
+
+  it('a kanban view draws the board, and the details follow its card', async () => {
+    const board = { ...view, layout: 'kanban' };
+    const t = await mount([
+      { ...status, id: 's2', name: 'Doing', rank: 'a1' },
+      board,
+      task('milk', 'a0', { statusId: 's1', dueOn: '2026-10-08' }),
+      task('bread', 'a0', { statusId: 's2', dueOn: '2026-10-09' }),
+    ]);
+    await t.press('[');
+    expect(t.frame()).toMatch(/To do \(1\)\s+Doing \(1\)/);
+    expect(t.frame()).toMatch(/Due\s+2026-10-08/);
+    await t.press('l');
+    expect(t.frame()).toMatch(/Due\s+2026-10-09/);
+    expect(t.text().at(-1)).toContain('H/L move');
   });
 
   it('with NO_COLOR=1, no frame contains a colour', async () => {

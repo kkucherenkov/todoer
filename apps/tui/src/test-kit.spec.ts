@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { createWrite } from '../write.js';
+import { createWrite } from './write.js';
 import { renderApp } from './test-kit.js';
 
 let cleanup = () => {};

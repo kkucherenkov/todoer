@@ -1,19 +1,17 @@
-import { useSyncExternalStore } from 'react';
 import type { Topic, Topics } from '@todoer/client-core';
 
 /**
  * The engine publishes every topic after every change (it does not diff);
- * this keeps the latest of each and wakes React. `view` and `task` are
- * published per key, so those keep one value per key: the TUI watches one
- * view and at most one task, but a stale publish for the previous key must
- * not overwrite the current one.
+ * this keeps the latest of each and tells the subscribers. `view` and
+ * `task` are published per key, so those keep one value per key: the TUI
+ * watches one view and at most one task, but a stale publish for the
+ * previous key must not overwrite the current one.
  */
 export type Topics$ = {
   publish<T extends Topic>(topic: T, value: Topics[T]): void;
   get<T extends Topic>(topic: T): Topics[T] | undefined;
   view(key: string): Topics['view'] | undefined;
   task(id: string): Topics['task'] | undefined;
-  /** A property, not a method: `useSyncExternalStore` takes it unbound. */
   subscribe: (listener: () => void) => () => void;
 };
 
@@ -43,28 +41,4 @@ export function createTopics(): Topics$ {
       return () => listeners.delete(listener);
     },
   };
-}
-
-/** One topic's latest value; re-renders when anything is published. */
-export function useTopic<T extends Topic>(
-  topics: Topics$,
-  topic: T,
-): Topics[T] | undefined {
-  return useSyncExternalStore(topics.subscribe, () => topics.get(topic));
-}
-
-export function useView(
-  topics: Topics$,
-  key: string,
-): Topics['view'] | undefined {
-  return useSyncExternalStore(topics.subscribe, () => topics.view(key));
-}
-
-export function useTask(
-  topics: Topics$,
-  id: string | null,
-): Topics['task'] | undefined {
-  return useSyncExternalStore(topics.subscribe, () =>
-    id === null ? undefined : topics.task(id),
-  );
 }
