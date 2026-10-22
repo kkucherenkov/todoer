@@ -99,6 +99,11 @@ pull-request rule below. They are the convention this repository works to, and
 the list is what a protection rule should name when one is added.
 
 `Web e2e` and `Image` run next to them as candidates, not required gates yet.
+`Web e2e` runs only when a pull request touches `apps/web`, `apps/backend`,
+`apps/cli`, `packages/`, the root toolchain files (`package.json`,
+`pnpm-lock.yaml`, `pnpm-workspace.yaml`, `turbo.json`, `tsconfig.base.json`)
+or `test.yml`, and on every push to `main`; a skipped run shows as skipped,
+not passed.
 
 ## Never do
 

@@ -212,6 +212,37 @@ jobs:
   # Not a required gate yet (CLAUDE.md, Quality gates): a candidate until it
   # has run green on a few PRs.
   #
+  # Web e2e runs only when a pull request touches what the suite exercises:
+  # the SPA, the backend that serves it, the CLI its fixtures drive, the
+  # shared packages, the toolchain, or this file. A docs- or TUI-only change
+  # skips it. A push to main always runs it. Skipping is safe because Web e2e
+  # is not a required gate; a required one would hang as pending.
+  changes:
+    name: Changes
+    runs-on: ubuntu-latest
+    outputs:
+      web: ${{ steps.diff.outputs.web }}
+    steps:
+      # A pull_request checkout is the merge commit, so HEAD^1 is the base.
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 2
+
+      - id: diff
+        run: |
+          if [ "$GITHUB_EVENT_NAME" != pull_request ]; then
+            echo web=true >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          # A diff that fails runs the suite rather than skipping it.
+          files=$(git diff --name-only HEAD^1 HEAD) || { echo web=true >> "$GITHUB_OUTPUT"; exit 0; }
+          if printf '%s\n' "$files" | grep -Eq \
+            '^(apps/(web|backend|cli)/|packages/|package\.json$|pnpm-lock\.yaml$|pnpm-workspace\.yaml$|turbo\.json$|tsconfig\.base\.json$|\.github/workflows/test\.yml$)'; then
+            echo web=true >> "$GITHUB_OUTPUT"
+          else
+            echo web=false >> "$GITHUB_OUTPUT"
+          fi
+
   # The suite runs the SPA the backend serves from WEB_ROOT, under the CSP it
   # ships, and fails on any violation (worker violations included) and on any
   # request to another origin. Playwright starts the backend itself
@@ -219,6 +250,8 @@ jobs:
   # so turbo's environment filter (trap 2) never applies to it.
   web-e2e:
     name: Web e2e
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
