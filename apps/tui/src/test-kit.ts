@@ -17,7 +17,9 @@ import { createTopics, type Topics$ } from './topics.js';
 export const NOW = new Date('2026-10-03T10:00:00.000Z');
 
 /** A server that applies every op once and serves the rows it holds;
- *  `offline` makes every request fail like a dropped connection. */
+ *  `offline` makes every request fail like a dropped connection, `refuse`
+ *  rejects an op with its reason (unapplied), and `hold` keeps the answer
+ *  until it resolves. */
 export function fakeServer(rows: Change['row'][] = []) {
   const changes: Change[] = rows.map((row, i) => ({
     table: typeof row.table === 'string' ? row.table : 'task',
@@ -26,12 +28,23 @@ export function fakeServer(rows: Change['row'][] = []) {
     row: { deletedAt: null, ...row },
   }));
   const sent: Op[] = [];
-  const state = { offline: false };
+  const state: {
+    offline: boolean;
+    refuse?: (op: Op) => string | undefined;
+    hold?: Promise<void>;
+  } = { offline: false };
   const seen = new Set<string>();
-  const send: Transport = (request: SyncRequest) => {
-    if (state.offline) return Promise.reject(new TypeError('fetch failed'));
+  const send: Transport = async (request: SyncRequest) => {
+    await state.hold;
+    if (state.offline) throw new TypeError('fetch failed');
+    const refused = new Map<string, string>();
     for (const op of request.ops) {
       sent.push(op);
+      const reason = state.refuse?.(op);
+      if (reason !== undefined) {
+        refused.set(op.opId, reason);
+        continue;
+      }
       if (seen.has(op.opId)) continue;
       seen.add(op.opId);
       const seq = changes.length + 1;
@@ -65,15 +78,18 @@ export function fakeServer(rows: Change['row'][] = []) {
     }
     const body = {
       cursor: changes.length,
-      results: request.ops.map((op) => ({ opId: op.opId, status: 'applied' })),
+      results: request.ops.map((op) => {
+        const reason = refused.get(op.opId);
+        return reason === undefined
+          ? { opId: op.opId, status: 'applied' }
+          : { opId: op.opId, status: 'rejected', reason };
+      }),
       changes: changes.filter((c) => c.seq > request.since),
     };
-    return Promise.resolve(
-      new Response(JSON.stringify(body), {
-        status: 200,
-        headers: { 'content-type': 'application/json' },
-      }),
-    );
+    return new Response(JSON.stringify(body), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
   };
   return { send, sent, state };
 }
@@ -176,6 +192,10 @@ export async function renderApp({
         root.handleInput?.(key);
         await settle();
       }
+    },
+    /** Feeds `keys` without settling: a held write stays in flight. */
+    input(...keys: string[]) {
+      for (const key of keys) root.handleInput?.(key);
     },
     resize(w: number, r: number) {
       size.width = w;

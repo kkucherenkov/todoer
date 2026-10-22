@@ -1,0 +1,445 @@
+import {
+  Editor,
+  Key,
+  matchesKey,
+  truncateToWidth,
+  type Component,
+  type TUI,
+} from '@earendil-works/pi-tui';
+import {
+  ALL,
+  createIntent,
+  mint,
+  type Draft,
+  type Result,
+  type Rule,
+  type TaskChanges,
+  type TaskDetails,
+} from '@todoer/client-core';
+import {
+  customRule,
+  describeRule,
+  parseDate,
+  parsePriority,
+  parseTags,
+  presets,
+} from './fields.js';
+import type { Pane } from './pi/app-shell.js';
+import { withEscape } from './pi/adapter.js';
+import { sgr } from './style.js';
+import type { Tui } from './tui.js';
+import { lineInput } from './ui/line-input.js';
+import { Picker } from './ui/picker.js';
+import { createWrite } from './write.js';
+
+type FieldId =
+  | 'title'
+  | 'project'
+  | 'tags'
+  | 'priority'
+  | 'status'
+  | 'scheduledOn'
+  | 'dueOn'
+  | 'repeat'
+  | 'notes';
+const FIELDS: { id: FieldId; label: string }[] = [
+  { id: 'title', label: 'Title' },
+  { id: 'project', label: 'Project' },
+  { id: 'tags', label: 'Tags' },
+  { id: 'priority', label: 'Priority' },
+  { id: 'status', label: 'Status' },
+  { id: 'scheduledOn', label: 'Scheduled' },
+  { id: 'dueOn', label: 'Due' },
+  { id: 'repeat', label: 'Repeat' },
+  { id: 'notes', label: 'Notes' },
+];
+/** A field's label column: the value, an input or an editor starts here. */
+const LABEL = 11;
+const label = (text: string) => `${sgr(2, text.padEnd(LABEL - 1))} `;
+
+const dateOf = (value: unknown) => (typeof value === 'string' ? value : '');
+const priorityOf = (task: TaskDetails) => {
+  const p = Number(task.priority ?? 4);
+  return p < 4 ? `p${String(p)}` : '';
+};
+const linesOf = (text: string) => {
+  const n = text.split('\n').length;
+  return n === 1 ? '1 line' : `${String(n)} lines`;
+};
+const same = (a: unknown, b: unknown) =>
+  JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+
+/** What each row shows; '' reads as "—". */
+function shownOf(
+  task: TaskDetails,
+  statusName: string | undefined,
+): Record<FieldId, string> {
+  return {
+    title: String(task.title),
+    project: task.project ?? '',
+    tags: task.tags.join(' '),
+    priority: priorityOf(task),
+    status: statusName ?? '',
+    scheduledOn: dateOf(task.scheduledOn),
+    dueOn: dateOf(task.dueOn),
+    repeat:
+      typeof task.parentId === 'string'
+        ? 'with its parent'
+        : describeRule(task.rrule),
+    notes: task.notes === null ? '' : linesOf(task.notes),
+  };
+}
+
+/** The field being edited, and whether it is typed into (INSERT). */
+type Open = { field: FieldId; component: Component; typing: boolean };
+
+/**
+ * The selected task's fields as one flat list, then its subtasks with their
+ * progress. Focused, j/k move over both. Enter edits the field where it
+ * stands: an input on its row, a picker for the status and the repeat, the
+ * multi-line `Editor` for the notes. Enter saves, Esc cancels. Each save is
+ * one write, held per task and field as one intent (`createIntent`), so
+ * sending it again is the same operation. x or Space on a subtask ticks it
+ * at the parent's occurrence.
+ */
+export class DetailPane implements Pane {
+  /** Rows the pane shows; past them it scrolls to the cursor. */
+  height: number | undefined;
+  private taskId: string | null = null;
+  private at = 0;
+  private focused = false;
+  private open: Open | null = null;
+  /** One held intent per `taskId field`. */
+  private readonly intents = new Map<string, ReturnType<typeof createIntent>>();
+  private readonly write: ReturnType<typeof createWrite>;
+
+  constructor(
+    private readonly deps: {
+      tui: Pick<Tui, 'engine' | 'newId' | 'status' | 'topics' | 'today'>;
+    },
+  ) {
+    this.write = createWrite(deps.tui);
+  }
+
+  show(taskId: string | null): void {
+    if (taskId !== this.taskId) this.open = null;
+    this.taskId = taskId;
+  }
+
+  focus(on: boolean): void {
+    this.focused = on;
+  }
+
+  /** A field is being edited: every key is the editor's. */
+  get holding(): boolean {
+    return this.open !== null;
+  }
+
+  get inserting(): boolean {
+    return this.open?.typing ?? false;
+  }
+
+  /** The keys of what the cursor is on. */
+  get hints(): string {
+    if (this.open === null) {
+      return this.at < FIELDS.length
+        ? 'j/k field · Enter edit · Tab focus · Esc q back'
+        : 'j/k move · x tick · Tab focus · Esc q back';
+    }
+    if (!this.open.typing) return 'j/k move · Enter pick · Esc cancel';
+    return this.open.field === 'notes'
+      ? 'Enter save · Alt+Enter newline · Esc cancel'
+      : 'Enter save · Esc cancel';
+  }
+
+  private task(): TaskDetails | null | undefined {
+    return this.taskId === null
+      ? null
+      : this.deps.tui.topics.task(this.taskId)?.task;
+  }
+
+  private close = () => (this.open = null);
+
+  /** Sends `draft` as the field's held intent. */
+  private send(taskId: string, field: FieldId, draft: Draft): Promise<Result> {
+    const { engine, newId, status } = this.deps.tui;
+    const key = `${taskId} ${field}`;
+    let intent = this.intents.get(key);
+    if (intent === undefined) {
+      intent = createIntent({
+        mint: (d) => mint(d, newId),
+        write: (w) => engine.handle(w, 'tui'),
+      });
+      this.intents.set(key, intent);
+    }
+    return intent(draft).then((result) => {
+      if (!result.ok && result.failure.kind !== 'unreachable') {
+        status.say({ tone: 'error', text: result.failure.detail });
+      }
+      return result;
+    });
+  }
+
+  /** One `edit` with `changes` alone; nothing when they change nothing. */
+  private edit(
+    task: TaskDetails,
+    field: FieldId,
+    changes: TaskChanges,
+  ): undefined {
+    this.close();
+    const changed = Object.entries(changes).some(([k, v]) => !same(task[k], v));
+    if (changed) {
+      const taskId = String(task.id);
+      void this.send(taskId, field, { kind: 'edit', taskId, changes });
+    }
+    return undefined;
+  }
+
+  /** An input on the field's row. `submit` acts on the text, or says why
+   *  it cannot: that is said on the status line and the text kept. */
+  private line(
+    field: FieldId,
+    initial: string,
+    submit: (text: string) => string | undefined,
+  ): void {
+    const component = lineInput({
+      label: '',
+      initial,
+      onCancel: this.close,
+      onSubmit: (text) => {
+        const problem = submit(text);
+        if (problem !== undefined) {
+          this.deps.tui.status.say({ tone: 'error', text: problem });
+        }
+      },
+    });
+    this.open = { field, component, typing: true };
+  }
+
+  private openField(task: TaskDetails, id: FieldId): void {
+    const { tui } = this.deps;
+    const taskId = String(task.id);
+    const shown = shownOf(task, undefined);
+    const dtstart =
+      task.dtstart ??
+      (typeof task.scheduledOn === 'string' ? task.scheduledOn : tui.today());
+    const date = (field: 'scheduledOn' | 'dueOn') =>
+      this.line(field, shown[field], (text) => {
+        const value = parseDate(text);
+        return value === false
+          ? 'a date is YYYY-MM-DD; empty clears it'
+          : this.edit(task, field, { [field]: value });
+      });
+    switch (id) {
+      case 'title':
+        return this.line(id, shown.title, (title) =>
+          this.edit(task, id, { title }),
+        );
+      case 'project':
+        return this.line(id, shown.project, (text) => {
+          const name = text.trim().replace(/^#/, '');
+          return this.edit(task, id, { project: name === '' ? null : name });
+        });
+      case 'tags':
+        return this.line(id, shown.tags, (text) =>
+          this.edit(task, id, { tags: parseTags(text) }),
+        );
+      case 'priority':
+        return this.line(id, shown.priority, (text) => {
+          const priority = parsePriority(text);
+          return priority === 'invalid'
+            ? 'priority is p0 to p4'
+            : this.edit(task, id, { priority });
+        });
+      case 'status': {
+        const statuses = tui.topics.get('catalog')?.statuses ?? [];
+        if (statuses.length === 0) {
+          tui.status.say({
+            tone: 'info',
+            text: 'no statuses yet — S to add one',
+          });
+          return;
+        }
+        const component = new Picker({
+          items: statuses.map((s) => ({
+            id: s.id,
+            label: s.completing ? `${s.name} ✓` : s.name,
+          })),
+          ...(task.column === null ? {} : { initial: task.column }),
+          onCancel: this.close,
+          onPick: (statusId) => {
+            this.close();
+            if (statusId === task.column) return;
+            void this.send(taskId, id, {
+              kind: 'move',
+              taskId,
+              view: ALL,
+              statusId,
+            });
+          },
+        });
+        this.open = { field: id, component, typing: false };
+        return;
+      }
+      case 'scheduledOn':
+      case 'dueOn':
+        return date(id);
+      case 'repeat': {
+        if (typeof task.parentId === 'string') {
+          tui.status.say({
+            tone: 'info',
+            text: 'a subtask repeats with its parent',
+          });
+          return;
+        }
+        const choices = presets(dtstart);
+        const component = new Picker({
+          items: [
+            ...choices.map((p) => ({ id: p.id, label: p.label })),
+            { id: 'custom', label: 'custom RRULE…' },
+          ],
+          onCancel: this.close,
+          onPick: (pick) => {
+            const preset = choices.find((p) => p.id === pick);
+            const setRule = (rule: Rule | null): undefined => {
+              this.close();
+              void this.send(taskId, id, { kind: 'setRule', taskId, rule });
+              return undefined;
+            };
+            if (preset !== undefined) return setRule(preset.rule(dtstart));
+            this.line(id, task.rrule ?? '', (text) => {
+              const rule = customRule(text, dtstart);
+              return typeof rule === 'string' ? rule : setRule(rule);
+            });
+          },
+        });
+        this.open = { field: id, component, typing: false };
+        return;
+      }
+      case 'notes': {
+        const rows = () => this.height ?? 24;
+        // The editor asks its TUI for the terminal's height (it shows 30% of
+        // it) and for a frame; the root draws after every key anyway.
+        const host = {
+          requestRender: () => undefined,
+          terminal: {
+            get rows() {
+              return rows();
+            },
+          },
+        } as unknown as TUI;
+        const editor = new Editor(host, {
+          borderColor: (s) => sgr(2, s),
+          selectList: {
+            selectedPrefix: (s) => s,
+            selectedText: (s) => s,
+            description: (s) => s,
+            scrollInfo: (s) => s,
+            noMatch: (s) => s,
+          },
+        });
+        editor.focused = true;
+        editor.setText(task.notes ?? '');
+        editor.onSubmit = (text) =>
+          this.edit(task, id, { notes: text === '' ? null : text });
+        this.open = {
+          field: id,
+          component: withEscape(editor, this.close),
+          typing: true,
+        };
+      }
+    }
+  }
+
+  /** x/Space on a subtask: done or undo at the parent's occurrence. */
+  private tick(task: TaskDetails, at: number): void {
+    const sub = task.subtasks[at];
+    if (sub === undefined) return;
+    const on =
+      typeof task.rrule === 'string' && typeof task.occurrence === 'string'
+        ? { on: task.occurrence }
+        : {};
+    void this.write((newId) => ({
+      kind: 'mark',
+      opId: newId(),
+      taskId: sub.id,
+      mark: sub.closed ? 'undo' : 'done',
+      ...on,
+    }));
+  }
+
+  handleInput(data: string): void {
+    if (this.open !== null) {
+      this.open.component.handleInput?.(data);
+      return;
+    }
+    this.deps.tui.status.clear();
+    const task = this.task();
+    const rows = FIELDS.length + (task?.subtasks.length ?? 0);
+    if (data === 'j' || matchesKey(data, Key.down)) {
+      this.at = Math.min(rows - 1, this.at + 1);
+    } else if (data === 'k' || matchesKey(data, Key.up)) {
+      this.at = Math.max(0, this.at - 1);
+    } else if (task == null) {
+      return;
+    } else if (this.at >= FIELDS.length) {
+      if (data === 'x' || data === ' ')
+        this.tick(task, this.at - FIELDS.length);
+    } else if (matchesKey(data, Key.enter)) {
+      const field = FIELDS[this.at];
+      if (field !== undefined) this.openField(task, field.id);
+    }
+  }
+
+  render(width: number): string[] {
+    const task = this.task();
+    const lines =
+      this.taskId === null
+        ? [sgr(2, 'no task selected')]
+        : task === undefined
+          ? [sgr(2, 'loading…')]
+          : task === null
+            ? ['this task is gone']
+            : this.rows(task, width);
+    return lines.map((l) => truncateToWidth(l, width, '…', true));
+  }
+
+  private rows(task: TaskDetails, width: number): string[] {
+    const name = this.deps.tui.topics
+      .get('catalog')
+      ?.statuses.find((s) => s.id === task.column)?.name;
+    const shown = shownOf(task, name);
+    const cursor = (i: number, text: string) =>
+      this.focused && this.open === null && i === this.at ? sgr(7, text) : text;
+    // The cursor's last line: the pane scrolls to keep it in view.
+    let end = 0;
+    const lines = [sgr(1, shown.title)];
+    FIELDS.forEach((f, i) => {
+      if (this.open?.field === f.id) {
+        const inner = this.open.component.render(Math.max(1, width - LABEL));
+        inner.forEach((l, j) =>
+          lines.push((j === 0 ? label(f.label) : ' '.repeat(LABEL)) + l),
+        );
+      } else {
+        lines.push(label(f.label) + cursor(i, shown[f.id] || '—'));
+      }
+      if (i === this.at) end = lines.length;
+    });
+    const subs = task.subtasks;
+    if (subs.length > 0) {
+      const done = subs.filter((s) => s.closed).length;
+      lines.push('', sgr(2, `Subtasks ${String(done)}/${String(subs.length)}`));
+      subs.forEach((s, j) => {
+        lines.push(
+          cursor(FIELDS.length + j, `${s.closed ? '[x]' : '[ ]'} ${s.title}`),
+        );
+        if (FIELDS.length + j === this.at) end = lines.length;
+      });
+    }
+    if (this.height === undefined) return lines;
+    const top = Math.max(0, end - this.height);
+    return lines.slice(top, top + this.height);
+  }
+
+  invalidate(): void {}
+}

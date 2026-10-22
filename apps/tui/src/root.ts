@@ -6,7 +6,7 @@ import {
 } from '@earendil-works/pi-tui';
 import { ALL } from '@todoer/client-core';
 import { Board } from './board.js';
-import { Details } from './details.js';
+import { DetailPane } from './detail-pane.js';
 import { Help } from './help.js';
 import { columns, modeFor, tooSmall, widths, type Mode } from './layout.js';
 import { Outline } from './outline.js';
@@ -22,14 +22,13 @@ export type Focus = 'sidebar' | 'outline' | 'detail';
 
 const CYCLE: Focus[] = ['sidebar', 'outline', 'detail'];
 
-const HINTS: Record<Focus | 'INSERT' | 'board', string> = {
+const HINTS: Record<Exclude<Focus, 'detail'> | 'INSERT' | 'board', string> = {
   INSERT: 'Enter save · Esc cancel',
   sidebar: 'j/k move · Enter open · Tab focus · ? help · q quit',
   outline:
     'j/k move · o new · x done · dd delete · > < indent · J/K move · m status · e details · Tab focus · [ ] views · r sync · ? help · q quit',
   board:
     'h/l column · j/k card · H/L move · J/K order · o new · x done · m status · e details · Tab focus · [ ] views · r sync · ? help · q quit',
-  detail: 'j/k field · Enter edit · Tab focus',
 };
 
 /** A screen drawn in the outline column (help, view picker, statuses);
@@ -49,7 +48,7 @@ export class Root implements Pane {
   private readonly sidebar: Sidebar;
   private readonly outline: Outline;
   private readonly board: Board;
-  private readonly detail: Details;
+  private readonly detail: DetailPane;
   private screen: Screen | null = null;
   private focusOn: Focus = 'outline';
   private taskId: string | null = null;
@@ -75,8 +74,6 @@ export class Root implements Pane {
       quit: () => void;
       /** Asks the terminal for a frame after a change no key caused. */
       redraw?: () => void;
-      /** Gives the terminal to `run` (`$EDITOR`); specs run it directly. */
-      suspend?: (run: () => void) => void;
     },
   ) {
     const { tui } = deps;
@@ -84,10 +81,7 @@ export class Root implements Pane {
       topics: tui.topics,
       onPick: (key) => this.pick(key),
     });
-    this.detail = new Details({
-      tui,
-      ...(deps.suspend === undefined ? {} : { suspend: deps.suspend }),
-    });
+    this.detail = new DetailPane({ tui });
     // Both follow the key; the details show the one the layout draws.
     this.outline = new Outline({ tui, onSelect: () => this.select() });
     this.board = new Board({ tui, onSelect: () => this.select() });
@@ -234,10 +228,10 @@ export class Root implements Pane {
       const at = CYCLE.indexOf(this.focusOn);
       this.setFocus(CYCLE[(at + 1) % CYCLE.length] ?? 'outline');
     } else if (data === 'e') this.setFocus('detail');
-    // In the details `q` goes back, as Esc does (the Ink screen's keys).
-    else if (data === 'q' && this.focusOn === 'detail')
-      this.escape.some((close) => close());
-    else if (data === 'q') this.deps.quit();
+    // In the details `q` goes back (the Ink screen's keys).
+    else if (data === 'q' && this.focusOn === 'detail') {
+      if (!this.closeOverlay()) this.leaveDetail();
+    } else if (data === 'q') this.deps.quit();
     else if (data === ']') this.step(1);
     else if (data === '[') this.step(-1);
     else if (data === 'r')
@@ -292,17 +286,15 @@ export class Root implements Pane {
     this.board.height = body;
     this.detail.height = body;
     const { inserting, list } = this;
-    const hints = inserting
-      ? HINTS.INSERT
-      : (this.screen?.hints ??
-        (this.focusOn === 'outline' && list === this.board
-          ? HINTS.board
-          : HINTS[this.focusOn]) +
-          (this.focusOn === 'detail'
-            ? ' · Esc q back'
-            : this.overlay()
-              ? ' · Esc back'
-              : ''));
+    const hints =
+      this.focusOn === 'detail'
+        ? this.detail.hints
+        : inserting
+          ? HINTS.INSERT
+          : (this.screen?.hints ??
+            (this.focusOn === 'outline' && list === this.board
+              ? HINTS.board
+              : HINTS[this.focusOn]) + (this.overlay() ? ' · Esc back' : ''));
     const status = renderStatus(width, {
       mode: inserting ? 'INSERT' : 'NORMAL',
       sync: this.deps.tui.topics.get('sync'),
