@@ -12,6 +12,8 @@ export interface Pane extends Component {
 
 /** The viewport scroll keys the library binds under `tui.altScreen.*`; the
  *  app scrolls its own lists. */
+// Still consumed by the library before the app sees them: Ctrl+Shift+F
+// (search), Ctrl+Up/Down and Ctrl+Shift+Up/Down (prompt jumps).
 const UNBOUND = {
   'tui.altScreen.pageUp': [],
   'tui.altScreen.pageDown': [],
@@ -33,7 +35,9 @@ export function createShell(deps: {
   onExit: (code: number) => void;
 }) {
   const { terminal, root, onExit } = deps;
-  getKeybindings().setUserBindings(UNBOUND);
+  const keybindings = getKeybindings();
+  const before = keybindings.getUserBindings();
+  keybindings.setUserBindings({ ...before, ...UNBOUND });
   const tui = new TuiAltScreen(terminal, false, undefined, { mouse: false });
   tui.setLayoutRoot(root);
   tui.setFocus(root);
@@ -46,8 +50,12 @@ export function createShell(deps: {
     if (stopped) return;
     stopped = true;
     for (const [signal, handler] of handlers) process.off(signal, handler);
-    tui.stop({ preserveScreen: true });
-    onExit(code);
+    keybindings.setUserBindings(before);
+    try {
+      tui.stop({ preserveScreen: true });
+    } finally {
+      onExit(code);
+    }
   }
   return {
     start(): void {

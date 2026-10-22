@@ -39,9 +39,29 @@ describe('createShell', () => {
     process.emit('SIGTERM');
     expect(onExit).toHaveBeenCalledExactlyOnceWith(143);
     expect(writes.join('')).toContain('?1049l');
-    expect(process.listenerCount('SIGTERM')).toBe(0);
+
     shell.stop();
     expect(onExit).toHaveBeenCalledTimes(1);
+    // preserveScreen: the last frame is not dumped into the scrollback
+    expect(
+      writes.join('').slice(writes.join('').indexOf('?1049l')),
+    ).not.toContain('hello');
+  });
+
+  it('stops on SIGINT and removes its handlers', () => {
+    const before = [
+      process.listenerCount('SIGINT'),
+      process.listenerCount('SIGTERM'),
+    ];
+    const { terminal } = fakeTerminal();
+    const onExit = vi.fn();
+    createShell({ terminal, root, onExit }).start();
+    process.emit('SIGINT');
+    expect(onExit).toHaveBeenCalledExactlyOnceWith(130);
+    expect([
+      process.listenerCount('SIGINT'),
+      process.listenerCount('SIGTERM'),
+    ]).toEqual(before);
   });
 
   it('reports the terminal height as rows', () => {
