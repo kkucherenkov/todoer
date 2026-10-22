@@ -301,6 +301,52 @@ describe('Outline', () => {
     expect(t.frame()).not.toContain('beta');
   });
 
+  it.each([
+    ['Alt-arrows (CSI)', '\u001b[1;3B', '\u001b[1;3A'],
+    ['Alt-arrows (ESC prefix)', KEY.altDown, KEY.altUp],
+  ])('moves with %s', async (_name, down, up) => {
+    const t = await open1(task('alpha', 'a0'), task('beta', 'a1'));
+    await t.press(down);
+    const [a, b] = order(t.text(), 'alpha', 'beta');
+    expect(b).toBeLessThan(a!);
+    await t.press(up);
+    const [a2, b2] = order(t.text(), 'alpha', 'beta');
+    expect(a2).toBeLessThan(b2!);
+  });
+
+  it('keeps the cursor and onSelect on its task when another sorts first', async () => {
+    const t = await open1(task('alpha', 'a0'), task('beta', 'a1'));
+    const calls = t.selected.length;
+    await createWrite(t)((newId) => ({
+      kind: 'add',
+      opId: newId(),
+      id: newId(),
+      text: 'fresh',
+    }));
+    await t.settle();
+    const lines = t.text();
+    expect(lines.findIndex((l) => l.includes('fresh'))).toBeLessThan(
+      lines.findIndex((l) => l.startsWith('▸')),
+    );
+    expect(lines.find((l) => l.startsWith('▸'))).toContain('alpha');
+    expect(t.selected.length).toBe(calls);
+  });
+
+  it('does not call onSelect when the cursor task did not change', async () => {
+    const t = await open1(task('alpha', 'a0'), task('beta', 'a1'));
+    await t.press('j');
+    const calls = t.selected.length;
+    await t.press('j');
+    await createWrite(t)((newId) => ({
+      kind: 'add',
+      opId: newId(),
+      id: newId(),
+      text: 'fresh',
+    }));
+    await t.settle();
+    expect(t.selected.length).toBe(calls);
+  });
+
   it('tells onSelect which task the cursor is on, and null when none', async () => {
     const t = await open1(task('alpha', 'a0'), task('beta', 'a1'));
     expect(t.selected.at(-1)).toBe(id('alpha'));
@@ -402,6 +448,33 @@ describe('Outline cursor row', () => {
       expect(lines.map((l) => visibleWidth(l))).toEqual(lines.map(() => 41));
       await t.press('j');
     }
+  });
+
+  it('never draws more than its height, overlay included', async () => {
+    const t = await open1(...ten(9));
+    t.outline.height = 2;
+    for (let i = 0; i < 9; i += 1) await t.press('j');
+    const lines = t.outline.render(80);
+    expect(lines).toHaveLength(2);
+    expect(plain(lines[1]!).trimEnd().endsWith('…')).toBe(true);
+  });
+
+  it('keeps the due date on the first overlay line', async () => {
+    const t = await open(
+      [
+        { ...task(longTitle, 'a0'), dueOn: '2026-10-05' },
+        task('plain', 'a1'),
+        task('other', 'a2'),
+      ],
+      { width: 60 },
+    );
+    const lines = t.text();
+    expect(lines[0]).toMatch(/word.* 2026-10-05$/);
+    expect(lines[1]).not.toContain('2026');
+    expect(lines[2]?.trimEnd().endsWith('…')).toBe(true);
+    expect(t.lines().map((l) => visibleWidth(l))).toEqual(
+      t.lines().map(() => 60),
+    );
   });
 
   it('scrolls only when the cursor leaves the pane', async () => {

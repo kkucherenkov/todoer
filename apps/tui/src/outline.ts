@@ -24,6 +24,11 @@ const OVERLAY = 3;
 const RED = 31;
 const YELLOW = 33;
 
+/** Alt-arrow, in the modifyOtherKeys form and as ESC ESC [ A/B. */
+const alt = (data: string, dir: 'up' | 'down') =>
+  matchesKey(data, Key.alt(dir)) ||
+  data === (dir === 'up' ? '\u001b\u001b[A' : '\u001b\u001b[B');
+
 type Deps = {
   tui: Pick<Tui, 'engine' | 'newId' | 'status' | 'topics' | 'today'>;
   /** The task under the cursor, or null; fires when it changes. */
@@ -84,7 +89,13 @@ export class Outline implements Pane {
   /** Tells `onSelect` when the task under the cursor changed. */
   private sync(): void {
     const rows = this.rows();
-    const row = rows[this.resolve(rows)];
+    const at = this.resolve(rows);
+    const row = rows[at];
+    // Anchor to a task from the first row on, so a later publish that sorts
+    // another task first does not carry the cursor with the index.
+    if (row !== undefined && this.cursor.id === undefined) {
+      this.cursor = { at, id: String(row.item.id) };
+    }
     const next = row === undefined ? null : String(row.item.id);
     if (next === this.selected) return;
     this.selected = next;
@@ -246,7 +257,13 @@ export class Outline implements Pane {
     if (row !== undefined && this.taskKey(data, row.item)) return;
     status.clear();
     const taskId = row === undefined ? '' : String(row.item.id);
-    if (data === 'j' || matchesKey(data, Key.down)) this.go(rows, at + 1);
+    // Before the arrows: Alt-↓ is also a plain ↓ to the matcher.
+    if (row !== undefined && (data === 'J' || alt(data, 'down'))) {
+      this.move(taskId, 1);
+    } else if (row !== undefined && (data === 'K' || alt(data, 'up'))) {
+      this.move(taskId, -1);
+    } else if (data === 'j' || matchesKey(data, Key.down))
+      this.go(rows, at + 1);
     else if (data === 'k' || matchesKey(data, Key.up)) this.go(rows, at - 1);
     else if (data === 'o') this.add(rows, at, false);
     else if (row === undefined) return;
@@ -255,9 +272,7 @@ export class Outline implements Pane {
       if (row.children > 0) this.fold(taskId, true);
     } else if (data === 'l' || matchesKey(data, Key.right)) {
       this.fold(taskId, false);
-    } else if (data === 'J') this.move(taskId, 1);
-    else if (data === 'K') this.move(taskId, -1);
-    else if (data === '<') {
+    } else if (data === '<') {
       // Also a subtask whose parent this view does not list.
       if (typeof row.item.parentId === 'string') this.reparent(taskId, null);
     } else if (data === '>') {
@@ -302,26 +317,45 @@ export class Outline implements Pane {
     return { head, title: orphan + String(item.title), meta };
   }
 
-  private line(r: OutlineRow, cursor: boolean, width: number): string[] {
+  /** One row; the cursor row may take up to `lines` lines when its title
+   *  does not fit. The first keeps the meta, the rest are all title. */
+  private line(
+    r: OutlineRow,
+    cursor: boolean,
+    width: number,
+    lines = OVERLAY,
+  ): string[] {
     const { head, title, meta: all } = this.parts(r, cursor);
     const meta = truncateToWidth(all, Math.floor(width / 2), '…');
     const headWidth = visibleWidth(head);
-    const room = width - headWidth - (meta === '' ? 0 : visibleWidth(meta) + 1);
+    const room = Math.max(
+      1,
+      width - headWidth - (meta === '' ? 0 : visibleWidth(meta) + 1),
+    );
     const style = (text: string) =>
       cursor ? sgr(1, text) : r.item.closed ? sgr(2, text) : text;
+    const tail = meta === '' ? '' : ` ${sgr(2, meta)}`;
     if (!cursor || visibleWidth(title) <= room) {
-      const cut = truncateToWidth(title, Math.max(0, room), '…', true);
-      const dimMeta = meta === '' ? '' : ` ${sgr(2, meta)}`;
-      return [head + style(cut) + dimMeta];
+      return [head + style(truncateToWidth(title, room, '…', true)) + tail];
     }
-    const wrapped = wrapTextWithAnsi(title, Math.max(1, width - headWidth));
-    const shown = wrapped.slice(0, OVERLAY);
-    if (wrapped.length > OVERLAY) {
-      const last = shown[OVERLAY - 1] ?? '';
-      shown[OVERLAY - 1] = truncateToWidth(`${last}…`, width - headWidth, '…');
-    }
-    return shown.map((text, i) =>
-      i === 0 ? head + style(text) : ' '.repeat(headWidth) + style(text),
+    const first = wrapTextWithAnsi(title, room)[0] ?? '';
+    const rest = title.startsWith(first)
+      ? title.slice(first.length).trimStart()
+      : '';
+    const wrapped =
+      rest === '' ? [] : wrapTextWithAnsi(rest, width - headWidth);
+    const more = wrapped.slice(0, lines - 1);
+    const cut = wrapped.length > more.length || (lines === 1 && rest !== '');
+    // The last shown line ends in `…` when the title goes on.
+    const text = [first, ...more].map((t, i, all) =>
+      cut && i === all.length - 1
+        ? truncateToWidth(`${t}…`, i === 0 ? room : width - headWidth, '…')
+        : t,
+    );
+    return text.map((t, i) =>
+      i === 0
+        ? head + style(truncateToWidth(t, room, '', true)) + tail
+        : ' '.repeat(headWidth) + style(t),
     );
   }
 
@@ -329,7 +363,13 @@ export class Outline implements Pane {
     const rows = this.rows();
     const at = this.resolve(rows);
     this.cursor = { at, id: this.cursor.id };
-    const size = Math.max(1, this.height ?? rows.length);
+    // A pane with a set height keeps its input line inside it.
+    const size = Math.max(
+      1,
+      this.height === undefined
+        ? rows.length
+        : this.height - (this.input === null ? 0 : 1),
+    );
     if (at < this.top) this.top = at;
     else if (at >= this.top + size) this.top = at - size + 1;
     this.top = Math.max(0, Math.min(this.top, rows.length - size));
@@ -340,11 +380,12 @@ export class Outline implements Pane {
         : shown.map((r) => this.line(r, false, width)[0] ?? '');
     const over = shown[at - this.top];
     if (over !== undefined) {
-      const full = this.line(over, true, width);
+      const full = this.line(over, true, width, Math.min(OVERLAY, size));
       const r = at - this.top;
       const start =
         r + full.length <= size ? r : Math.max(0, r - full.length + 1);
       lines.splice(start, full.length, ...full);
+      lines.length = Math.min(lines.length, size);
     }
     if (this.input !== null) lines.push(...this.input.render(width));
     return lines.map((l) => truncateToWidth(l, width, '', true));
