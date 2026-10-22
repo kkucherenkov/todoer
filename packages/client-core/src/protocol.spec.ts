@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BATCH_REFUSED,
   ConflictError,
+  NOT_APPLIED,
   ownOutcome,
   RefusalError,
   refusalOf,
@@ -57,6 +58,8 @@ describe('refusalOf: retryable when the server kept no verdict', () => {
 
   it('a rolled-back op and a batch refused whole are retryable', () => {
     expect(reject('could not be applied')).toMatchObject({ retryable: true });
+    // Clients' fake servers read the reason from here, not from a copy.
+    expect(NOT_APPLIED).toBe('could not be applied');
     expect(reject(`${BATCH_REFUSED}400 bad`)).toMatchObject({
       retryable: true,
     });

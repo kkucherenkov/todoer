@@ -8,7 +8,7 @@ import type { Item } from '@todoer/client-core';
 import { columns, moveAfterIn, visible } from './board-columns.js';
 import type { Pane } from './pi/app-shell.js';
 import { colour, sgr } from './style.js';
-import { TaskKeys } from './task-keys.js';
+import { alt, TaskKeys } from './task-keys.js';
 import type { Tui } from './tui.js';
 import { lineInput } from './ui/line-input.js';
 import { createWrite } from './write.js';
@@ -16,11 +16,6 @@ import { createWrite } from './write.js';
 /** A column's width; more columns than fit scroll instead of narrowing. */
 const COLUMN = 22;
 const CYAN = 36;
-
-/** Alt-arrow, in the modifyOtherKeys form and as ESC ESC [ A/B. */
-const alt = (data: string, dir: 'up' | 'down') =>
-  matchesKey(data, Key.alt(dir)) ||
-  data === (dir === 'up' ? '\u001b\u001b[A' : '\u001b\u001b[B');
 
 /**
  * The kanban layout: one column per status, the engine's `boardTasks` (the

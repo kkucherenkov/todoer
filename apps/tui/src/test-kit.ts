@@ -5,6 +5,7 @@ import type { Change, Op, SyncRequest } from '@todoer/specs';
 import {
   createEngine,
   localDate,
+  NOT_APPLIED,
   type Engine,
   type Transport,
 } from '@todoer/client-core';
@@ -18,7 +19,7 @@ export const NOW = new Date('2026-10-03T10:00:00.000Z');
 
 /** The backend's reason for an op whose transaction rolled back: it keeps
  *  no verdict for it, so the same opId is judged afresh. */
-export const NOT_APPLIED = 'could not be applied';
+export { NOT_APPLIED };
 
 /** A server that applies every op once and serves the rows it holds;
  *  `offline` makes every request fail like a dropped connection, `status`
