@@ -1,7 +1,7 @@
 import { Text } from 'ink';
 import type { ComponentType } from 'react';
 import { BoardPane } from './board.js';
-import { OutlinePane } from './outline.js';
+import { OutlinePane } from './ink-outline.js';
 import type { PaneProps } from './screens.js';
 
 /** One pane per layout; calendar is not in v1. */
