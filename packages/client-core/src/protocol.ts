@@ -59,7 +59,7 @@ export const BATCH_REFUSED =
  *  (apps/backend/src/sync/sync.service.ts, applyOne's catch): no verdict is
  *  recorded for it. Pinned by apps/backend/src/sync/sync.service.spec.ts;
  *  change both together. */
-const NOT_APPLIED = 'could not be applied';
+export const NOT_APPLIED = 'could not be applied';
 
 /** A rejection; retryable when the server recorded no verdict for it. */
 export const rejected = (reason: string): Refusal => ({

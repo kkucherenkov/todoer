@@ -20,16 +20,22 @@ field opens it in place, Enter saves and Esc cancels (in the notes Alt+Enter
 or Shift+Enter starts a new line). A change the server refuses stays on its
 field, marked `✗` with the saved value beside yours and the reason; Esc
 drops it, and Enter reopens the field with your value to save it again as a
-new change. When the server kept no verdict (it refused the request whole,
-or could not apply it), `r` sends the same change again. Offline, or refused
-for the session or the rate (401, 403, 429), a change is queued instead, and
-the status line says why.
+new change. When no verdict was kept (no answer, an unexpected error, or the
+server refused the request whole or could not apply it), `r` sends the same
+change again. Offline, or refused for the session or the rate (401, 403,
+429), a change is queued instead, and the status line says why. While the
+pane has the focus it stays on its task, even when a save moves the task out
+of the view; a field left open when another client deletes the task keeps
+your text until Esc.
 
 `n` (or `o`; `O` for a subtask) opens a new task's row in the outline where
 the task will appear; type it in the quick-add grammar (`buy milk #home @shop
 p1`), Enter adds it and Esc drops the row. A refused add stays in its row with
 the reason, under the same rule: Enter reopens the text, `r` resends it when
 the server kept no verdict, Esc drops it.
+
+Enter (or `i`) edits a task's line in the outline; below 90 columns Enter
+opens its details instead and `i` edits the line.
 
 A kanban view draws the board across the outline and detail columns; Enter
 shows the card's details over it and Esc closes them. Below 90 columns it

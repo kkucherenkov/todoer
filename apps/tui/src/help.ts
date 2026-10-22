@@ -1,15 +1,20 @@
 import type { Pane } from './pi/app-shell.js';
 
 /** The keys, two to a line. Reparent is `>`/`<`: Tab moves the focus. The
- *  keys pi-tui keeps for itself are not listed, nor bound. */
-const HELP = [
+ *  keys pi-tui keeps for itself are not listed, nor bound. Below 90 columns
+ *  Enter opens the details and `i` alone edits the line. */
+const help = (narrow: boolean) => [
   'j k ↓ ↑   move            n o O   new task / subtask',
-  'h l ← →   fold / column   Enter i edit the line',
+  narrow
+    ? 'h l ← →   fold / column   i       edit the line'
+    : 'h l ← →   fold / column   Enter i edit the line',
   'J K       move the task   x Space done / undo',
   'H L       board column    s       skip occurrence',
   '> <       re-parent       m       status',
   'e         details         dd y    delete',
-  'Enter     card details    /       filter, Esc clears',
+  narrow
+    ? 'Enter     details         /       filter, Esc clears'
+    : 'Enter     card details    /       filter, Esc clears',
   'Tab       next pane       [ ] v   views',
   'S         statuses        r       sync, retry a ✗',
   '?         this help       q       quit, back in details',
@@ -19,14 +24,17 @@ const HELP = [
 export class Help implements Pane {
   readonly hints = 'any key back';
 
-  constructor(private readonly onClose: () => void) {}
+  constructor(
+    private readonly onClose: () => void,
+    private readonly narrow = false,
+  ) {}
 
   handleInput(): void {
     this.onClose();
   }
 
   render(): string[] {
-    return HELP;
+    return help(this.narrow);
   }
 
   invalidate(): void {}

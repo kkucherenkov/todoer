@@ -184,6 +184,47 @@ describe('Root', () => {
     expect(t.quit).toHaveBeenCalled();
   });
 
+  for (const width of [60, 61, 62]) {
+    it(`signed out at ${String(width)} columns, each line is exactly the width`, async () => {
+      const t = await mount([], { width, height: 24 });
+      t.topics.publish('session', { state: 'signed-out', reason: null });
+      await t.settle();
+      const [first, second] = t.text();
+      expect(visibleWidth(first ?? '')).toBe(width);
+      expect(first).toMatch(/…$/);
+      expect(visibleWidth(second ?? '')).toBe(width);
+    });
+  }
+
+  it('the hints and the help name what Enter does at the width', async () => {
+    const t = await mount([task('milk')]);
+    expect(t.text().at(-1)).toContain('Enter i edit');
+    await t.press('?');
+    expect(t.frame()).toMatch(/Enter i edit the line/);
+    await t.press('x');
+    t.resize(80, 24);
+    expect(t.text().at(-1)).toContain('Enter details · i edit');
+    await t.press('?');
+    expect(t.frame()).not.toMatch(/Enter i edit/);
+    expect(t.frame()).toMatch(/\bi\s+edit the line/);
+    expect(t.frame()).toMatch(/Enter\s+details/);
+  });
+
+  it('the board’s add shows saving… while it waits, as the outline does', async () => {
+    const board = { ...view, layout: 'kanban' };
+    const t = await mount([board, task('milk', 'a0', { statusId: 's1' })]);
+    await t.press('[', 'n', 'eggs');
+    t.server.state.hold = true;
+    t.input(KEY.enter);
+    await t.server.until(1);
+    expect(t.text().at(-1)).toMatch(/^saving…/);
+    expect(t.text().at(-2)).toMatch(/^NORMAL/);
+    t.server.state.hold = false;
+    t.server.held.forEach((release) => release());
+    await t.settle();
+    expect(t.frame()).toContain('eggs');
+  });
+
   it('leaves global keys to a line being typed', async () => {
     const t = await mount([view]);
     // q would quit, ] switch views, ? open the help.
@@ -325,6 +366,22 @@ describe('Root', () => {
     await t.settle();
     expect(t.root.current).toBe('all');
     expect(t.watched().at(-1)).toBe('all');
+  });
+
+  it('at 80, a view deleted under an open editor keeps it and its focus', async () => {
+    const t = await mount([view, task('milk')], { width: 80 });
+    await t.press('[', KEY.enter, KEY.enter);
+    expect(t.text().at(-2)).toMatch(/^INSERT/);
+    await t.engine.handle(
+      { kind: 'deleteView', opId: t.newId(), id: 'v1' },
+      'tui',
+    );
+    await t.settle();
+    expect(t.root.current).toBe('all');
+    expect(t.root.focusAt).toBe('detail');
+    expect(t.text().at(-2)).toMatch(/^INSERT/);
+    await t.press('X', KEY.enter);
+    expect(t.store.rows('task')[0]?.title).toBe('milkX');
   });
 
   it('says why a view cannot be shown', async () => {

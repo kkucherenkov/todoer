@@ -21,9 +21,10 @@ import {
   outline,
   type OutlineRow,
 } from './outline-tree.js';
+import { retryable } from './failure.js';
 import type { Pane } from './pi/app-shell.js';
 import { colour, sgr } from './style.js';
-import { TaskKeys } from './task-keys.js';
+import { alt, TaskKeys } from './task-keys.js';
 import type { Tui } from './tui.js';
 import { lineInput } from './ui/line-input.js';
 import { createWrite } from './write.js';
@@ -35,11 +36,6 @@ const YELLOW = 33;
 
 /** What a filter compares: NFC, case-folded; nothing else is folded. */
 const fold = (text: string) => text.normalize('NFC').toLowerCase();
-
-/** Alt-arrow, in the modifyOtherKeys form and as ESC ESC [ A/B. */
-const alt = (data: string, dir: 'up' | 'down') =>
-  matchesKey(data, Key.alt(dir)) ||
-  data === (dir === 'up' ? '\u001b\u001b[A' : '\u001b\u001b[B');
 
 /** A new task on the row where it will appear: typed, saving, or
  *  refused. */
@@ -345,12 +341,8 @@ export class Outline implements Pane {
     void this.intent(draft)
       .then(async (r) => {
         if (!r.ok) {
-          const { kind, detail, retryable } = r.failure;
           // Refused for good, or input the core turned down: a new add.
-          fail(
-            detail,
-            kind === 'refused' ? retryable === true : kind !== 'invalid',
-          );
+          fail(r.failure.detail, retryable(r.failure));
           return;
         }
         const { id } = draft;

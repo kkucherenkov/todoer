@@ -7,6 +7,11 @@ import { lineInput } from './ui/line-input.js';
 import { statusPicker } from './ui/status-picker.js';
 import type { createWrite } from './write.js';
 
+/** Alt-arrow, in the modifyOtherKeys form and as ESC ESC [ A/B. */
+export const alt = (data: string, dir: 'up' | 'down') =>
+  matchesKey(data, Key.alt(dir)) ||
+  data === (dir === 'up' ? '\u001b\u001b[A' : '\u001b\u001b[B');
+
 /**
  * The task keys the outline and the board share: `x`/Space done or undo,
  * `s` skip, `dd` then `y` delete, `m` status, Enter/`i` edit the line in

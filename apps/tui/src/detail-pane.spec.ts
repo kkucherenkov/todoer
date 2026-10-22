@@ -5,10 +5,14 @@ import {
   visibleWidth,
 } from '@earendil-works/pi-tui';
 import { fakeServer, KEY, NOT_APPLIED, renderApp } from './test-kit.js';
+import type { Failure } from '@todoer/client-core';
 import { Root } from './root.js';
 
 let cleanup = () => {};
-afterEach(() => cleanup());
+afterEach(() => {
+  cleanup();
+  vi.unstubAllEnvs();
+});
 
 /** A screen row's text without the pane's box edge, so the specs read the
  *  pane's own lines. */
@@ -368,7 +372,7 @@ describe('DetailPane', () => {
     for (const line of t.lines()) expect(visibleWidth(line)).toBe(80);
   });
 
-  it('closes an open field when the shown task changes', async () => {
+  it('keeps an open field when another client deletes its task', async () => {
     const t = await details(
       [task('milk', { projectId: 'p-home' }), task('bread', { rank: 'a1' })],
       { width: 140 },
@@ -383,9 +387,41 @@ describe('DetailPane', () => {
       'tui',
     );
     await t.settle();
-    expect(t.lastFrame()).toMatch(/Title\s+bread/);
+    expect(t.lastFrame()).toMatch(/Project\s+homex/);
+    expect(t.lastFrame()).toContain('this task was deleted');
+    expect(mode(t)).toMatch(/^INSERT/);
+    const sent = t.server.sent.length;
+    await t.press(KEY.enter);
+    expect(t.server.sent.length).toBe(sent);
+    expect(t.lastFrame()).toMatch(/Project\s+homex/);
+    await t.press(KEY.escape);
     expect(mode(t)).toMatch(/^NORMAL/);
-    expect(t.lastFrame()).not.toMatch(/Project\s+homex/);
+    expect(t.lastFrame()).toContain('this task is gone');
+    await t.press(KEY.escape);
+    expect(t.lastFrame()).toMatch(/Title\s+bread/);
+  });
+
+  it('keeps the notes editor and its text when its task is deleted', async () => {
+    const t = await details([task('milk'), task('bread', { rank: 'a1' })], {
+      width: 140,
+    });
+    await t.press(...down(AT.notes), KEY.enter, 'whole');
+    await t.engine.handle(
+      {
+        kind: 'deleteTask',
+        opId: '00000000-0000-7000-a000-000000000004',
+        taskId: id('milk'),
+      },
+      'tui',
+    );
+    await t.settle();
+    expect(t.lastFrame()).toContain('this task was deleted');
+    expect(t.lastFrame()).toMatch(/\bwhole\b/);
+    const sent = t.server.sent.length;
+    await t.press(KEY.enter);
+    expect(t.server.sent.length).toBe(sent);
+    expect(t.lastFrame()).toMatch(/\bwhole\b/);
+    expect(mode(t)).toMatch(/^INSERT/);
   });
 
   it('leaves with q like Esc, back on the same task', async () => {
@@ -400,6 +436,146 @@ describe('DetailPane', () => {
     expect(t.lastFrame()).not.toContain('Repeat');
     expect(t.lastFrame()).toMatch(/▸ ○ bread/);
     expect(t.lastFrame()).toContain('j/k move');
+  });
+});
+
+describe('DetailPane pinned to its task', () => {
+  // A project view's filter wants uuids.
+  const HOME = '00000000-0000-7000-b000-000000000001';
+  const WORK = '00000000-0000-7000-b000-000000000002';
+  const serve = (rows: Record<string, unknown>[]) =>
+    fakeServer([
+      status('s1', 'To do', 'a0'),
+      status('s2', 'Doing', 'a1'),
+      project(HOME, 'home'),
+      project(WORK, 'work'),
+      ...rows,
+    ]);
+  const two = (a: object = {}, b: object = a) => [
+    task('milk', a),
+    task('bread', { rank: 'a1', ...b }),
+  ];
+  /** The details at 140 on view `step` presses of `]` from All open. */
+  async function on(
+    rows: Record<string, unknown>[],
+    step: number,
+    server = serve(rows),
+  ) {
+    const t = await details(rows, { width: 140, server });
+    await t.press(KEY.escape, ...Array<string>(step).fill(']'), 'e');
+    expect(t.lastFrame()).toMatch(/Title\s+milk/);
+    return t;
+  }
+  /** Saved, the task left the view; the pane and its cursor stay. */
+  async function stays(t: Details) {
+    expect(t.lastFrame()).toMatch(/Title\s+milk/);
+    // The next edit is on the same task and the same field.
+    await t.press(KEY.enter);
+    expect(t.lastFrame()).toMatch(/Title\s+milk/);
+    await t.press(KEY.escape, KEY.escape);
+    // Back in the outline, the details follow its cursor again.
+    expect(t.lastFrame()).toMatch(/Title\s+bread/);
+  }
+
+  it('Project: saving work in project:home keeps the pane on the task', async () => {
+    const t = await on(two({ projectId: HOME }), 3);
+    await t.press(...down(AT.project), KEY.enter, ...erase(4), 'work');
+    await t.press(KEY.enter);
+    expect(row(t)?.projectId).toBe(WORK);
+    expect(t.lastFrame()).not.toMatch(/▸ ○ milk/);
+    await t.press(KEY.enter, ...erase(4), 'shop', KEY.enter);
+    expect(
+      t.store.rows('project').find((p) => p.name === 'shop'),
+    ).toBeDefined();
+    expect(row(t, 'bread')?.projectId).toBe(HOME);
+    await stays(t);
+  });
+
+  it('Due: moving it out of Today keeps the pane on the task', async () => {
+    const t = await on(two({ dueOn: '2026-10-03' }), 1);
+    await t.press(...down(AT.due), KEY.enter, ...erase(10), '2026-12-01');
+    await t.press(KEY.enter);
+    expect(row(t)?.dueOn).toBe('2026-12-01');
+    await stays(t);
+  });
+
+  it('Scheduled: moving it out of Today keeps the pane on the task', async () => {
+    const t = await on(two({ scheduledOn: '2026-10-03' }), 1);
+    await t.press(...down(5), KEY.enter, ...erase(10), '2026-12-01');
+    await t.press(KEY.enter);
+    expect(row(t)?.scheduledOn).toBe('2026-12-01');
+    await stays(t);
+  });
+
+  it('Tags: clearing the tag in its view keeps the pane on the task', async () => {
+    const t = await details(two(), { width: 140, server: serve(two()) });
+    await t.press(...down(2), KEY.enter, 'shop', KEY.enter, KEY.escape);
+    // The pane's cursor stays on Tags.
+    await t.press('j', 'e', KEY.enter, 'shop', KEY.enter);
+    await t.press(KEY.escape, 'k');
+    // All open, Today, Upcoming, home, work, @shop.
+    await t.press(...Array<string>(5).fill(']'), 'e');
+    expect(t.lastFrame()).toMatch(/Title\s+milk/);
+    expect(t.lastFrame()).toMatch(/○ bread/);
+    await t.press(KEY.enter, ...erase(5), KEY.enter);
+    expect(t.lastFrame()).not.toMatch(/▸ ○ milk/);
+    await stays(t);
+  });
+
+  it('Status on the board: the pane stays and the board follows the card', async () => {
+    const kanban = {
+      table: 'view',
+      id: 'v1',
+      name: 'Board',
+      layout: 'kanban',
+      sort: 'manual',
+      filter: { and: [] },
+      rank: 'a0',
+      version: 1,
+    };
+    const rows = [kanban, ...two({ statusId: 's1' })];
+    const t = await details(rows, { width: 140, server: serve(rows) });
+    await t.press(KEY.escape, '[', KEY.enter);
+    expect(t.lastFrame()).toMatch(/Title\s+milk/);
+    await t.press(...down(AT.status), KEY.enter, 'j', KEY.enter);
+    expect(row(t)?.statusId).toBe('s2');
+    expect(t.lastFrame()).toMatch(/Title\s+milk/);
+    expect(t.lastFrame()).toMatch(/Status\s+Doing/);
+    await t.press(KEY.escape);
+    expect(t.lastFrame()).toMatch(/▸ milk/);
+  });
+
+  it('a refusal stays on its task after it left the view', async () => {
+    const rows = two({ projectId: HOME });
+    const server = serve(rows);
+    server.state.refuse = (op) =>
+      op.kind === 'set' && op.field === 'dueOn' ? 'not today' : undefined;
+    const t = await on(rows, 3, server);
+    await t.press(...down(AT.project), KEY.enter, ...erase(4), 'work');
+    await t.press(KEY.enter, ...down(AT.due - AT.project), KEY.enter);
+    await t.press('2026-12-01', KEY.enter);
+    expect(t.lastFrame()).toMatch(/Title\s+milk/);
+    expect(t.lastFrame()).toMatch(/Due\s+✗ 2026-12-01/);
+  });
+
+  it('another client moving the task out of the view keeps the pane on it', async () => {
+    const t = await on(two({ projectId: HOME }), 3);
+    await t.press(...down(AT.notes), KEY.enter, 'whole');
+    await t.engine.handle(
+      {
+        kind: 'edit',
+        opId: '00000000-0000-7000-a000-000000000005',
+        taskId: id('milk'),
+        changes: { project: 'work' },
+      },
+      'tui',
+    );
+    await t.settle();
+    expect(t.lastFrame()).toMatch(/Title\s+milk/);
+    expect(t.lastFrame()).toMatch(/\bwhole\b/);
+    expect(mode(t)).toMatch(/^INSERT/);
+    await t.press(KEY.enter);
+    expect(row(t)?.notes).toBe('whole');
   });
 });
 
@@ -596,6 +772,52 @@ describe('DetailPane refusals', () => {
     await t.press('k');
     expect(detail()).toMatch(/Title\s+milk/);
     expect(detail()).toMatch(/Project\s+✗ work/);
+  });
+
+  /** The pane's next edit fails with `failure`; the opIds of its edits. */
+  const failing = (t: Details, failure: Failure) => {
+    const real = t.engine.handle.bind(t.engine);
+    const opIds: string[] = [];
+    let once = true;
+    vi.spyOn(t.engine, 'handle').mockImplementation((command, tab) => {
+      if (command.kind !== 'edit') return real(command, tab);
+      opIds.push(command.opId);
+      if (!once) return real(command, tab);
+      once = false;
+      return Promise.resolve({ ok: false, failure });
+    });
+    return opIds;
+  };
+
+  it('an unexpected failure offers r, which resends the same opId', async () => {
+    const t = await details(milk);
+    const opIds = failing(t, { kind: 'unexpected', detail: 'boom' });
+    await t.press(...toWork, KEY.enter);
+    expect(t.lastFrame()).toMatch(/^Project\s+✗ work\s*$/m);
+    expect(hints(t)).toContain('r retry');
+    await t.press('r');
+    expect(opIds).toHaveLength(2);
+    expect(opIds[1]).toBe(opIds[0]);
+    expect(t.lastFrame()).not.toContain('✗');
+  });
+
+  for (const kind of ['signed-out', 'unavailable'] as const) {
+    it(`${kind} goes to the status line, not a ✗ on the field`, async () => {
+      const t = await details(milk);
+      failing(t, { kind, detail: `the ${kind} reason` });
+      await t.press(...toWork, KEY.enter);
+      expect(t.lastFrame()).not.toMatch(/Project\s+✗/);
+      expect(mode(t)).toContain(`✗ the ${kind} reason`);
+    });
+  }
+
+  it('with NO_COLOR=1, the ✗ has no colour', async () => {
+    vi.stubEnv('NO_COLOR', '1');
+    const t = await details(milk, { server: refusing(milk) });
+    await t.press(...toWork, KEY.enter);
+    expect(t.lastFrame()).toMatch(/Project\s+✗ work/);
+    // No foreground colour: ESC [ 3x m.
+    expect(t.lines().join('\n')).not.toMatch(new RegExp(`${'\u001b'}\\[3\\dm`));
   });
 
   it('an unreachable server is not a refusal', async () => {

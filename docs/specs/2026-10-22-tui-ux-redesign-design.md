@@ -172,6 +172,11 @@ client would have to compute counts.
   turns the field's own row into an input in the same place. Enter saves and
   Esc cancels. Notes use the multi-line `Editor`: Enter saves and
   Shift+Enter or Alt+Enter inserts a newline (my call, `Editor`'s own default).
+  While the pane has the focus it stays on its task, even when a save moves
+  the task out of the view; the outline or the board takes it back when the
+  focus returns. An open field is never closed by a publish: when another
+  client deletes the task the pane says so and keeps the text until Esc
+  (review fix 2026-10-22).
 - **Detail pane contents (Q7 A).** A flat list of every field: title,
   project, tags, priority, status, scheduled, due, repeat, notes. Below it the
   subtasks with checkboxes and the progress from the core. Nothing is folded.
@@ -189,6 +194,12 @@ client would have to compute counts.
   is a new write (a new opId). 401, 403 and 429 leave the edit queued and are
   no refusal: no `✗`, the status line shows it queued and names the reason
   (`offline · 1 queued · <reason>`).
+  _Review fix 2026-10-22:_ the outline and the pane share one rule. A
+  failure with no verdict kept (no answer, an unexpected error, a session
+  signed out or still restoring, a retryable refusal) offers `r` with the
+  same opId; a recorded refusal and input the core turned down do not. A
+  session signed out or still restoring is said on the status line, not
+  marked `✗` on the field.
 - **Keys (Q9 A).** Two modes, NORMAL and INSERT, named in the status line,
   with hints that follow the focus. Esc closes the innermost thing first
   (my call): an open input or the `Editor`, then a refusal shown under its
