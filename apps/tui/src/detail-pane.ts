@@ -93,7 +93,7 @@ function shownOf(
 /** The field being edited, and whether it is typed into (INSERT). */
 type Open = { field: FieldId; component: Component; typing: boolean };
 /** A field write the server refused: the person's draft and why. */
-type Refusal = { draft: Draft; detail: string };
+type Refusal = { draft: Draft; detail: string; retryable: boolean };
 
 /** What a draft would make of the task, to show the person's value. */
 const patchOf = (draft: Draft): Partial<TaskDetails> =>
@@ -161,8 +161,11 @@ export class DetailPane implements Pane {
   /** The keys of what the cursor is on. */
   get hints(): string {
     if (this.open === null) {
-      if (this.refused() !== undefined) {
-        return 'j/k field · Enter edit · r retry · Esc discard · Tab focus · q back';
+      const refused = this.refused();
+      if (refused !== undefined) {
+        return refused.retryable
+          ? 'j/k field · Enter edit · r retry · Esc discard · Tab focus · q back'
+          : 'j/k field · Enter edit · Esc discard · Tab focus · q back';
       }
       return this.at < FIELDS.length
         ? 'j/k field · Enter edit · Tab focus · Esc q back'
@@ -196,11 +199,12 @@ export class DetailPane implements Pane {
     return key === undefined ? undefined : this.refusals.get(key);
   }
 
-  /** `r`: resends the refused write under the cursor, same opId. */
+  /** `r`: resends the refused write under the cursor, same opId, when the
+   *  server kept no verdict for it; a verdict it kept it would repeat. */
   retry(): boolean {
     const key = this.key();
     const refusal = this.refused();
-    if (key === undefined || refusal === undefined) return false;
+    if (key === undefined || refusal?.retryable !== true) return false;
     this.send(key, refusal.draft);
     return true;
   }
@@ -230,7 +234,10 @@ export class DetailPane implements Pane {
       if (this.latest.get(key) !== draft) return;
       this.latest.delete(key);
       if (result.ok) this.refusals.delete(key);
-      else this.refusals.set(key, { draft, detail: result.failure.detail });
+      else {
+        const { detail, retryable = false } = result.failure;
+        this.refusals.set(key, { draft, detail, retryable });
+      }
     });
   }
 
@@ -270,10 +277,12 @@ export class DetailPane implements Pane {
     this.open = { field, component, typing: true };
   }
 
-  private openField(task: TaskDetails, id: FieldId): void {
+  /** Opens `id` on `view`'s value (the person's, under a refusal); a save
+   *  is compared with `task`, the saved one. */
+  private openField(task: TaskDetails, id: FieldId, view = task): void {
     const { tui } = this.deps;
     const taskId = String(task.id);
-    const shown = shownOf(task, undefined);
+    const shown = shownOf(view, undefined);
     const dtstart =
       task.dtstart ??
       (typeof task.scheduledOn === 'string' ? task.scheduledOn : tui.today());
@@ -319,7 +328,7 @@ export class DetailPane implements Pane {
             id: s.id,
             label: s.completing ? `${s.name} ✓` : s.name,
           })),
-          ...(task.column === null ? {} : { initial: task.column }),
+          ...(view.column === null ? {} : { initial: view.column }),
           onCancel: this.close,
           onPick: (statusId) => {
             this.close();
@@ -361,7 +370,7 @@ export class DetailPane implements Pane {
               return undefined;
             };
             if (preset !== undefined) return setRule(preset.rule(dtstart));
-            this.line(id, task.rrule ?? '', (text) => {
+            this.line(id, view.rrule ?? '', (text) => {
               const rule = customRule(text, dtstart);
               return typeof rule === 'string' ? rule : setRule(rule);
             });
@@ -393,7 +402,7 @@ export class DetailPane implements Pane {
           },
         });
         editor.focused = true;
-        editor.setText(task.notes ?? '');
+        editor.setText(view.notes ?? '');
         editor.onSubmit = (text) =>
           this.edit(task, id, { notes: text === '' ? null : text });
         this.open = {
@@ -442,7 +451,7 @@ export class DetailPane implements Pane {
     } else if (matchesKey(data, Key.enter)) {
       const field = FIELDS[this.at];
       if (field !== undefined) {
-        this.openField(this.yours(task, field.id) ?? task, field.id);
+        this.openField(task, field.id, this.yours(task, field.id));
       }
     }
   }

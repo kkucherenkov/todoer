@@ -166,6 +166,14 @@ client would have to compute counts.
   under it shows "saved → yours · reason". `r` resends the same write with the
   same opId (the held intent in the core); Esc discards it. The person's input
   is never lost.
+  _Maintainer decision 2026-10-22:_ `r` is offered and acts only when the
+  refusal is retryable, that is the server kept no verdict for the op (a
+  batch refused whole, an op whose transaction rolled back). A recorded
+  rejection or conflict, which the backend repeats for that opId, and a
+  partly applied command are for good: `✗` and "saved → yours · reason"
+  without `r`; Enter reopens the field with the person's value and saving it
+  is a new write (a new opId). 401, 403 and 429 leave the edit queued and are
+  no refusal: no `✗`, the status line shows it queued.
 - **Keys (Q9 A).** Two modes, NORMAL and INSERT, named in the status line,
   with hints that follow the focus. Esc closes the innermost thing first
   (my call): an open input or the `Editor`, then a refusal shown under its
