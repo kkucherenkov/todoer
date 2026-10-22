@@ -106,7 +106,14 @@ const message = (error: unknown) =>
 function failure(error: unknown): Result {
   if (error instanceof UsageError) return fail('invalid', error.message);
   if (error instanceof RefusalError || error instanceof ConflictError) {
-    return fail('refused', error.message);
+    return {
+      ok: false,
+      failure: {
+        kind: 'refused',
+        detail: error.message,
+        retryable: error instanceof RefusalError && error.retryable,
+      },
+    };
   }
   // fetch rejects with a TypeError offline, a DOMException on timeout.
   if (error instanceof TypeError || error instanceof DOMException) {
@@ -649,6 +656,9 @@ export function createEngine({
     } catch (error) {
       // A refused write still pulled: merge what that brought.
       if (answered > before) afterReached();
+      // Refused as it stands (401, 403, 429): the write waits in the
+      // outbox, as offline, and the sync topic says so. Nothing was judged.
+      if (error instanceof RefusalError && error.pending) return OK;
       throw error;
     }
     const { synced, note } = done;

@@ -27,9 +27,10 @@ type Writer = {
 
 /**
  * One intent at a time: a draft is minted once and its write is held until it
- * is accepted, so sending the same draft again is the same operation (a slow
- * attempt that did apply is replayed, not repeated). A different draft is a
- * new operation. The result carries the write that was sent, so a caller
+ * is accepted or refused for good, so sending the same draft again is the
+ * same operation (a slow attempt that did apply is replayed, not repeated;
+ * a retryable refusal is resent). A different draft, or the same one after
+ * a permanent refusal, is a new operation. The result carries the write that was sent, so a caller
  * can read the ids it minted (a moved copy's, for its Undo).
  */
 export function createIntent(db: Writer) {
@@ -39,7 +40,12 @@ export function createIntent(db: Writer) {
     if (held?.key !== key) held = { key, write: db.mint(draft) };
     const { write } = held;
     const result = await db.write(write);
-    if (result.ok && held?.write === write) held = undefined;
+    // Accepted, or refused with the verdict kept for this opId: the next
+    // draft is a new operation. A retryable refusal keeps it to resend.
+    const settled =
+      result.ok ||
+      (result.failure.kind === 'refused' && result.failure.retryable !== true);
+    if (settled && held?.write === write) held = undefined;
     return { ...result, write };
   };
 }

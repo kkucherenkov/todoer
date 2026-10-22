@@ -604,10 +604,21 @@ write that finds the marker queues nothing and only flushes. Secondary op ids
 crash finds the marker if the first run committed, or runs fresh if it did not.
 Markers older than 7 days are pruned on each write. Resending the ops
 themselves would mint different ones against a changed replica. A command
-whose every op the server refused gives its marker back (2026-10-22): nothing
-of it took effect, so a retry with the same `opId` (the held intent) queues it
-again instead of flushing nothing and reporting success. A partly applied
-command keeps its marker.
+whose every op the server refused gives its marker back (2026-10-22), in the
+transaction that settles the refusal: nothing of it took effect, so a retry
+with the same `opId` queues it again instead of flushing nothing and
+reporting success. A partly applied command keeps its marker.
+
+**Retryable or for good (maintainer decision, 2026-10-22).** A `refused`
+failure carries `retryable`. It is true when the server recorded no verdict
+for any of the command's ops: a batch refused whole (400/413) or an op whose
+transaction rolled back ("could not be applied"); the same `opId` is judged
+afresh, so the held intent resends it. It is false for a per-op `rejected` or
+`conflict` the server recorded (`appliedOp`), which it repeats for that
+`opId`, and for a partly applied command: the held intent drops the write and
+saving the same value again is a new operation. A request refused as it
+stands (401, 403, 429) leaves the ops queued and is no refusal at all: the
+write answers ok, as offline, and the sync topic counts it pending.
 
 **3. Deleting a status moves its tasks to `statusId: null`**, meaning the first
 status, instead of to the first status's id (Q8). Same reasoning as V1

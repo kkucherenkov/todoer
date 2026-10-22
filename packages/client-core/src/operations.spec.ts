@@ -584,6 +584,24 @@ describe('replay guard', () => {
     expect(store.seen('k1')).toBe(true);
   });
 
+  it('gives the claim back in the transaction that settles the refusal', async () => {
+    const store = openStore(':memory:');
+    const srv = judging(() => true);
+    const real = store.transaction.bind(store);
+    let calls = 0;
+    // Crash right after the second transaction (the settle) commits.
+    store.transaction = (fn) => {
+      const result = real(fn);
+      if ((calls += 1) === 2) throw new Error('crash after commit');
+      return result;
+    };
+    await expect(submit(store, srv.send, [op], 'x', 'k1')).rejects.toThrow(
+      'crash after commit',
+    );
+    expect(store.pending()).toEqual([]);
+    expect(store.seen('k1')).toBe(false);
+  });
+
   it('keeps the claim through a resend that queued nothing', async () => {
     const store = openStore(':memory:');
     const srv = judging(() => false);

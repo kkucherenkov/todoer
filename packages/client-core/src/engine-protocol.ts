@@ -122,6 +122,10 @@ export type Failure = {
   kind: (typeof FAILURE_KINDS)[number];
   /** The core's own text, shown as a detail line only (departure 7). */
   detail: string;
+  /** On `refused` only: the server kept no verdict, so the same write (same
+   *  opId) may be sent again. False: it repeats its verdict for that opId,
+   *  and only a new write can succeed. */
+  retryable?: boolean;
 };
 /** What a mark (or a drop into or out of the completing column) did. */
 export type Note = {
