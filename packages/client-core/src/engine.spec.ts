@@ -140,7 +140,7 @@ const uuid = (n: number) =>
   `00000000-0000-7000-8000-${n.toString(16).padStart(12, '0')}`;
 const engine = (transport: Transport = send, onlineOnly = false) =>
   createEngine({
-    onlineOnly,
+    ...(onlineOnly ? { onlineOnly } : {}),
     store,
     auth,
     tokens,

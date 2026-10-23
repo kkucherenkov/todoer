@@ -653,7 +653,11 @@ export function createEngine({
   };
 
   /** Online-only: the server did not take the change. Every pending entry
-   *  goes (a write may queue several ops, and writes run one at a time). */
+   *  goes (a write may queue several ops, and writes run one at a time),
+   *  including reconcile/seed ops queued by `afterReached`: the next
+   *  successful sync recomputes them. An op a concurrent flush already sent
+   *  may have applied although the write reports `unexpected`; the next pull
+   *  shows it. */
   const untaken = (): Result => {
     for (const { opId, status } of store.entries()) {
       if (status === 'pending') store.remove(opId);
