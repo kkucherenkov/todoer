@@ -9,6 +9,7 @@ const props = defineProps<{
   /** A board: a listed child is a card of its own. */
   board?: boolean;
 }>();
+const db = useDb();
 const tick = useTick();
 const open = useOpenTask();
 const catalog = useTopic('catalog');
@@ -35,6 +36,7 @@ const state = (c: ChildItem) =>
         class="pt-0.5"
         :model-value="c.closed"
         :aria-label="$t('drawer.doneLabel', { title: c.title })"
+        :disabled="!db.connected.value"
         @update:model-value="tick(parent, c.id, $event === true)"
       />
       <div class="flex min-w-0 flex-col">
