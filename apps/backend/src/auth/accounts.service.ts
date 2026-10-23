@@ -13,6 +13,7 @@ import { AuthService, normalizeEmail } from './auth.service.js';
 import { passwordProblem } from './password-policy.js';
 import { lockUserWrites } from '../sync/user-lock.js';
 import { SessionService } from './session.service.js';
+import { EngineHub } from '../engine/engine-hub.js';
 
 const INVITATION_TTL_MS = 7 * 86_400_000;
 const RESET_TTL_MS = 15 * 60_000;
@@ -69,6 +70,7 @@ export class AccountsService {
     private readonly prisma: PrismaService,
     private readonly auth: AuthService,
     private readonly sessions: SessionService,
+    private readonly engines: EngineHub,
   ) {}
 
   private async requireOwner(userId: string): Promise<void> {
@@ -216,5 +218,7 @@ export class AccountsService {
       await tx.invitation.deleteMany({ where: { createdBy: userId } });
       await tx.user.delete({ where: { id: userId } });
     });
+    // After the commit: a rolled-back deletion keeps the user's streams.
+    this.engines.unload(userId);
   }
 }

@@ -45,12 +45,13 @@ afterEach(async () => {
 /** A stream that records every event it is sent. */
 const stream = (user: string, tab: string) => {
   const events: FromWorker[] = [];
-  const close = hub.open(user, tab, (e) => events.push(e));
+  const end = vi.fn();
+  const close = hub.open(user, tab, (e) => events.push(e), end);
   const views = (key: string) =>
     events.filter(
       (e) => e.type === 'publish' && e.topic === 'view' && e.value.key === key,
     );
-  return { events, close, views };
+  return { events, close, views, end };
 };
 
 const add = (text: string) => ({
@@ -178,6 +179,21 @@ describe('EngineHub', () => {
     expect(await hub.request(U, T1, 2, add('kept'))).toEqual({ ok: true });
     expect(await prisma.task.count({ where: { id: lost.id } })).toBe(0);
     expect(await prisma.task.count({ where: { title: 'kept' } })).toBe(1);
+  });
+
+  it('unload ends the open streams at once and drops the engine', async () => {
+    const a = stream(U, T1);
+    const b = stream(U, T2);
+    const other = stream(V, T1);
+    hub.unload(U);
+    expect(a.end).toHaveBeenCalledOnce();
+    expect(b.end).toHaveBeenCalledOnce();
+    expect(other.end).not.toHaveBeenCalled();
+    expect(hub.loaded(U)).toBe(false);
+    expect(hub.loaded(V)).toBe(true);
+    // The streams' own close, run by the controller's end, is then a no-op.
+    expect(() => a.close()).not.toThrow();
+    hub.unload(U);
   });
 
   it('shutting down unloads every engine', async () => {

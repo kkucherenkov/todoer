@@ -14,6 +14,7 @@ import { resetDatabase } from '../testing/reset-database.js';
 
 const prisma = new PrismaService();
 const USER = '11111111-1111-1111-1111-111111111111';
+const TTL = 15 * 60_000;
 const TAB = '0192f000-0000-7000-8000-000000000001';
 let app: INestApplication;
 let base: string;
@@ -47,6 +48,16 @@ describe('EngineController over HTTP', () => {
   it('refuses a request without a bearer', async () => {
     const res = await engine({ kind: 'watch', view: null, task: null }, {});
     expect(res.status).toBe(401);
+  });
+
+  it('refuses a malformed id before it reaches Postgres', async () => {
+    const res = await engine({
+      kind: 'add',
+      opId: 'x',
+      id: uuidv7(),
+      text: 'bad',
+    });
+    expect(res.status).toBe(400);
   });
 
   it('refuses a session command: the page signs in over /auth', async () => {
@@ -114,11 +125,21 @@ describe('EngineController: the stream', () => {
     const res = { writeHead: vi.fn(), write: vi.fn(), end: vi.fn() };
     const closer = vi.fn();
     const hub = { open: vi.fn(() => closer) } as unknown as EngineHub;
-    const controller = new EngineController(hub);
+    const auth = {
+      verifyWithExpiry: vi.fn(() => ({
+        userId: USER,
+        expiresAt: new Date(Date.now() + TTL),
+      })),
+    } as unknown as AuthService;
+    const controller = new EngineController(hub, auth);
     controller.events(
       USER,
       TAB,
-      req as unknown as Request,
+      {
+        ...req,
+        on: req.on.bind(req),
+        headers: { authorization: 'Bearer t' },
+      } as unknown as Request,
       res as unknown as Response,
     );
     return { controller, req, res, closer };
@@ -132,6 +153,20 @@ describe('EngineController: the stream', () => {
       expect(res.write).not.toHaveBeenCalledWith(': ping\n\n');
       vi.advanceTimersByTime(1);
       expect(res.write).toHaveBeenCalledWith(': ping\n\n');
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('ends when its token expires, and not before', () => {
+    vi.useFakeTimers();
+    try {
+      const { res, closer } = events();
+      vi.advanceTimersByTime(TTL - 1);
+      expect(res.end).not.toHaveBeenCalled();
+      vi.advanceTimersByTime(1);
+      expect(res.end).toHaveBeenCalledOnce();
+      expect(closer).toHaveBeenCalledOnce();
     } finally {
       vi.useRealTimers();
     }

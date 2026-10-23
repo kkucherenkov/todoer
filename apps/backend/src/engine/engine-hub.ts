@@ -27,7 +27,7 @@ type Loaded = {
   engine: Engine;
   dispatch: (m: ToWorker) => void;
   waiters: Map<string, ((result: Result) => void)[]>;
-  streams: Map<string, Send>;
+  streams: Map<string, { send: Send; end: () => void }>;
   unload?: NodeJS.Timeout;
   stop: () => void;
 };
@@ -77,18 +77,33 @@ export class EngineHub implements OnModuleDestroy {
     }
   }
 
-  open(userId: string, tab: string, send: Send): () => void {
+  /** `end` is how the hub ends the stream itself, on `unload`. */
+  open(userId: string, tab: string, send: Send, end: () => void): () => void {
     const loaded = this.load(userId);
     clearTimeout(loaded.unload);
-    loaded.streams.set(tab, send);
+    loaded.streams.set(tab, { send, end });
     loaded.engine.snapshot();
     return () => {
       // A reconnect may have replaced this stream already: leave that one.
-      if (loaded.streams.get(tab) !== send) return;
+      if (loaded.streams.get(tab)?.send !== send) return;
       loaded.streams.delete(tab);
       void loaded.engine.handle({ kind: 'watch', view: null, task: null }, tab);
       this.idle(userId, loaded);
     };
+  }
+
+  /** The user is gone (account deleted): end their streams and drop the
+   *  engine now, without the idle delay. */
+  unload(userId: string): void {
+    const loaded = this.engines.get(userId);
+    if (loaded === undefined) return;
+    this.engines.delete(userId);
+    clearTimeout(loaded.unload);
+    const ends = [...loaded.streams.values()].map((s) => s.end);
+    // Cleared first, so each `end` finds its close a no-op.
+    loaded.streams.clear();
+    for (const end of ends) end();
+    loaded.stop();
   }
 
   /** Shutdown: no unload timer outlives the app, no replica stays open. */
@@ -115,7 +130,7 @@ export class EngineHub implements OnModuleDestroy {
       adopt() {},
       signedIn: () => true,
     };
-    const streams = new Map<string, Send>();
+    const streams = new Map<string, { send: Send; end: () => void }>();
     const waiters = new Map<string, ((result: Result) => void)[]>();
     const engine = createEngine({
       store,
@@ -126,7 +141,7 @@ export class EngineHub implements OnModuleDestroy {
       newId: uuidv7,
       publish: (topic, value) => {
         const event = { type: 'publish', topic, value, build: BUILD };
-        for (const send of streams.values()) send(event as FromWorker);
+        for (const { send } of streams.values()) send(event as FromWorker);
       },
       onlineOnly: true,
     });

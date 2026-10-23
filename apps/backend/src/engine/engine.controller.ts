@@ -12,6 +12,7 @@ import {
 } from '@nestjs/common';
 import type { Command } from '@todoer/client-core';
 import type { Request, Response } from 'express';
+import { AuthService } from '../auth/auth.service.js';
 import { AuthGuard, CurrentUser } from '../auth/auth.guard.js';
 import { EngineHub } from './engine-hub.js';
 
@@ -27,7 +28,10 @@ export class EngineController implements OnModuleDestroy {
   /** Ends each open stream: the HTTP server's close waits for them. */
   private readonly open = new Set<() => void>();
 
-  constructor(private readonly hub: EngineHub) {}
+  constructor(
+    private readonly hub: EngineHub,
+    private readonly auth: AuthService,
+  ) {}
 
   onModuleDestroy(): void {
     for (const end of this.open) end();
@@ -57,13 +61,23 @@ export class EngineController implements OnModuleDestroy {
       // Nginx would otherwise buffer the stream and hold every event back.
       'x-accel-buffering': 'no',
     });
-    const close = this.hub.open(userId, tab, (event) =>
-      res.write(`data: ${JSON.stringify(event)}\n\n`),
+    const close = this.hub.open(
+      userId,
+      tab,
+      (event) => res.write(`data: ${JSON.stringify(event)}\n\n`),
+      () => end(),
     );
     const ping = setInterval(() => res.write(': ping\n\n'), PING_MS);
+    // The guard has verified the bearer; the stream lives no longer than it
+    // does, and the page reconnects with a renewed one.
+    const { expiresAt } = this.auth.verifyWithExpiry(
+      (req.headers.authorization ?? '').slice('bearer '.length),
+    );
+    const expiry = setTimeout(() => end(), expiresAt.getTime() - Date.now());
     const end = () => {
       if (!this.open.delete(end)) return;
       clearInterval(ping);
+      clearTimeout(expiry);
       close();
       res.end();
     };
