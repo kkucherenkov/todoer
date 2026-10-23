@@ -41,7 +41,10 @@ HTTP.
 - **FR-002** The backend MUST expose `POST /engine` (a tab's `Command` →
   `Result`) and a server-sent event stream per tab, described in
   `openapi.yaml` before the code, both taking the bearer token (← design,
-  "Contract", "Sign-in and the session")
+  "Contract", "Sign-in and the session"). A request's user MUST be the
+  guard's user, with no access to another user's engine or tabs. `Command` MUST
+  be validated against the OpenAPI schema. A stream MUST end when the access
+  token it was opened with expires.
 - **FR-003** A sync that wrote anything for a user MUST make that user's
   loaded engine sync with the reason `remote`, which queues one sync even
   mid-sync, and publish its topics to every open stream of the user (← design,
@@ -83,13 +86,13 @@ HTTP.
 
 ### Steps
 
-- [ ] T001 [FR-003, FR-004] Client-core: online-only writes and the `remote`
+- [x] T001 [FR-003, FR-004] Client-core: online-only writes and the `remote`
   sync reason — `packages/client-core/` (Task 1)
-- [ ] T002 [FR-002] OpenAPI `/engine` and `/engine/events` —
+- [x] T002 [FR-002] OpenAPI `/engine` and `/engine/events` —
   `packages/specs/openapi/openapi.yaml` (Task 2)
-- [ ] T003 [FR-001, FR-003] Backend ChangeFeed and the in-process transport —
+- [x] T003 [FR-001, FR-003] Backend ChangeFeed and the in-process transport —
   `apps/backend/` (Task 3)
-- [ ] T004 [FR-001, FR-002, FR-003, FR-004, FR-007] Backend EngineHub, engine
+- [x] T004 [FR-001, FR-002, FR-003, FR-004, FR-007] Backend EngineHub, engine
   routes, `TZ` in compose — `apps/backend/`, `docker/compose.yml` (Task 4)
 - [ ] T005 [FR-005, FR-006] Web app and db over HTTP; worker, OPFS and SQLite
   WASM removed; OPFS cleanup; writes disabled while disconnected —

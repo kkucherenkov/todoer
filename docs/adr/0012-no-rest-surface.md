@@ -14,6 +14,8 @@ pagination. Every client here holds a full local replica.
 recovery from [0013](0013-tombstones-and-the-retention-contract.md): both are
 a request with `since: 0`. There are no resource endpoints.
 
+The web's `/engine` route is the one amendment: see [0020](0020-the-web-reads-through-a-server-engine.md).
+
 ## Consequences
 
 "Today's tasks tagged `@home`, ordered by rank" is a local query. Filtering,
