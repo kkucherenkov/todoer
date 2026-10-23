@@ -383,7 +383,7 @@ test('calendar: a refused Move to date… keeps the dialog and its date', async 
   const dialog = page.getByRole('dialog');
   await dialog.getByLabel('Date', { exact: true }).fill(target);
 
-  // …which another tab of the same replica marks done meanwhile.
+  // …which another tab of the same account marks done meanwhile.
   const other = await context.newPage();
   await other.goto('/?layout=list');
   const row = other.getByTestId('task-row').filter({ hasText: 'Water plants' });

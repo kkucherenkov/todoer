@@ -219,27 +219,6 @@ test('drawer parent navigation preserves the original task opener', async ({
   await expect(childTitle).toBeFocused();
 });
 
-test('sees a CLI write on focus', async ({ page, account, cli }) => {
-  await page.goto('/');
-  await expect(count(page)).toHaveText(tasks(0));
-  await cli(account.token, 'add', 'from the cli');
-  await page.evaluate(() => window.dispatchEvent(new Event('focus')));
-  await expect(count(page)).toHaveText(tasks(1), { timeout: 10_000 });
-});
-
-test('the 30 s tick syncs a visible tab', async ({ page, account, cli }) => {
-  // The clock drives the tab's interval only; the worker runs in real time,
-  // and its engine drops a tick within 25 s of the last sync (several
-  // windows tick). So real time passes first, then the tab's 30 s.
-  await page.clock.install();
-  await page.goto('/');
-  await expect(count(page)).toBeVisible();
-  await cli(account.token, 'add', 'from the cli');
-  await page.waitForTimeout(26_000);
-  await page.clock.runFor(30_000);
-  await expect(count(page)).toHaveText(tasks(1), { timeout: 10_000 });
-});
-
 // The one test that signs in through the form (fixtures.ts).
 test('a reload restores the session through the cookie', async ({
   page,
@@ -262,9 +241,26 @@ test('a reload restores the session through the cookie', async ({
   await page.reload();
   await expect(page.getByTestId('sign-in')).toBeVisible();
   expect(refreshes, 'no hint, no refresh (departure 4)').toEqual([]);
-  // Signed out, no replica data: the form and no sidebar.
+  // Signed out, nothing of the account: the form and no sidebar.
   await expect(page.getByRole('navigation', { name: 'Views' })).toHaveCount(0);
   await expect(count(page)).toHaveCount(0);
+});
+
+test('the server is unreachable at load, then the app appears by itself', async ({
+  page,
+  account,
+}) => {
+  void account; // the hint and the cookie: the page tries to restore
+  await page.route('**/api/v1/auth/refresh', (route) => route.abort());
+  await page.goto('/');
+  const alert = page.getByTestId('unreachable');
+  await expect(alert).toContainText('The server cannot be reached.');
+  await expect(alert.getByRole('button', { name: 'Reload' })).toBeVisible();
+  await expect(page.getByTestId('sign-in')).toHaveCount(0);
+  // No reload: the page keeps retrying and swaps the alert for the app.
+  await page.unroute('**/api/v1/auth/refresh');
+  await expect(count(page)).toHaveText(tasks(0), { timeout: 35_000 });
+  await expect(alert).toHaveCount(0);
 });
 
 test('the document language follows the interface language', async ({
@@ -347,12 +343,8 @@ test('the built service worker keeps the denylist and waits to activate', () => 
   expect(sw).toMatch(/"SKIP_WAITING"===\w+\.data\.type&&self\.skipWaiting\(\)/);
 });
 
-test('the WASM is served as application/wasm', async ({ request }) => {
+// The browser keeps no database since the server runs the web's engine.
+test('the build ships no WebAssembly', () => {
   const dir = new URL('../.output/public/_nuxt/', import.meta.url);
-  const wasm = readdirSync(dir).filter((f) => f.endsWith('.wasm'));
-  expect(wasm).not.toHaveLength(0);
-  for (const file of wasm) {
-    const response = await request.get(`/_nuxt/${file}`);
-    expect(response.headers()['content-type'], file).toBe('application/wasm');
-  }
+  expect(readdirSync(dir).filter((f) => f.endsWith('.wasm'))).toEqual([]);
 });

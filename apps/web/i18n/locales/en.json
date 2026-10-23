@@ -7,7 +7,7 @@
   },
   "insecure": {
     "title": "A secure connection is required",
-    "body": "This app stores your tasks in the browser and needs HTTPS. Serve it through a reverse proxy that terminates TLS, or open it on localhost."
+    "body": "This app signs in with a secure cookie and needs HTTPS. Serve it through a reverse proxy that terminates TLS, or open it on localhost."
   },
   "failed": {
     "title": "The local database did not start",
@@ -15,7 +15,7 @@
   },
   "update": {
     "title": "A new version is available",
-    "body": "Reload to use it. Your tasks stay on this device.",
+    "body": "Reload to use it. Your tasks are kept on the server.",
     "reload": "Reload"
   },
   "signIn": {
@@ -41,7 +41,7 @@
     },
     "lastSynced": "Last synced {when}",
     "neverSynced": "Not synced yet",
-    "savedLocally": "Saved on this device",
+    "saved": "Saved on the server",
     "pending": "{n} waiting",
     "failed": "{n} refused",
     "offline": "Offline",
@@ -54,7 +54,7 @@
     "refused": "The server refused the request.",
     "unreachable": "The server cannot be reached.",
     "signed-out": "Your session has ended. Sign in again.",
-    "unavailable": "The local database did not answer.",
+    "unavailable": "The server is not ready yet. Try again.",
     "invalid": "That cannot be done.",
     "unexpected": "Something went wrong.",
     "syncProblem": "Sync refused"
@@ -150,7 +150,7 @@
     "more": "More details",
     "blurHint": "Changes save when you leave a field.",
     "saving": "Saving…",
-    "saved": "Saved on this device",
+    "saved": "Saved on the server",
     "waiting": "{n} waiting to sync",
     "savedValue": "Saved value: {value}",
     "yourChange": "Your change: {value}",

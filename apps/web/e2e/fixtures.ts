@@ -91,7 +91,7 @@ declare global {
   }
 }
 
-const CSP_TEXT = /Content.Security.Policy|Refused to|\[csp\]/;
+const CSP_TEXT = /Content.Security.Policy|Refused to/;
 
 /** The page's own collector. Firefox still settles a failed navigation (a
  *  4xx JSON body) after `goto` rejects: read again once it has loaded. */
@@ -217,7 +217,7 @@ export const test = base.extend<
           true,
         );
       });
-      // The worker forwards its own violations as `console.error('[csp]', …)`.
+      // The browser also logs every violation to the console.
       context.on('console', (m) => {
         if (CSP_TEXT.test(m.text())) violations.push(m.text());
       });

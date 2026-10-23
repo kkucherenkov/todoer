@@ -32,17 +32,14 @@ const lastSynced = computed(() => {
 </script>
 
 <template>
-  <!-- ux.js #sync-footer: count, saved locally, badges, then the last sync. -->
+  <!-- ux.js #sync-footer: count, saved, badges, then the last sync. -->
   <section class="flex w-full flex-col gap-2 text-xs text-muted">
     <p class="text-sm font-medium text-default" data-testid="task-count">
       {{ tasks }}
     </p>
-    <p
-      class="inline-flex items-center gap-1.5 text-toned"
-      data-testid="saved-locally"
-    >
+    <p class="inline-flex items-center gap-1.5 text-toned" data-testid="saved">
       <UIcon name="i-lucide-check" class="size-3.5 shrink-0" />
-      {{ $t('summary.savedLocally') }}
+      {{ $t('summary.saved') }}
     </p>
     <div
       class="flex flex-wrap items-center gap-1.5 empty:hidden"

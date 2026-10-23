@@ -74,13 +74,7 @@ test('view form: create, edit, raw JSON, delete', async ({
   await expect(page.getByText('That cannot be done.')).toHaveCount(0);
 });
 
-test('view form: filter tree', async ({
-  page,
-  account,
-  cli,
-  request,
-  context,
-}) => {
+test('view form: filter tree', async ({ page, account, cli, request }) => {
   await cli(account.token, 'add', 'Buy milk #home @errand');
   await page.goto('/');
   await expect(count(page)).toBeVisible();
@@ -98,13 +92,34 @@ test('view form: filter tree', async ({
     await dialog.getByTestId(trigger).click();
     await page.getByRole('menuitem', { name: item, exact: true }).click();
   };
-  /** Saves with the network down, so a queued op stays visible as pending. */
+  /** Every view's version on the server. */
+  const versions = async () => {
+    const pulled = await request.post('/api/v1/sync', {
+      headers: { authorization: `Bearer ${account.token}` },
+      data: { since: 0, ops: [] },
+    });
+    const { changes } = (await pulled.json()) as {
+      changes: { table: string; id: string; row: { version: number } }[];
+    };
+    return Object.fromEntries(
+      changes
+        .filter((c) => c.table === 'view')
+        .map((c) => [c.id, c.row.version]),
+    );
+  };
+  /** Saves a form that changed nothing: the server keeps every view as it was. */
   const saveUnchanged = async () => {
-    await context.setOffline(true);
+    const before = await versions();
+    const answered = page.waitForResponse(
+      (r) =>
+        r.url().endsWith('/api/v1/engine') &&
+        (r.request().postDataJSON() as { command: { kind: string } }).command
+          .kind === 'saveView',
+    );
     await save.click();
+    await answered;
     await expect(dialog).toBeHidden();
-    await expect(page.getByTestId('pending')).toHaveCount(0);
-    await context.setOffline(false);
+    expect(await versions()).toEqual(before);
   };
 
   // Start from a template, then grow the tree by hand.
@@ -187,7 +202,7 @@ test('view form: filter tree', async ({
     )
     .toEqual([{ name: 'Tree', layout: 'calendar' }]);
 
-  // Edit shows the same tree; Save without a change queues nothing.
+  // Edit shows the same tree; Save without a change writes nothing.
   await page.getByTestId('edit-view').click();
   await expect(dialog.getByTestId('op-n-2')).toHaveText('All of');
   await expect(limits).toHaveText('7/256 conditions · depth 4/8');
@@ -209,11 +224,7 @@ test('view form: filter tree', async ({
 test('view form: a refused save keeps the form and says why', async ({
   page,
   account,
-  context,
-  browserName,
 }) => {
-  // Firefox does not route a dedicated worker's fetch.
-  test.skip(browserName !== 'chromium', 'needs the worker routed');
   void account; // signed in
   await page.goto('/');
   await expect(count(page)).toBeVisible();
@@ -224,9 +235,17 @@ test('view form: a refused save keeps the form and says why', async ({
   await page.getByTestId('new-view').click();
   await dialog.getByTestId('view-name').fill('Refused');
   await dialog.getByRole('radio', { name: 'Kanban' }).click();
-  // A 400 refuses the whole batch, this view's create with it.
-  await context.route('**/api/v1/sync', (route) =>
-    route.fulfill({ status: 400, body: 'refused for tests' }),
+  // The server refuses the view's create; what the tab watches goes on.
+  await page.route('**/api/v1/engine', (route) =>
+    (route.request().postDataJSON() as { command: { kind: string } }).command
+      .kind === 'watch'
+      ? route.fallback()
+      : route.fulfill({
+          json: {
+            ok: false,
+            failure: { kind: 'refused', detail: 'refused for tests' },
+          },
+        }),
   );
   await dialog.getByTestId('view-save').click();
   await expect(refusal).toHaveAttribute('role', 'alert');
@@ -236,7 +255,7 @@ test('view form: a refused save keeps the form and says why', async ({
   await expect(nav.getByRole('link', { name: 'Refused' })).toHaveCount(0);
 
   // The same form, accepted: the alert and the dialog go.
-  await context.unroute('**/api/v1/sync');
+  await page.unroute('**/api/v1/engine');
   await dialog.getByTestId('view-save').click();
   await expect(dialog).toBeHidden();
   await expect(nav.getByRole('link', { name: 'Refused' })).toBeVisible();

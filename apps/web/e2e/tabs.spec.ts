@@ -1,115 +1,170 @@
 import type { Page } from '@playwright/test';
 import { readFileSync, writeFileSync } from 'node:fs';
-import { count, expect, swActivated, tasks, test } from './fixtures';
+import {
+  count,
+  expect,
+  projectId,
+  seedView,
+  swActivated,
+  tasks,
+  test,
+} from './fixtures';
 
-const focus = (page: Page) =>
-  page.evaluate(() => window.dispatchEvent(new Event('focus')));
+/** Lets the test cut the tab's open event stream, as a dropped connection
+ *  would: a route reaches only the requests made after it, never the
+ *  stream already open. */
+const cuttable = (page: Page) =>
+  page.addInitScript(() => {
+    const real = window.fetch.bind(window);
+    const open = new Set<AbortController>();
+    window.fetch = (input, init = {}) => {
+      const url = input instanceof Request ? input.url : String(input);
+      if (!url.includes('/engine/events')) return real(input, init);
+      const cut = new AbortController();
+      init.signal?.addEventListener('abort', () => cut.abort());
+      open.add(cut);
+      return real(input, { ...init, signal: cut.signal });
+    };
+    (window as { cut?: () => void }).cut = () => {
+      for (const c of open) c.abort(new TypeError('e2e: connection lost'));
+      open.clear();
+    };
+  });
 
-/** A signed-in leader A and a follower B in the same context. */
-async function twoTabs(page: Page) {
+const titled = (page: Page, title: string) =>
+  page.getByTestId('task-title').filter({ hasText: title });
+
+test('a write in one tab reaches the other', async ({ page, account }) => {
+  void account; // signed in
   await page.goto('/');
-  await expect(count(page)).toBeVisible();
+  await expect(count(page)).toHaveText(tasks(0));
   const b = await page.context().newPage();
   await b.goto('/');
   await expect(count(b)).toHaveText(tasks(0));
-  await expect(b.getByTestId('sign-in')).toHaveCount(0);
-  return b;
-}
+  const input = page.getByRole('textbox', { name: 'Quick add' });
+  await input.fill('from tab A');
+  await input.press('Enter');
+  await expect(titled(page, 'from tab A')).toBeVisible();
+  await expect(titled(b, 'from tab A')).toBeVisible({ timeout: 5_000 });
+  await expect(count(b)).toHaveText(tasks(1));
+});
 
-test('a follower shares the leader’s worker', async ({
+test('two tabs: a mark shows in the other, each tab keeps to its own view', async ({
   page,
   account,
   cli,
 }) => {
-  const b = await twoTabs(page);
-  expect(page.workers(), 'the leader runs the database').toHaveLength(1);
-  expect(b.workers(), 'the follower starts none').toHaveLength(0);
+  const titles = (p: Page) => async () =>
+    (await p.getByTestId('task-title').allTextContents()).sort();
+  for (const t of ['Sweep #home', 'Weed #home', 'Call #work']) {
+    await cli(account.token, 'add', t);
+  }
+  const home = await seedView(
+    page.request,
+    account.token,
+    'Home',
+    'a0',
+    'list',
+    { project: await projectId(page.request, account.token, 'home') },
+  );
+  const work = await seedView(
+    page.request,
+    account.token,
+    'Work',
+    'a1',
+    'list',
+    { project: await projectId(page.request, account.token, 'work') },
+  );
+  await page.goto('/');
+  await expect.poll(titles(page)).toEqual(['Call', 'Sweep', 'Weed']);
+  const b = await page.context().newPage();
+  await b.goto('/');
+  await expect.poll(titles(b)).toEqual(['Call', 'Sweep', 'Weed']);
+
+  // The same view in both: a mark in A shows in B without a reload.
+  await page
+    .getByTestId('task-row')
+    .filter({ hasText: 'Sweep' })
+    .getByRole('button', { name: 'Mark done' })
+    .click();
+  await expect.poll(titles(b)).toEqual(['Call', 'Weed']);
+
+  // A different view each: a write in one reaches only the tab showing it.
+  const open = (p: Page, name: string) =>
+    p
+      .getByRole('navigation', { name: 'Views' })
+      .getByRole('link', { name, exact: true })
+      .click();
+  await open(page, 'Home');
+  await expect(page).toHaveURL(new RegExp(`/views/${home}$`));
+  await open(b, 'Work');
+  await expect(b).toHaveURL(new RegExp(`/views/${work}$`));
+  await expect.poll(titles(page)).toEqual(['Weed']);
+  await expect.poll(titles(b)).toEqual(['Call']);
+
+  const input = page.getByRole('textbox', { name: 'Quick add' });
+  await input.fill('Mop #home');
+  await input.press('Enter');
+  await expect.poll(titles(page)).toEqual(['Mop', 'Weed']);
+  await b.getByTestId('sync-now').click(); // a round trip to B, and back
+  await expect(b.getByTestId('sync-now')).toBeEnabled();
+  await expect(titles(b)()).resolves.toEqual(['Call']);
+
+  await b
+    .getByTestId('task-row')
+    .getByRole('button', { name: 'Mark done' })
+    .click();
+  await expect(b.getByTestId('task-row')).toHaveCount(0);
+  await expect(titles(page)()).resolves.toEqual(['Mop', 'Weed']);
+});
+
+test('a CLI write reaches an open page', async ({ page, account, cli }) => {
+  await page.goto('/');
+  await expect(count(page)).toHaveText(tasks(0));
   await cli(account.token, 'add', 'from the cli');
-  await focus(b);
-  await expect(count(b)).toHaveText(tasks(1), { timeout: 10_000 });
+  // No focus, no reload, no Sync now: the server's engine publishes it.
+  await expect(titled(page, 'from the cli')).toBeVisible({ timeout: 5_000 });
   await expect(count(page)).toHaveText(tasks(1));
 });
 
-test('leadership passes when the leader closes', async ({
+test('writes are blocked while the stream is down', async ({
   page,
-  context,
   account,
   cli,
 }) => {
-  const b = await twoTabs(page);
-  const cookie = async () =>
-    (await context.cookies()).find((c) => c.name === 'todoer_refresh')!;
-  const beforeHandOver = await cookie();
-  await page.close();
-  // B's own worker, signed in through the cookie and the hint, the count
-  // read from OPFS. Its start refreshed: the cookie rotated.
-  await expect.poll(() => b.workers().length, { timeout: 15_000 }).toBe(1);
-  await expect(count(b)).toHaveText(tasks(0), { timeout: 15_000 });
-  expect((await cookie()).value, 'rotated').not.toBe(beforeHandOver.value);
-  await cli(account.token, 'add', 'from the cli');
-  await focus(b);
-  await expect(count(b)).toHaveText(tasks(1), { timeout: 10_000 });
-
-  // As if B's refresh answer never arrived: the next leader presents the
-  // rotated cookie, inside the server's 30 s grace (Review Focus 3).
-  await context.addCookies([beforeHandOver]);
-  const c = await context.newPage();
-  await c.goto('/');
-  await b.close();
-  await expect(count(c)).toHaveText(tasks(1), { timeout: 15_000 });
-  await expect(c.getByTestId('sign-in')).toHaveCount(0);
-});
-
-test('a new leader retries the pool until the old worker lets go', async ({
-  page,
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars -- signs the context in
-  account,
-}) => {
-  const b = await twoTabs(page);
-  // Steal the lock from A and let it go at once: B's queued request takes
-  // it while A's worker still holds every pool handle. B's install must
-  // fail and retry (sqlite-wasm caches a failed install unless told
-  // otherwise), and only A's close can let it succeed.
-  const spawned: unknown[] = [];
-  b.on('worker', (w) => spawned.push(w));
-  await b.evaluate(() =>
-    navigator.locks.request('todoer:leader', { steal: true }, () => undefined),
-  );
-  await expect.poll(() => b.workers().length).toBe(1);
-  await expect(b.getByTestId('loading')).toBeVisible();
-  await b.waitForTimeout(1_500); // several attempts fail meanwhile
-  await expect(b.getByTestId('loading')).toBeVisible();
-  await page.close();
-  await expect(count(b)).toHaveText(tasks(0), { timeout: 15_000 });
-  // The same worker recovered: a retry that never retries ends in `fatal`,
-  // and the leader's respawn would hide it behind a second worker.
-  expect(spawned, 'B’s workers').toHaveLength(1);
-});
-
-test('a crashing worker is restarted, then reported failed', async ({
-  page,
-}) => {
+  await cli(account.token, 'add', 'Water plants');
+  await cuttable(page);
   await page.goto('/');
-  await expect(page.getByTestId('sign-in')).toBeVisible();
-  const crash = () =>
-    page.workers()[0]!.evaluate(() =>
-      setTimeout(() => {
-        throw new Error('e2e: the worker crashed');
-      }),
-    );
-  // Two crashes in a minute: restarted each time, the tab back to its form.
-  for (let i = 0; i < 2; i++) {
-    const next = page.waitForEvent('worker');
-    await crash();
-    await next;
-    await expect(page.getByTestId('sign-in')).toBeVisible({ timeout: 10_000 });
-  }
-  // The third: no fourth worker, and the page says why.
-  await crash();
-  await expect(page.getByTestId('engine-failed')).toContainText(
-    'e2e: the worker crashed',
+  const input = page.getByRole('textbox', { name: 'Quick add' });
+  await expect(input).toBeEnabled();
+  // A toast that stays up while the connection goes and comes back.
+  await page
+    .getByTestId('task-row')
+    .filter({ has: titled(page, 'Water plants') })
+    .getByRole('button', { name: 'Mark done' })
+    .click();
+  const undo = page.getByRole('button', { name: 'Undo' });
+  await undo.hover(); // a hovered toast does not time out
+
+  await page.route('**/engine/events*', (route) => route.abort());
+  await page.evaluate(() => (window as { cut?: () => void }).cut!());
+  await expect(input).toBeDisabled();
+  await expect(
+    page.getByRole('button', { name: 'Add task', exact: true }),
+  ).toBeDisabled();
+  await expect(page.getByTestId('sync-now')).toBeDisabled();
+  await expect(undo).toBeDisabled();
+  await expect(page.getByTestId('unreachable')).toHaveText(
+    'Cannot reach the server',
   );
-  await expect.poll(() => page.workers().length).toBe(0);
+
+  // Back: the next retry opens a stream, with a fresh snapshot.
+  await page.unroute('**/engine/events*');
+  await expect(input).toBeEnabled({ timeout: 30_000 });
+  await expect(page.getByTestId('unreachable')).toHaveCount(0);
+  await expect(undo).toBeEnabled();
+  await undo.click();
+  await expect(titled(page, 'Water plants')).toBeVisible();
 });
 
 // F9. Signed out on purpose: neither case needs an account.
@@ -151,38 +206,5 @@ test('a new service worker waits for the prompt in every tab', async ({
     }
   } finally {
     writeFileSync(file, original);
-  }
-});
-
-test('a message from another build is refused and prompts a reload', async ({
-  page,
-  context,
-}) => {
-  await page.goto('/');
-  await expect(page.getByTestId('sign-in')).toBeVisible();
-  const b = await context.newPage();
-  await b.goto('/');
-  await expect(b.getByTestId('sign-in')).toBeVisible();
-  // An old tab's request, as an old build would stamp it.
-  const replies = await b.evaluate(async () => {
-    const channel = new BroadcastChannel('todoer');
-    const seen: unknown[] = [];
-    channel.onmessage = ({ data }: MessageEvent<{ type: string }>) => {
-      if (data.type === 'reply') seen.push(data);
-    };
-    channel.postMessage({
-      type: 'request',
-      tab: 'old-tab',
-      id: 1,
-      command: { kind: 'sync', reason: 'manual' },
-      build: 'an-older-build',
-    });
-    await new Promise((r) => setTimeout(r, 1_000));
-    channel.close();
-    return seen;
-  });
-  expect(replies, 'the worker ran nothing for it').toEqual([]);
-  for (const tab of [page, b]) {
-    await expect(tab.getByTestId('update-available')).toBeVisible();
   }
 });

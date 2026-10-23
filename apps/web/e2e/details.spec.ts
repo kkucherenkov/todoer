@@ -39,7 +39,7 @@ test('details: title and notes lead, more details are remembered, saves are said
   await d.getByLabel('Notes').fill('Check visas');
   await d.getByLabel('Notes').blur();
   await expect(d.getByTestId('save-status')).toContainText(
-    'Saved on this device',
+    'Saved on the server',
   );
 
   await more(page).click();
@@ -91,80 +91,35 @@ test('details: a subtask has no rule of its own', async ({
   await page.keyboard.press('Escape');
 });
 
-/** Drops the next write of `kind` and answers it with a refusal, as when the
- *  worker never got it, and records every write the tab sends. The tab's
- *  channel never hears itself, so the reply is handed to its handler. The
- *  refusal is retryable (no verdict kept) unless `window.retryable` is
- *  false. */
-const refuseNext = (page: Page) =>
-  page.addInitScript(() => {
-    const w = window as unknown as {
-      sent: { kind: string; opId: string }[];
-      refuse: string | null;
-      retryable: boolean;
+/** Answers the next write of `kind` with a refusal, as if the server had
+ *  refused it, and records every write the tab sends. The refusal is
+ *  retryable (no verdict kept) unless `state.retryable` is false. */
+async function refuseNext(page: Page) {
+  const sent: { kind: string; opId: string }[] = [];
+  const state = { refuse: null as string | null, retryable: true };
+  await page.route('**/api/v1/engine', async (route) => {
+    const { command } = route.request().postDataJSON() as {
+      command: { kind: string; opId?: string };
     };
-    w.sent = [];
-    w.refuse = null;
-    w.retryable = true;
-    const Real = BroadcastChannel;
-    class Spy extends Real {
-      handler: ((e: MessageEvent) => void) | null = null;
-      leader: unknown;
-      override set onmessage(h: ((e: MessageEvent) => void) | null) {
-        this.handler = h;
-        super.onmessage = (e: MessageEvent) => {
-          this.leader = (e.data as { leader?: unknown }).leader;
-          h?.(e);
-        };
-      }
-      override postMessage(m: {
-        type?: string;
-        id?: number;
-        tab?: string;
-        build?: string;
-        command?: { kind: string; opId?: string };
-      }) {
-        const c = m.command;
-        if (m.type === 'request' && c?.opId) {
-          w.sent.push({ kind: c.kind, opId: c.opId });
-        }
-        if (m.type === 'request' && c?.kind === w.refuse) {
-          w.refuse = null;
-          const { id, tab, build } = m;
-          this.handler?.({
-            data: {
-              type: 'reply',
-              id,
-              tab,
-              build,
-              leader: this.leader,
-              result: {
-                ok: false,
-                failure: {
-                  kind: 'refused',
-                  detail: 'late answer',
-                  retryable: w.retryable,
-                },
-              },
-            },
-          } as MessageEvent);
-          return;
-        }
-        super.postMessage(m);
-      }
-    }
-    window.BroadcastChannel = Spy;
+    if (command.opId) sent.push({ kind: command.kind, opId: command.opId });
+    if (command.kind !== state.refuse) return route.fallback();
+    state.refuse = null;
+    await route.fulfill({
+      json: {
+        ok: false,
+        failure: {
+          kind: 'refused',
+          detail: 'late answer',
+          retryable: state.retryable,
+        },
+      },
+    });
   });
-
-/** The opIds of the writes of `kind` the tab sent, in order. */
-const opIds = (page: Page, kind: string) =>
-  page.evaluate(
-    (k) =>
-      (window as unknown as { sent: { kind: string; opId: string }[] }).sent
-        .filter((w) => w.kind === k)
-        .map((w) => w.opId),
-    kind,
-  );
+  /** The opIds of the writes of `kind` the tab sent, in order. */
+  const opIds = (kind: string) =>
+    sent.filter((w) => w.kind === kind).map((w) => w.opId);
+  return { state, opIds };
+}
 
 test('details: a refused change is kept and retried as the same write', async ({
   page,
@@ -172,14 +127,12 @@ test('details: a refused change is kept and retried as the same write', async ({
   cli,
 }) => {
   await cli(account.token, 'add', 'Report');
-  await refuseNext(page);
+  const server = await refuseNext(page);
   await page.goto('/');
   await openRow(page, 'Report');
   const d = drawer(page);
   const due = d.getByLabel('Due', { exact: true });
-  await page.evaluate(
-    () => ((window as unknown as { refuse: string }).refuse = 'edit'),
-  );
+  server.state.refuse = 'edit';
   await due.fill(day(2));
   await due.blur();
   const refused = d.getByTestId('refused');
@@ -194,13 +147,9 @@ test('details: a refused change is kept and retried as the same write', async ({
   await expect(refused).toHaveCount(0);
   await expect(due).toHaveValue(day(2));
   await expect(d.getByTestId('save-status')).toContainText(
-    'Saved on this device',
+    'Saved on the server',
   );
-  const edits = await page.evaluate(() =>
-    (window as unknown as { sent: { kind: string; opId: string }[] }).sent
-      .filter((w) => w.kind === 'edit')
-      .map((w) => w.opId),
-  );
+  const edits = server.opIds('edit');
   expect(edits).toHaveLength(2);
   expect(edits[1]).toBe(edits[0]);
   await expect
@@ -221,16 +170,13 @@ test('details: a change refused for good stays in the field and saves as a new w
   cli,
 }) => {
   await cli(account.token, 'add', 'Report');
-  await refuseNext(page);
+  const server = await refuseNext(page);
   await page.goto('/');
   await openRow(page, 'Report');
   const d = drawer(page);
   const due = d.getByLabel('Due', { exact: true });
-  await page.evaluate(() => {
-    const w = window as unknown as { refuse: string; retryable: boolean };
-    w.refuse = 'edit';
-    w.retryable = false;
-  });
+  server.state.refuse = 'edit';
+  server.state.retryable = false;
   await due.fill(day(2));
   await due.blur();
   const refused = d.getByTestId('refused');
@@ -245,9 +191,9 @@ test('details: a change refused for good stays in the field and saves as a new w
   await refused.getByRole('button', { name: 'Save again' }).click();
   await expect(refused).toHaveCount(0);
   await expect(d.getByTestId('save-status')).toContainText(
-    'Saved on this device',
+    'Saved on the server',
   );
-  const edits = await opIds(page, 'edit');
+  const edits = server.opIds('edit');
   expect(edits).toHaveLength(2);
   expect(edits[1]).not.toBe(edits[0]);
   await expect
@@ -264,42 +210,32 @@ test('details: a change refused for good stays in the field and saves as a new w
 
 test('details: delete names its subtasks, shows progress, keeps a refusal', async ({
   page,
-  context,
   account,
   cli,
 }) => {
-  await cli(account.token, 'add', 'Synced');
-  await refuseNext(page); // records only: nothing is refused here
+  await cli(account.token, 'add', 'Old');
+  const server = await refuseNext(page);
   await page.goto('/');
   await expect(count(page)).toHaveText(tasks(1));
-
-  await context.setOffline(true);
-  await page.getByTestId('sync-now').click();
-  await expect(page.getByTestId('offline')).toBeVisible({ timeout: 15_000 });
-  const input = page.getByRole('textbox', { name: 'Quick add' });
-  await input.fill('Fresh');
-  await input.press('Enter');
-  await openRow(page, 'Fresh');
+  await openRow(page, 'Old');
   await page.getByTestId('delete-task').click();
   const dialog = nested(page);
   await expect(dialog).toContainText('This cannot be undone.');
+  server.state.refuse = 'deleteTask';
   await dialog.getByTestId('confirm-delete').click();
-  // Not synced yet: the dialog stays with the reason.
-  await expect(dialog.getByRole('alert')).toContainText('not synced yet');
-  await expect(row(page, 'Fresh')).toBeVisible();
+  // Refused: the dialog stays with the reason.
+  await expect(dialog.getByRole('alert')).toContainText(
+    'The server refused the request. late answer',
+  );
+  await expect(row(page, 'Old')).toBeVisible();
 
-  // Back online the tab syncs by itself.
-  await context.setOffline(false);
-  await expect(page.getByTestId('pending')).toHaveCount(0, {
-    timeout: 15_000,
-  });
   await dialog.getByTestId('confirm-delete').click();
   await expect(page.getByText('Task deleted', { exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Undo' })).toHaveCount(0);
-  await expect(row(page, 'Fresh')).toHaveCount(0);
+  await expect(row(page, 'Old')).toHaveCount(0);
   await expect(page).not.toHaveURL(/task=/);
   // Confirming again resent the refused write, not a new one.
-  const deletes = await opIds(page, 'deleteTask');
+  const deletes = server.opIds('deleteTask');
   expect(deletes).toHaveLength(2);
   expect(deletes[1]).toBe(deletes[0]);
 });
@@ -375,13 +311,9 @@ test('details: a refused repeat and return to series resend the same write', asy
     originOccurrence: day(),
     scheduledOn: day(1),
   });
-  await refuseNext(page);
+  const server = await refuseNext(page);
   await page.goto('/');
-  const refuse = (kind: string) =>
-    page.evaluate(
-      (k) => ((window as unknown as { refuse: string }).refuse = k),
-      kind,
-    );
+  const refuse = (kind: string) => (server.state.refuse = kind);
 
   // Repeat: the form stays open, Save again sends the same setRule.
   await openRow(page, 'Gym');
@@ -390,7 +322,7 @@ test('details: a refused repeat and return to series resend the same write', asy
   const form = nested(page);
   await form.getByRole('combobox', { name: 'Repeat' }).click();
   await page.getByRole('option', { name: 'Daily' }).click();
-  await refuse('setRule');
+  refuse('setRule');
   await form.getByRole('button', { name: 'Save' }).click();
   // Exact: the toast also announces its text in a hidden live region.
   await expect(
@@ -400,7 +332,7 @@ test('details: a refused repeat and return to series resend the same write', asy
   await form.getByRole('button', { name: 'Save' }).click();
   await expect(page.locator('[role="dialog"]')).toHaveCount(1);
   await expect(drawer(page).getByTestId('rule')).toContainText('FREQ=DAILY');
-  const rules = await opIds(page, 'setRule');
+  const rules = server.opIds('setRule');
   expect(rules).toHaveLength(2);
   expect(rules[1]).toBe(rules[0]);
   await page.keyboard.press('Escape');
@@ -408,7 +340,7 @@ test('details: a refused repeat and return to series resend the same write', asy
 
   // Return to series: the drawer stays, the second press sends the same undoMove.
   await page.goto(`/?task=${copy}`);
-  await refuse('undoMove');
+  refuse('undoMove');
   const back = drawer(page).getByRole('button', { name: 'Return to series' });
   await back.click();
   await expect(
@@ -417,7 +349,7 @@ test('details: a refused repeat and return to series resend the same write', asy
   await expect(page).toHaveURL(/task=/);
   await back.click();
   await expect(page).not.toHaveURL(/task=/);
-  const undos = await opIds(page, 'undoMove');
+  const undos = server.opIds('undoMove');
   expect(undos).toHaveLength(2);
   expect(undos[1]).toBe(undos[0]);
 });
