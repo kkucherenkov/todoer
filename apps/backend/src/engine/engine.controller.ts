@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   HttpCode,
+  type OnModuleDestroy,
   Post,
   Query,
   Req,
@@ -22,8 +23,15 @@ const PING_MS = 25_000;
  *  signOut). */
 @Controller({ path: 'engine', version: '1' })
 @UseGuards(AuthGuard)
-export class EngineController {
+export class EngineController implements OnModuleDestroy {
+  /** Ends each open stream: the HTTP server's close waits for them. */
+  private readonly open = new Set<() => void>();
+
   constructor(private readonly hub: EngineHub) {}
+
+  onModuleDestroy(): void {
+    for (const end of this.open) end();
+  }
 
   @Post()
   @HttpCode(200)
@@ -53,9 +61,13 @@ export class EngineController {
       res.write(`data: ${JSON.stringify(event)}\n\n`),
     );
     const ping = setInterval(() => res.write(': ping\n\n'), PING_MS);
-    req.on('close', () => {
+    const end = () => {
+      if (!this.open.delete(end)) return;
       clearInterval(ping);
       close();
-    });
+      res.end();
+    };
+    this.open.add(end);
+    req.on('close', end);
   }
 }

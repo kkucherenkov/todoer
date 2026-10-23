@@ -136,4 +136,14 @@ describe('EngineController: the stream', () => {
       vi.useRealTimers();
     }
   });
+
+  it('shutting down ends every open stream once', () => {
+    const { controller, req, res, closer } = events();
+    controller.onModuleDestroy();
+    expect(res.end).toHaveBeenCalledOnce();
+    // The client's close then finds the stream already ended.
+    req.emit('close');
+    expect(res.end).toHaveBeenCalledOnce();
+    expect(closer).toHaveBeenCalledOnce();
+  });
 });

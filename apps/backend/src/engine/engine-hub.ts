@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, type OnModuleDestroy } from '@nestjs/common';
 import {
   createEngine,
   dispatcher,
@@ -47,7 +47,7 @@ const NO_AUTH: EngineAuth = {
  * guard's user id, so a user only ever reaches their own engine.
  */
 @Injectable()
-export class EngineHub {
+export class EngineHub implements OnModuleDestroy {
   // ponytail: one backend process; engines live in memory. A second
   // instance would need sticky sessions or a shared feed.
   private readonly engines = new Map<string, Loaded>();
@@ -89,6 +89,15 @@ export class EngineHub {
       void loaded.engine.handle({ kind: 'watch', view: null, task: null }, tab);
       this.idle(userId, loaded);
     };
+  }
+
+  /** Shutdown: no unload timer outlives the app, no replica stays open. */
+  onModuleDestroy(): void {
+    for (const loaded of this.engines.values()) {
+      clearTimeout(loaded.unload);
+      loaded.stop();
+    }
+    this.engines.clear();
   }
 
   loaded(userId: string): boolean {

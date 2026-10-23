@@ -180,6 +180,13 @@ describe('EngineHub', () => {
     expect(await prisma.task.count({ where: { title: 'kept' } })).toBe(1);
   });
 
+  it('shutting down unloads every engine', async () => {
+    stream(U, T1);
+    await settle(U);
+    hub.onModuleDestroy();
+    expect(hub.loaded(U)).toBe(false);
+  });
+
   it('two users never share an engine', async () => {
     const u = stream(U, T1);
     const v = stream(V, T1);
