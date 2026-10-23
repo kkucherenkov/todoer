@@ -67,6 +67,9 @@ export type EngineDeps = {
   now: () => Date;
   newId: () => string;
   publish: <T extends Topic>(topic: T, value: Topics[T]) => void;
+  /** Nothing retries an unsent write (a server-side engine): it fails and
+   *  leaves nothing queued, and writes run one at a time. Default off. */
+  onlineOnly?: boolean;
 };
 
 type Layout = 'list' | 'kanban' | 'calendar';
@@ -135,6 +138,7 @@ export function createEngine({
   now,
   newId,
   publish,
+  onlineOnly = false,
 }: EngineDeps) {
   let session: Topics['session'] = { state: 'restoring', reason: null };
   let sync: Omit<Topics['sync'], 'pending' | 'failed'> = {
@@ -648,6 +652,15 @@ export function createEngine({
     }
   };
 
+  /** Online-only: the server did not take the change. Every pending entry
+   *  goes (a write may queue several ops, and writes run one at a time). */
+  const untaken = (): Result => {
+    for (const { opId, status } of store.entries()) {
+      if (status === 'pending') store.remove(opId);
+    }
+    return fail('unexpected', 'the server did not take the change');
+  };
+
   const write = async (w: Write, tab?: string): Promise<Result> => {
     const before = answered;
     let done: Awaited<ReturnType<typeof apply>>;
@@ -660,6 +673,7 @@ export function createEngine({
       // outbox, as offline, and the sync topic says why now, as a sync run
       // would (`once`). Nothing was judged.
       if (!(error instanceof RefusalError && error.pending)) throw error;
+      if (onlineOnly) return untaken();
       if (!tokens.signedIn()) setSession('signed-out', 'signed-out');
       else {
         const why = error.cause instanceof Error ? error.cause : error;
@@ -668,6 +682,7 @@ export function createEngine({
       return OK;
     }
     const { synced, note } = done;
+    if (onlineOnly && !synced) return untaken();
     if (synced) {
       // The request went through: a problem an earlier one named is over.
       if (sync.problem !== null) sync = { ...sync, problem: null };
@@ -724,7 +739,9 @@ export function createEngine({
             const refused = await signedIn();
             if (refused !== undefined) return refused;
             try {
-              return await write(command, tab);
+              return await (onlineOnly
+                ? serial(() => write(command, tab))
+                : write(command, tab));
             } finally {
               // Settled, refused or failed: the screens show what is true now.
               publishAll();
