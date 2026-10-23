@@ -392,10 +392,10 @@ components:
       additionalProperties: false
       properties:
         kind: { type: string, enum: [add] }
-        opId: { type: string }
-        id: { type: string }
+        opId: { type: string, format: uuid }
+        id: { type: string, format: uuid }
         text: { type: string }
-        parentId: { type: string }
+        parentId: { type: string, format: uuid }
 
     EngineMark:
       type: object
@@ -403,8 +403,8 @@ components:
       additionalProperties: false
       properties:
         kind: { type: string, enum: [mark] }
-        opId: { type: string }
-        taskId: { type: string }
+        opId: { type: string, format: uuid }
+        taskId: { type: string, format: uuid }
         mark: { type: string, enum: [done, skip, undo] }
         on: { type: string }
 
@@ -414,8 +414,8 @@ components:
       additionalProperties: false
       properties:
         kind: { type: string, enum: [edit] }
-        opId: { type: string }
-        taskId: { type: string }
+        opId: { type: string, format: uuid }
+        taskId: { type: string, format: uuid }
         changes: { type: object }
 
     EngineMove:
@@ -424,11 +424,11 @@ components:
       additionalProperties: false
       properties:
         kind: { type: string, enum: [move] }
-        opId: { type: string }
-        taskId: { type: string }
+        opId: { type: string, format: uuid }
+        taskId: { type: string, format: uuid }
         view: { type: string }
-        statusId: { type: [string, "null"] }
-        after: { type: [string, "null"] }
+        statusId: { type: [string, "null"], format: uuid }
+        after: { type: [string, "null"], format: uuid }
 
     EngineSaveView:
       type: object
@@ -436,8 +436,8 @@ components:
       additionalProperties: false
       properties:
         kind: { type: string, enum: [saveView] }
-        opId: { type: string }
-        id: { type: string }
+        opId: { type: string, format: uuid }
+        id: { type: string, format: uuid }
         fields: { type: object }
 
     EngineDeleteView:
@@ -446,8 +446,8 @@ components:
       additionalProperties: false
       properties:
         kind: { type: string, enum: [deleteView] }
-        opId: { type: string }
-        id: { type: string }
+        opId: { type: string, format: uuid }
+        id: { type: string, format: uuid }
 
     EngineSaveStatus:
       type: object
@@ -455,10 +455,10 @@ components:
       additionalProperties: false
       properties:
         kind: { type: string, enum: [saveStatus] }
-        opId: { type: string }
-        id: { type: string }
+        opId: { type: string, format: uuid }
+        id: { type: string, format: uuid }
         name: { type: string }
-        after: { type: [string, "null"] }
+        after: { type: [string, "null"], format: uuid }
 
     EngineSetCompleting:
       type: object
@@ -466,8 +466,8 @@ components:
       additionalProperties: false
       properties:
         kind: { type: string, enum: [setCompleting] }
-        opId: { type: string }
-        id: { type: string }
+        opId: { type: string, format: uuid }
+        id: { type: string, format: uuid }
 
     EngineDeleteStatus:
       type: object
@@ -475,8 +475,8 @@ components:
       additionalProperties: false
       properties:
         kind: { type: string, enum: [deleteStatus] }
-        opId: { type: string }
-        id: { type: string }
+        opId: { type: string, format: uuid }
+        id: { type: string, format: uuid }
 
     EngineMoveOccurrence:
       type: object
@@ -484,9 +484,9 @@ components:
       additionalProperties: false
       properties:
         kind: { type: string, enum: [moveOccurrence] }
-        opId: { type: string }
-        id: { type: string }
-        taskId: { type: string }
+        opId: { type: string, format: uuid }
+        id: { type: string, format: uuid }
+        taskId: { type: string, format: uuid }
         occurrence: { type: string }
         to: { type: string }
 
@@ -496,8 +496,8 @@ components:
       additionalProperties: false
       properties:
         kind: { type: string, enum: [undoMove] }
-        opId: { type: string }
-        taskId: { type: string }
+        opId: { type: string, format: uuid }
+        taskId: { type: string, format: uuid }
 
     EngineDeleteTask:
       type: object
@@ -505,8 +505,8 @@ components:
       additionalProperties: false
       properties:
         kind: { type: string, enum: [deleteTask] }
-        opId: { type: string }
-        taskId: { type: string }
+        opId: { type: string, format: uuid }
+        taskId: { type: string, format: uuid }
 
     EngineSetRule:
       type: object
@@ -514,8 +514,8 @@ components:
       additionalProperties: false
       properties:
         kind: { type: string, enum: [setRule] }
-        opId: { type: string }
-        taskId: { type: string }
+        opId: { type: string, format: uuid }
+        taskId: { type: string, format: uuid }
         rule: { type: [object, "null"] }
 
     EngineReparent:
@@ -524,9 +524,9 @@ components:
       additionalProperties: false
       properties:
         kind: { type: string, enum: [reparent] }
-        opId: { type: string }
-        taskId: { type: string }
-        parentId: { type: [string, "null"] }
+        opId: { type: string, format: uuid }
+        taskId: { type: string, format: uuid }
+        parentId: { type: [string, "null"], format: uuid }
 
 paths:
   /health:
