@@ -1,6 +1,6 @@
 # 12. There is no REST surface
 
-- **Status:** accepted
+- **Status:** accepted; amended by [0020](0020-the-web-reads-through-a-server-engine.md)
 - **Date:** 2026-09-25
 
 ## Context
