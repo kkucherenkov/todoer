@@ -2,7 +2,7 @@
 
 - Created: 2026-10-23
 - Owner: claude
-- Status: in-progress
+- Status: done
 - Blockers: —
 - Spec: maintainer request, 2026-10-23 — full-height rows, a blank line
   between top-level tasks, `b` toggles list ⇄ board without saving,
