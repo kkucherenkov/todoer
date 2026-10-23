@@ -1,11 +1,12 @@
 import { readFileSync } from 'node:fs';
-import { beforeEach, describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { BadRequestException, GoneException } from '@nestjs/common';
 import { uuidv7 } from 'uuidv7';
 import { Prisma } from '@prisma/client';
 import { taskOccurrenceId, taskTagId } from '@todoer/specs';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { resetDatabase } from '../testing/reset-database.js';
+import { ChangeFeed } from './change-feed.js';
 import { SyncService } from './sync.service.js';
 
 const prisma = new PrismaService();
@@ -2332,5 +2333,23 @@ describe('migration tombstone_orphan_subtasks (#391)', () => {
     expect(after.deletedAt).toEqual(parentRow.deletedAt);
     expect(after.version).toBe(before.version + 1);
     expect(after.seq).toBeGreaterThan(before.seq);
+  });
+});
+
+describe('announcing', () => {
+  it('announces a sync that applied an op', async () => {
+    const feed = new ChangeFeed();
+    const announce = vi.spyOn(feed, 'announce');
+    const svc = new SyncService(prisma, feed);
+    await svc.sync(USER, { since: 0, ops: [createTask('a')] });
+    expect(announce).toHaveBeenCalledTimes(1);
+    expect(announce).toHaveBeenCalledWith(USER);
+  });
+
+  it('does not announce a pull', async () => {
+    const feed = new ChangeFeed();
+    const announce = vi.spyOn(feed, 'announce');
+    await new SyncService(prisma, feed).sync(USER, { since: 0, ops: [] });
+    expect(announce).not.toHaveBeenCalled();
   });
 });

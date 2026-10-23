@@ -21,6 +21,7 @@
     "@nestjs/core": "^11.2.6",
     "@nestjs/platform-express": "^11.2.6",
     "@prisma/client": "6.19.3",
+    "@todoer/client-core": "workspace:^",
     "@todoer/specs": "workspace:^",
     "express": "^5.2.1",
     "express-openapi-validator": "^5.6.2",

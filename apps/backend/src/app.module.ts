@@ -7,6 +7,7 @@ import { SessionService } from './auth/session.service.js';
 import { AppConfig } from './config/app-config.js';
 import { HealthController } from './health/health.controller.js';
 import { PrismaService } from './prisma/prisma.service.js';
+import { ChangeFeed } from './sync/change-feed.js';
 import { PruneService } from './sync/prune.service.js';
 import { SyncController } from './sync/sync.controller.js';
 import { SyncService } from './sync/sync.service.js';
@@ -16,6 +17,7 @@ import { SyncService } from './sync/sync.service.js';
   providers: [
     AppConfig,
     PrismaService,
+    ChangeFeed,
     SyncService,
     PruneService,
     AuthService,
