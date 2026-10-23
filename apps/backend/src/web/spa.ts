@@ -32,8 +32,8 @@ export function inlineScriptHashes(html: string): string[] {
 
 /**
  * ADR 0011: no inline script runs except the build's own, by hash (plan
- * departure 3). 'wasm-unsafe-eval' lets SQLite WASM compile (design Q12) and
- * allows no JavaScript eval. Inline style stays allowed: Nuxt UI writes its
+ * departure 3); no eval, and no WebAssembly since the web stopped running
+ * SQLite in the browser. Inline style stays allowed: Nuxt UI writes its
  * theme into a <style> element at runtime, and CSS cannot run code
  * (departure 4). connect-src falls back to 'self': the API is same-origin
  * (Q9), so nothing else needs reaching.
@@ -41,9 +41,7 @@ export function inlineScriptHashes(html: string): string[] {
 export function contentSecurityPolicy(html: string): string {
   return [
     "default-src 'self'",
-    ["script-src 'self' 'wasm-unsafe-eval'", ...inlineScriptHashes(html)].join(
-      ' ',
-    ),
+    ["script-src 'self'", ...inlineScriptHashes(html)].join(' '),
     "style-src 'self' 'unsafe-inline'",
     "img-src 'self' data: blob:",
     "object-src 'none'",

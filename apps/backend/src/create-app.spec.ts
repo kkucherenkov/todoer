@@ -220,7 +220,7 @@ describe('createApp: serving a built SPA from WEB_ROOT', () => {
     expect(await res.text()).toBe(INDEX);
     expect(res.headers.get('cache-control')).toBe('no-cache');
     const csp = res.headers.get('content-security-policy')!;
-    expect(csp).toContain(`script-src 'self' 'wasm-unsafe-eval' ${HASH}`);
+    expect(csp).toContain(`script-src 'self' ${HASH}`);
   });
 
   it('falls back to index.html for a page route, GET and HEAD', async () => {

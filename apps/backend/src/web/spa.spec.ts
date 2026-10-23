@@ -58,9 +58,7 @@ describe('contentSecurityPolicy', () => {
   it('carries the hashes and no unsafe-inline in script-src', () => {
     const csp = contentSecurityPolicy('<script>x()</script>');
     const scriptSrc = csp.split('; ').find((d) => d.startsWith('script-src'))!;
-    expect(scriptSrc).toBe(
-      `script-src 'self' 'wasm-unsafe-eval' ${hash('x()')}`,
-    );
+    expect(scriptSrc).toBe(`script-src 'self' ${hash('x()')}`);
     expect(scriptSrc).not.toContain("'unsafe-inline'");
     expect(csp).toContain("frame-ancestors 'none'");
   });
