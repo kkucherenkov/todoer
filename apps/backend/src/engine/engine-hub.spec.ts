@@ -155,6 +155,31 @@ describe('EngineHub', () => {
     expect(await prisma.task.count({ where: { id: write.id } })).toBe(1);
   });
 
+  it('an unloaded engine no longer hears the feed', async () => {
+    const { close } = stream(U, T1);
+    await settle(U);
+    const listeners = (feed as unknown as { listeners: Map<string, unknown> })
+      .listeners;
+    expect(listeners.has(U)).toBe(true);
+    vi.useFakeTimers();
+    close();
+    vi.advanceTimersByTime(UNLOAD_MS);
+    expect(listeners.has(U)).toBe(false);
+  });
+
+  it('a write the server did not take fails and is never resent', async () => {
+    await settle(U);
+    vi.spyOn(sync, 'sync').mockRejectedValueOnce(new Error('db down'));
+    const lost = add('lost');
+    expect(await hub.request(U, T1, 1, lost)).toMatchObject({
+      ok: false,
+      failure: { kind: 'unexpected' },
+    });
+    expect(await hub.request(U, T1, 2, add('kept'))).toEqual({ ok: true });
+    expect(await prisma.task.count({ where: { id: lost.id } })).toBe(0);
+    expect(await prisma.task.count({ where: { title: 'kept' } })).toBe(1);
+  });
+
   it('two users never share an engine', async () => {
     const u = stream(U, T1);
     const v = stream(V, T1);

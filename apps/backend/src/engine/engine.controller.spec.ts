@@ -2,9 +2,13 @@ import type { INestApplication } from '@nestjs/common';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { uuidv7 } from 'uuidv7';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { EventEmitter } from 'node:events';
+import type { Request, Response } from 'express';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { AuthService } from '../auth/auth.service.js';
 import { createApp } from '../create-app.js';
+import { EngineController } from './engine.controller.js';
+import type { EngineHub } from './engine-hub.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { resetDatabase } from '../testing/reset-database.js';
 
@@ -101,5 +105,35 @@ describe('EngineController over HTTP', () => {
       value: { state: 'ready', reason: null },
       build: 'server',
     });
+  });
+});
+
+describe('EngineController: the stream', () => {
+  const events = () => {
+    const req = new EventEmitter();
+    const res = { writeHead: vi.fn(), write: vi.fn(), end: vi.fn() };
+    const closer = vi.fn();
+    const hub = { open: vi.fn(() => closer) } as unknown as EngineHub;
+    const controller = new EngineController(hub);
+    controller.events(
+      USER,
+      TAB,
+      req as unknown as Request,
+      res as unknown as Response,
+    );
+    return { controller, req, res, closer };
+  };
+
+  it('writes a ping comment every 25 s', () => {
+    vi.useFakeTimers();
+    try {
+      const { res } = events();
+      vi.advanceTimersByTime(24_999);
+      expect(res.write).not.toHaveBeenCalledWith(': ping\n\n');
+      vi.advanceTimersByTime(1);
+      expect(res.write).toHaveBeenCalledWith(': ping\n\n');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
