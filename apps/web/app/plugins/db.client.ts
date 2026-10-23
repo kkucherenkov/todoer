@@ -1,8 +1,7 @@
-import { connect, type Db } from '~/db/client';
+import { connect, HINT, type Db } from '~/db/client';
 import { forgetOpfs } from '~/db/forget-opfs';
 
-/** Departure 4: one bit saying a cookie session may exist. */
-const HINT = 'todoer.session';
+// Departure 4: HINT is one bit saying a cookie session may exist.
 /** Set once the old version's OPFS replica is gone. */
 const FORGOTTEN = 'todoer.opfs-forgotten';
 
@@ -31,10 +30,9 @@ export default defineNuxtPlugin(() => {
   if (!read(FORGOTTEN)) {
     void forgetOpfs().then((done) => done && write(FORGOTTEN, true));
   }
-  const db = connect(read(HINT));
-  watch(db.topics.session, (session) => {
-    if (session?.state === 'signed-in') write(HINT, true);
-    if (session?.state === 'signed-out') write(HINT, false);
+  const db = connect(read(HINT), {
+    remember: (on) => write(HINT, on),
+    events: window,
   });
   return { provide: { db } };
 });

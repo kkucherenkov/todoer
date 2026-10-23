@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Command, FromWorker, Span } from '@todoer/client-core';
-import { connect, type Db } from './client';
+import { connect, HINT, type Db } from './client';
 
 const pause = (ms = 10) => new Promise((resolve) => setTimeout(resolve, ms));
 const json = (body: unknown, status = 200) =>
@@ -12,6 +12,8 @@ const grant = (accessToken: string) => ({
   accessToken,
   accessExpiresAt: new Date(Date.now() + 3_600_000).toISOString(),
 });
+/** An access token naming `sub`, as the server signs it (unverified here). */
+const jwt = (sub: string) => `${btoa(JSON.stringify({ sub }))}.mac`;
 type Unstamped<T> = T extends unknown ? Omit<T, 'build'> : never;
 
 /** The backend as the page sees it: auth routes, `/engine`, and event
@@ -110,8 +112,8 @@ afterEach(() => {
 });
 
 /** Signed in from the cookie, the first stream open and its snapshot in. */
-async function signedIn() {
-  db = connect(true);
+async function signedIn(options?: Parameters<typeof connect>[1]) {
+  db = connect(true, options);
   await vi.waitFor(() => expect(s.streams).toHaveLength(1));
   s.push(ready);
   await vi.waitFor(() => expect(db!.connected.value).toBe(true));
@@ -208,6 +210,56 @@ describe('the session', () => {
     expect(db!.topics.session.value?.state).toBe('signed-out');
     expect(db!.topics.task.value).toBeUndefined();
     expect(db!.connected.value).toBe(false);
+    await pause(30);
+    expect(s.streamCalls()).toHaveLength(1);
+  });
+});
+
+describe('another tab', () => {
+  const removed = (key: string | null) =>
+    Object.assign(new Event('storage'), { key, newValue: null });
+
+  it('signing out there signs this tab out, without the server', async () => {
+    const events = new EventTarget();
+    const remember = vi.fn();
+    await signedIn({ events, remember });
+    db!.watch('all', 't1');
+    s.push({ type: 'publish', topic: 'task', value: { id: 't1', task: null } });
+    await vi.waitFor(() => expect(db!.topics.task.value?.id).toBe('t1'));
+    const before = s.calls.length;
+    events.dispatchEvent(removed('other.key'));
+    expect(db!.topics.session.value?.state).toBe('signed-in');
+    events.dispatchEvent(removed(HINT));
+    expect(db!.topics.session.value?.state).toBe('signed-out');
+    expect(db!.connected.value).toBe(false);
+    expect(db!.topics.task.value).toBeUndefined();
+    expect(db!.topics.catalog.value).toBeUndefined();
+    // The other tab owns the hint now, and already told the server.
+    expect(remember).not.toHaveBeenCalledWith(false);
+    await pause(30);
+    expect(s.calls).toHaveLength(before);
+  });
+
+  it('a renewal that answers as another account signs this tab out', async () => {
+    s.state.refresh = () => json(grant(jwt('alice')));
+    const remember = vi.fn();
+    await signedIn({ remember });
+    // Bob signed in from another tab: the shared cookie is his now.
+    s.state.refresh = () => json(grant(jwt('bob')));
+    s.state.engine = () => new Response(null, { status: 401 });
+    expect(await db!.request({ kind: 'sync', reason: 'manual' })).toMatchObject(
+      { ok: false, failure: { kind: 'signed-out' } },
+    );
+    expect(db!.topics.session.value).toEqual({
+      state: 'signed-out',
+      reason: 'signed-out',
+    });
+    expect(db!.connected.value).toBe(false);
+    // Bob's token never left the page, and his hint stays.
+    expect(s.engineCalls().map((c) => c.auth)).toEqual([
+      `Bearer ${jwt('alice')}`,
+    ]);
+    expect(remember).not.toHaveBeenCalledWith(false);
     await pause(30);
     expect(s.streamCalls()).toHaveLength(1);
   });

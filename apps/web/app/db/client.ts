@@ -5,6 +5,7 @@ import {
   httpCookieAuthApi,
   mint as coreMint,
   RefusalError,
+  subject,
   type AccessGrant,
   type Command,
   type Draft,
@@ -21,6 +22,10 @@ import { id as mintId } from './mint';
 import { readEvents } from './stream';
 
 export type { Draft };
+
+/** The localStorage key of the hint that a cookie session may exist. Every
+ *  tab of the origin sees it, so its removal signs every tab out. */
+export const HINT = 'todoer.session';
 
 export type Db = {
   request(command: Command): Promise<Result>;
@@ -83,11 +88,17 @@ const sleep = (ms: number, signal: AbortSignal) =>
  * registration and sign-out never reach the engine: the page calls `/auth`
  * itself and builds the `session` and `engine` topics from its own state.
  * `hint`: a cookie session may exist; without it no refresh is tried, since
- * each refused one counts against the IP's rate limit.
+ * each refused one counts against the IP's rate limit. `remember` keeps it
+ * for the next load; `events` (the window) reports another tab removing it.
  */
 export function connect(
   hint: boolean,
-  { base = '/api/v1', timeoutMs = 20_000 } = {},
+  {
+    base = '/api/v1',
+    timeoutMs = 20_000,
+    remember = undefined as ((on: boolean) => void) | undefined,
+    events = undefined as EventTarget | undefined,
+  } = {},
 ): Db {
   const tab = crypto.randomUUID();
   const auth = httpCookieAuthApi({ base, timeoutMs });
@@ -114,6 +125,8 @@ export function connect(
   const sameSpan = (a: Span | null, b: Span | null) =>
     a === b || (a?.from === b?.from && a?.to === b?.to);
   let stream: AbortController | undefined;
+  /** Whom this page signed in as, from its first token; null until known. */
+  let user: string | undefined | null = null;
 
   const engine = (
     state: Topics['engine']['state'],
@@ -124,22 +137,39 @@ export function connect(
     reason: Failure['kind'] | null = null,
   ) => (topics.session.value = { state, reason });
 
+  /** A token of the account this page shows, or a refusal. The cookie is
+   *  shared by every tab: after another account signed in elsewhere, a
+   *  renewal here answers as that account, and its token is never used. */
+  const own = (token: string) => {
+    const sub = subject(token);
+    if (user === null) user = sub;
+    else if (sub !== user) {
+      // The hint stays: it is the other account's now.
+      end('signed-out', false);
+      throw new RefusalError('another account signed in in another tab');
+    }
+    return token;
+  };
+
   /** Calls with the current token; a 401 renews it once and calls again. */
   const authed = async (
     call: (headers: Record<string, string>) => Promise<Response>,
   ) => {
-    const token = await tokens.current();
+    const token = own(await tokens.current());
     const response = await call({ authorization: `Bearer ${token}` });
     if (response.status !== 401) return response;
     // The cookie source never answers null: a refusal throws.
-    const renewed = (await tokens.renew(token)) ?? '';
+    const renewed = own((await tokens.renew(token)) ?? '');
     return call({ authorization: `Bearer ${renewed}` });
   };
 
   /** Signed out: the stream closes and nothing of the account stays. The
    *  engine topic is ready, since there is nothing to start: the gate draws
-   *  the sign-in form. */
-  const end = (reason: Failure['kind'] | null = null) => {
+   *  the sign-in form. `forget`: drop the hint; false when the end came from
+   *  another tab, which owns the hint now. */
+  const end = (reason: Failure['kind'] | null = null, forget = true) => {
+    if (forget) remember?.(false);
+    user = null;
     tokens.adopt(undefined);
     stream?.abort();
     stream = undefined;
@@ -155,7 +185,7 @@ export function connect(
    *  leaves it as it is. */
   const failed = (error: unknown): Result => {
     if (error instanceof RefusalError && !tokens.signedIn()) {
-      end('signed-out');
+      if (topics.session.value?.state !== 'signed-out') end('signed-out');
       return fail('signed-out', error.message);
     }
     return thrown(error);
@@ -275,7 +305,11 @@ export function connect(
     })();
   };
 
-  const begin = () => {
+  /** `token`: the one signed in with, naming the account; without it the
+   *  first token the stream gets names it. */
+  const begin = (token?: string) => {
+    user = token === undefined ? null : subject(token);
+    remember?.(true);
     engine('starting');
     session('signed-in');
     listen();
@@ -295,24 +329,34 @@ export function connect(
       return fail('invalid-credentials', 'wrong email or password');
     }
     tokens.adopt(grant);
-    begin();
+    begin(grant.accessToken);
     return OK;
   };
 
   const signOut = async (): Promise<Result> => {
     try {
       // current() renews an expired token first: logout needs a live bearer.
-      const bearer = await tokens.current();
+      // own() keeps another account's token from signing that account out.
+      const bearer = own(await tokens.current());
       if ((await auth.logout(bearer)) === 'unauthorized') {
         const renewed = await tokens.renew(bearer);
-        if (renewed !== null) await auth.logout(renewed);
+        if (renewed !== null) await auth.logout(own(renewed));
       }
     } catch {
       // Offline or already ended: the server session idles out on its own.
     }
-    end();
+    if (topics.session.value?.state !== 'signed-out') end();
     return OK;
   };
+
+  /** Another tab signed out (or cleared the storage): so does this one. */
+  const onStorage = (event: Event) => {
+    const { key, newValue } = event as StorageEvent;
+    if ((key === HINT || key === null) && newValue === null) {
+      if (topics.session.value?.state !== 'signed-out') end(null, false);
+    }
+  };
+  events?.addEventListener('storage', onStorage);
 
   if (!hint) end();
   else {
@@ -365,6 +409,7 @@ export function connect(
     topics,
     connected,
     close() {
+      events?.removeEventListener('storage', onStorage);
       stream?.abort();
       stream = undefined;
     },

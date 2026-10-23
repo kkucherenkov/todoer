@@ -20,7 +20,7 @@ export type Account = { email: string; password: string; token: string };
 type User = { email: string; password: string; refresh: string | null };
 
 const CLI = fileURLToPath(new URL('../../cli/dist/index.js', import.meta.url));
-/** The web client's "a cookie session may exist" bit (plugins/db.client.ts). */
+/** The web client's "a cookie session may exist" bit (db/client.ts). */
 const HINT = 'todoer.session';
 
 /** The next link of the worker's session: a successful refresh, which the

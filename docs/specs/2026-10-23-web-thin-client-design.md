@@ -145,6 +145,12 @@ The page builds the `session` and `engine` topics from its own state: `session`
 from the token source, `engine` from the stream (`starting` while it connects,
 `ready` once the snapshot arrived). `AppGate` keeps its shape.
 
+Every tab holds its own token source, and all of them share the cookie. A
+sign-out in one tab removes the `todoer.session` hint, and every other tab
+hears it as a `storage` event and signs out too. A renewal that answers as
+another account (someone signed in from another tab) signs the page out
+instead of showing that account's data under the first one's view.
+
 A request whose user is not the engine's user is refused; the `tab` value is
 the client's own and scoped to the user.
 

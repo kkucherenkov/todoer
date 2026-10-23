@@ -228,8 +228,11 @@ export type CookieTokenSource = TokenSource & {
 
 /**
  * The web's session (ADR 0011): the refresh token is an HttpOnly cookie the
- * worker cannot read, so only the access token is held, in memory. One
- * worker per origin, so no lock: concurrent callers share one refresh.
+ * page cannot read, so only the access token is held, in memory. Concurrent
+ * callers in one page share one refresh. Every tab holds its own source and
+ * may refresh at once with no lock: the tabs share the cookie jar, so each
+ * sends the latest cookie, and the server answers a rotated one inside its
+ * 30 s grace window with the same successor instead of a replay refusal.
  */
 export function cookieTokenSource(
   api: CookieAuthApi,
