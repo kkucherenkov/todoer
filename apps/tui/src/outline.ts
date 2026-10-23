@@ -29,8 +29,6 @@ import type { Tui } from './tui.js';
 import { lineInput } from './ui/line-input.js';
 import { createWrite } from './write.js';
 
-/** Lines the cursor row may take when its title does not fit. */
-const OVERLAY = 3;
 const RED = 31;
 const YELLOW = 33;
 
@@ -63,9 +61,9 @@ type Deps = {
 
 /**
  * The list layout, one line per task: top-level tasks with their listed
- * subtasks nested under them. The cursor row shows its title in full as an
- * overlay over the rows below it (above it near the bottom), so no other row
- * moves. `h`/`l` fold, `>`/`<` re-parent, `J`/`K` move among siblings
+ * subtasks nested under them. Every title shows in full, wrapped under its
+ * row's head, and a blank line stands before each top-level task; the pane
+ * scrolls by lines to keep the cursor row whole. `h`/`l` fold, `>`/`<` re-parent, `J`/`K` move among siblings
  * (manual views only), `n` (or `o`) and `O` add a task or a subtask on an
  * input row where it will appear (below the cursor's group; a sorted view
  * then places it by its sort), and the shared task keys
@@ -436,7 +434,12 @@ export class Outline implements Pane {
       priority < 4
         ? `${priority < 2 ? paint(RED, `p${priority}`) : priority < 3 ? paint(YELLOW, `p${priority}`) : `p${priority}`} `
         : '';
-    const head = `${cursor ? sgr(this.focused ? 1 : 2, '▸') : ' '} ${'  '.repeat(r.depth)}${item.closed ? '✓' : '○'} ${p}`;
+    // Open in its first status (or none) ○, in a later one ◐: the board's
+    // columns, read left to right.
+    const statuses = this.deps.tui.topics.get('catalog')?.statuses ?? [];
+    const later = statuses.findIndex((s) => s.id === item.column) > 0;
+    const mark = item.closed ? '✓' : later ? paint(YELLOW, '◐') : '○';
+    const head = `${cursor ? sgr(this.focused ? 1 : 2, '▸') : ' '} ${'  '.repeat(r.depth)}${mark} ${p}`;
     // A subtask whose parent this view does not list.
     const orphan =
       r.depth === 0 && item.parentTitle !== null
@@ -458,14 +461,9 @@ export class Outline implements Pane {
     return { head, title: orphan + String(item.title), meta };
   }
 
-  /** One row; the cursor row may take up to `lines` lines when its title
-   *  does not fit. The first keeps the meta, the rest are all title. */
-  private line(
-    r: OutlineRow,
-    cursor: boolean,
-    width: number,
-    lines = OVERLAY,
-  ): string[] {
+  /** One row in full: the title wraps under the head, the meta stays on
+   *  the first line. */
+  private line(r: OutlineRow, cursor: boolean, width: number): string[] {
     const { head, title, meta: all } = this.parts(r, cursor);
     const meta = truncateToWidth(all, Math.floor(width / 2), '…');
     const headWidth = visibleWidth(head);
@@ -477,28 +475,17 @@ export class Outline implements Pane {
     const style = (text: string) =>
       cursor ? sgr(1, text) : dim ? sgr(2, text) : text;
     const tail = meta === '' ? '' : ` ${sgr(2, meta)}`;
-    if (!cursor || visibleWidth(title) <= room) {
-      return [head + style(truncateToWidth(title, room, '…', true)) + tail];
-    }
+    // The first line is narrower: the meta stands right of it.
     const first = wrapTextWithAnsi(title, room)[0] ?? '';
     const rest = title.startsWith(first)
       ? title.slice(first.length).trimStart()
       : '';
-    const wrapped =
-      rest === '' ? [] : wrapTextWithAnsi(rest, width - headWidth);
-    const more = wrapped.slice(0, lines - 1);
-    const cut = wrapped.length > more.length || (lines === 1 && rest !== '');
-    // The last shown line ends in `…` when the title goes on.
-    const text = [first, ...more].map((t, i, all) =>
-      cut && i === all.length - 1
-        ? truncateToWidth(`${t}…`, i === 0 ? room : width - headWidth, '…')
-        : t,
-    );
-    return text.map((t, i) =>
-      i === 0
-        ? head + style(truncateToWidth(t, room, '', true)) + tail
-        : ' '.repeat(headWidth) + style(t),
-    );
+    const more =
+      rest === '' ? [] : wrapTextWithAnsi(rest, Math.max(1, width - headWidth));
+    return [
+      head + style(truncateToWidth(first, room, '', true)) + tail,
+      ...more.map((t) => ' '.repeat(headWidth) + style(t)),
+    ];
   }
 
   /** The add's lines: its input or its refused text, then the reason. */
@@ -525,62 +512,47 @@ export class Outline implements Pane {
     this.cursor = { at, id: this.cursor.id };
     // A pane with a set height keeps its editor line inside it.
     const below = this.keys.render(width);
-    const a = this.adding;
-    const block = a === null ? [] : this.block(a, width);
-    const place = a === null ? 0 : this.place(a, rows);
-    const total = rows.length + block.length;
-    const size = Math.max(
-      1,
-      this.height === undefined ? total : this.height - below.length,
-    );
-    // Keep the cursor row, or the whole add, in the pane.
-    const [lo, hi] = a === null ? [at, at + 1] : [place, place + block.length];
-    if (lo < this.top) this.top = lo;
-    else if (hi > this.top + size) this.top = hi - size;
-    this.top = Math.max(0, Math.min(this.top, total - size));
+    const fit = (lines: string[]) =>
+      [...lines, ...below].map((l) => truncateToWidth(l, width, '', true));
     const problem = this.view()?.problem ?? null;
     if (problem !== null) {
-      return [
+      return fit([
         `this view cannot be shown: ${colour() ? sgr(YELLOW, problem) : problem}`,
-        ...below,
-      ].map((l) => truncateToWidth(l, width, '', true));
+      ]);
     }
-    if (total === 0) {
-      return [sgr(2, 'nothing here'), ...below].map((l) =>
-        truncateToWidth(l, width, '', true),
-      );
-    }
+    const a = this.adding;
+    if (rows.length === 0 && a === null) return fit([sgr(2, 'nothing here')]);
+    // The add's block stands where the task will appear and is the one the
+    // pane keeps in view; else the cursor row is.
+    const entries = rows.map((r, i) => ({
+      lines: this.line(r, i === at, width),
+      top: r.depth === 0,
+      kept: a === null && i === at,
+    }));
     if (a !== null) {
-      // The add's row stands where the task will appear: the rows below it
-      // move down by its lines, no other row moves.
-      const lines: string[] = [];
-      for (let i = this.top; i < Math.min(total, this.top + size); i += 1) {
-        const r = i < place ? rows[i] : rows[i - block.length];
-        lines.push(
-          i >= place && i < place + block.length
-            ? (block[i - place] ?? '')
-            : r === undefined
-              ? ''
-              : (this.line(r, r === rows[at], width, 1)[0] ?? ''),
-        );
-      }
-      return [...lines, ...below].map((l) =>
-        truncateToWidth(l, width, '', true),
-      );
+      entries.splice(this.place(a, rows), 0, {
+        lines: this.block(a, width),
+        top: a.parentId === undefined,
+        kept: true,
+      });
     }
-    const shown = rows.slice(this.top, this.top + size);
-    const lines = shown.map((r) => this.line(r, false, width)[0] ?? '');
-    const over = shown[at - this.top];
-    if (over !== undefined) {
-      const full = this.line(over, true, width, Math.min(OVERLAY, size));
-      const r = at - this.top;
-      const start =
-        r + full.length <= size ? r : Math.max(0, r - full.length + 1);
-      lines.splice(start, full.length, ...full);
-      lines.length = Math.min(lines.length, size);
-    }
-    lines.push(...below);
-    return lines.map((l) => truncateToWidth(l, width, '', true));
+    const lines: string[] = [];
+    let [lo, hi] = [0, 0];
+    entries.forEach((e, i) => {
+      if (i > 0 && e.top) lines.push('');
+      if (e.kept) lo = lines.length;
+      lines.push(...e.lines);
+      if (e.kept) hi = lines.length;
+    });
+    const size = Math.max(
+      1,
+      this.height === undefined ? lines.length : this.height - below.length,
+    );
+    // A row taller than the pane shows from its start.
+    if (lo < this.top) this.top = lo;
+    else if (hi > this.top + size) this.top = Math.min(lo, hi - size);
+    this.top = Math.max(0, Math.min(this.top, lines.length - size));
+    return fit(lines.slice(this.top, this.top + size));
   }
 
   invalidate(): void {}

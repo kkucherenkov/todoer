@@ -3,6 +3,7 @@ import {
   matchesKey,
   truncateToWidth,
   type Input,
+  wrapTextWithAnsi,
 } from '@earendil-works/pi-tui';
 import type { Item } from '@todoer/client-core';
 import { columns, moveAfterIn, visible } from './board-columns.js';
@@ -13,7 +14,8 @@ import type { Tui } from './tui.js';
 import { lineInput } from './ui/line-input.js';
 import { createWrite } from './write.js';
 
-/** A column's width; more columns than fit scroll instead of narrowing. */
+/** A column's least width; more columns than fit scroll instead of
+ *  narrowing. The columns that fit share the whole width. */
 const COLUMN = 22;
 const CYAN = 36;
 
@@ -23,8 +25,11 @@ const CYAN = 36;
  * root draws it across the outline and detail columns. `H`/`L` move a card
  * across columns, `J`/`K` within one in a manual view, `n` (or `o`) adds a
  * card below the current one (where the sort puts it in a sorted view), and
- * the shared task keys (`TaskKeys`). Past `height` the cursor's column
- * scrolls to keep its card drawn. `single` shows one column at a time.
+ * the shared task keys (`TaskKeys`). A `│` separates the columns, a rule
+ * underlines their headers, and a card's title wraps inside its column with
+ * a blank line before the next card. Past `height` the cursor's column
+ * scrolls by lines to keep its card whole. `single` shows one column at a
+ * time.
  */
 export class Board implements Pane {
   height: number | undefined;
@@ -256,15 +261,24 @@ export class Board implements Pane {
       this.single ? 1 : Math.max(1, Math.floor((width + 1) / (COLUMN + 1))),
     );
     const shown = cols.slice(from, to);
-    const cell = (text: string) =>
-      truncateToWidth(text, this.single ? width : COLUMN, '…', true);
+    const n = Math.max(1, shown.length);
+    const cw = Math.max(1, Math.floor((width - (n - 1)) / n));
+    // The last column takes what the division leaves.
+    const wide = (k: number) =>
+      k === n - 1 ? Math.max(1, width - (n - 1) * (cw + 1)) : cw;
+    const cell = (text: string, k: number) =>
+      truncateToWidth(text, wide(k), '…', true);
     const head = shown.map((column, k) => {
       const mark = column.completing ? ' ✓' : '';
       const name = this.single
         ? `${column.name.toUpperCase()}${mark} (${c + 1}/${cols.length})`
         : `${column.name}${mark} (${column.items.length})`;
-      return cell(sgr(1, from + k === c && colour() ? sgr(CYAN, name) : name));
+      return cell(
+        ` ${sgr(1, from + k === c && colour() ? sgr(CYAN, name) : name)}`,
+        k,
+      );
     });
+    const rule = shown.map((_, k) => '─'.repeat(wide(k))).join('┼');
     const scroll =
       !this.single && (from > 0 || to < cols.length)
         ? [sgr(2, `columns ${from + 1}–${to} of ${cols.length}`)]
@@ -275,39 +289,54 @@ export class Board implements Pane {
         ? [`new: ${this.adding.getValue()} ${sgr(2, 'saving…')}`]
         : (this.adding?.render(width) ?? this.keys.render(width))),
     ];
-    const depth = Math.max(0, ...shown.map((s) => s.items.length));
+    /** A card's title wrapped inside the column under its two-cell mark. */
+    const card = (item: Item, cursor: boolean): string[] =>
+      wrapTextWithAnsi(
+        `${item.parentTitle === null ? '' : `${item.parentTitle} › `}${String(item.title)}`,
+        Math.max(1, cw - 2),
+      ).map((text, i) => {
+        const mark = i === 0 && cursor ? '▸ ' : '  ';
+        // A mark as well as inverse: inverse alone is lost without colour.
+        if (cursor) {
+          return this.focused
+            ? sgr(7, `${mark}${text}`)
+            : `${i === 0 ? `${sgr(2, '▸')} ` : mark}${text}`;
+        }
+        return item.closed ? sgr(2, `${mark}${text}`) : `${mark}${text}`;
+      });
+    // The lines the cursor's card takes in its column.
+    let [lo, hi] = [0, 0];
+    const stacks = shown.map((column, k) => {
+      const lines: string[] = [];
+      column.items.forEach((item, at) => {
+        if (at > 0) lines.push('');
+        const cursor = from + k === c && at === r;
+        if (cursor) lo = lines.length;
+        lines.push(...card(item, cursor));
+        if (cursor) hi = lines.length;
+      });
+      return lines;
+    });
     const room = Math.max(
       1,
-      this.height === undefined ? depth : this.height - below.length - 1,
+      this.height === undefined
+        ? Math.max(0, ...stacks.map((s) => s.length))
+        : this.height - below.length - 2,
     );
     // The cursor's column scrolls; the others show from their first card.
-    const count = cols[c]?.items.length ?? 0;
-    if (r < this.top) this.top = r;
-    else if (r >= this.top + room) this.top = r - room + 1;
+    if (lo < this.top) this.top = lo;
+    else if (hi > this.top + room) this.top = Math.min(lo, hi - room);
+    const count = stacks[c - from]?.length ?? 0;
     this.top = Math.max(0, Math.min(this.top, count - room));
     const offset = (k: number) => (from + k === c ? this.top : 0);
-    const lines = Math.min(
+    const depth = Math.min(
       room,
-      Math.max(0, ...shown.map((s, k) => s.items.length - offset(k))),
+      Math.max(0, ...stacks.map((s, k) => s.length - offset(k))),
     );
-    const cards = Array.from({ length: lines }, (_, n) =>
-      shown
-        .map((column, k) => {
-          const at = n + offset(k);
-          const item = column.items[at];
-          if (item === undefined) return cell('');
-          const text = `${item.parentTitle === null ? '' : `${item.parentTitle} › `}${String(item.title)}`;
-          // A mark as well as inverse: inverse alone is lost without colour.
-          if (from + k === c && at === r) {
-            return cell(
-              this.focused ? sgr(7, `▸ ${text}`) : `${sgr(2, '▸')} ${text}`,
-            );
-          }
-          return cell(item.closed ? sgr(2, `  ${text}`) : `  ${text}`);
-        })
-        .join(' '),
+    const body = Array.from({ length: depth }, (_, line) =>
+      stacks.map((s, k) => cell(s[line + offset(k)] ?? '', k)).join('│'),
     );
-    return [head.join(' '), ...cards, ...below].map((l) =>
+    return [head.join('│'), rule, ...body, ...below].map((l) =>
       truncateToWidth(l, width, '', true),
     );
   }
