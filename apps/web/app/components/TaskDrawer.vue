@@ -381,6 +381,7 @@ const dates = [
             size="sm"
             class="self-start"
             :loading="saving > 0"
+            :disabled="!db.connected.value"
             @click="retry"
           >
             {{ $t('drawer.retry') }}
@@ -392,6 +393,7 @@ const dates = [
             size="sm"
             class="self-start"
             :loading="saving > 0"
+            :disabled="!db.connected.value"
             @click="saveAgain"
           >
             {{ $t('drawer.saveAgain') }}

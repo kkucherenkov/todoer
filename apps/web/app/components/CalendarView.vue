@@ -124,7 +124,10 @@ function offerUndo(
   });
 }
 
-const { over, chipEvents, dayEvents } = useDayDrag((p, to) => void move(p, to));
+const { over, chipEvents, dayEvents } = useDayDrag(
+  (p, to) => void move(p, to),
+  () => db.connected.value,
+);
 const moving = ref<Placement | null>(null);
 
 const month = computed(() => state.value.at.slice(0, 7));

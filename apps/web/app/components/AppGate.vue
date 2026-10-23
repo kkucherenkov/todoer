@@ -53,6 +53,17 @@ watch(
       v-bind="engine.reason == null ? {} : { description: engine.reason }"
       :actions="[{ label: $t('failed.reload'), onClick: reload }]"
     />
+    <!-- Before the first stream: the server is not answering (client.ts). -->
+    <UAlert
+      v-else-if="
+        engine?.state === 'starting' && engine.reason === 'unreachable'
+      "
+      color="warning"
+      variant="subtle"
+      data-testid="unreachable"
+      :title="$t('errors.unreachable')"
+      :actions="[{ label: $t('failed.reload'), onClick: reload }]"
+    />
     <div
       v-else-if="
         engine?.state === 'starting' ||

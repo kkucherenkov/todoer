@@ -65,6 +65,9 @@ const thrown = (error: unknown): Result =>
 
 const FIRST_RETRY_MS = 1000;
 const LAST_RETRY_MS = 30_000;
+/** A stream that lived this long ended normally (its token expired) and is
+ *  reopened at once; a shorter one waits FIRST_RETRY_MS first. */
+const LIVED_MS = 60_000;
 
 const sleep = (ms: number, signal: AbortSignal) =>
   new Promise<void>((resolve) => {
@@ -112,8 +115,10 @@ export function connect(
     a === b || (a?.from === b?.from && a?.to === b?.to);
   let stream: AbortController | undefined;
 
-  const engine = (state: Topics['engine']['state']) =>
-    (topics.engine.value = { state, reason: null });
+  const engine = (
+    state: Topics['engine']['state'],
+    reason: string | null = null,
+  ) => (topics.engine.value = { state, reason });
   const session = (
     state: Topics['session']['state'],
     reason: Failure['kind'] | null = null,
@@ -126,10 +131,9 @@ export function connect(
     const token = await tokens.current();
     const response = await call({ authorization: `Bearer ${token}` });
     if (response.status !== 401) return response;
-    const renewed = await tokens.renew(token);
-    return renewed === null
-      ? response
-      : call({ authorization: `Bearer ${renewed}` });
+    // The cookie source never answers null: a refusal throws.
+    const renewed = (await tokens.renew(token)) ?? '';
+    return call({ authorization: `Bearer ${renewed}` });
   };
 
   /** Signed out: the stream closes and nothing of the account stays. The
@@ -209,9 +213,13 @@ export function connect(
   /**
    * Keeps this tab's stream open while signed in. Opening one makes the
    * server publish a snapshot; closing it withdraws the tab's watch, so the
-   * watch goes again on every open. A stream that delivered and ended is
-   * reopened at once (the server ends it when its token expires); an open
-   * that fails is retried after 1 s, doubling to 30 s.
+   * watch goes again on every open. A stream that lived a while and ended
+   * is reopened at once and stays `connected` meanwhile: the server ends it
+   * when its token expires, every 15 minutes, and the write controls must
+   * not flicker. One that ended sooner waits 1 s, so a server that closes
+   * every stream right away is not hammered. A failed open is retried after
+   * 1 s, doubling to 30 s; before the first stream it tells the gate the
+   * server cannot be reached (engine `starting`, reason `unreachable`).
    */
   // ponytail: no idle watchdog; a half-open connection reads as connected
   // until the browser errors it. Abort after ~2 missed pings if that shows up.
@@ -219,9 +227,9 @@ export function connect(
     stream?.abort();
     const abort = (stream = new AbortController());
     void (async () => {
-      let wait = 0;
+      let failures = 0;
       while (!abort.signal.aborted) {
-        let opened = false;
+        let openedAt: number | undefined;
         try {
           const response = await authed((headers) =>
             fetch(`${base}/engine/events?tab=${tab}`, {
@@ -232,8 +240,9 @@ export function connect(
           if (response.status === 401) return end('signed-out');
           if (response.ok) {
             await readEvents(response, (event) => {
-              if (!opened) {
-                opened = true;
+              if (openedAt === undefined) {
+                openedAt = Date.now();
+                failures = 0;
                 connected.value = true;
                 engine('ready');
                 if (watching.view !== null || watching.task !== null) {
@@ -250,11 +259,18 @@ export function connect(
           }
         }
         if (abort.signal.aborted) return;
+        if (openedAt !== undefined && Date.now() - openedAt >= LIVED_MS) {
+          continue;
+        }
         connected.value = false;
-        wait = opened
-          ? 0
-          : Math.min(Math.max(wait * 2, FIRST_RETRY_MS), LAST_RETRY_MS);
-        if (wait > 0) await sleep(wait, abort.signal);
+        if (openedAt === undefined && topics.engine.value?.state !== 'ready') {
+          engine('starting', 'unreachable');
+        }
+        const wait =
+          openedAt !== undefined
+            ? FIRST_RETRY_MS
+            : Math.min(FIRST_RETRY_MS * 2 ** failures++, LAST_RETRY_MS);
+        await sleep(wait, abort.signal);
       }
     })();
   };

@@ -84,6 +84,7 @@ const lastSynced = computed(() => {
       <UButton
         size="sm"
         :loading="sync?.running ?? false"
+        :disabled="!db.connected.value"
         data-testid="sync-now"
         @click="db.request({ kind: 'sync', reason: 'manual' })"
       >

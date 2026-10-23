@@ -16,6 +16,8 @@ const emit = defineEmits<{
   open: [opener?: HTMLElement];
 }>();
 const { t } = useI18n();
+const db = useDb();
+const offline = computed(() => !db.connected.value);
 const open = useOpenTask();
 const folded = useFolded();
 const card = ref<HTMLElement | null>(null);
@@ -25,6 +27,7 @@ const actions = computed<DropdownMenuItem[]>(() => [
   {
     label: t('kanban.moveTo'),
     icon: 'i-lucide-columns-3',
+    disabled: offline.value,
     children: props.columns.map((c) => ({
       label: c.name,
       disabled: c.id === props.item.column,
@@ -36,13 +39,13 @@ const actions = computed<DropdownMenuItem[]>(() => [
         {
           label: t('list.moveUp'),
           icon: 'i-lucide-arrow-up',
-          disabled: props.first,
+          disabled: offline.value || props.first,
           onSelect: () => emit('move', 'up'),
         },
         {
           label: t('list.moveDown'),
           icon: 'i-lucide-arrow-down',
-          disabled: props.last,
+          disabled: offline.value || props.last,
           onSelect: () => emit('move', 'down'),
         },
       ]

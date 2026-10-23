@@ -47,7 +47,9 @@ function server() {
       });
       return Promise.resolve(new Response(body));
     }
-    if (url === '/api/v1/auth/refresh') return Promise.resolve(state.refresh());
+    if (url === '/api/v1/auth/refresh') {
+      return Promise.resolve().then(state.refresh);
+    }
     if (url === '/api/v1/auth/login') return Promise.resolve(json(grant('t1')));
     if (url === '/api/v1/auth/logout') {
       return Promise.resolve(new Response(null, { status: 204 }));
@@ -104,6 +106,7 @@ afterEach(() => {
   db = undefined;
   vi.useRealTimers();
   vi.unstubAllGlobals();
+  vi.restoreAllMocks();
 });
 
 /** Signed in from the cookie, the first stream open and its snapshot in. */
@@ -114,6 +117,9 @@ async function signedIn() {
   await vi.waitFor(() => expect(db!.connected.value).toBe(true));
   return db;
 }
+
+const settledConnected = () =>
+  vi.waitFor(() => expect(db!.connected.value).toBe(true));
 
 describe('the session', () => {
   it('signIn is answered by the page', async () => {
@@ -155,6 +161,28 @@ describe('the session', () => {
       expect(db!.topics.session.value?.state).toBe('signed-in'),
     );
     expect(s.calls[0]?.url).toBe('/api/v1/auth/refresh');
+  });
+
+  it('says the server cannot be reached while it restores, and recovers', async () => {
+    s.state.refresh = () => {
+      throw new TypeError('fetch failed');
+    };
+    db = connect(true);
+    await vi.waitFor(() =>
+      expect(db!.topics.engine.value).toEqual({
+        state: 'starting',
+        reason: 'unreachable',
+      }),
+    );
+    // Signed in still: the cookie was never refused, the loop keeps trying.
+    expect(db.topics.session.value?.state).toBe('signed-in');
+    s.state.refresh = () => json(grant('t1'));
+    await vi.waitFor(() => expect(s.streams).toHaveLength(1), {
+      timeout: 3000,
+    });
+    s.push(ready);
+    await settledConnected();
+    expect(db.topics.engine.value).toEqual({ state: 'ready', reason: null });
   });
 
   it('a refused cookie signs out', async () => {
@@ -335,19 +363,26 @@ describe('the stream', () => {
     await signedIn();
     db!.watch('v1', null);
     await vi.waitFor(() => expect(s.engineCalls()).toHaveLength(1));
-    // The backend went away: the stream ends, the open right after it fails.
+    // The backend went away: the stream ends soon after it opened, and the
+    // next open fails.
     s.state.failStreams = 1;
+    const endedAt = Date.now();
     s.end();
     await vi.waitFor(() => expect(db!.connected.value).toBe(false));
     expect(db!.topics.engine.value?.state).toBe('ready');
-    await vi.waitFor(() => expect(s.streamCalls()).toHaveLength(2));
-    const failedAt = Date.now();
     await pause(500);
-    expect(s.streamCalls()).toHaveLength(2);
+    expect(s.streamCalls()).toHaveLength(1); // a short-lived stream waits 1 s
+    await vi.waitFor(() => expect(s.streamCalls()).toHaveLength(2), {
+      timeout: 2000,
+    });
+    const failedAt = Date.now();
+    expect(failedAt - endedAt).toBeGreaterThanOrEqual(950);
     await vi.waitFor(() => expect(s.streams).toHaveLength(2), {
       timeout: 2000,
     });
     expect(Date.now() - failedAt).toBeGreaterThanOrEqual(950);
+    // Lost after it was ready: the gate keeps the app, the footer says it.
+    expect(db!.topics.engine.value).toEqual({ state: 'ready', reason: null });
     s.push(ready);
     await vi.waitFor(() => expect(db!.connected.value).toBe(true));
     // The closed stream withdrew the watch: it goes again.
@@ -365,8 +400,30 @@ describe('the stream', () => {
         : fetch(input, init),
     );
     s.end();
-    await vi.waitFor(() =>
-      expect(db!.topics.session.value?.state).toBe('signed-out'),
+    await vi.waitFor(
+      () => expect(db!.topics.session.value?.state).toBe('signed-out'),
+      { timeout: 3000 },
+    );
+  });
+
+  it('reopens a stream that ended at its expiry at once, still connected', async () => {
+    await signedIn();
+    const now = Date.now();
+    vi.spyOn(Date, 'now').mockReturnValue(now + 15 * 60_000);
+    s.end();
+    await vi.waitFor(() => expect(s.streams).toHaveLength(2));
+    expect(db!.connected.value).toBe(true);
+    s.push(ready);
+    await settledConnected();
+  });
+
+  it('keeps the token out of the stream URL', async () => {
+    await signedIn();
+    const [call] = s.streamCalls();
+    expect(call!.url).toMatch(/^\/api\/v1\/engine\/events\?tab=[0-9a-f-]{36}$/);
+    expect(call!.url).not.toContain('t1');
+    expect(new Headers(call!.init.headers).get('authorization')).toBe(
+      'Bearer t1',
     );
   });
 });
