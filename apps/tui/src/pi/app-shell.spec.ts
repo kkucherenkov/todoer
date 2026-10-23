@@ -48,6 +48,17 @@ describe('createShell', () => {
     ).not.toContain('hello');
   });
 
+  it('resets the main screen’s keyboard flags after leaving the alternate screen', () => {
+    const { terminal, writes } = fakeTerminal();
+    const shell = createShell({ terminal, root, onExit: () => undefined });
+    shell.start();
+    shell.stop();
+    const all = writes.join('');
+    expect(all.lastIndexOf('\u001b[=0;1u')).toBeGreaterThan(
+      all.lastIndexOf('?1049l'),
+    );
+  });
+
   it('stops on SIGINT and removes its handlers', () => {
     const before = [
       process.listenerCount('SIGINT'),

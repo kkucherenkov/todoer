@@ -23,11 +23,21 @@ const UNBOUND = {
 
 const SIGNALS = { SIGTERM: 143, SIGINT: 130 } as const;
 
+/** Kitty keyboard flags of the current screen set to 0 (`CSI = flags ; 1 u`),
+ *  the stack untouched. */
+const KITTY_FLAGS_OFF = '\u001b[=0;1u';
+
 /**
  * The alternate screen around `root`. The mouse is not captured (the
  * terminal keeps selection), and the last frame is not dumped into the
  * scrollback on exit. pi-tui restores the terminal on an uncaught exception
  * but handles no signal, so SIGTERM and SIGINT stop the shell here.
+ *
+ * pi-tui pushes the kitty keyboard flags on the alternate screen and pops
+ * them there, which is right, yet Orca's terminal (xterm.js) was left with
+ * them on the main screen after a session with live output: the shell then
+ * received every key release as `CSI …;1:3u`. The shell sets no flags of its
+ * own, so the main screen's are set back to 0 after leaving.
  */
 export function createShell(deps: {
   terminal: Terminal;
@@ -53,6 +63,7 @@ export function createShell(deps: {
     keybindings.setUserBindings(before);
     try {
       tui.stop({ preserveScreen: true });
+      terminal.write(KITTY_FLAGS_OFF);
     } finally {
       onExit(code);
     }
