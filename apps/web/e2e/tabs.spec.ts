@@ -158,9 +158,14 @@ test('writes are blocked while the stream is down', async ({
     'Cannot reach the server',
   );
 
+  // Written elsewhere while this tab hears nothing.
+  await cli(account.token, 'add', 'Written during the outage');
+  await expect(titled(page, 'Written during the outage')).toHaveCount(0);
+
   // Back: the next retry opens a stream, with a fresh snapshot.
   await page.unroute('**/engine/events*');
   await expect(input).toBeEnabled({ timeout: 30_000 });
+  await expect(titled(page, 'Written during the outage')).toBeVisible();
   await expect(page.getByTestId('unreachable')).toHaveCount(0);
   await expect(undo).toBeEnabled();
   await undo.click();

@@ -74,8 +74,8 @@ its departure 5 (system fonts), and the maintainer's direction of 2026-10-02
    or current: the solid button, the active nav item, today's cell, the drop
    line, the focus ring. It never decorates.
 4. **Colour never carries meaning alone.** Priority badges say `p4`, the
-   completing column has an icon with a label, offline is a word. A
-   colour-blind user loses nothing.
+   completing column has an icon with a label, a server that cannot sync is
+   a word. A colour-blind user loses nothing.
 5. **Every pointer action has a keyboard path.** Drag has a menu
    equivalent (Move up/down, Move to, Move to date…). See Accessibility.
 6. **Sync state is honest and quiet.** The sidebar says how many writes wait
@@ -97,7 +97,7 @@ its departure 5 (system fonts), and the maintainer's direction of 2026-10-02
 | `secondary`    | `zinc`   | not used; mapped to grey so an accidental use cannot add a second accent |
 | `success`      | `green`  | the completing column's mark, done states                              |
 | `info`         | `sky`    | the update prompt, priority `p2`                                       |
-| `warning`      | `amber`  | offline, a view with a problem, priority `p1`                          |
+| `warning`      | `amber`  | the server unreachable or unable to sync, a view with a problem, `p1` |
 | `error`        | `red`    | refusals, sync problem, destructive buttons, priority `p0`             |
 | `neutral`      | `zinc`   | every surface, border and text role                                    |
 
@@ -172,6 +172,7 @@ A closed card or placement is `text-muted line-through`.
 | syncing                         | the Sync now button shows Nuxt UI's `loading` spinner                  |
 | writes waiting                  | `neutral` `subtle` badge "3 waiting"                                   |
 | server unreachable              | `warning` solid badge "Cannot reach the server"; writes disabled       |
+| server cannot sync              | `warning` solid badge "Server cannot sync": the server engine's sync failed (e.g. Postgres down) |
 | writes refused                  | `error` `subtle` badge "2 refused"                                     |
 | sync refused (a problem string) | `error` `subtle` `UAlert` "Sync refused" above the page, with Sync now |
 | update waiting                  | `info` `subtle` `UAlert` "A new version is available" with Reload      |

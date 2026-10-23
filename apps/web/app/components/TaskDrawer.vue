@@ -169,7 +169,7 @@ function closeDelete() {
 const same = (a: unknown, b: unknown) =>
   JSON.stringify(a) === JSON.stringify(b);
 
-// What the status line says: a write in flight, then saved on this device.
+// What the status line says: a write in flight, then saved on the server.
 const saving = ref(0);
 const saved = ref(false);
 watch(id, () => {

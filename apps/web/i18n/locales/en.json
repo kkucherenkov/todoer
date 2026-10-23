@@ -10,7 +10,6 @@
     "body": "This app signs in with a secure cookie and needs HTTPS. Serve it through a reverse proxy that terminates TLS, or open it on localhost."
   },
   "failed": {
-    "title": "The local database did not start",
     "reload": "Reload"
   },
   "update": {
@@ -44,7 +43,7 @@
     "saved": "Saved on the server",
     "pending": "{n} waiting",
     "failed": "{n} refused",
-    "offline": "Offline",
+    "offline": "Server cannot sync",
     "unreachable": "Cannot reach the server",
     "syncNow": "Sync now",
     "signOut": "Sign out"
