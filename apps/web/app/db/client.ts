@@ -73,6 +73,11 @@ const LAST_RETRY_MS = 30_000;
 /** A stream that lived this long ended normally (its token expired) and is
  *  reopened at once; a shorter one waits FIRST_RETRY_MS first. */
 const LIVED_MS = 60_000;
+/** A stream open that sent no headers this long has failed. */
+const OPEN_MS = 15_000;
+/** The server pings every 25 s: a stream silent this long is half-open (a
+ *  laptop that slept) and is dropped. */
+const SILENT_MS = 60_000;
 
 const sleep = (ms: number, signal: AbortSignal) =>
   new Promise<void>((resolve) => {
@@ -250,9 +255,10 @@ export function connect(
    * every stream right away is not hammered. A failed open is retried after
    * 1 s, doubling to 30 s; before the first stream it tells the gate the
    * server cannot be reached (engine `starting`, reason `unreachable`).
+   * An open with no headers within OPEN_MS has failed, and a stream that
+   * sent nothing, not even a ping, for SILENT_MS has dropped: both are
+   * aborted and handled as above.
    */
-  // ponytail: no idle watchdog; a half-open connection reads as connected
-  // until the browser errors it. Abort after ~2 missed pings if that shows up.
   const listen = () => {
     stream?.abort();
     const abort = (stream = new AbortController());
@@ -260,47 +266,66 @@ export function connect(
       let failures = 0;
       while (!abort.signal.aborted) {
         let openedAt: number | undefined;
+        const stalled = new AbortController();
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const wait = (ms: number) => {
+          clearTimeout(timer);
+          timer = setTimeout(() => stalled.abort(), ms);
+        };
         try {
-          const response = await authed((headers) =>
-            fetch(`${base}/engine/events?tab=${tab}`, {
+          const response = await authed((headers) => {
+            wait(OPEN_MS);
+            return fetch(`${base}/engine/events?tab=${tab}`, {
               headers,
-              signal: abort.signal,
-            }),
-          );
+              signal: AbortSignal.any([abort.signal, stalled.signal]),
+            });
+          });
           if (response.status === 401) return end('signed-out');
           if (response.ok) {
-            await readEvents(response, (event) => {
-              if (openedAt === undefined) {
-                openedAt = Date.now();
-                failures = 0;
-                connected.value = true;
-                engine('ready');
-                if (watching.view !== null || watching.task !== null) {
-                  void send(watching);
+            wait(SILENT_MS);
+            await readEvents(
+              response,
+              (event) => {
+                if (openedAt === undefined) {
+                  openedAt = Date.now();
+                  failures = 0;
+                  connected.value = true;
+                  engine('ready');
+                  if (watching.view !== null || watching.task !== null) {
+                    void send(watching);
+                  }
                 }
-              }
-              receive(event);
-            });
+                receive(event);
+              },
+              () => wait(SILENT_MS),
+            );
           }
         } catch (error) {
           if (abort.signal.aborted) return;
           if (error instanceof RefusalError && !tokens.signedIn()) {
             return end('signed-out');
           }
+        } finally {
+          clearTimeout(timer);
         }
         if (abort.signal.aborted) return;
-        if (openedAt !== undefined && Date.now() - openedAt >= LIVED_MS) {
+        if (
+          openedAt !== undefined &&
+          !stalled.signal.aborted &&
+          Date.now() - openedAt >= LIVED_MS
+        ) {
           continue;
         }
         connected.value = false;
         if (openedAt === undefined && topics.engine.value?.state !== 'ready') {
           engine('starting', 'unreachable');
         }
-        const wait =
+        await sleep(
           openedAt !== undefined
             ? FIRST_RETRY_MS
-            : Math.min(FIRST_RETRY_MS * 2 ** failures++, LAST_RETRY_MS);
-        await sleep(wait, abort.signal);
+            : Math.min(FIRST_RETRY_MS * 2 ** failures++, LAST_RETRY_MS),
+          abort.signal,
+        );
       }
     })();
   };

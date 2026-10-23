@@ -28,6 +28,8 @@ function server() {
     engine: (_command: Command): Response => json({ ok: true }),
     /** Stream opens to refuse (network error) before one succeeds. */
     failStreams: 0,
+    /** Stream opens that never answer, as to a host dropping SYNs. */
+    hangStreams: 0,
   };
   const fetch = vi.fn((input: string | URL, init: RequestInit = {}) => {
     const url = String(input);
@@ -36,6 +38,14 @@ function server() {
       if (state.failStreams > 0) {
         state.failStreams--;
         return Promise.reject(new TypeError('fetch failed'));
+      }
+      if (state.hangStreams > 0) {
+        state.hangStreams--;
+        return new Promise<Response>((_, reject) =>
+          init.signal?.addEventListener('abort', () =>
+            reject(new DOMException('aborted', 'AbortError')),
+          ),
+        );
       }
       const body = new ReadableStream<Uint8Array>({
         start: (controller) => void streams.push(controller),
@@ -74,6 +84,7 @@ function server() {
       const data = JSON.stringify({ ...event, build: 'server' });
       streams.at(-1)!.enqueue(encoder.encode(`data: ${data}\n\n`));
     },
+    ping: () => streams.at(-1)!.enqueue(encoder.encode(': ping\n\n')),
     end: () => streams.at(-1)!.close(),
     engineCalls: () =>
       calls
@@ -467,6 +478,45 @@ describe('the stream', () => {
     expect(db!.connected.value).toBe(true);
     s.push(ready);
     await settledConnected();
+  });
+
+  it('reopens a stream that went silent; pings keep one open', async () => {
+    vi.useFakeTimers();
+    await signedIn();
+    for (let i = 0; i < 4; i++) {
+      await vi.advanceTimersByTimeAsync(25_000);
+      s.ping();
+    }
+    expect(db!.connected.value).toBe(true);
+    expect(s.streamCalls()).toHaveLength(1);
+    // Half-open: nothing arrives, not even a ping.
+    await vi.advanceTimersByTimeAsync(59_000);
+    expect(db!.connected.value).toBe(true);
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(db!.connected.value).toBe(false);
+    expect(await db!.write({ kind: 'add', text: 'milk' })).toMatchObject({
+      ok: false,
+      failure: { kind: 'unreachable' },
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(s.streamCalls()).toHaveLength(2);
+    s.push(ready);
+    await vi.waitFor(() => expect(db!.connected.value).toBe(true));
+  });
+
+  it('gives up on an open that sends no headers', async () => {
+    vi.useFakeTimers();
+    s.state.hangStreams = 1;
+    db = connect(true);
+    await vi.advanceTimersByTimeAsync(14_000);
+    expect(db.topics.engine.value).toEqual({ state: 'starting', reason: null });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(db.topics.engine.value).toEqual({
+      state: 'starting',
+      reason: 'unreachable',
+    });
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect(s.streams).toHaveLength(1);
   });
 
   it('keeps the token out of the stream URL', async () => {

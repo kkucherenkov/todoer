@@ -159,7 +159,10 @@ the client's own and scoped to the user.
 When the stream drops, the page shows that the server cannot be reached and
 disables every write control until the stream is back; it reconnects with
 backoff and receives a fresh snapshot. A command sent while the server is
-unreachable fails as `unreachable`, as it would now.
+unreachable fails as `unreachable`, as it would now. The server pings the
+stream every 25 s, so one silent for 60 s counts as dropped (a laptop that
+slept leaves it half-open), and an open that gets no headers in 15 s has
+failed.
 
 ### Clearing what the browser kept
 
