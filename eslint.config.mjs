@@ -33,8 +33,9 @@ export default defineConfig(
       ],
     },
   },
-  // client-core's portable entry also runs in a browser worker (design,
-  // Q13): Node stays in node-sqlite.ts, and in specs and their fixture.
+  // client-core's portable entry also runs in the browser (the web page
+  // imports its auth and protocol): Node stays in node-sqlite.ts, and in specs
+  // and their fixture.
   {
     files: ['packages/client-core/src/**/*.ts'],
     ignores: [
