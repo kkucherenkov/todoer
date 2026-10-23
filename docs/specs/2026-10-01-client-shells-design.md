@@ -13,6 +13,8 @@ provides HTTPS on a NAS. The work ships as four plans (W0–W3). Flutter gets
 its own design once the web client lands. The same interview also settled four
 backlog items (#390, #391, #361, #407); they are at the end.
 
+_Note, 2026-10-23:_ the web's storage, leader tab and worker described here are superseded by the [thin client design](2026-10-23-web-thin-client-design.md) and [ADR 0020](../adr/0020-the-web-reads-through-a-server-engine.md). The sections they touch carry a mark; the rest stands.
+
 ## Terms
 
 | Term | Definition | Avoid |
@@ -62,6 +64,8 @@ cache.
 **Cost.** A framework layer over Vite whose server half is switched off.
 
 ### One client core on SQLite in both clients (Q3)
+
+_Superseded for the web on 2026-10-23 by the [thin client design](2026-10-23-web-thin-client-design.md) and [ADR 0020](../adr/0020-the-web-reads-through-a-server-engine.md): the backend runs the web's engine, and the browser keeps no database, worker or leader tab. Kept as the record of what was decided then._
 
 **Decision.** The client core moves to a shared package
 (`packages/client-core`). Both clients keep SQL storage: the CLI on
@@ -131,6 +135,8 @@ or at all where it needs those APIs. The README must say so.
 
 ### A leader tab owns the database (Q10)
 
+_Superseded for the web on 2026-10-23 by the [thin client design](2026-10-23-web-thin-client-design.md) and [ADR 0020](../adr/0020-the-web-reads-through-a-server-engine.md): the backend runs the web's engine, and the browser keeps no database, worker or leader tab. Kept as the record of what was decided then._
+
 **Decision.** OPFS gives synchronous access only from a dedicated worker, and
 that access is exclusive. One tab wins a Web Lock and runs the worker with
 SQLite and sync. Other tabs send commands and receive results over
@@ -154,6 +160,8 @@ posts carries that id; a tab hears a leader only while that lock is held.
 right and test.
 
 ### The whole client core runs in the leader's worker (Q13)
+
+_Superseded for the web on 2026-10-23 by the [thin client design](2026-10-23-web-thin-client-design.md) and [ADR 0020](../adr/0020-the-web-reads-through-a-server-engine.md): the backend runs the web's engine, and the browser keeps no database, worker or leader tab. Kept as the record of what was decided then._
 
 **Decision.** SQLite, outbox, sync and merge all run in the worker. The UI
 sends commands (add, mark, set a field, sync now) and subscribes to computed
@@ -202,14 +210,14 @@ The CLI device-code flow follows v1.
 - **Sync cadence (Q14).** The leader syncs at start, right after every write,
   every 30 s while the tab is visible, on regained focus and on the `online`
   event. No server push now; an SSE "changes after seq N" signal can be added
-  later without changing the client beyond its trigger.
+  later without changing the client beyond its trigger. _Superseded for the web on 2026-10-23 (ADR 0020)._
 - **Flutter (Q15).** Deferred to its own interview and design once the web
   client ships. The one fixed point: the client core is ported to Dart and
   checked against the shared vectors.
 - **SQLite WASM library (Q12).** The official `@sqlite.org/sqlite-wasm` with
   the `opfs-sahpool` VFS. It needs no `SharedArrayBuffer`, so no COOP/COEP
   headers, and gives exclusive synchronous access, which fits the leader. Its
-  `oo1` API is close to `node:sqlite`, so the adapter is thin.
+  `oo1` API is close to `node:sqlite`, so the adapter is thin. _Superseded for the web on 2026-10-23 (ADR 0020)._
 - **Creating views in v1 (Q17).** A form built from templates: Today, Overdue,
   Next 7 days, Project…, Tag…, Status…, plus layout and sort. It writes an
   ordinary synced view with a filter tree. A raw-JSON mode checked with
@@ -330,7 +338,7 @@ Settled by the maintainer on 2026-10-02, for plan W5
   plainly.
 - **OPFS and leadership in real browsers.** Safari's OPFS arrived in 16.4, and
   a tab killed mid-transaction must leave a database the next leader can
-  open. Only Playwright runs in real engines will show this.
+  open. Only Playwright runs in real engines will show this. _Superseded for the web on 2026-10-23 (ADR 0020)._
 - **Service worker staleness.** A cached SPA older than the API it talks to.
   Since both ship in one image, the risk is a stale tab, not a stale server.
   Versioned caches and an update prompt address it.
@@ -343,7 +351,7 @@ Settled by the maintainer on 2026-10-02, for plan W5
 ## Deferred
 
 - **CLI device-code flow approved from the web.** After v1.
-- **Server push (SSE).** Reopens if 30 s polling proves too slow.
+- **Server push (SSE).** Reopens if 30 s polling proves too slow. _Superseded for the web on 2026-10-23 (ADR 0020)._
 - **Flutter.** Its own interview and design after the web client ships.
 
 ## Open threads

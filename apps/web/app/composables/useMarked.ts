@@ -22,6 +22,10 @@ export function useMarked() {
       actions: [
         {
           label: t('list.undo'),
+          // A getter: the toast stays up, and Undo follows the connection.
+          get disabled() {
+            return !db.connected.value;
+          },
           onClick: () =>
             void db
               .write({ kind: 'mark', taskId, mark: 'undo' })

@@ -61,7 +61,7 @@ export function nextLayout(current: Layout, key: LayoutKey): Layout {
 
 /** What a tab sends in `watch` for a view whose saved layout is `saved`:
  *  the URL's override, or null to keep the saved one, and a span only when
- *  the shown layout is Calendar and the worker's date (`today`) is known. A
+ *  the shown layout is Calendar and the engine's date (`today`) is known. A
  *  stale span on a list publish would be dropped by the tab and hang it. */
 export function watchArgs(
   query: Query,

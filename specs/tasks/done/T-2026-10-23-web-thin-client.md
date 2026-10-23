@@ -2,7 +2,7 @@
 
 - Created: 2026-10-23
 - Owner: claude
-- Status: in-progress
+- Status: done
 - Blockers: —
 - Spec: [Web thin client design](../../../docs/specs/2026-10-23-web-thin-client-design.md),
   [ADR 0020](../../../docs/adr/0020-the-web-reads-through-a-server-engine.md)
@@ -78,11 +78,17 @@ HTTP.
 
 - **SC-001** The web opens and edits tasks in Firefox with the browser's site
   data empty, and a change made in the TUI appears on the open page within 5 s.
-- [ ] every FR has a test that failed before the code made it pass
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+  The e2e suite proves it in Firefox from a fresh context, with the CLI in
+  the TUI's place (both write through `POST /sync`); the TUI itself is the
+  maintainer's check.
+- [x] every FR has a test that failed before the code made it pass, with two
+      exceptions: FR-006's cleanup was written with its spec and then
+      mutation-checked, and FR-007 (`TZ` in compose) is configuration,
+      checked by hand in Task 4
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
-- [ ] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] no document still asserts the behaviour this task replaced
+- [x] dnote changelog line
 
 ### Steps
 
@@ -94,10 +100,10 @@ HTTP.
   `apps/backend/` (Task 3)
 - [x] T004 [FR-001, FR-002, FR-003, FR-004, FR-007] Backend EngineHub, engine
   routes, `TZ` in compose — `apps/backend/`, `docker/compose.yml` (Task 4)
-- [ ] T005 [FR-005, FR-006] Web app and db over HTTP; worker, OPFS and SQLite
+- [x] T005 [FR-005, FR-006] Web app and db over HTTP; worker, OPFS and SQLite
   WASM removed; OPFS cleanup; writes disabled while disconnected —
   `apps/web/` (Task 5)
-- [ ] T006 [FR-005] End-to-end scenarios and documentation —
+- [x] T006 [FR-005] End-to-end scenarios and documentation —
   `apps/web/e2e/`, `.claude/CLAUDE.md`, `docs/` (Task 6)
 - **Checkpoint:** the web runs with no browser replica and follows the TUI live.
 

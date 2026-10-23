@@ -25,6 +25,8 @@ const emit = defineEmits<{
   reparent: [parentId: string | null];
 }>();
 const { t } = useI18n();
+const db = useDb();
+const offline = computed(() => !db.connected.value);
 const open = useOpenTask();
 const row = ref<HTMLElement | null>(null);
 
@@ -42,6 +44,7 @@ const actions = computed<DropdownMenuItem[]>(() => [
   {
     label: t('list.skip'),
     icon: 'i-lucide-skip-forward',
+    disabled: offline.value,
     onSelect: () => emit('mark', 'skip'),
   },
   ...(props.manual
@@ -49,13 +52,13 @@ const actions = computed<DropdownMenuItem[]>(() => [
         {
           label: t('list.moveUp'),
           icon: 'i-lucide-arrow-up',
-          disabled: props.first,
+          disabled: offline.value || props.first,
           onSelect: () => emit('move', 'up'),
         },
         {
           label: t('list.moveDown'),
           icon: 'i-lucide-arrow-down',
-          disabled: props.last,
+          disabled: offline.value || props.last,
           onSelect: () => emit('move', 'down'),
         },
       ]
@@ -67,7 +70,7 @@ const actions = computed<DropdownMenuItem[]>(() => [
             ? t('list.indent', { title: props.indentUnder.title })
             : t('list.indentNone'),
           icon: 'i-lucide-indent-increase',
-          disabled: !props.indentUnder,
+          disabled: offline.value || !props.indentUnder,
           onSelect: () => emit('reparent', props.indentUnder!.id),
         },
       ]
@@ -77,6 +80,7 @@ const actions = computed<DropdownMenuItem[]>(() => [
         {
           label: t('list.outdent'),
           icon: 'i-lucide-indent-decrease',
+          disabled: offline.value,
           onSelect: () => emit('reparent', null),
         },
       ]
@@ -103,6 +107,7 @@ const actions = computed<DropdownMenuItem[]>(() => [
       class="rounded-full"
       size="sm"
       :aria-label="$t('list.markDone')"
+      :disabled="offline"
       @click="emit('mark', 'done')"
     />
     <div class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">

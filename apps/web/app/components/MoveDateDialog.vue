@@ -9,6 +9,7 @@ const props = defineProps<{
 }>();
 const emit = defineEmits<{ close: [] }>();
 
+const db = useDb();
 const date = ref('');
 watch(
   () => props.placement,
@@ -40,7 +41,11 @@ const { busy: saving, run: submit } = exclusive(async () => {
           class="flex-1"
           :aria-label="$t('calendar.date')"
         />
-        <UButton type="submit" :loading="saving" :disabled="saving || !date">
+        <UButton
+          type="submit"
+          :loading="saving"
+          :disabled="saving || !date || !db.connected.value"
+        >
           {{ $t('calendar.move') }}
         </UButton>
       </form>

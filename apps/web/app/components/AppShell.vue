@@ -37,6 +37,7 @@ const sync = useTopic('sync');
             :actions="[
               {
                 label: $t('summary.syncNow'),
+                disabled: !db.connected.value,
                 onClick: () => db.request({ kind: 'sync', reason: 'manual' }),
               },
             ]"

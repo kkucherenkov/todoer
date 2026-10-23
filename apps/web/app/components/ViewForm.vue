@@ -100,7 +100,10 @@ function toggle(on: boolean) {
 
 const canSave = computed(
   () =>
-    parsed.value.problem === null && name.value.trim() !== '' && !saving.value,
+    parsed.value.problem === null &&
+    name.value.trim() !== '' &&
+    !saving.value &&
+    db.connected.value,
 );
 
 async function save() {

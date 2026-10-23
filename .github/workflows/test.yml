@@ -244,10 +244,10 @@ jobs:
           fi
 
   # The suite runs the SPA the backend serves from WEB_ROOT, under the CSP it
-  # ships, and fails on any violation (worker violations included) and on any
-  # request to another origin. Playwright starts the backend itself
-  # (apps/web/playwright.config.ts); the suite runs through pnpm, not turbo,
-  # so turbo's environment filter (trap 2) never applies to it.
+  # ships, and fails on any violation and on any request to another origin.
+  # Playwright starts the backend itself (apps/web/playwright.config.ts); the
+  # suite runs through pnpm, not turbo, so turbo's environment filter (trap 2)
+  # never applies to it.
   web-e2e:
     name: Web e2e
     needs: changes

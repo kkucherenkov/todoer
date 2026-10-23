@@ -3,6 +3,7 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -66,6 +67,8 @@ export async function issueResetCode(
  */
 @Injectable()
 export class AccountsService {
+  private readonly log = new Logger(AccountsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly auth: AuthService,
@@ -219,6 +222,11 @@ export class AccountsService {
       await tx.user.delete({ where: { id: userId } });
     });
     // After the commit: a rolled-back deletion keeps the user's streams.
-    this.engines.unload(userId);
+    // The deletion is done: a failing unload must not turn it into a 500.
+    try {
+      this.engines.unload(userId);
+    } catch (err) {
+      this.log.error(`engine unload failed for ${userId}`, err);
+    }
   }
 }

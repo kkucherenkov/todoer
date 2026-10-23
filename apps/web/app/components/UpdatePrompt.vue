@@ -1,9 +1,14 @@
 <script setup lang="ts">
-const { $pwa, $db: db } = useNuxtApp();
-// needRefresh: a new service worker waits. stale: a message from another
-// build reached this tab (an old tab, or an old leader serving a new one).
+const nuxtApp = useNuxtApp();
+const { $pwa } = nuxtApp;
+// needRefresh: a new service worker waits. outdated: Nuxt's manifest check
+// saw a newer build; kept in state, so a prompt mounted later still shows.
+const outdated = useState('todoer.outdated', () => false);
+onScopeDispose(
+  nuxtApp.hook('app:manifest:update', () => void (outdated.value = true)),
+);
 const needRefresh = computed(() => $pwa?.needRefresh ?? false);
-const show = computed(() => needRefresh.value || (db?.stale.value ?? false));
+const show = computed(() => needRefresh.value || outdated.value);
 const reload = () =>
   needRefresh.value ? $pwa!.updateServiceWorker(true) : location.reload();
 </script>

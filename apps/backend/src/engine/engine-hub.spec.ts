@@ -196,6 +196,17 @@ describe('EngineHub', () => {
     hub.unload(U);
   });
 
+  it('unload fails the requests still waiting for a reply', async () => {
+    await settle(U);
+    vi.spyOn(sync, 'sync').mockReturnValue(new Promise(() => {}));
+    const pending = hub.request(U, T1, 1, add('stuck'));
+    hub.unload(U);
+    expect(await pending).toMatchObject({
+      ok: false,
+      failure: { kind: 'signed-out' },
+    });
+  });
+
   it('shutting down unloads every engine', async () => {
     stream(U, T1);
     await settle(U);

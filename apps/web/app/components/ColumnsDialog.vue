@@ -6,6 +6,7 @@ type Status = Catalog['statuses'][number];
 
 const open = defineModel<boolean>('open', { required: true });
 const db = useDb();
+const offline = computed(() => !db.connected.value);
 const fail = useFail();
 const { t, locale } = useI18n();
 const catalog = useTopic('catalog');
@@ -70,6 +71,7 @@ async function add() {
         >
           <div class="flex items-center gap-1">
             <UInput
+              :disabled="offline"
               :model-value="s.name"
               :aria-label="$t('columns.name')"
               class="flex-1"
@@ -84,6 +86,7 @@ async function add() {
             />
             <UButton
               v-else
+              :disabled="offline"
               variant="ghost"
               color="neutral"
               icon="i-lucide-circle-check"
@@ -94,7 +97,7 @@ async function add() {
               variant="ghost"
               color="neutral"
               icon="i-lucide-arrow-up"
-              :disabled="i === 0"
+              :disabled="offline || i === 0"
               :aria-label="$t('list.moveUp')"
               @click="reorder(i, 'up')"
             />
@@ -102,11 +105,12 @@ async function add() {
               variant="ghost"
               color="neutral"
               icon="i-lucide-arrow-down"
-              :disabled="i === statuses.length - 1"
+              :disabled="offline || i === statuses.length - 1"
               :aria-label="$t('list.moveDown')"
               @click="reorder(i, 'down')"
             />
             <UButton
+              :disabled="offline"
               variant="ghost"
               color="error"
               icon="i-lucide-trash-2"
@@ -125,7 +129,12 @@ async function add() {
                 count: moving(s),
               })
             }}</span>
-            <UButton color="error" size="sm" @click="remove(s)">
+            <UButton
+              :disabled="offline"
+              color="error"
+              size="sm"
+              @click="remove(s)"
+            >
               {{ $t('columns.confirmDelete') }}
             </UButton>
             <UButton
@@ -142,11 +151,12 @@ async function add() {
       <form class="mt-4 flex gap-2" @submit.prevent="add">
         <UInput
           v-model="name"
+          :disabled="offline"
           :aria-label="$t('columns.new')"
           :placeholder="$t('columns.new')"
           class="flex-1"
         />
-        <UButton type="submit" icon="i-lucide-plus">
+        <UButton :disabled="offline" type="submit" icon="i-lucide-plus">
           {{ $t('columns.add') }}
         </UButton>
       </form>

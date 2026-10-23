@@ -93,9 +93,12 @@ let placing: Placement | null = null;
 /**
  * Drag a placement onto a day cell (`dayEvents` on the cell, `chipEvents` on
  * the chip). `drop` gets the placement and the cell's `data-date` as is; a
- * closed placement is not draggable.
+ * closed placement is not draggable, nor any while `enabled` says no.
  */
-export function useDayDrag(drop: (p: Placement, to: string) => void) {
+export function useDayDrag(
+  drop: (p: Placement, to: string) => void,
+  enabled: () => boolean = () => true,
+) {
   /** The date under the pointer, for the highlight. */
   const over = ref<string | null>(null);
   const clear = () => {
@@ -106,7 +109,7 @@ export function useDayDrag(drop: (p: Placement, to: string) => void) {
   return {
     over,
     chipEvents: (p: Placement) => ({
-      draggable: !p.closed,
+      draggable: !p.closed && enabled(),
       onDragstart: (e: DragEvent) => {
         placing = p;
         e.dataTransfer?.setData(PLACEMENT_TYPE, p.taskId);

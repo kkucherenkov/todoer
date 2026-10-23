@@ -204,7 +204,7 @@ async function save() {
           </UButton>
           <UButton
             type="submit"
-            :disabled="!!problem || !changed"
+            :disabled="!!problem || !changed || !db.connected.value"
             :loading="saving"
           >
             {{ $t('recurrence.save') }}

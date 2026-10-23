@@ -5,9 +5,8 @@ export type SqlValue = string | number | null;
 
 /**
  * The only per-platform part of the core (design, Q3). Synchronous: the core
- * runs beside SQLite in one thread, a CLI process or the web's leader worker
- * (Q13). Node's built-in DatabaseSync and sqlite-wasm's oo1.DB each implement
- * it directly.
+ * runs beside SQLite in one thread: a CLI or TUI process, or the backend's
+ * engine for the web. Node's built-in DatabaseSync implements it directly.
  */
 export interface SqlDatabase {
   /** One or more statements, no parameters, no result. */

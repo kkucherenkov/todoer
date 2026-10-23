@@ -2,6 +2,7 @@
 import { createQuickAddSubmitter, type QuickAddDraft } from '~/utils/quickAdd';
 
 const db = useDb();
+const offline = computed(() => !db.connected.value);
 const { t } = useI18n();
 const view = useTopic('view');
 const catalog = useTopic('catalog');
@@ -45,7 +46,7 @@ const clear = () => {
 };
 
 async function add() {
-  if (draft.text.trim() === '' || saving.value) return;
+  if (draft.text.trim() === '' || saving.value || offline.value) return;
   saving.value = true;
   const { result, taskId, created } = await submit({ ...draft });
   saving.value = false;
@@ -96,8 +97,9 @@ async function add() {
         icon="i-lucide-plus"
         size="lg"
         autocomplete="off"
+        :disabled="offline"
       />
-      <UButton type="submit" size="lg" :loading="saving">
+      <UButton type="submit" size="lg" :loading="saving" :disabled="offline">
         {{ $t('list.quickAddSubmit') }}
       </UButton>
     </div>

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// The one place that decides what the page may show: nothing of the replica
+// The one place that decides what the page may show: nothing of the account
 // reaches the slot unless the session is signed in.
 const { $db: db } = useNuxtApp();
 const engine = computed(() => db?.topics.engine.value);
@@ -44,13 +44,15 @@ watch(
       :title="$t('insecure.title')"
       :description="$t('insecure.body')"
     />
+    <!-- Before the first stream: the server is not answering (client.ts). -->
     <UAlert
-      v-else-if="engine?.state === 'failed'"
-      color="error"
+      v-else-if="
+        engine?.state === 'starting' && engine.reason === 'unreachable'
+      "
+      color="warning"
       variant="subtle"
-      data-testid="engine-failed"
-      :title="$t('failed.title')"
-      v-bind="engine.reason == null ? {} : { description: engine.reason }"
+      data-testid="unreachable"
+      :title="$t('errors.unreachable')"
       :actions="[{ label: $t('failed.reload'), onClick: reload }]"
     />
     <div

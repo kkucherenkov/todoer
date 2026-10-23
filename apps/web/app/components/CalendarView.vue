@@ -18,7 +18,7 @@ const { t, locale } = useI18n();
 
 const state = computed(() => fromQuery(route.query, props.today));
 const want = computed(() => gridSpan(state.value.mode, state.value.at));
-// The worker answers the span this tab asked for; until then, no stale chips.
+// The engine answers the span this tab asked for; until then, no stale chips.
 const ready = computed(
   () =>
     props.span?.from === want.value.from && props.span?.to === want.value.to,
@@ -106,6 +106,10 @@ function offerUndo(
     actions: [
       {
         label: t('list.undo'),
+        // A getter: the toast stays up, and Undo follows the connection.
+        get disabled() {
+          return !db.connected.value;
+        },
         onClick: () =>
           void db.write(undo).then((result) => {
             if (result.ok) return;
@@ -124,7 +128,10 @@ function offerUndo(
   });
 }
 
-const { over, chipEvents, dayEvents } = useDayDrag((p, to) => void move(p, to));
+const { over, chipEvents, dayEvents } = useDayDrag(
+  (p, to) => void move(p, to),
+  () => db.connected.value,
+);
 const moving = ref<Placement | null>(null);
 
 const month = computed(() => state.value.at.slice(0, 7));

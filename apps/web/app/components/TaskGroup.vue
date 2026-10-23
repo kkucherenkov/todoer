@@ -63,7 +63,7 @@ const drag = useDrag(
     const anchor = dropAfter(props.group, taskId, after);
     if (anchor !== undefined) void move(taskId, anchor);
   },
-  () => props.manual,
+  () => props.manual && db.connected.value,
   (taskId, after) => dropAfter(props.group, taskId, after) !== undefined,
 );
 const line = (id: unknown) =>

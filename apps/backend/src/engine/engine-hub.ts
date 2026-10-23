@@ -104,6 +104,15 @@ export class EngineHub implements OnModuleDestroy {
     loaded.streams.clear();
     for (const end of ends) end();
     loaded.stop();
+    // The dispatcher will never answer now: fail what still waits.
+    const result: Result = {
+      ok: false,
+      failure: { kind: 'signed-out', detail: 'the account was deleted' },
+    };
+    for (const resolves of loaded.waiters.values()) {
+      for (const resolve of resolves) resolve(result);
+    }
+    loaded.waiters.clear();
   }
 
   /** Shutdown: no unload timer outlives the app, no replica stays open. */

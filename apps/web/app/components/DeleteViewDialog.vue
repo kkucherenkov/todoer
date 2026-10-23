@@ -37,7 +37,7 @@ async function remove() {
       <UButton
         color="error"
         :loading="pending"
-        :disabled="pending"
+        :disabled="pending || !db.connected.value"
         data-testid="confirm-delete"
         @click="remove"
       >

@@ -1,27 +1,8 @@
 import { count, expect, seedView, test } from './fixtures';
 
-test('the sidebar lists views, and a sync that fails shows why', async ({
-  page,
-  context,
-  account,
-  browserName,
-}) => {
-  // One route, added before the page starts its worker and never removed.
-  // A route added while a dedicated worker runs can miss that worker's next
-  // fetch on a loaded machine: the sync reached the server, and Playwright
-  // reported no request at all. Firefox does not route a worker's fetch.
-  let status: number | undefined; // undefined: let the request through
-  if (browserName === 'chromium') {
-    await context.route('**/api/v1/sync', (route) =>
-      status === undefined
-        ? route.fallback()
-        : route.fulfill({
-            status,
-            contentType: 'application/json',
-            body: JSON.stringify({ title: 'down for tests' }),
-          }),
-    );
-  }
+// The browser no longer syncs: the server's engine does, in process, so a
+// refused sync cannot be staged from the page any more.
+test('the sidebar lists views in rank order', async ({ page, account }) => {
   // Created out of rank order on purpose.
   await seedView(page.request, account.token, 'Second view', 'a1');
   await seedView(page.request, account.token, 'First view', 'a0');
@@ -39,21 +20,6 @@ test('the sidebar lists views, and a sync that fails shows why', async ({
   await nav.getByRole('link', { name: 'Second view' }).click();
   await expect(page).toHaveURL(/\/views\/[0-9a-f-]+$/);
   await expect(page.getByTestId('view')).toBeVisible();
-
-  if (browserName === 'chromium') {
-    // A 4xx the client cannot settle is a refusal, shown with its reason...
-    status = 403;
-    await page.getByTestId('sync-now').click();
-    const alert = page.getByTestId('sync-problem');
-    await expect(alert).toContainText('Sync refused');
-    await expect(alert).toContainText('403');
-    await expect(alert.getByRole('button', { name: 'Sync now' })).toBeVisible();
-    // ...and a 5xx is the server being out of reach: offline wins.
-    status = 503;
-    await page.getByTestId('sync-now').click();
-    await expect(page.getByTestId('offline')).toBeVisible();
-    await expect(alert).toHaveCount(0);
-  }
 });
 
 test('an empty account says so, and the footer reads in order', async ({
@@ -65,17 +31,15 @@ test('an empty account says so, and the footer reads in order', async ({
   await expect(count(page)).toHaveText('0 tasks');
   await expect(page.getByText('No open tasks.')).toBeVisible();
 
-  // ux.js #sync-footer: count, saved locally, badges, last sync.
+  // ux.js #sync-footer: count, saved, badges, last sync.
   const footer = [
     'task-count',
-    'saved-locally',
+    'saved',
     'sync-badges',
     'last-synced',
     'sync-now',
   ];
-  await expect(page.getByTestId('saved-locally')).toHaveText(
-    'Saved on this device',
-  );
+  await expect(page.getByTestId('saved')).toHaveText('Saved on the server');
   await expect(count(page)).toHaveCSS('font-size', '14px');
   await expect(count(page)).toHaveCSS('font-weight', '500');
   const order = await page.evaluate((ids) => {
@@ -92,27 +56,21 @@ test('an empty account says so, and the footer reads in order', async ({
   expect(order, footer.join(' → ')).toBe(true);
 });
 
-test('the update prompt sits in the workspace alerts', async ({
+test('a newer build on the server prompts in the workspace alerts', async ({
   page,
   account,
 }) => {
   void account;
+  // Nuxt asks for the latest build id every 5 minutes (nuxt.config.ts).
+  await page.clock.install();
+  await page.route('**/_nuxt/builds/latest.json*', (route) =>
+    route.fulfill({ json: { id: 'a-newer-build', timestamp: Date.now() } }),
+  );
   await page.goto('/');
   await expect(count(page)).toBeVisible();
-  // A message an older build would stamp marks this tab stale.
-  await page.evaluate(() => {
-    const channel = new BroadcastChannel('todoer');
-    channel.postMessage({
-      type: 'request',
-      tab: 'old-tab',
-      id: 1,
-      command: { kind: 'sync', reason: 'manual' },
-      build: 'an-older-build',
-    });
-    channel.close();
-  });
-  await expect(
-    page.getByTestId('alerts').getByTestId('update-available'),
-  ).toBeVisible();
+  await expect(page.getByTestId('update-available')).toHaveCount(0);
+  await page.clock.runFor(5 * 60_000 + 1_000);
+  const prompt = page.getByTestId('alerts').getByTestId('update-available');
+  await expect(prompt).toContainText('Your tasks are kept on the server.');
   await expect(page.getByTestId('update-available')).toHaveCount(1);
 });

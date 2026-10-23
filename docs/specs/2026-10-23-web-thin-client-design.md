@@ -1,6 +1,6 @@
 # The web becomes a thin client — design
 
-- **Status:** draft, 2026-10-23
+- **Status:** accepted, 2026-10-23
 - **Supersedes in part:** the web's storage and leader election in
   [`2026-10-01-client-shells-design.md`](2026-10-01-client-shells-design.md);
   amends [ADR 0012](../adr/0012-no-rest-surface.md).
@@ -145,6 +145,12 @@ The page builds the `session` and `engine` topics from its own state: `session`
 from the token source, `engine` from the stream (`starting` while it connects,
 `ready` once the snapshot arrived). `AppGate` keeps its shape.
 
+Every tab holds its own token source, and all of them share the cookie. A
+sign-out in one tab removes the `todoer.session` hint, and every other tab
+hears it as a `storage` event and signs out too. A renewal that answers as
+another account (someone signed in from another tab) signs the page out
+instead of showing that account's data under the first one's view.
+
 A request whose user is not the engine's user is refused; the `tab` value is
 the client's own and scoped to the user.
 
@@ -153,7 +159,10 @@ the client's own and scoped to the user.
 When the stream drops, the page shows that the server cannot be reached and
 disables every write control until the stream is back; it reconnects with
 backoff and receives a fresh snapshot. A command sent while the server is
-unreachable fails as `unreachable`, as it would now.
+unreachable fails as `unreachable`, as it would now. The server pings the
+stream every 25 s, so one silent for 60 s counts as dropped (a laptop that
+slept leaves it half-open), and an open that gets no headers in 15 s has
+failed.
 
 ### Clearing what the browser kept
 

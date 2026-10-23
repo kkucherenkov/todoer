@@ -55,6 +55,12 @@ export class EngineController implements OnModuleDestroy {
     @Req() req: Request,
     @Res() res: Response,
   ): void {
+    // First, so a token that expired since the guard registers nothing.
+    // The stream lives no longer than the bearer; the page reconnects with
+    // a renewed one.
+    const { expiresAt } = this.auth.verifyWithExpiry(
+      (req.headers.authorization ?? '').slice('bearer '.length),
+    );
     res.writeHead(200, {
       'content-type': 'text/event-stream',
       'cache-control': 'no-cache',
@@ -68,11 +74,6 @@ export class EngineController implements OnModuleDestroy {
       () => end(),
     );
     const ping = setInterval(() => res.write(': ping\n\n'), PING_MS);
-    // The guard has verified the bearer; the stream lives no longer than it
-    // does, and the page reconnects with a renewed one.
-    const { expiresAt } = this.auth.verifyWithExpiry(
-      (req.headers.authorization ?? '').slice('bearer '.length),
-    );
     const expiry = setTimeout(() => end(), expiresAt.getTime() - Date.now());
     const end = () => {
       if (!this.open.delete(end)) return;

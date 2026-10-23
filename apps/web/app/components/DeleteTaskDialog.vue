@@ -11,6 +11,7 @@ const props = defineProps<{
 const emit = defineEmits<{ confirm: []; close: [] }>();
 
 const { locale, t } = useI18n();
+const db = useDb();
 const cancelButton = ref<{ $el: HTMLElement } | null>(null);
 
 const text = computed(() =>
@@ -67,6 +68,7 @@ const text = computed(() =>
         <UButton
           color="error"
           :loading="pending"
+          :disabled="!db.connected.value"
           data-testid="confirm-delete"
           @click="emit('confirm')"
         >

@@ -25,6 +25,8 @@ const task = computed(() =>
 const readonly = computed(
   () => !!task.value?.rrule && task.value.occurrence === null,
 );
+/** Nothing can be saved: the series ended, or the server is unreachable. */
+const locked = computed(() => readonly.value || !db.connected.value);
 const recurring = computed(() => !!task.value?.rrule);
 // Scheduled by a rule: its own, or a subtask's parent's (ADR 0009).
 const ruled = computed(
@@ -167,7 +169,7 @@ function closeDelete() {
 const same = (a: unknown, b: unknown) =>
   JSON.stringify(a) === JSON.stringify(b);
 
-// What the status line says: a write in flight, then saved on this device.
+// What the status line says: a write in flight, then saved on the server.
 const saving = ref(0);
 const saved = ref(false);
 watch(id, () => {
@@ -379,6 +381,7 @@ const dates = [
             size="sm"
             class="self-start"
             :loading="saving > 0"
+            :disabled="!db.connected.value"
             @click="retry"
           >
             {{ $t('drawer.retry') }}
@@ -390,6 +393,7 @@ const dates = [
             size="sm"
             class="self-start"
             :loading="saving > 0"
+            :disabled="!db.connected.value"
             @click="saveAgain"
           >
             {{ $t('drawer.saveAgain') }}
@@ -410,7 +414,7 @@ const dates = [
             variant="outline"
             color="neutral"
             size="sm"
-            :disabled="returning"
+            :disabled="returning || !db.connected.value"
             @click="returnToSeries"
           >
             {{ $t('drawer.returnToSeries') }}
@@ -432,7 +436,7 @@ const dates = [
             v-model="draft.title"
             class="w-full"
             size="lg"
-            :disabled="readonly"
+            :disabled="locked"
             @blur="saveTitle"
           />
         </UFormField>
@@ -441,7 +445,7 @@ const dates = [
             v-model="draft.notes"
             class="w-full"
             :rows="4"
-            :disabled="readonly"
+            :disabled="locked"
             @blur="commit('notes', { notes: draft.notes })"
           />
         </UFormField>
@@ -469,7 +473,7 @@ const dates = [
               <UInput
                 v-model="draft[key]"
                 type="date"
-                :disabled="readonly"
+                :disabled="locked"
                 @change="saveDate(key)"
               />
               <UButton
@@ -477,7 +481,7 @@ const dates = [
                 variant="ghost"
                 color="neutral"
                 icon="i-lucide-x"
-                :disabled="readonly"
+                :disabled="locked"
                 :aria-label="$t('drawer.clear', { field: $t(label) })"
                 @click="clearDate(key)"
               />
@@ -506,7 +510,7 @@ const dates = [
                 class="w-full"
                 value-key="value"
                 :items="projects"
-                :disabled="readonly"
+                :disabled="locked"
                 create-item
                 @update:model-value="
                   commit('project', { project: draft.project || null })
@@ -520,7 +524,7 @@ const dates = [
                 class="w-full"
                 multiple
                 :items="tags"
-                :disabled="readonly"
+                :disabled="locked"
                 create-item
                 @update:model-value="commit('tags', { tags: [...draft.tags] })"
                 @create="createTag"
@@ -531,7 +535,7 @@ const dates = [
               :legend="$t('drawer.priority')"
               orientation="horizontal"
               :items="priorities"
-              :disabled="readonly"
+              :disabled="locked"
               @update:model-value="
                 commit('priority', { priority: draft.priority })
               "
@@ -543,7 +547,7 @@ const dates = [
                 value-key="value"
                 :items="statuses"
                 :search-input="false"
-                :disabled="readonly"
+                :disabled="locked"
                 @update:model-value="saveStatus"
               />
             </UFormField>
@@ -554,7 +558,7 @@ const dates = [
                 size="sm"
                 icon="i-lucide-repeat"
                 class="self-start"
-                :disabled="!!task.parentId"
+                :disabled="!!task.parentId || !db.connected.value"
                 :aria-describedby="task.parentId ? 'child-rule' : undefined"
                 @click="editingRule = true"
               >
@@ -570,13 +574,14 @@ const dates = [
             </div>
           </div>
         </details>
-        <SubtaskList v-if="!task.parentId" :task="task" :readonly="readonly" />
+        <SubtaskList v-if="!task.parentId" :task="task" :readonly="locked" />
         <UButton
           color="error"
           variant="outline"
           icon="i-lucide-trash-2"
           class="self-start"
           data-testid="delete-task"
+          :disabled="!db.connected.value"
           @click="confirmingDelete = true"
         >
           {{ $t('deleteTask.delete') }}

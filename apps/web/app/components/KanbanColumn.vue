@@ -39,7 +39,8 @@ const step = (index: number, to: 'up' | 'down') =>
   );
 
 const container = ref<HTMLElement | null>(null);
-const drag = useDrag(container, drop);
+const db = useDb();
+const drag = useDrag(container, drop, () => db.connected.value);
 </script>
 
 <template>
