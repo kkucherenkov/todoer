@@ -20,6 +20,11 @@ session and the TUI's stored session both satisfy. The web keeps only the
 names of its browser transport: the channel, the leader lock, and the
 worker's init and fatal messages.
 
+_Note, 2026-10-23:_ the web no longer keeps a channel, a leader lock or a
+worker. The backend runs the engine for it, and the page talks to it over
+HTTP ([ADR 0020](0020-the-web-reads-through-a-server-engine.md)). The engine
+still lives in the core; this decision stands.
+
 The TUI is the fourth planned client, after the web, Flutter (ADR 0015) and
 the CLI.
 

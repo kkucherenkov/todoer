@@ -1,6 +1,6 @@
 # The web becomes a thin client — design
 
-- **Status:** draft, 2026-10-23
+- **Status:** accepted, 2026-10-23
 - **Supersedes in part:** the web's storage and leader election in
   [`2026-10-01-client-shells-design.md`](2026-10-01-client-shells-design.md);
   amends [ADR 0012](../adr/0012-no-rest-surface.md).

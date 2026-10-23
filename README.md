@@ -24,12 +24,14 @@ second, independent CLI invocation through the server, over one endpoint:
 - **`WEB_ROOT`** — the backend serves a built web client from this directory on
   the API's origin; see [Serving the web client](#serving-the-web-client).
 - **The web client** (`apps/web`) has the v1 screens, described under
-  [Using the web client](#using-the-web-client). The replica lives in the
-  browser (SQLite WASM on OPFS) and is owned by one worker, which every tab of
-  the origin shares, so a second tab shows the same state without a second
-  sync. It opens offline as an installable app (a service worker caches the
-  shell), speaks English and Russian, and asks before it reloads onto a new
-  build.
+  [Using the web client](#using-the-web-client). It is a thin client: the
+  backend runs one client-core engine per user, the page sends commands to
+  `POST /api/v1/engine` and reads what to show from the event stream
+  `/api/v1/engine/events` ([ADR 0020](docs/adr/0020-the-web-reads-through-a-server-engine.md)).
+  The browser keeps no database, and a change from the CLI, the TUI or
+  another tab reaches an open page within seconds. It installs as an app (a
+  service worker caches the shell), speaks English and Russian, and asks
+  before it reloads onto a new build.
 - **`todoer login` / `logout` / `add` / `list` / `done` / `skip` / `undo` / `outbox`** — a network
   client with `--json` output and exit codes a script can branch on
   ([ADR 0015](docs/adr/0015-the-cli-is-a-client-for-automation.md)). It keeps a
@@ -84,40 +86,37 @@ recurrence).
   day, or use "Move to date…", which is the touch path. Moving one occurrence
   of a recurring task makes a linked one-off copy on the new day and skips the
   occurrence. Undo, from the toast or from the copy's drawer ("Return to
-  series"), deletes the copy and reopens the occurrence; it needs the copy
-  synced, so it is refused offline until the first sync has reached the
-  server.
+  series"), deletes the copy and reopens the occurrence.
 - **Quick-add.** The same grammar as `todoer add`: `p2`, `#project`, `@tag`.
 - **Task drawer.** Title, notes and the two dates first; project, tags,
   priority, status and "Repeat…" under "More details", which stays open once
   opened. Each field saves when you leave it, and a status line says when it
-  saved and how many writes still wait to sync. A refused change puts the
-  field back and keeps your change beside the reason, with "Retry change",
-  which sends the same write again rather than a new one. A recurring task's
+  saved. A refused change puts the field back and keeps your change beside
+  the reason, with "Retry change", which sends the same write again rather
+  than a new one. A recurring task's
   scheduled date is set by its rule, and so is a subtask's under a live
   recurring series. Under a series that has ended the subtask's date stays
   editable, the core refuses it, and the drawer shows the refusal with the
   date kept (an open decision, tuxedo 514). A copy made by moving an occurrence has "Return to series". A
   subtask shows "Subtask of …" with a link to its parent. The drawer also has:
   - **Delete.** A dialog counts the task's subtasks and deletes them with it.
-    There is no undo. It is refused until the task and its subtasks have
-    reached the server; the dialog then stays open with the reason, and
-    Delete again sends the same write. A subtask added on another device and
-    not pulled yet makes the server refuse the parent's delete; the
-    "N refused" badge shows it.
+    There is no undo. A refused delete keeps the dialog open with the
+    reason, and Delete again sends the same write.
   - **Subtasks.** A checklist to add, tick and open subtasks. A recurring
     parent's checklist starts over at each occurrence.
   - **Repeat…** Presets (daily, weekly on chosen weekdays, monthly, yearly,
     each with an interval), a start date, or a raw RRULE for the rest of the
     supported subset, with a preview of the next dates. "Does not repeat" makes
-    the task one-off again. It is refused until the task has reached the server.
+    the task one-off again.
     A subtask repeats with its parent, so its "Repeat…" is disabled.
 - **Subtasks.** An ordinary row, card or chip with a link to the parent, never
   nested. Two levels only.
-- **Offline.** Every write shows at once, survives a reload and is sent on the
-  next sync. The badge shows queued operations and, when the server refuses a
-  sync, the reason. Undo of a recurring task from the list acts on its current
-  occurrence.
+- **The connection.** The page shows what the server holds and queues
+  nothing. While the server cannot be reached the footer says so and every
+  write control is disabled; the page reconnects by itself and shows a fresh
+  snapshot. A server that cannot be reached at load gets an alert with
+  Reload, and the app replaces it once the server answers. Undo of a
+  recurring task from the list acts on its current occurrence.
 - **Updates.** A new build reaches an open tab as a prompt; accepting it
   reloads every tab that showed it.
 
@@ -218,12 +217,12 @@ nothing.
   assets with the old page and policy.
 - **A new build reaches an open tab as a prompt.** The service worker never
   reloads a tab on its own. Accepting the prompt in one tab reloads every tab
-  that showed it, which keeps one build per origin, as the shared worker needs.
+  that showed it, which keeps one build per origin.
 - **`WEB_ROOT` is trusted content.** Symlinks inside it are followed, so
   point it at a directory you build, not one anyone else can write to.
 
-The web client needs HTTPS. The refresh cookie is `Secure`, and service workers
-and OPFS need a secure context. Over plain `http://nas.local` the web client
+The web client needs HTTPS. The refresh cookie is `Secure`, and the service
+worker needs a secure context. Over plain `http://nas.local` the web client
 cannot sign in; `localhost` is the exception. TLS comes from your reverse proxy:
 
 ```text
@@ -324,18 +323,13 @@ label links it to this repository.
 
 ### Browsers
 
-Chromium and Firefox are tested in CI. Firefox skips one case, the
-return from offline to online, because Playwright's emulation fires no `online`
-event there; the app syncs on a manual "Sync now" after it. The blob-worker
-check is the guard fixture, not a separate test: a blob worker is refused under
-the CSP and reported there, but only in Chromium. Firefox neither enforces nor
-reports it for a worker created inside a worker, so the guard is effective in
-Chromium only. Safari is untested: OPFS needs 16.4 or newer, and its handling
-of `Secure` cookies on `http://localhost` differs, so use HTTPS. Signing out
-keeps the local replica in the browser; signing in as another account resets
-it. A one-bit hint in `localStorage` (`todoer.session`) tells a signed-out tab
-not to try a cookie refresh, since each failed refresh counts against the
-per-IP limit. Clearing site data loses the hint, and the person signs in again.
+Chromium and Firefox are tested in CI; `e2e/acceptance.spec.ts` runs in
+Chromium only. Safari is untested: its handling of `Secure` cookies on
+`http://localhost` differs, so use HTTPS. Signing out leaves nothing of the
+account in the page. The first load of this version deletes the database an
+older version kept in the browser (OPFS). A one-bit hint in `localStorage`
+(`todoer.session`) tells a signed-out tab not to try a cookie refresh, since
+each failed refresh counts against the per-IP limit. Clearing site data loses the hint, and the person signs in again.
 
 The cookie (`todoer_refresh`, `Path=/api/v1/auth`, Max-Age 30 days) can outlive
 a session near its 365-day absolute limit by up to 30 days; the server answers

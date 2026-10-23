@@ -122,9 +122,9 @@ and `@todoer/client-core` is upstream of every client: the CLI, the TUI and the 
 | Path | What |
 | --- | --- |
 | `packages/specs` | OpenAPI document, generated TS types and SDK. The contract. |
-| `packages/client-core` | Replica, outbox, sync, the domain operations and the long-lived engine (`createEngine`) the clients run. The portable entry has no Node import; `./node-sqlite` is the Node adapter, with `openReplica` and `readConfig` that the CLI and the TUI share, `./sqlite-wasm` is the web's (its types need the optional peer `@sqlite.org/sqlite-wasm`). |
+| `packages/client-core` | Replica, outbox, sync, the domain operations and the long-lived engine (`createEngine`) the clients run. The portable entry has no Node import; `./node-sqlite` is the Node adapter, with `openReplica` and `readConfig` that the CLI, the TUI and the backend's web engine share. |
 | `apps/backend` | NestJS 11, Prisma 6, PostgreSQL 18. Every write goes through `SyncService.sync`, reached by `POST /sync` and by the web's `/engine`. Serves the built SPA from `WEB_ROOT`. |
-| `apps/web` | Nuxt 4 SPA. The leader tab's worker runs client-core on SQLite WASM (OPFS). Built SPA served by the backend from `WEB_ROOT`. |
+| `apps/web` | Nuxt 4 SPA, a thin client: the backend runs its client-core engine, one per user on an in-memory replica; the page sends commands to `POST /engine` and reads topics from the event stream `/engine/events`. No database in the browser. Built SPA served by the backend from `WEB_ROOT`. |
 | `Dockerfile`, `docker/` | One image with the backend and the built SPA; compose service `app` behind the profile `app`, the entrypoint runs `prisma migrate deploy`. |
 | `apps/cli` | The reference client. Its primary caller is a script or an agent — see ADR 0015. |
 | `apps/tui` | The terminal client (pi-tui). Shares the CLI's replica and session; runs the core engine. |

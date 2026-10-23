@@ -46,10 +46,12 @@ its departure 5 (system fonts), and the maintainer's direction of 2026-10-02
   priority `p0`–`p4`, a scheduled date and a due date (dates only, no times,
   ADR 0010), recurrence through an RRULE subset (ADR 0002), one level of
   subtasks, and saved views drawn as a list, a kanban board or a calendar.
-- **Local first.** The browser holds a replica in SQLite (WASM, OPFS) run by
-  one leader tab's worker. Every write applies locally at once and waits in an
-  outbox until `POST /sync` accepts it. The UI therefore has states most todo
-  apps do not: waiting, offline, refused, and a stale tab after an update.
+- **A thin client.** The browser holds no data. The backend runs one
+  client-core engine per user; the page sends commands to `POST /engine` and
+  reads what to show from an event stream (ADR 0020). A write shows at once
+  and stays only if the server takes it. The UI therefore has states most
+  todo apps do not: refused, the server unreachable, and a stale tab after an
+  update.
 - **Two clients.** The CLI is the reference client and its primary caller is
   a script or an agent (ADR 0015). The web client is the human one: the place
   to read, sort, drag and review. It is not the place for bulk automation.
@@ -169,7 +171,7 @@ A closed card or placement is `text-muted line-through`.
 | synced                          | "Last synced 2 minutes ago" in `text-muted`; no badge                  |
 | syncing                         | the Sync now button shows Nuxt UI's `loading` spinner                  |
 | writes waiting                  | `neutral` `subtle` badge "3 waiting"                                   |
-| offline (server not reached)    | `warning` solid badge "Offline"; writes keep queueing                  |
+| server unreachable              | `warning` solid badge "Cannot reach the server"; writes disabled       |
 | writes refused                  | `error` `subtle` badge "2 refused"                                     |
 | sync refused (a problem string) | `error` `subtle` `UAlert` "Sync refused" above the page, with Sync now |
 | update waiting                  | `info` `subtle` `UAlert` "A new version is available" with Reload      |
@@ -345,7 +347,7 @@ library.
 | `LocaleSwitch`                        | `UButton` × 2                                                   | current locale `solid`, other `outline`; could become a `UFieldGroup` |
 | `AppShell`                            | `UDashboardGroup`, `UDashboardSidebar`, `UDashboardPanel`, `UDashboardNavbar`, `UAlert` | see Layout                                    |
 | `ViewNav`                             | `UNavigationMenu`, `UButton`                                    | active item in `primary`; built-ins, projects and tags show a count badge; a problem view gets the warning icon |
-| `SyncStatus`                          | `UBadge`, `UButton`                                             | task count (14px/500), "Saved on this device", badges per sync state, last synced, Sync now, Sign out |
+| `SyncStatus`                          | `UBadge`, `UButton`                                             | task count (14px/500), "Saved on the server", badges per sync state, last synced, Sync now, Sign out |
 | `UpdatePrompt`                        | `UAlert` (info)                                                 | in the workspace alerts under the header, next to the sync problem; on the gate while signed out; Reload action |
 | `ViewBody`                            | `UAlert` (warning)                                              | a view whose filter is invalid or deleted shows why            |
 | `QuickAdd`                            | `UInput`, `UButton`, `UFormField`, `USelect`                      | title and Add task first; details reveal project/tags/priority/scheduled/due; the title keeps `#project @tag pN`; refused drafts stay; an out-of-filter add links to All open |
@@ -417,21 +419,21 @@ Every screen is designed in each of these, in both themes:
 
 | State          | What the app shows today                                                                                   |
 | -------------- | ---------------------------------------------------------------------------------------------------------- |
-| Booting        | gate: two `USkeleton` lines while the worker starts and the session restores                               |
-| Insecure       | gate: warning alert "A secure connection is required" (no worker without HTTPS or localhost)               |
-| Engine failed  | gate: error alert "The local database did not start" with the reason and Reload                            |
+| Booting        | gate: two `USkeleton` lines while the session restores and the event stream opens                         |
+| Insecure       | gate: warning alert "A secure connection is required" (the sign-in cookie needs HTTPS or localhost)        |
+| Unreachable at load | gate: warning alert "The server cannot be reached." with Reload; the page keeps retrying and shows the app once the server answers |
 | Signed out     | sign-in form; on an empty instance, the owner registration form instead                                    |
 | Empty          | list: "No open tasks." under quick add; board: "Columns appear after the first sync."; drawer: "This task no longer exists." |
-| Loading        | calendar: seven skeleton cells until the worker answers the span; drawer: two skeleton blocks              |
+| Loading        | calendar: seven skeleton cells until the server answers the span; drawer: two skeleton blocks              |
 | Populated      | the view's rows, cards or placements; closed items struck through in `text-muted`                          |
-| Offline        | "Offline" warning badge; writes apply locally and the "N waiting" badge counts them; nothing blocks        |
-| Write refused  | an error toast with the reason (`useFail`); the field or row goes back to the server's value. The view form keeps its input and shows the refusal inside the form. In the drawer, a panel instead: saved value, the refused change and the reason. Retry change (the same write) only when the refusal is retryable (the server kept no verdict), and then the field shows the saved value; refused for good, the field keeps the person's value and Save again sends it as a new write (maintainer decision 2026-10-22). 401, 403 and 429 are no refusal: the write waits to sync |
+| Unreachable    | "Cannot reach the server" warning badge; every write control is disabled until the event stream is back; nothing is queued |
+| Write refused  | an error toast with the reason (`useFail`); the field or row goes back to the server's value. The view form keeps its input and shows the refusal inside the form. In the drawer, a panel instead: saved value, the refused change and the reason. Retry change (the same write) only when the refusal is retryable (the server kept no verdict), and then the field shows the saved value; refused for good, the field keeps the person's value and Save again sends it as a new write (maintainer decision 2026-10-22). A write the server did not take fails as "Something went wrong." and its row goes back |
 | Sync refused   | error alert "Sync refused" with the server's text and Sync now; the "N refused" badge                      |
 | Conflict       | no merge dialog: fields merge last-write-wins (ADR 0004). A rule change sent against a stale version is refused and shows as a write refusal |
 | View problem   | warning alert "This view cannot be shown" with the filter problem, or "This view no longer exists."        |
 | Read-only      | a recurring task whose series ended: fields disabled, "This series has ended" status line                  |
 | Moved occurrence | drawer: "Moved from {date}" with Return to series                                                        |
-| Update waiting | info alert "A new version is available" with Reload; tasks stay on the device                              |
+| Update waiting | info alert "A new version is available" with Reload; tasks are kept on the server                          |
 
 ## Voice
 
