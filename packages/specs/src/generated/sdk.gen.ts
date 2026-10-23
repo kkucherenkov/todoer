@@ -45,6 +45,12 @@ import type {
   PostSyncData,
   PostSyncResponse,
   PostSyncError,
+  PostEngineData,
+  PostEngineResponse,
+  PostEngineError,
+  GetEngineEventsData,
+  GetEngineEventsResponse,
+  GetEngineEventsError,
 } from './types.gen';
 import { client as _heyApiClient } from './client.gen';
 
@@ -361,5 +367,53 @@ export const postSync = <ThrowOnError extends boolean = false>(
       'Content-Type': 'application/json',
       ...options?.headers,
     },
+  });
+};
+
+/**
+ * Run one command on the caller's engine (the web client)
+ */
+export const postEngine = <ThrowOnError extends boolean = false>(
+  options: Options<PostEngineData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).post<
+    PostEngineResponse,
+    PostEngineError,
+    ThrowOnError
+  >({
+    security: [
+      {
+        scheme: 'bearer',
+        type: 'http',
+      },
+    ],
+    url: '/engine',
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
+    },
+  });
+};
+
+/**
+ * Server-sent stream of the engine's topics for one tab
+ */
+export const getEngineEvents = <ThrowOnError extends boolean = false>(
+  options: Options<GetEngineEventsData, ThrowOnError>,
+) => {
+  return (options.client ?? _heyApiClient).get<
+    GetEngineEventsResponse,
+    GetEngineEventsError,
+    ThrowOnError
+  >({
+    security: [
+      {
+        scheme: 'bearer',
+        type: 'http',
+      },
+    ],
+    url: '/engine/events',
+    ...options,
   });
 };

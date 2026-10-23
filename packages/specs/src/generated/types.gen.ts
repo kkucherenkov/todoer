@@ -194,6 +194,187 @@ export type SyncResponse = {
   changes: Array<Change>;
 };
 
+export type EngineRequest = {
+  tab: string;
+  id: number;
+  command: EngineCommand;
+};
+
+export type EngineResult = {
+  [key: string]: unknown;
+};
+
+export type EngineCommand =
+  | ({
+      kind?: 'sync';
+    } & EngineSync)
+  | ({
+      kind?: 'watch';
+    } & EngineWatch)
+  | ({
+      kind?: 'add';
+    } & EngineAdd)
+  | ({
+      kind?: 'mark';
+    } & EngineMark)
+  | ({
+      kind?: 'edit';
+    } & EngineEdit)
+  | ({
+      kind?: 'move';
+    } & EngineMove)
+  | ({
+      kind?: 'saveView';
+    } & EngineSaveView)
+  | ({
+      kind?: 'deleteView';
+    } & EngineDeleteView)
+  | ({
+      kind?: 'saveStatus';
+    } & EngineSaveStatus)
+  | ({
+      kind?: 'setCompleting';
+    } & EngineSetCompleting)
+  | ({
+      kind?: 'deleteStatus';
+    } & EngineDeleteStatus)
+  | ({
+      kind?: 'moveOccurrence';
+    } & EngineMoveOccurrence)
+  | ({
+      kind?: 'undoMove';
+    } & EngineUndoMove)
+  | ({
+      kind?: 'deleteTask';
+    } & EngineDeleteTask)
+  | ({
+      kind?: 'setRule';
+    } & EngineSetRule)
+  | ({
+      kind?: 'reparent';
+    } & EngineReparent);
+
+export type EngineSync = {
+  kind: 'sync';
+  reason: 'start' | 'write' | 'tick' | 'focus' | 'online' | 'manual' | 'remote';
+};
+
+export type EngineWatch = {
+  kind: 'watch';
+  view: string | null;
+  task: string | null;
+  span?: {
+    [key: string]: unknown;
+  } | null;
+  layout?: 'list' | 'kanban' | 'calendar' | null;
+};
+
+export type EngineAdd = {
+  kind: 'add';
+  opId: string;
+  id: string;
+  text: string;
+  parentId?: string;
+};
+
+export type EngineMark = {
+  kind: 'mark';
+  opId: string;
+  taskId: string;
+  mark: 'done' | 'skip' | 'undo';
+  on?: string;
+};
+
+export type EngineEdit = {
+  kind: 'edit';
+  opId: string;
+  taskId: string;
+  changes: {
+    [key: string]: unknown;
+  };
+};
+
+export type EngineMove = {
+  kind: 'move';
+  opId: string;
+  taskId: string;
+  view: string;
+  statusId?: string | null;
+  after?: string | null;
+};
+
+export type EngineSaveView = {
+  kind: 'saveView';
+  opId: string;
+  id: string;
+  fields: {
+    [key: string]: unknown;
+  };
+};
+
+export type EngineDeleteView = {
+  kind: 'deleteView';
+  opId: string;
+  id: string;
+};
+
+export type EngineSaveStatus = {
+  kind: 'saveStatus';
+  opId: string;
+  id: string;
+  name?: string;
+  after?: string | null;
+};
+
+export type EngineSetCompleting = {
+  kind: 'setCompleting';
+  opId: string;
+  id: string;
+};
+
+export type EngineDeleteStatus = {
+  kind: 'deleteStatus';
+  opId: string;
+  id: string;
+};
+
+export type EngineMoveOccurrence = {
+  kind: 'moveOccurrence';
+  opId: string;
+  id: string;
+  taskId: string;
+  occurrence: string;
+  to: string;
+};
+
+export type EngineUndoMove = {
+  kind: 'undoMove';
+  opId: string;
+  taskId: string;
+};
+
+export type EngineDeleteTask = {
+  kind: 'deleteTask';
+  opId: string;
+  taskId: string;
+};
+
+export type EngineSetRule = {
+  kind: 'setRule';
+  opId: string;
+  taskId: string;
+  rule: {
+    [key: string]: unknown;
+  } | null;
+};
+
+export type EngineReparent = {
+  kind: 'reparent';
+  opId: string;
+  taskId: string;
+  parentId: string | null;
+};
+
 export type GetHealthData = {
   body?: never;
   path?: never;
@@ -648,6 +829,72 @@ export type PostSyncResponses = {
 };
 
 export type PostSyncResponse = PostSyncResponses[keyof PostSyncResponses];
+
+export type PostEngineData = {
+  body: EngineRequest;
+  path?: never;
+  query?: never;
+  url: '/engine';
+};
+
+export type PostEngineErrors = {
+  /**
+   * request does not match the schema
+   */
+  400: Problem;
+  /**
+   * missing or invalid bearer token
+   */
+  401: Problem;
+  /**
+   * unexpected error
+   */
+  default: Problem;
+};
+
+export type PostEngineError = PostEngineErrors[keyof PostEngineErrors];
+
+export type PostEngineResponses = {
+  /**
+   * The engine's Result. A refusal is still 200, with ok false and a failure; only a malformed request or a missing token is not.
+   */
+  200: EngineResult;
+};
+
+export type PostEngineResponse = PostEngineResponses[keyof PostEngineResponses];
+
+export type GetEngineEventsData = {
+  body?: never;
+  path?: never;
+  query: {
+    tab: string;
+  };
+  url: '/engine/events';
+};
+
+export type GetEngineEventsErrors = {
+  /**
+   * missing or invalid bearer token
+   */
+  401: Problem;
+  /**
+   * unexpected error
+   */
+  default: Problem;
+};
+
+export type GetEngineEventsError =
+  GetEngineEventsErrors[keyof GetEngineEventsErrors];
+
+export type GetEngineEventsResponses = {
+  /**
+   * Server-sent events; each event carries a topic and its value as client-core's Topics describes them.
+   */
+  200: string;
+};
+
+export type GetEngineEventsResponse =
+  GetEngineEventsResponses[keyof GetEngineEventsResponses];
 
 export type ClientOptions = {
   baseUrl: `${string}://${string}/api/v1` | (string & {});
