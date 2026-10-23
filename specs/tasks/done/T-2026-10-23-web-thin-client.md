@@ -85,10 +85,10 @@ HTTP.
       exceptions: FR-006's cleanup was written with its spec and then
       mutation-checked, and FR-007 (`TZ` in compose) is configuration,
       checked by hand in Task 4
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
 - [x] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] dnote changelog line
 
 ### Steps
 
