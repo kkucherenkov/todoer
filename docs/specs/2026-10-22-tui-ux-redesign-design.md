@@ -213,14 +213,22 @@ client would have to compute counts.
   `STATUS (n/m)`, its place among the columns (my call on the 90 boundary,
   matching Q5); Enter shows the details full screen. A column taller than the
   box scrolls so the cursor's card is always drawn.
-- **Outline row (Q11 C).** One line per task: status marker, priority, title
-  truncated with "…", and short fields on the right (#project, due, subtask
-  progress). The row under the cursor shows its full title.
-- **How the cursor row expands (Q13 B).** The full title is drawn as an
-  overlay over the rows below it, so no outline row ever changes position.
-  The hidden rows reappear as soon as the cursor moves. It shows at most
-  three lines, the last ending with "…" (the detail pane has the rest). Near
-  the bottom of the pane it grows upward instead (my call).
+  Revised 2026-10-23 (maintainer): `b` switches any view between list and
+  board on this screen only, never saved, and picking a view drops it. The
+  columns that fit at 22 cells share the box's whole width, a `│` stands
+  between them and a `─`/`┼` rule under their headers; a card wraps inside
+  its column, with a blank line before the next card.
+- **Outline row (Q11 C, revised 2026-10-23).** Status marker, priority, the
+  title, and short fields on the right of the first line (#project, due,
+  subtask progress). Every title shows in full, wrapped under the row's head,
+  so rows differ in height; a blank line stands before each top-level task.
+  The marker is `○` for an open task in its first status or none, `◐`
+  (yellow) in any later one, `✓` once closed.
+- **How the cursor row expands (Q13 B, replaced 2026-10-23).** The cursor
+  row was an overlay of at most three lines over the rows below it. The
+  maintainer found it hid tasks, so every row is now drawn in full and the
+  outline scrolls by lines to keep the cursor row whole; a row taller than
+  the pane shows from its start.
 - **New task (Q12 A).** `n` opens an input line in the outline under the
   cursor, where the task will appear, using the quick-add grammar
   (`#project @tag pN`, dates). Enter creates it and Esc cancels.

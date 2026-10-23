@@ -49,7 +49,8 @@ type Screen = Pane & { hints: string; inserting?: boolean };
 
 /**
  * The whole screen: sidebar | outline | detail pane at full height, then the
- * two status lines. A kanban view draws the board across the outline and
+ * two status lines. A kanban view, or any view after `b`, draws the board
+ * across the outline and
  * detail columns, with a card's details boxed over its right side (Enter);
  * the help (`?`), the view picker (`v`) and the statuses (`S`) take the
  * outline's place. Below 120 columns a focused sidebar is drawn over the
@@ -69,6 +70,8 @@ export class Root implements Pane {
   private focusOn: Focus = 'outline';
   private taskId: string | null = null;
   private watching = '';
+  /** `b`'s layout for the current view, never saved; a pick drops it. */
+  private layout: 'list' | 'kanban' | null = null;
 
   /**
    * Esc closes the innermost thing first. An open input or editor takes Esc
@@ -141,11 +144,17 @@ export class Root implements Pane {
     );
   }
 
-  /** The board for a kanban view, else the outline. */
+  /** The board for a kanban view or after `b`, else the outline. */
   private get list(): Outline | Board {
-    return this.deps.tui.topics.view(this.sidebar.current)?.layout === 'kanban'
-      ? this.board
-      : this.outline;
+    const saved = this.deps.tui.topics.view(this.sidebar.current)?.layout;
+    return (this.layout ?? saved) === 'kanban' ? this.board : this.outline;
+  }
+
+  /** `b`: the other layout for this view, on this screen only. */
+  private flip(): void {
+    this.layout = this.list === this.board ? 'list' : 'kanban';
+    this.closeOverlay();
+    this.select();
   }
 
   /** Shows and watches the task under the drawn list's cursor. A focused
@@ -162,6 +171,7 @@ export class Root implements Pane {
 
   private pick(key: string): void {
     this.sidebar.current = key;
+    this.layout = null;
     this.outline.show(key);
     this.board.show(key);
     this.watch();
@@ -299,6 +309,7 @@ export class Root implements Pane {
       }
     } else if (data === '/' && this.list === this.outline) this.find();
     else if (data === 'v') this.open(this.viewPicker());
+    else if (data === 'b') this.flip();
     else if (data === '?') {
       this.open(new Help(this.close, this.mode === 'one'));
     } else if (data === 'S')

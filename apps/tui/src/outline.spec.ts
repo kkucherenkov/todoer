@@ -66,9 +66,12 @@ async function open(
   await t.engine.handle({ kind: 'sync', reason: 'manual' }, 'tui');
   await t.engine.handle({ kind: 'watch', view: key, task: null }, 'tui');
   await t.settle();
-  const text = () => t.lines().map(plain);
+  /** Every line as drawn, the blank ones between groups included. */
+  const screen = () => t.lines().map(plain);
+  /** The drawn lines without the blank ones, so an index counts rows. */
+  const text = () => screen().filter((l) => l.trim() !== '');
   const say = () => t.status.message?.text;
-  return { ...t, outline, selected, text, say };
+  return { ...t, outline, selected, screen, text, say };
 }
 
 const order = (lines: string[], ...titles: string[]) =>
@@ -415,10 +418,11 @@ describe('Outline n adds in place', () => {
     const t = await open1(...ten(-1));
     t.outline.height = 4;
     await t.press('j', 'j', 'j', 'n');
-    const lines = t.text();
+    // t3, a blank line, then the add's row last in the pane.
+    const lines = t.screen();
     expect(lines).toHaveLength(4);
     expect(lines[3]).toMatch(/○ new:/);
-    expect(lines[2]).toContain('t3');
+    expect(lines[1]).toContain('t3');
   });
 
   it('Esc removes the input row and sends nothing', async () => {
@@ -655,47 +659,55 @@ describe('Outline filter', () => {
   });
 });
 
-describe('Outline cursor row', () => {
+describe('Outline rows in full', () => {
+  /** The lines of the row whose first line holds `title`, up to the next
+   *  blank line. */
+  const block = (lines: string[], title: string) => {
+    const from = lines.findIndex((l) => l.includes(title));
+    const to = lines.findIndex((l, i) => i > from && l.trim() === '');
+    return lines.slice(from, to < 0 ? undefined : to);
+  };
+
   it('moving the cursor never shifts a row', async () => {
     const t = await open1(...ten(4));
     const base = body(t.text());
     for (let at = 0; at < 10; at += 1) {
-      const now = body(t.text());
-      for (let i = 0; i < 10; i += 1) {
-        if (i >= at && i <= at + 2) continue;
-        expect(now[i], `row ${i} with the cursor on ${at}`).toBe(base[i]);
-      }
+      expect(body(t.text()), `the cursor on ${at}`).toEqual(base);
       await t.press('j');
     }
   });
 
-  it('shows the long title over the two rows under it', async () => {
+  it('draws a long title in full, cursor or not, and moves the rows below it down', async () => {
     const t = await open1(...ten(4));
+    const words = (lines: string[]) =>
+      lines.join(' ').match(/\bword\b/g)?.length;
+    expect(words(block(t.screen(), 'word'))).toBe(60);
+    expect(t.text().join('\n')).not.toContain('…');
     await t.press('j', 'j', 'j', 'j');
-    const lines = t.text();
-    expect(lines[3]).toContain('t3');
-    expect(lines[4]).toMatch(/^▸ .*word word/);
-    expect(lines[6]?.trimEnd().endsWith('…')).toBe(true);
-    expect(lines[7]).toContain('t7');
-    expect(lines.filter((l) => l.includes('t5') || l.includes('t6'))).toEqual(
-      [],
+    const lines = t.screen();
+    expect(lines.find((l) => l.startsWith('▸'))).toMatch(/^▸ .*word word/);
+    expect(words(block(lines, 'word'))).toBe(60);
+    expect(
+      order(lines, 't3', 'word', 't5').every(
+        (n, i, all) => i === 0 || n > all[i - 1]!,
+      ),
+    ).toBe(true);
+  });
+
+  it('puts a blank line before each top-level task, none before a subtask', async () => {
+    const t = await open1(
+      task('alpha', 'a0'),
+      task('gamma', 'a1'),
+      task('beta', 'a2', 'alpha'),
     );
-    await t.press('j');
-    expect(t.text()[5]).toContain('t5');
+    const lines = t.screen().map((l) => l.trim());
+    const [a, b, g] = order(lines, 'alpha', 'beta', 'gamma');
+    expect([b! - a!, g! - b!]).toEqual([1, 2]);
+    expect(lines[g! - 1]).toBe('');
+    expect(lines[0]).not.toBe('');
   });
 
-  it('a long cursor row grows upward at the bottom', async () => {
-    const t = await open1(...ten(9));
-    const base = body(t.text());
-    for (let i = 0; i < 9; i += 1) await t.press('j');
-    const lines = t.text();
-    expect(lines.slice(7, 10).every((l) => l.includes('word'))).toBe(true);
-    expect(lines[9]?.startsWith('▸')).toBe(false);
-    expect(lines[9]?.trimEnd().endsWith('…')).toBe(true);
-    expect(body(lines).slice(0, 7)).toEqual(base.slice(0, 7));
-  });
-
-  it('a publish while the cursor sits on a long row keeps the overlay on that row', async () => {
+  it('a publish while the cursor sits on a long row keeps the cursor on it', async () => {
     const t = await open1(...ten(4));
     await t.press('j', 'j', 'j', 'j');
     // An unrelated add lands above the cursor and pushes its row down.
@@ -707,8 +719,9 @@ describe('Outline cursor row', () => {
     }));
     await t.settle();
     const lines = t.text();
-    expect(lines.findIndex((l) => l.includes('fresh'))).toBeLessThan(5);
-    expect(lines[5]).toMatch(/^▸ .*word word/);
+    const at = lines.findIndex((l) => l.startsWith('▸'));
+    expect(lines.findIndex((l) => l.includes('fresh'))).toBeLessThan(at);
+    expect(lines[at]).toMatch(/^▸ .*word word/);
     expect(t.selected.at(-1)).toBe(id(longTitle));
   });
 
@@ -716,9 +729,7 @@ describe('Outline cursor row', () => {
     const t = await open1(...ten(4));
     await t.press('j', 'j', 'j', 'j');
     await t.press('d', 'd', 'y');
-    const lines = t.text();
-    expect(lines.findIndex((l) => l.startsWith('▸'))).toBe(4);
-    expect(lines[4]).toContain('t5');
+    expect(t.text().find((l) => l.startsWith('▸'))).toContain('t5');
     expect(t.selected.at(-1)).toBe(id('t5'));
   });
 
@@ -739,16 +750,16 @@ describe('Outline cursor row', () => {
     }
   });
 
-  it('never draws more than its height, overlay included', async () => {
+  it('never draws more than its height; a taller row shows from its start', async () => {
     const t = await open1(...ten(9));
     t.outline.height = 2;
     for (let i = 0; i < 9; i += 1) await t.press('j');
-    const lines = t.outline.render(80);
+    const lines = t.outline.render(80).map(plain);
     expect(lines).toHaveLength(2);
-    expect(plain(lines[1]!).trimEnd().endsWith('…')).toBe(true);
+    expect(lines[0]).toMatch(/^▸ .*word/);
   });
 
-  it('keeps the due date on the first overlay line', async () => {
+  it('keeps the due date on a long row’s first line', async () => {
     const t = await open(
       [
         { ...task(longTitle, 'a0'), dueOn: '2026-10-05' },
@@ -759,30 +770,45 @@ describe('Outline cursor row', () => {
     );
     const lines = t.text();
     expect(lines[0]).toMatch(/word.* 2026-10-05$/);
-    expect(lines[1]).not.toContain('2026');
-    expect(lines[2]?.trimEnd().endsWith('…')).toBe(true);
+    expect(lines.slice(1).join('')).not.toContain('2026');
     expect(t.lines().map((l) => visibleWidth(l))).toEqual(
       t.lines().map(() => 60),
     );
   });
 
-  it('scrolls only when the cursor leaves the pane', async () => {
+  it('scrolls by lines only when the cursor row leaves the pane', async () => {
+    // t0, '', t1, '', t2 fill five lines.
     const t = await open1(...ten(-1));
     t.outline.height = 5;
     const first = () =>
       t
-        .text()[0]
+        .screen()[0]
         ?.replace(/^\S?\s+\S\s/, '')
         .trim();
     expect(t.lines()).toHaveLength(5);
-    await t.press('j', 'j', 'j', 'j');
+    await t.press('j', 'j');
     expect(first()).toBe('t0');
     await t.press('j');
     expect(first()).toBe('t1');
-    await t.press('k');
+    await t.press('k', 'k');
     expect(first()).toBe('t1');
-    await t.press('k', 'k', 'k', 'k');
+    await t.press('k');
     expect(first()).toBe('t0');
+  });
+
+  it('marks a task in a later status ◐, yellow, the first status ○', async () => {
+    vi.stubEnv('NO_COLOR', '');
+    const t = await open1(
+      { ...status, id: 's2', name: 'Doing', rank: 'a1' },
+      { ...task('inbox', 'a0'), statusId: 's1' },
+      { ...task('doing', 'a1'), statusId: 's2' },
+      task('none', 'a2'),
+    );
+    const at = (title: string) => t.text().find((l) => l.includes(title));
+    expect(at('inbox')).toMatch(/○ inbox/);
+    expect(at('doing')).toMatch(/◐ doing/);
+    expect(at('none')).toMatch(/○ none/);
+    expect(t.lines().join('')).toContain(`${ESC}[33m◐`);
   });
 
   it('draws no colour under NO_COLOR', async () => {

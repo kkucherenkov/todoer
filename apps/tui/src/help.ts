@@ -17,6 +17,7 @@ const help = (narrow: boolean) => [
     : 'Enter     card details    /       filter, Esc clears',
   'Tab       next pane       [ ] v   views',
   'S         statuses        r       sync, retry a ✗',
+  'b         list ⇄ board, not saved',
   '?         this help       q       quit, back in details',
 ];
 

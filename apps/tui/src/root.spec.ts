@@ -502,6 +502,38 @@ describe('Root', () => {
     expect(t.root.focusAt).toBe('outline');
   });
 
+  it('b shows the board for this view without saving it, and a pick drops it', async () => {
+    const t = await mount([
+      { ...status, id: 's2', name: 'Doing', rank: 'a1' },
+      view,
+      task('milk', 'a0', { statusId: 's1' }),
+      task('bread', 'a0', { statusId: 's2' }),
+    ]);
+    const sent = t.server.sent.length;
+    expect(t.frame()).toContain('─ Tasks ─');
+    await t.press('b');
+    expect(t.frame()).toContain('─ Board ─');
+    expect(t.frame()).toMatch(/To do \(1\)\s+│ Doing \(1\)/);
+    expect(t.text().at(-1)).toContain('H/L move');
+    await t.press('b');
+    expect(t.frame()).toContain('─ Tasks ─');
+    await t.press('b', ']');
+    expect(t.frame()).toContain('─ Tasks ─');
+    await t.press('[');
+    expect(t.frame()).toContain('─ Tasks ─');
+    expect(t.server.sent).toHaveLength(sent);
+  });
+
+  it('b below 90 columns shows one status column at a time', async () => {
+    const t = await mount([task('milk', 'a0', { statusId: 's1' })], {
+      width: 80,
+      height: 24,
+    });
+    await t.press('b');
+    expect(t.frame()).toContain('TO DO (1/1)');
+    expect(t.frame()).toContain('milk');
+  });
+
   it('a kanban view draws the board, and Enter shows its card’s details', async () => {
     const board = { ...view, layout: 'kanban' };
     const t = await mount([
@@ -511,7 +543,7 @@ describe('Root', () => {
       task('bread', 'a0', { statusId: 's2', dueOn: '2026-10-09' }),
     ]);
     await t.press('[');
-    expect(t.frame()).toMatch(/To do \(1\)\s+Doing \(1\)/);
+    expect(t.frame()).toMatch(/To do \(1\)\s+│ Doing \(1\)/);
     await t.press(KEY.enter);
     expect(t.frame()).toMatch(/Due\s+2026-10-08/);
     await t.press(KEY.escape, 'l', KEY.enter);

@@ -262,7 +262,42 @@ describe('Board layout', () => {
     exact(t, 140, 36);
     expect(t.text()[0]).toMatch(/^╭─ Views ─+╮╭─ Board ─+╮$/);
     expect(t.lastFrame()).not.toContain('Details');
-    expect(t.lastFrame()).toMatch(/To do \(2\)\s+Doing \(0\)\s+Done ✓ \(0\)/);
+    expect(t.lastFrame()).toMatch(
+      /To do \(2\)\s+│ Doing \(0\)\s+│ Done ✓ \(0\)/,
+    );
+  });
+
+  it('splits the whole width among the columns, │ between them and a rule under the header', async () => {
+    const t = await open();
+    // Inside the frame's sides: 98 cells, three columns and two `┼`.
+    const rule = t
+      .text()
+      .find((l) => l.includes('┼'))!
+      .slice(1, -1);
+    const parts = rule.split('┼');
+    expect(parts).toHaveLength(3);
+    // The rule reaches the frame's right side: no cell is left over.
+    expect(rule).toMatch(/─$/);
+    expect(parts.every((p) => /^─+$/.test(p) && p.length >= 32)).toBe(true);
+    const header = t
+      .text()
+      .find((l) => l.includes('To do'))!
+      .slice(1, -1);
+    expect([...header].filter((ch) => ch === '│')).toHaveLength(2);
+    expect(header.indexOf('│')).toBe(rule.indexOf('┼'));
+  });
+
+  it('wraps a long card inside its column, a blank line between cards', async () => {
+    const long = 'word '.repeat(20).trim();
+    const t = await open({
+      tasks: [task(long, 'todo', 'a0'), task('beta', 'todo', 'a1')],
+    });
+    const lines = t.text();
+    const card = lines.filter((l) => l.includes('word'));
+    expect(card.join(' ').match(/\bword\b/g)).toHaveLength(20);
+    const last = lines.indexOf(card.at(-1)!);
+    expect(lines[last + 1]?.slice(1, 33).trim()).toBe('');
+    expect(lines[last + 2]).toContain('beta');
   });
 
   it('at 100 the board takes the whole width', async () => {
