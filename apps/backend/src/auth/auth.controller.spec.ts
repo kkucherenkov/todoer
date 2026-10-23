@@ -74,7 +74,9 @@ beforeEach(async () => {
     auth,
     sessions,
     prisma,
-    new AccountsService(prisma, auth, sessions, { unload() {} } as EngineHub),
+    new AccountsService(prisma, auth, sessions, {
+      unload() {},
+    } as unknown as EngineHub),
   );
   U = uuidv7();
   await createUser(U, 'a@b.c');

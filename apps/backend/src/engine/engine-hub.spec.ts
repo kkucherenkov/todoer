@@ -181,7 +181,7 @@ describe('EngineHub', () => {
     expect(await prisma.task.count({ where: { title: 'kept' } })).toBe(1);
   });
 
-  it('unload ends the open streams at once and drops the engine', async () => {
+  it('unload ends the open streams at once and drops the engine', () => {
     const a = stream(U, T1);
     const b = stream(U, T2);
     const other = stream(V, T1);
