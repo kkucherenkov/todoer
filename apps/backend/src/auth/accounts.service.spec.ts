@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { uuidv7 } from 'uuidv7';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -227,6 +228,16 @@ describe('deleteAccount', () => {
     expect(unload).not.toHaveBeenCalled();
     await accounts.deleteAccount(u, PASSWORD);
     expect(unload).toHaveBeenCalledExactlyOnceWith(u);
+  });
+
+  it('still resolves when the engine unload throws', async () => {
+    const u = await join('u@e.test');
+    vi.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
+    unload.mockImplementationOnce(() => {
+      throw new Error('boom');
+    });
+    await expect(accounts.deleteAccount(u, PASSWORD)).resolves.toBeUndefined();
+    expect(await prisma.user.findUnique({ where: { id: u } })).toBeNull();
   });
 
   const seed = async (u: string): Promise<void> => {

@@ -172,6 +172,35 @@ describe('EngineController: the stream', () => {
     }
   });
 
+  it('registers nothing when the expiry lookup throws', () => {
+    vi.useFakeTimers();
+    try {
+      const open = vi.fn();
+      const writeHead = vi.fn();
+      const controller = new EngineController(
+        { open } as unknown as EngineHub,
+        {
+          verifyWithExpiry: () => {
+            throw new Error('expired');
+          },
+        } as unknown as AuthService,
+      );
+      expect(() =>
+        controller.events(
+          USER,
+          TAB,
+          { on: vi.fn(), headers: {} } as unknown as Request,
+          { writeHead } as unknown as Response,
+        ),
+      ).toThrow('expired');
+      expect(open).not.toHaveBeenCalled();
+      expect(writeHead).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('shutting down ends every open stream once', () => {
     const { controller, req, res, closer } = events();
     controller.onModuleDestroy();
