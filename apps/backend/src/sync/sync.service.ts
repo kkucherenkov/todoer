@@ -618,13 +618,18 @@ export class SyncService {
     const results: OpResult[] = [];
     const now = new Date();
 
-    for (const op of body.ops) {
-      results.push(await this.applyOne(userId, op, now));
-    }
-
     // Each op's transaction (and its per-user lock) has ended by now, so a
-    // listener that syncs at once reads committed rows.
-    if (results.some((r) => r.status === 'applied')) this.feed.announce(userId);
+    // listener that syncs at once reads committed rows. In a `finally`: an op
+    // that throws after earlier ones committed must still announce them, as
+    // the retry sees those as `duplicate`, never `applied`.
+    try {
+      for (const op of body.ops) {
+        results.push(await this.applyOne(userId, op, now));
+      }
+    } finally {
+      if (results.some((r) => r.status === 'applied'))
+        this.feed.announce(userId);
+    }
 
     const { cursor, changes } = await this.changesSince(userId, body.since);
 

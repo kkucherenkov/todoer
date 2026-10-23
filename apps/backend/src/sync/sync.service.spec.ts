@@ -2352,4 +2352,37 @@ describe('announcing', () => {
     await new SyncService(prisma, feed).sync(USER, { since: 0, ops: [] });
     expect(announce).not.toHaveBeenCalled();
   });
+
+  it('still announces ops that committed before a later one threw', async () => {
+    const feed = new ChangeFeed();
+    const announce = vi.spyOn(feed, 'announce');
+    const flakyPrisma = prisma.$extends({
+      query: {
+        task: {
+          create() {
+            return Promise.reject(
+              new Prisma.PrismaClientKnownRequestError('simulated timeout', {
+                code: 'P2028',
+                clientVersion: Prisma.prismaVersion.client,
+              }),
+            );
+          },
+        },
+      },
+    });
+    const svc = new SyncService(flakyPrisma as unknown as PrismaService, feed);
+    const project = {
+      opId: uuidv7(),
+      kind: 'create' as const,
+      table: 'project' as const,
+      id: uuidv7(),
+      fields: { name: 'p', rank: 'a0' } as Record<string, unknown>,
+      ts: new Date().toISOString(),
+    };
+
+    await expect(
+      svc.sync(USER, { since: 0, ops: [project, createTask('boom')] }),
+    ).rejects.toThrow('simulated timeout');
+    expect(announce).toHaveBeenCalledTimes(1);
+  });
 });

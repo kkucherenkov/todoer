@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 
 /**
  * Per-user, in-process announcements that a write committed. A listener
@@ -7,10 +7,19 @@ import { Injectable } from '@nestjs/common';
  */
 @Injectable()
 export class ChangeFeed {
+  private readonly logger = new Logger(ChangeFeed.name);
   private readonly listeners = new Map<string, Set<() => void>>();
 
   announce(userId: string): void {
-    for (const fn of [...(this.listeners.get(userId) ?? [])]) fn();
+    // A listener's failure is its own: the write already committed, and the
+    // other listeners still need to hear.
+    for (const fn of [...(this.listeners.get(userId) ?? [])]) {
+      try {
+        fn();
+      } catch (e) {
+        this.logger.error(e, e instanceof Error ? e.stack : undefined);
+      }
+    }
   }
 
   listen(userId: string, fn: () => void): () => void {

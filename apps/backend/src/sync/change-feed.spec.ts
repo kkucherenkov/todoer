@@ -25,4 +25,21 @@ describe('ChangeFeed', () => {
     feed.announce('u1');
     expect(fn).not.toHaveBeenCalled();
   });
+
+  it('survives a throwing listener and still calls the others', () => {
+    const feed = new ChangeFeed();
+    const second = vi.fn();
+    feed.listen('u1', () => {
+      throw new Error('boom');
+    });
+    feed.listen('u1', second);
+    expect(() => feed.announce('u1')).not.toThrow();
+    expect(second).toHaveBeenCalledTimes(1);
+  });
+
+  it('forgets a user once the last listener is gone', () => {
+    const feed = new ChangeFeed();
+    feed.listen('u1', vi.fn())();
+    expect(feed['listeners'].has('u1')).toBe(false);
+  });
 });
