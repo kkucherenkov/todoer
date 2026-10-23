@@ -305,7 +305,7 @@ components:
         changes:
           type: array
           items: { $ref: "#/components/schemas/Change" }
-    # The web's engine (ADR to come): the browser sends a client-core Command
+    # The web's engine (ADR 0020): the browser sends a client-core Command
     # to its server-side engine. signIn, register and signOut are not here:
     # the page handles those over /auth. Variants mirror `Command` and `Write`
     # in client-core's engine-protocol.ts; nested objects are left open on
