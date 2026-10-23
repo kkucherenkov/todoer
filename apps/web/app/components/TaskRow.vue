@@ -25,6 +25,7 @@ const emit = defineEmits<{
   reparent: [parentId: string | null];
 }>();
 const { t } = useI18n();
+const db = useDb();
 const open = useOpenTask();
 const row = ref<HTMLElement | null>(null);
 
@@ -103,6 +104,7 @@ const actions = computed<DropdownMenuItem[]>(() => [
       class="rounded-full"
       size="sm"
       :aria-label="$t('list.markDone')"
+      :disabled="!db.connected.value"
       @click="emit('mark', 'done')"
     />
     <div class="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">

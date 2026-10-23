@@ -45,6 +45,7 @@
     "pending": "{n} waiting",
     "failed": "{n} refused",
     "offline": "Offline",
+    "unreachable": "Cannot reach the server",
     "syncNow": "Sync now",
     "signOut": "Sign out"
   },

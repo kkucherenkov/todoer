@@ -49,6 +49,13 @@ const lastSynced = computed(() => {
       data-testid="sync-badges"
     >
       <UBadge
+        v-if="!db.connected.value"
+        color="warning"
+        data-testid="unreachable"
+      >
+        {{ $t('summary.unreachable') }}
+      </UBadge>
+      <UBadge
         v-if="sync?.reached === false"
         color="warning"
         data-testid="offline"
