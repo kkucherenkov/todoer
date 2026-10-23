@@ -51,7 +51,7 @@ export default defineNuxtConfig({
       icons: [{ src: '/icon.svg', sizes: 'any', type: 'image/svg+xml' }],
     },
     workbox: {
-      globPatterns: ['**/*.{js,css,html,wasm,svg,json,webmanifest}'],
+      globPatterns: ['**/*.{js,css,html,svg,json,webmanifest}'],
       // Nuxt's generate leaves 200.html and 404.html: the server has no
       // such URL, and one failed precache fetch fails the install.
       globIgnores: ['200.html', '404.html', '_nuxt/builds/**'],
@@ -62,7 +62,6 @@ export default defineNuxtConfig({
       manifestTransforms: [
         (manifest) => Promise.resolve({ manifest, warnings: [] }),
       ],
-      maximumFileSizeToCacheInBytes: 3 * 1024 * 1024, // sqlite3.wasm is ~0.9 MB
       cleanupOutdatedCaches: true,
       navigateFallback: '/index.html',
       // The API and health are never answered from the cache (Q9 "Cost").
@@ -70,10 +69,7 @@ export default defineNuxtConfig({
     },
     client: { installPrompt: false, periodicSyncForUpdates: 3600 },
   },
-  vite: {
-    // The worker imports client-core and sqlite-wasm: ES workers, no blob:.
-    worker: { format: 'es' },
-    // sqlite-wasm finds its .wasm by import.meta.url; pre-bundling breaks it.
-    optimizeDeps: { exclude: ['@sqlite.org/sqlite-wasm'] },
-  },
+  // The default checks for a new build hourly; after a deploy the old page
+  // speaks to the new engine, so ask every five minutes (UpdatePrompt).
+  experimental: { checkOutdatedBuildInterval: 5 * 60_000 },
 });

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-// The one place that decides what the page may show: nothing of the replica
+// The one place that decides what the page may show: nothing of the account
 // reaches the slot unless the session is signed in.
 const { $db: db } = useNuxtApp();
 const engine = computed(() => db?.topics.engine.value);

@@ -1,7 +1,8 @@
 import type { Db } from '~/db/client';
 import type { Topic, Topics } from '@todoer/client-core';
 
-/** The tab's database. Non-null under AppGate, which owns the insecure case. */
+/** The tab's link to the server's engine. Non-null under AppGate, which owns
+ *  the insecure case. */
 export const useDb = () => useNuxtApp().$db as Db;
 
 export const useTopic = <T extends Topic>(topic: T) => {
@@ -16,7 +17,7 @@ export function useWatch(view: () => string) {
   const db = useDb();
   const route = useRoute();
   const catalog = useTopic('catalog');
-  // The worker's date, kept apart from the view topic: a watch of another
+  // The engine's date, kept apart from the view topic: a watch of another
   // view or layout clears that topic, and a span derived from it would never
   // settle.
   const shown = useTopic('view');

@@ -1,40 +1,40 @@
-import { startCadence } from '~/db/cadence';
 import { connect, type Db } from '~/db/client';
-import { lead } from '~/db/leader';
+import { forgetOpfs } from '~/db/forget-opfs';
 
 /** Departure 4: one bit saying a cookie session may exist. */
 const HINT = 'todoer.session';
+/** Set once the old version's OPFS replica is gone. */
+const FORGOTTEN = 'todoer.opfs-forgotten';
 
-// A storage that throws (blocked, private mode) reads as "no hint".
-const readHint = () => {
+// A storage that throws (blocked, private mode) reads as unset.
+const read = (key: string) => {
   try {
-    return localStorage.getItem(HINT) === '1';
+    return localStorage.getItem(key) === '1';
   } catch {
     return false;
   }
 };
-const writeHint = (on: boolean) => {
+const write = (key: string, on: boolean) => {
   try {
-    if (on) localStorage.setItem(HINT, '1');
-    else localStorage.removeItem(HINT);
+    if (on) localStorage.setItem(key, '1');
+    else localStorage.removeItem(key);
   } catch {
-    // Nothing to keep it in: the next load signs in again.
+    // Nothing to keep it in: the next load asks again.
   }
 };
 
 export default defineNuxtPlugin(() => {
-  // Web Locks, OPFS and the cookie all need a secure context; the page
-  // shows the HTTPS message instead (Q11).
+  // The cookie needs a secure context; the page shows the HTTPS message
+  // instead (Q11).
   if (!window.isSecureContext) return { provide: { db: null as Db | null } };
 
-  const build = useRuntimeConfig().app.buildId;
-  lead(build, readHint);
-  const db = connect(build);
+  if (!read(FORGOTTEN)) {
+    void forgetOpfs().then((done) => done && write(FORGOTTEN, true));
+  }
+  const db = connect(read(HINT));
   watch(db.topics.session, (session) => {
-    if (session?.state === 'signed-in') writeHint(true);
-    if (session?.state === 'signed-out') writeHint(false);
+    if (session?.state === 'signed-in') write(HINT, true);
+    if (session?.state === 'signed-out') write(HINT, false);
   });
-  // A sync that fails reports through the sync topic; the reply adds nothing.
-  startCadence((reason) => void db.request({ kind: 'sync', reason }));
   return { provide: { db } };
 });

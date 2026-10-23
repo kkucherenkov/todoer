@@ -127,7 +127,7 @@ recurrence).
 | ----------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
 | `apps/backend/`                           | NestJS 11 server, Prisma 6, the sync protocol                                                                              |
 | `apps/cli/`                               | the `todoer` command, a network client with no privileged access, running on `packages/client-core`                        |
-| `apps/web/`                               | the web client, a Nuxt 4 SPA: the leader tab's worker runs `packages/client-core` on SQLite WASM; the backend serves the build |
+| `apps/web/`                               | the web client, a Nuxt 4 SPA: a thin client of the engine the backend runs per user (`POST /engine` and an event stream); the backend serves the build |
 | `packages/client-core/`                   | the logic every client shares: replica, outbox, sync, overlay, recurrence, labels, merge, views, on a synchronous SQLite adapter |
 | `packages/specs/`                         | the OpenAPI document and the client generated from it                                                                      |
 | `Dockerfile`, `docker/compose.yml`        | the production image (backend + SPA) and compose: Postgres 18 on **127.0.0.1:5433**; `--profile app` adds the image on port **3000** |
@@ -136,10 +136,6 @@ recurrence).
 | `docs/design/`                            | the web client's design system (`DESIGN.md`, `tokens.css`) and the Open Design kit for its redesign                       |
 | `specs/tasks/`                            | the task stack — one file per task, `active/` then `done/`                                                                 |
 | `.claude/CLAUDE.md`                       | the working agreement                                                                                                      |
-
-`packages/client-core`'s `./sqlite-wasm` entry is the web's adapter. Its types
-import `@sqlite.org/sqlite-wasm`, an optional peer dependency: a consumer that
-imports the entry installs the peer, and the CLI, which does not, never does.
 
 ## Running it
 

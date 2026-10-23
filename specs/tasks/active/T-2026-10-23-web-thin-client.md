@@ -94,7 +94,7 @@ HTTP.
   `apps/backend/` (Task 3)
 - [x] T004 [FR-001, FR-002, FR-003, FR-004, FR-007] Backend EngineHub, engine
   routes, `TZ` in compose — `apps/backend/`, `docker/compose.yml` (Task 4)
-- [ ] T005 [FR-005, FR-006] Web app and db over HTTP; worker, OPFS and SQLite
+- [x] T005 [FR-005, FR-006] Web app and db over HTTP; worker, OPFS and SQLite
   WASM removed; OPFS cleanup; writes disabled while disconnected —
   `apps/web/` (Task 5)
 - [ ] T006 [FR-005] End-to-end scenarios and documentation —

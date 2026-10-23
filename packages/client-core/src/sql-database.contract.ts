@@ -8,9 +8,6 @@ const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
 export function sqlDatabaseContract(
   name: string,
   open: () => SqlDatabase | Promise<SqlDatabase>,
-  // NodeSqlite waits for other *processes* by polling; two callers on one
-  // connection are not something it queues, so it opts out of the overlap case.
-  { queuesInProcess = true } = {},
 ): void {
   describe(`SqlDatabase contract: ${name}`, () => {
     const fresh = async () => {
@@ -67,32 +64,6 @@ export function sqlDatabaseContract(
       expect(db.all('SELECT b FROM t')).toEqual([{ b: 'kept' }]);
     });
 
-    it.skipIf(!queuesInProcess)(
-      'runs overlapping write locks one after the other',
-      async () => {
-        const db = await fresh();
-        const log: string[] = [];
-        const turn = (id: string) =>
-          db.withWriteLock(async () => {
-            log.push(`${id} start`);
-            await tick();
-            db.run('INSERT INTO t VALUES (1, ?)', [id]);
-            log.push(`${id} end`);
-          });
-        await Promise.all([turn('first'), turn('second')]);
-        expect(log).toEqual([
-          'first start',
-          'first end',
-          'second start',
-          'second end',
-        ]);
-        expect(db.all('SELECT b FROM t ORDER BY rowid')).toEqual([
-          { b: 'first' },
-          { b: 'second' },
-        ]);
-      },
-    );
-
     // On one connection the inner call can only wait for the outer body,
     // which is waiting for it: refused, never a silent hang.
     it('refuses a write lock taken from inside a lock body', async () => {
@@ -104,9 +75,8 @@ export function sqlDatabaseContract(
       await db.withWriteLock(() => Promise.resolve());
     });
 
-    // A call beside a running body is refused too: without async context it
-    // cannot be told from a re-entrant one (WasmSqlite), and on one
-    // connection BEGIN inside an open transaction fails (NodeSqlite).
+    // A call beside a running body is refused too: on one connection BEGIN
+    // inside an open transaction fails.
     it('refuses a write lock asked for while another body runs', async () => {
       const db = await fresh();
       let release = () => {};

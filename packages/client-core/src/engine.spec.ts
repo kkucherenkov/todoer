@@ -1,4 +1,3 @@
-import sqlite3InitModule, { type Sqlite3Static } from '@sqlite.org/sqlite-wasm';
 import {
   cookieTokenSource,
   type CookieAuthApi,
@@ -10,10 +9,9 @@ import { RefusalError } from './protocol.js';
 import type { AccessGrant, Store } from './store.js';
 import type { Transport } from './sync.js';
 import { httpTransport } from './transport.js';
-import { openWasmStore } from './sqlite-wasm.js';
+import { openReplica } from './node-sqlite.js';
 import {
   afterEach,
-  beforeAll,
   beforeEach,
   describe,
   expect,
@@ -99,20 +97,14 @@ const create = (opId: string): Op => ({
 
 const offline = () => Promise.reject(new TypeError('fetch failed'));
 
-let sqlite3: Sqlite3Static;
 let store: Store;
 let auth: { [K in keyof CookieAuthApi]: Mock<CookieAuthApi[K]> };
 let tokens: CookieTokenSource;
 let send: Mock<Transport>;
 let published: { [T in Topic]?: Topics[T][] };
 
-beforeAll(async () => {
-  const init = sqlite3InitModule as (m: object) => Promise<Sqlite3Static>;
-  sqlite3 = await init({ print() {}, printErr() {} });
-});
-
 beforeEach(() => {
-  store = openWasmStore(sqlite3, new sqlite3.oo1.DB(':memory:', 'c'));
+  store = openReplica(':memory:');
   auth = {
     login: vi.fn(() => Promise.resolve(grant('u1'))),
     register: vi.fn(() => Promise.resolve(grant('u1'))),

@@ -18,7 +18,7 @@ const { t, locale } = useI18n();
 
 const state = computed(() => fromQuery(route.query, props.today));
 const want = computed(() => gridSpan(state.value.mode, state.value.at));
-// The worker answers the span this tab asked for; until then, no stale chips.
+// The engine answers the span this tab asked for; until then, no stale chips.
 const ready = computed(
   () =>
     props.span?.from === want.value.from && props.span?.to === want.value.to,
