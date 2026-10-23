@@ -218,6 +218,13 @@ nothing.
 - **A new build reaches an open tab as a prompt.** The service worker never
   reloads a tab on its own. Accepting the prompt in one tab reloads every tab
   that showed it, which keeps one build per origin.
+- **The first load after upgrading to the thin web client shows the old app
+  once.** The service worker serves the build it cached until the prompt "A new
+  version is available" appears; reload from it.
+- **Each open tab holds one long-lived connection** (the event stream).
+  Browsers allow about six HTTP/1.1 connections per host, so enable HTTP/2 on
+  the proxy; in Nginx Proxy Manager, that is the HTTP/2 option of the proxy
+  host.
 - **`WEB_ROOT` is trusted content.** Symlinks inside it are followed, so
   point it at a directory you build, not one anyone else can write to.
 
