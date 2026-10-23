@@ -138,8 +138,9 @@ let minted = 0;
 /** A uuid-shaped id, as filters and refs need; `n` in the last group. */
 const uuid = (n: number) =>
   `00000000-0000-7000-8000-${n.toString(16).padStart(12, '0')}`;
-const engine = (transport: Transport = send) =>
+const engine = (transport: Transport = send, onlineOnly = false) =>
   createEngine({
+    ...(onlineOnly ? { onlineOnly } : {}),
     store,
     auth,
     tokens,
@@ -2347,5 +2348,114 @@ describe('refusal kinds: retryable or for good', () => {
     expect(store.rows('task').find((r) => r.id === T)?.projectId).toBe(
       projectId,
     );
+  });
+});
+
+describe('sync reason remote and online-only writes', () => {
+  const held = () => {
+    let release = () => {};
+    send.mockImplementation(
+      () =>
+        new Promise<Response>((resolve) => {
+          release = () => resolve(json(CANNED));
+        }),
+    );
+    return () => release();
+  };
+  const add = (n: number) =>
+    ({
+      kind: 'add',
+      opId: uuid(0xb00 + n),
+      id: uuid(0xb10 + n),
+      text: `new ${n}`,
+    }) as const;
+  /** Signed in over a good server, then the transport answers `status`. */
+  const onlineOnly = async (status?: number, flag = true) => {
+    const srv = server(TODO, taskRow(1), taskRow(2), taskRow(3));
+    send.mockImplementation(srv.send);
+    const e = engine(send, flag);
+    await e.start(true);
+    await e.handle({ kind: 'watch', view: 'all', task: null }, 'A');
+    if (status !== undefined) {
+      send.mockImplementation(() => Promise.resolve(json({}, status)));
+    }
+    return e;
+  };
+
+  it('remote during a running sync queues another', async () => {
+    const e = engine();
+    await e.start(true);
+    send.mockClear();
+    const release = held();
+    const first = e.handle({ kind: 'sync', reason: 'manual' });
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+    const remote = e.handle({ kind: 'sync', reason: 'remote' });
+    release();
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(2));
+    release();
+    await Promise.all([first, remote]);
+    expect(send).toHaveBeenCalledTimes(2);
+  });
+
+  it('remote is not dropped by the tick gap', async () => {
+    const e = engine();
+    await e.start(true);
+    send.mockClear();
+    clock = new Date(NOW.getTime() + 1_000);
+    await e.handle({ kind: 'sync', reason: 'remote' });
+    expect(send).toHaveBeenCalledTimes(1);
+  });
+
+  for (const status of [503, 429]) {
+    it(`online-only: a write answered ${status} fails and is dropped`, async () => {
+      const e = await onlineOnly(status);
+      const result = await e.handle(add(1), 'A');
+      expect(result).toMatchObject({
+        ok: false,
+        failure: { kind: 'unexpected' },
+      });
+      expect(store.counts().pending).toBe(0);
+      expect(titles('all')).not.toContain('new 1');
+    });
+  }
+
+  it('online-only: a write that enqueues several ops leaves none behind', async () => {
+    const e = await onlineOnly(503);
+    const result = await e.handle(
+      {
+        kind: 'move',
+        opId: uuid(0xd2),
+        taskId: uuid(1),
+        view: 'all',
+        after: uuid(2),
+      },
+      'A',
+    );
+    expect(result).toMatchObject({ ok: false });
+    expect(store.counts().pending).toBe(0);
+  });
+
+  it('online-only: writes run one at a time', async () => {
+    const srv = server(TODO, taskRow(1));
+    send.mockImplementation(srv.send);
+    const e = engine(send, true);
+    await e.start(true);
+    let open = () => {};
+    const gate = new Promise<void>((r) => (open = r));
+    send.mockImplementation((req) => gate.then(() => srv.send(req)));
+    send.mockClear();
+    const a = e.handle(add(1), 'A');
+    await vi.waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+    const b = e.handle(add(2), 'A');
+    await new Promise((r) => setTimeout(r, 20));
+    expect(send).toHaveBeenCalledTimes(1);
+    open();
+    expect(await Promise.all([a, b])).toEqual([{ ok: true }, { ok: true }]);
+  });
+
+  it('without online-only an unsent write still returns ok', async () => {
+    const e = await onlineOnly(503, false);
+    expect(await e.handle(add(1), 'A')).toEqual({ ok: true });
+    expect(store.counts().pending).toBe(1);
   });
 });

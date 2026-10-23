@@ -311,6 +311,7 @@ services:
       DATABASE_URL: postgresql://todoer:${POSTGRES_PASSWORD}@postgres:5432/todoer
       JWT_SECRET: ${JWT_SECRET:?}
       TRUST_PROXY: ${TRUST_PROXY:-}
+      TZ: ${TZ:-UTC}
     ports:
       - "${APP_PORT:-3000}:3000"
     restart: unless-stopped
@@ -356,6 +357,7 @@ See [ADR 0011](docs/adr/0011-bearer-everywhere-cookie-only-for-refresh.md).
 | `TRUST_PROXY`                   | backend     | unset                                            | proxy hop count (`1`) or addresses/subnets (`loopback, 10.0.0.0/8`); `true` is refused     |
 | `WEB_ROOT`                      | backend     | unset                                            | a built SPA to serve on the API's origin; must hold `index.html`; the image sets it        |
 | `APP_VERSION`                   | backend     | `0.0.0-dev`                                      | reported by `GET /api/v1/health`                                                           |
+| `TZ`                            | backend     | `UTC`                                            | the zone of the server engine's "today" (`Asia/Dubai`); set it to the maintainer's       |
 | `TODOER_URL`                    | CLI         | `http://localhost:3000/api/v1`                   | instance base URL                                                                          |
 | `TODOER_TOKEN`                  | CLI         | —                                                | bearer token; when set it is used as is, never refreshed, and overrides the stored session |
 | `TODOER_PASSWORD`               | CLI         | —                                                | the password `todoer login` uses instead of a prompt or stdin                              |

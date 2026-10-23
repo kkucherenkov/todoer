@@ -123,7 +123,7 @@ and `@todoer/client-core` is upstream of every client: the CLI, the TUI and the 
 | --- | --- |
 | `packages/specs` | OpenAPI document, generated TS types and SDK. The contract. |
 | `packages/client-core` | Replica, outbox, sync, the domain operations and the long-lived engine (`createEngine`) the clients run. The portable entry has no Node import; `./node-sqlite` is the Node adapter, with `openReplica` and `readConfig` that the CLI and the TUI share, `./sqlite-wasm` is the web's (its types need the optional peer `@sqlite.org/sqlite-wasm`). |
-| `apps/backend` | NestJS 11, Prisma 6, PostgreSQL 18. `POST /sync` is the entire write surface. Serves the built SPA from `WEB_ROOT`. |
+| `apps/backend` | NestJS 11, Prisma 6, PostgreSQL 18. Every write goes through `SyncService.sync`, reached by `POST /sync` and by the web's `/engine`. Serves the built SPA from `WEB_ROOT`. |
 | `apps/web` | Nuxt 4 SPA. The leader tab's worker runs client-core on SQLite WASM (OPFS). Built SPA served by the backend from `WEB_ROOT`. |
 | `Dockerfile`, `docker/` | One image with the backend and the built SPA; compose service `app` behind the profile `app`, the entrypoint runs `prisma migrate deploy`. |
 | `apps/cli` | The reference client. Its primary caller is a script or an agent — see ADR 0015. |
@@ -208,7 +208,8 @@ temp directory and pass anywhere.
 4. **`scripts/walking-skeleton.sh` has an `sh` shebang.** Nothing non-POSIX
    belongs in it — `set -o pipefail` is not POSIX and dash rejected it until
    0.5.12.
-5. **`POST /sync` is the only write path**, so every invariant a client could
+5. **`SyncService.sync` is the only write path** (`POST /sync` for local-first
+   clients, `/engine` for the web, ADR 0020), so every invariant a client could
    violate is enforced there or nowhere: the protocol-field allow-list, foreign
    keys scoped to the owner, the two-level depth rule, and no deleting a task
    with live subtasks. The pruning job

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { uuidv7 } from 'uuidv7';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { AppConfig } from '../config/app-config.js';
+import type { EngineHub } from '../engine/engine-hub.js';
 import { AccountsService } from './accounts.service.js';
 import { AuthController } from './auth.controller.js';
 import { AuthService, normalizeEmail } from './auth.service.js';
@@ -73,7 +74,9 @@ beforeEach(async () => {
     auth,
     sessions,
     prisma,
-    new AccountsService(prisma, auth, sessions),
+    new AccountsService(prisma, auth, sessions, {
+      unload() {},
+    } as unknown as EngineHub),
   );
   U = uuidv7();
   await createUser(U, 'a@b.c');

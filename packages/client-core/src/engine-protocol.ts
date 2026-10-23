@@ -14,7 +14,7 @@ import type {
 export type { ChildItem };
 
 export type SyncReason =
-  'start' | 'write' | 'tick' | 'focus' | 'online' | 'manual';
+  'start' | 'write' | 'tick' | 'focus' | 'online' | 'manual' | 'remote';
 
 /** Every write carries its ids from the tab, so a resend is the same write
  *  (departure 2); a create also carries the new row's `id`. */

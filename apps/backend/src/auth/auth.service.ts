@@ -109,6 +109,10 @@ export class AuthService {
   }
 
   verify(token: string): string {
+    return this.verifyWithExpiry(token).userId;
+  }
+
+  verifyWithExpiry(token: string): { userId: string; expiresAt: Date } {
     // Exactly two segments. Ignoring extras (the original split-and-take-
     // first-two behaviour) would let "payload.mac.anything" verify — not
     // forgeable without the secret, but it turns one account into an
@@ -139,6 +143,6 @@ export class AuthService {
     if (typeof claims.exp !== 'number' || claims.exp < Date.now()) {
       throw new UnauthorizedException(INVALID_TOKEN);
     }
-    return claims.sub;
+    return { userId: claims.sub, expiresAt: new Date(claims.exp) };
   }
 }

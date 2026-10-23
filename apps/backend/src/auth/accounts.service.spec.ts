@@ -3,6 +3,7 @@ import { uuidv7 } from 'uuidv7';
 import { PrismaService } from '../prisma/prisma.service.js';
 import type { AppConfig } from '../config/app-config.js';
 import { AccountsService, issueResetCode } from './accounts.service.js';
+import type { EngineHub } from '../engine/engine-hub.js';
 import { AuthService } from './auth.service.js';
 import { SessionService } from './session.service.js';
 import { lockUserWrites } from '../sync/user-lock.js';
@@ -14,7 +15,10 @@ const config = {
 } as AppConfig;
 const auth = new AuthService(prisma, config);
 const sessions = new SessionService(prisma, config, auth);
-const accounts = new AccountsService(prisma, auth, sessions);
+const unload = vi.fn();
+const accounts = new AccountsService(prisma, auth, sessions, {
+  unload,
+} as unknown as EngineHub);
 
 const PASSWORD = 'correct horse battery!1';
 const t0 = new Date('2026-10-01T00:00:00Z');
@@ -28,6 +32,7 @@ afterAll(() => resetDatabase(prisma));
 
 beforeEach(async () => {
   vi.restoreAllMocks();
+  unload.mockClear();
   await resetDatabase(prisma);
   owner = (await accounts.register('o@e.test', PASSWORD)).userId;
 });
@@ -212,6 +217,16 @@ describe('deleteAccount', () => {
     await expect(
       accounts.deleteAccount(owner, 'wrong pass phrase!9'),
     ).rejects.toThrow('invalid credentials');
+  });
+
+  it('unloads the removed user engine after the commit, not on a rollback', async () => {
+    const u = await join('u@e.test');
+    await expect(accounts.deleteAccount(owner, PASSWORD)).rejects.toThrow(
+      'owner cannot be deleted',
+    );
+    expect(unload).not.toHaveBeenCalled();
+    await accounts.deleteAccount(u, PASSWORD);
+    expect(unload).toHaveBeenCalledExactlyOnceWith(u);
   });
 
   const seed = async (u: string): Promise<void> => {

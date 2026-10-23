@@ -7,6 +7,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { isIsoDate } from '@todoer/specs';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { ChangeFeed } from './change-feed.js';
 import { applyOp, type Op, type Outcome, type Row } from './apply-op.js';
 import {
   derivedIdKeys,
@@ -595,7 +596,10 @@ const SNAPSHOT_LIVE_PARENTS: Partial<Record<TableName, object>> = {
 export class SyncService {
   private readonly logger = new Logger(SyncService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly feed: ChangeFeed = new ChangeFeed(),
+  ) {}
 
   async sync(
     userId: string,
@@ -614,8 +618,17 @@ export class SyncService {
     const results: OpResult[] = [];
     const now = new Date();
 
-    for (const op of body.ops) {
-      results.push(await this.applyOne(userId, op, now));
+    // Each op's transaction (and its per-user lock) has ended by now, so a
+    // listener that syncs at once reads committed rows. In a `finally`: an op
+    // that throws after earlier ones committed must still announce them, as
+    // the retry sees those as `duplicate`, never `applied`.
+    try {
+      for (const op of body.ops) {
+        results.push(await this.applyOne(userId, op, now));
+      }
+    } finally {
+      if (results.some((r) => r.status === 'applied'))
+        this.feed.announce(userId);
     }
 
     const { cursor, changes } = await this.changesSince(userId, body.since);

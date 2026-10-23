@@ -41,6 +41,10 @@ services:
       JWT_SECRET: ${JWT_SECRET:-}
       # Hops between the NAS proxy and the app, or its address (README).
       TRUST_PROXY: ${TRUST_PROXY:-}
+      # The web's "today" is the server engine's local date: set the
+      # maintainer's zone (e.g. Asia/Dubai). Node carries its own zone data,
+      # so the slim image needs no tzdata.
+      TZ: ${TZ:-UTC}
     ports:
       - "${APP_PORT:-3000}:3000"
     restart: unless-stopped

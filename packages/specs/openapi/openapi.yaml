@@ -305,6 +305,228 @@ components:
         changes:
           type: array
           items: { $ref: "#/components/schemas/Change" }
+    # The web's engine (ADR 0020): the browser sends a client-core Command
+    # to its server-side engine. signIn, register and signOut are not here:
+    # the page handles those over /auth. Variants mirror `Command` and `Write`
+    # in client-core's engine-protocol.ts; nested objects are left open on
+    # purpose, the engine's own operations refuse what they cannot read.
+    EngineRequest:
+      type: object
+      required: [tab, id, command]
+      additionalProperties: false
+      properties:
+        tab: { type: string, format: uuid }
+        id: { type: integer, minimum: 1 }
+        command: { $ref: "#/components/schemas/EngineCommand" }
+
+    # Open on purpose: client-core's Result is the one source of truth,
+    # { ok: true, note? } or { ok: false, failure: { kind, detail, retryable? } }.
+    EngineResult:
+      type: object
+      additionalProperties: true
+
+    EngineCommand:
+      oneOf:
+        - $ref: "#/components/schemas/EngineSync"
+        - $ref: "#/components/schemas/EngineWatch"
+        - $ref: "#/components/schemas/EngineAdd"
+        - $ref: "#/components/schemas/EngineMark"
+        - $ref: "#/components/schemas/EngineEdit"
+        - $ref: "#/components/schemas/EngineMove"
+        - $ref: "#/components/schemas/EngineSaveView"
+        - $ref: "#/components/schemas/EngineDeleteView"
+        - $ref: "#/components/schemas/EngineSaveStatus"
+        - $ref: "#/components/schemas/EngineSetCompleting"
+        - $ref: "#/components/schemas/EngineDeleteStatus"
+        - $ref: "#/components/schemas/EngineMoveOccurrence"
+        - $ref: "#/components/schemas/EngineUndoMove"
+        - $ref: "#/components/schemas/EngineDeleteTask"
+        - $ref: "#/components/schemas/EngineSetRule"
+        - $ref: "#/components/schemas/EngineReparent"
+      discriminator:
+        propertyName: kind
+        mapping:
+          sync: "#/components/schemas/EngineSync"
+          watch: "#/components/schemas/EngineWatch"
+          add: "#/components/schemas/EngineAdd"
+          mark: "#/components/schemas/EngineMark"
+          edit: "#/components/schemas/EngineEdit"
+          move: "#/components/schemas/EngineMove"
+          saveView: "#/components/schemas/EngineSaveView"
+          deleteView: "#/components/schemas/EngineDeleteView"
+          saveStatus: "#/components/schemas/EngineSaveStatus"
+          setCompleting: "#/components/schemas/EngineSetCompleting"
+          deleteStatus: "#/components/schemas/EngineDeleteStatus"
+          moveOccurrence: "#/components/schemas/EngineMoveOccurrence"
+          undoMove: "#/components/schemas/EngineUndoMove"
+          deleteTask: "#/components/schemas/EngineDeleteTask"
+          setRule: "#/components/schemas/EngineSetRule"
+          reparent: "#/components/schemas/EngineReparent"
+
+    EngineSync:
+      type: object
+      required: [kind, reason]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [sync] }
+        reason:
+          {
+            type: string,
+            enum: [start, write, tick, focus, online, manual, remote],
+          }
+
+    EngineWatch:
+      type: object
+      required: [kind, view, task]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [watch] }
+        view: { type: [string, "null"] }
+        task: { type: [string, "null"] }
+        span: { type: [object, "null"] }
+        layout: { type: [string, "null"], enum: [list, kanban, calendar, null] }
+
+    EngineAdd:
+      type: object
+      required: [kind, opId, id, text]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [add] }
+        opId: { type: string, format: uuid }
+        id: { type: string, format: uuid }
+        text: { type: string }
+        parentId: { type: string, format: uuid }
+
+    EngineMark:
+      type: object
+      required: [kind, opId, taskId, mark]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [mark] }
+        opId: { type: string, format: uuid }
+        taskId: { type: string, format: uuid }
+        mark: { type: string, enum: [done, skip, undo] }
+        on: { type: string }
+
+    EngineEdit:
+      type: object
+      required: [kind, opId, taskId, changes]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [edit] }
+        opId: { type: string, format: uuid }
+        taskId: { type: string, format: uuid }
+        changes: { type: object }
+
+    EngineMove:
+      type: object
+      required: [kind, opId, taskId, view]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [move] }
+        opId: { type: string, format: uuid }
+        taskId: { type: string, format: uuid }
+        view: { type: string }
+        statusId: { type: [string, "null"], format: uuid }
+        after: { type: [string, "null"], format: uuid }
+
+    EngineSaveView:
+      type: object
+      required: [kind, opId, id, fields]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [saveView] }
+        opId: { type: string, format: uuid }
+        id: { type: string, format: uuid }
+        fields: { type: object }
+
+    EngineDeleteView:
+      type: object
+      required: [kind, opId, id]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [deleteView] }
+        opId: { type: string, format: uuid }
+        id: { type: string, format: uuid }
+
+    EngineSaveStatus:
+      type: object
+      required: [kind, opId, id]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [saveStatus] }
+        opId: { type: string, format: uuid }
+        id: { type: string, format: uuid }
+        name: { type: string }
+        after: { type: [string, "null"], format: uuid }
+
+    EngineSetCompleting:
+      type: object
+      required: [kind, opId, id]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [setCompleting] }
+        opId: { type: string, format: uuid }
+        id: { type: string, format: uuid }
+
+    EngineDeleteStatus:
+      type: object
+      required: [kind, opId, id]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [deleteStatus] }
+        opId: { type: string, format: uuid }
+        id: { type: string, format: uuid }
+
+    EngineMoveOccurrence:
+      type: object
+      required: [kind, opId, id, taskId, occurrence, to]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [moveOccurrence] }
+        opId: { type: string, format: uuid }
+        id: { type: string, format: uuid }
+        taskId: { type: string, format: uuid }
+        occurrence: { type: string }
+        to: { type: string }
+
+    EngineUndoMove:
+      type: object
+      required: [kind, opId, taskId]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [undoMove] }
+        opId: { type: string, format: uuid }
+        taskId: { type: string, format: uuid }
+
+    EngineDeleteTask:
+      type: object
+      required: [kind, opId, taskId]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [deleteTask] }
+        opId: { type: string, format: uuid }
+        taskId: { type: string, format: uuid }
+
+    EngineSetRule:
+      type: object
+      required: [kind, opId, taskId, rule]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [setRule] }
+        opId: { type: string, format: uuid }
+        taskId: { type: string, format: uuid }
+        rule: { type: [object, "null"] }
+
+    EngineReparent:
+      type: object
+      required: [kind, opId, taskId, parentId]
+      additionalProperties: false
+      properties:
+        kind: { type: string, enum: [reparent] }
+        opId: { type: string, format: uuid }
+        taskId: { type: string, format: uuid }
+        parentId: { type: [string, "null"], format: uuid }
 
 paths:
   /health:
@@ -789,6 +1011,71 @@ paths:
               schema: { $ref: "#/components/schemas/Problem" }
         "413":
           description: batch larger than the server accepts
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        default:
+          description: unexpected error
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /engine:
+    post:
+      operationId: postEngine
+      summary: Run one command on the caller's engine (the web client)
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/EngineRequest" }
+      responses:
+        "200":
+          description: >-
+            The engine's Result. A refusal is still 200, with ok false and a
+            failure; only a malformed request or a missing token is not.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EngineResult" }
+        "400":
+          description: request does not match the schema
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        "401":
+          description: missing or invalid bearer token
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+        default:
+          description: unexpected error
+          content:
+            application/problem+json:
+              schema: { $ref: "#/components/schemas/Problem" }
+
+  /engine/events:
+    get:
+      operationId: getEngineEvents
+      summary: Server-sent stream of the engine's topics for one tab
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: tab
+          in: query
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: >-
+            Server-sent events; each event carries a topic and its value as
+            client-core's Topics describes them.
+          content:
+            text/event-stream:
+              schema: { type: string }
+        "401":
+          description: missing or invalid bearer token
           content:
             application/problem+json:
               schema: { $ref: "#/components/schemas/Problem" }
