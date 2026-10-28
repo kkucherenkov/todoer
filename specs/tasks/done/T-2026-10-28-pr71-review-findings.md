@@ -2,8 +2,10 @@
 
 - Created: 2026-10-28
 - Owner: claude
-- Status: in-progress
+- Status: done
 - Blockers: —
+- Completed: 2026-10-28
+- Result: https://github.com/kkucherenkov/todoer/pull/72
 - Spec: maintainer request, 2026-10-28 — fix the findings of an afactory
   review of `a1ec2b6` (#71); finding 1's approach chosen by the maintainer:
   the hub refuses, tokens stay stateless (ADR 0014)
@@ -55,10 +57,10 @@ service worker still serves.
 - **SC-001** after an account deletion, `/engine/events` with the old token
   answers 401 and no engine is loaded for that user
 - [x] every FR has a test that failed before the code made it pass
-- [ ] gates: `PR title (conventional commit)`, `Shell tests`,
+- [x] gates: `PR title (conventional commit)`, `Shell tests`,
       `Workspace tests`, `Lint`
 - [x] no document still asserts the behaviour this task replaced
-- [ ] dnote changelog line
+- [x] dnote changelog line
 
 ### Steps
 
