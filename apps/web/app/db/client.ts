@@ -218,7 +218,16 @@ export function connect(
           `the server answered ${response.status}`,
         );
       }
-      return (await response.json()) as Result;
+      const result = (await response.json()) as Result;
+      // The server unloaded the engine: the account was deleted.
+      if (
+        !result.ok &&
+        result.failure.kind === 'signed-out' &&
+        topics.session.value?.state !== 'signed-out'
+      ) {
+        end('signed-out');
+      }
+      return result;
     } catch (error) {
       return failed(error);
     }
@@ -385,11 +394,13 @@ export function connect(
 
   if (!hint) end();
   else {
-    void tokens.current().then(begin, () =>
+    void tokens.current().then(begin, () => {
       // Refused: signed out. Not reached, or refused for now (429): signed
-      // in, and the stream keeps trying.
-      tokens.signedIn() ? begin() : end(),
-    );
+      // in, and the stream keeps trying. Already ended by another tab's
+      // sign-out: that tab owns the hint, which may be its new sign-in's.
+      if (tokens.signedIn()) begin();
+      else if (topics.session.value?.state !== 'signed-out') end();
+    });
   }
 
   function request(command: Command): Promise<Result> {

@@ -11,7 +11,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 
 const scrypt = promisify(scryptCb);
 
-const TOKEN_TTL_MS = 15 * 60_000;
+export const TOKEN_TTL_MS = 15 * 60_000;
 const KEY_LEN = 64;
 // Fixed dummy salt/hash for an unknown address in login(): scrypt is ~80ms
 // of synchronous CPU, so a known address (one scrypt call) and an unknown

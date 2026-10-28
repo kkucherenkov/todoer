@@ -1,7 +1,8 @@
+import { UnauthorizedException } from '@nestjs/common';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { uuidv7 } from 'uuidv7';
 import type { FromWorker } from '@todoer/client-core';
-import { AuthService } from '../auth/auth.service.js';
+import { AuthService, TOKEN_TTL_MS } from '../auth/auth.service.js';
 import { AppConfig } from '../config/app-config.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { ChangeFeed } from '../sync/change-feed.js';
@@ -205,6 +206,33 @@ describe('EngineHub', () => {
       ok: false,
       failure: { kind: 'signed-out' },
     });
+  });
+
+  it('refuses a user whose account was deleted', async () => {
+    stream(U, T1);
+    hub.unload(U);
+    expect(() => hub.open(U, T1, () => {}, vi.fn())).toThrow(
+      UnauthorizedException,
+    );
+    await expect(hub.request(U, T1, 1, watch('today'))).rejects.toThrow(
+      UnauthorizedException,
+    );
+    expect(hub.loaded(U)).toBe(false);
+    expect(() => hub.assertLive(V)).not.toThrow();
+  });
+
+  it('refuses a deleted user that had no engine loaded', () => {
+    hub.unload(U);
+    expect(() => hub.assertLive(U)).toThrow(UnauthorizedException);
+  });
+
+  it('forgets a deleted user once their last token has expired', () => {
+    vi.useFakeTimers();
+    hub.unload(U);
+    vi.advanceTimersByTime(TOKEN_TTL_MS - 1);
+    expect(() => hub.assertLive(U)).toThrow(UnauthorizedException);
+    vi.advanceTimersByTime(1);
+    expect(() => hub.assertLive(U)).not.toThrow();
   });
 
   it('shutting down unloads every engine', async () => {

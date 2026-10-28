@@ -23,7 +23,7 @@ function server() {
   const streams: ReadableStreamDefaultController<Uint8Array>[] = [];
   const state = {
     /** What /auth/refresh answers. */
-    refresh: (): Response => json(grant('t1')),
+    refresh: (): Response | Promise<Response> => json(grant('t1')),
     /** What /engine answers. */
     engine: (_command: Command): Response => json({ ok: true }),
     /** Stream opens to refuse (network error) before one succeeds. */
@@ -251,6 +251,23 @@ describe('another tab', () => {
     expect(s.calls).toHaveLength(before);
   });
 
+  it('a restore signed out from there leaves the hint to that tab', async () => {
+    let answer!: (response: Response) => void;
+    s.state.refresh = () =>
+      new Promise<Response>((resolve) => (answer = resolve));
+    const events = new EventTarget();
+    const remember = vi.fn();
+    db = connect(true, { events, remember });
+    await vi.waitFor(() => expect(s.calls).toHaveLength(1));
+    events.dispatchEvent(removed(HINT));
+    expect(db.topics.session.value?.state).toBe('signed-out');
+    // The other tab signs in again before this tab's refresh settles.
+    answer(json(grant('t1')));
+    await pause(30);
+    expect(remember).not.toHaveBeenCalledWith(false);
+    expect(db.topics.session.value?.state).toBe('signed-out');
+  });
+
   it('a renewal that answers as another account signs this tab out', async () => {
     s.state.refresh = () => json(grant(jwt('alice')));
     const remember = vi.fn();
@@ -317,6 +334,23 @@ describe('commands', () => {
       { ok: false, failure: { kind: 'signed-out' } },
     );
     expect(db!.topics.session.value?.state).toBe('signed-out');
+  });
+
+  it('a signed-out answer ends the session: the account was deleted', async () => {
+    await signedIn();
+    s.state.engine = () =>
+      json({
+        ok: false,
+        failure: { kind: 'signed-out', detail: 'the account was deleted' },
+      });
+    expect(await db!.request({ kind: 'sync', reason: 'manual' })).toMatchObject(
+      { ok: false, failure: { kind: 'signed-out' } },
+    );
+    expect(db!.topics.session.value).toEqual({
+      state: 'signed-out',
+      reason: 'signed-out',
+    });
+    expect(db!.connected.value).toBe(false);
   });
 
   it('a write while disconnected fails as unreachable', async () => {
