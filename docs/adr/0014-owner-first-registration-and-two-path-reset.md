@@ -58,7 +58,12 @@ Access tokens are stateless, so a deleted account's access token still
 authenticates until it expires, up to 15 minutes. Its writes to `/sync` cannot
 land, because every synced row has a foreign key to the user, which is gone; a
 pull returns nothing. The refresh token dies at once with the account's
-sessions.
+sessions. One exception: `/engine` and `/engine/events` answer 401 to a
+deleted account for that same window. The web page reconnects its stream at
+once, and without the refusal the server would build a new engine for a user
+that is gone and show the page an empty, writable account; the 401 makes the
+page renew, be refused, and sign out. The engine hub keeps the refusal in
+memory, under the same one-process ceiling as the engines themselves.
 
 ## Amendment (2026-10-02): the instance says whether registration is open
 

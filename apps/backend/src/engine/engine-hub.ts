@@ -1,4 +1,8 @@
-import { Injectable, type OnModuleDestroy } from '@nestjs/common';
+import {
+  Injectable,
+  type OnModuleDestroy,
+  UnauthorizedException,
+} from '@nestjs/common';
 import {
   createEngine,
   dispatcher,
@@ -12,7 +16,7 @@ import {
 } from '@todoer/client-core';
 import { openReplica } from '@todoer/client-core/node-sqlite';
 import { uuidv7 } from 'uuidv7';
-import { AuthService } from '../auth/auth.service.js';
+import { AuthService, TOKEN_TTL_MS } from '../auth/auth.service.js';
 import { ChangeFeed } from '../sync/change-feed.js';
 import { SyncService } from '../sync/sync.service.js';
 import { inProcessTransport } from './in-process-transport.js';
@@ -51,6 +55,10 @@ export class EngineHub implements OnModuleDestroy {
   // ponytail: one backend process; engines live in memory. A second
   // instance would need sticky sessions or a shared feed.
   private readonly engines = new Map<string, Loaded>();
+  /** Deleted accounts, kept while a token minted before the deletion can
+   *  live: it still verifies (ADR 0014), and the page's reconnect would
+   *  load a fresh engine for a user that is gone. */
+  private readonly deleted = new Map<string, NodeJS.Timeout>();
 
   constructor(
     private readonly sync: SyncService,
@@ -95,6 +103,10 @@ export class EngineHub implements OnModuleDestroy {
   /** The user is gone (account deleted): end their streams and drop the
    *  engine now, without the idle delay. */
   unload(userId: string): void {
+    clearTimeout(this.deleted.get(userId));
+    const forget = setTimeout(() => this.deleted.delete(userId), TOKEN_TTL_MS);
+    forget.unref();
+    this.deleted.set(userId, forget);
     const loaded = this.engines.get(userId);
     if (loaded === undefined) return;
     this.engines.delete(userId);
@@ -122,13 +134,23 @@ export class EngineHub implements OnModuleDestroy {
       loaded.stop();
     }
     this.engines.clear();
+    for (const forget of this.deleted.values()) clearTimeout(forget);
+    this.deleted.clear();
   }
 
   loaded(userId: string): boolean {
     return this.engines.has(userId);
   }
 
+  /** The 401 the guard would give if access tokens were not stateless. */
+  assertLive(userId: string): void {
+    if (this.deleted.has(userId)) {
+      throw new UnauthorizedException('invalid token');
+    }
+  }
+
   private load(userId: string): Loaded {
+    this.assertLive(userId);
     const known = this.engines.get(userId);
     if (known !== undefined) return known;
     const store = openReplica(':memory:');

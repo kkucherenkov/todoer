@@ -1,4 +1,4 @@
-import type { INestApplication } from '@nestjs/common';
+import { type INestApplication, UnauthorizedException } from '@nestjs/common';
 import type { Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { uuidv7 } from 'uuidv7';
@@ -8,7 +8,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { AuthService } from '../auth/auth.service.js';
 import { createApp } from '../create-app.js';
 import { EngineController } from './engine.controller.js';
-import type { EngineHub } from './engine-hub.js';
+import { EngineHub } from './engine-hub.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { resetDatabase } from '../testing/reset-database.js';
 
@@ -48,6 +48,20 @@ describe('EngineController over HTTP', () => {
   it('refuses a request without a bearer', async () => {
     const res = await engine({ kind: 'watch', view: null, task: null }, {});
     expect(res.status).toBe(401);
+  });
+
+  it('refuses a deleted account, the stream included', async () => {
+    const gone = '33333333-3333-3333-3333-333333333333';
+    const { token } = app.get(AuthService).signWithExpiry(gone);
+    const headers = { authorization: `Bearer ${token}` };
+    app.get(EngineHub).unload(gone);
+    const watching = { kind: 'watch', view: null, task: null };
+    expect((await engine(watching, headers)).status).toBe(401);
+    const res = await fetch(`${base}/api/v1/engine/events?tab=${TAB}`, {
+      headers,
+    });
+    expect(res.status).toBe(401);
+    expect(app.get(EngineHub).loaded(gone)).toBe(false);
   });
 
   it('refuses a malformed id before it reaches Postgres', async () => {
@@ -124,7 +138,10 @@ describe('EngineController: the stream', () => {
     const req = new EventEmitter();
     const res = { writeHead: vi.fn(), write: vi.fn(), end: vi.fn() };
     const closer = vi.fn();
-    const hub = { open: vi.fn(() => closer) } as unknown as EngineHub;
+    const hub = {
+      open: vi.fn(() => closer),
+      assertLive: vi.fn(),
+    } as unknown as EngineHub;
     const auth = {
       verifyWithExpiry: vi.fn(() => ({
         userId: USER,
@@ -199,6 +216,35 @@ describe('EngineController: the stream', () => {
     } finally {
       vi.useRealTimers();
     }
+  });
+
+  it('refuses a deleted user before it writes the head', () => {
+    const open = vi.fn();
+    const writeHead = vi.fn();
+    const controller = new EngineController(
+      {
+        open,
+        assertLive: () => {
+          throw new UnauthorizedException('invalid token');
+        },
+      } as unknown as EngineHub,
+      {
+        verifyWithExpiry: () => ({
+          userId: USER,
+          expiresAt: new Date(Date.now() + TTL),
+        }),
+      } as unknown as AuthService,
+    );
+    expect(() =>
+      controller.events(
+        USER,
+        TAB,
+        { on: vi.fn(), headers: {} } as unknown as Request,
+        { writeHead } as unknown as Response,
+      ),
+    ).toThrow('invalid token');
+    expect(open).not.toHaveBeenCalled();
+    expect(writeHead).not.toHaveBeenCalled();
   });
 
   it('shutting down ends every open stream once', () => {

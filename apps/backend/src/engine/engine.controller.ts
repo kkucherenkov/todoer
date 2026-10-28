@@ -61,6 +61,8 @@ export class EngineController implements OnModuleDestroy {
     const { expiresAt } = this.auth.verifyWithExpiry(
       (req.headers.authorization ?? '').slice('bearer '.length),
     );
+    // Before the head too: once it is written, a refusal is no longer a 401.
+    this.hub.assertLive(userId);
     res.writeHead(200, {
       'content-type': 'text/event-stream',
       'cache-control': 'no-cache',
