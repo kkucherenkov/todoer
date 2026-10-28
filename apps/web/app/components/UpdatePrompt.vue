@@ -9,8 +9,16 @@ onScopeDispose(
 );
 const needRefresh = computed(() => $pwa?.needRefresh ?? false);
 const show = computed(() => needRefresh.value || outdated.value);
+// Outdated before the worker found the new build: fetch that worker first,
+// or the reload would land on the old build again.
 const reload = () =>
-  needRefresh.value ? $pwa!.updateServiceWorker(true) : location.reload();
+  needRefresh.value
+    ? $pwa!.updateServiceWorker(true)
+    : reloadOntoNewBuild(
+        navigator.serviceWorker,
+        () => $pwa!.updateServiceWorker(true),
+        () => location.reload(),
+      );
 </script>
 
 <template>
