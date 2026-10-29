@@ -62,8 +62,10 @@ sessions. One exception: `/engine` and `/engine/events` answer 401 to a
 deleted account for that same window. The web page reconnects its stream at
 once, and without the refusal the server would build a new engine for a user
 that is gone and show the page an empty, writable account; the 401 makes the
-page renew, be refused, and sign out. The engine hub keeps the refusal in
-memory, under the same one-process ceiling as the engines themselves.
+page renew, be refused, and sign out. An engine that is not loaded is built
+only after the database confirms the user exists, so the refusal survives a
+restart; the hub also remembers deleted users in memory for the token
+lifetime, which covers a deletion that lands during that lookup.
 
 ## Amendment (2026-10-02): the instance says whether registration is open
 

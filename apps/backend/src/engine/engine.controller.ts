@@ -49,12 +49,12 @@ export class EngineController implements OnModuleDestroy {
   /** Written to the raw response: the response validator only reads what
    *  goes through `res.json`, so the streamed body never meets it. */
   @Get('events')
-  events(
+  async events(
     @CurrentUser() userId: string,
     @Query('tab') tab: string,
     @Req() req: Request,
     @Res() res: Response,
-  ): void {
+  ): Promise<void> {
     // First, so a token that expired since the guard registers nothing.
     // The stream lives no longer than the bearer; the page reconnects with
     // a renewed one.
@@ -62,7 +62,7 @@ export class EngineController implements OnModuleDestroy {
       (req.headers.authorization ?? '').slice('bearer '.length),
     );
     // Before the head too: once it is written, a refusal is no longer a 401.
-    this.hub.assertLive(userId);
+    await this.hub.assertLive(userId);
     res.writeHead(200, {
       'content-type': 'text/event-stream',
       'cache-control': 'no-cache',

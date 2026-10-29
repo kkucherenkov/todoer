@@ -17,6 +17,7 @@ import {
 import { openReplica } from '@todoer/client-core/node-sqlite';
 import { uuidv7 } from 'uuidv7';
 import { AuthService, TOKEN_TTL_MS } from '../auth/auth.service.js';
+import { PrismaService } from '../prisma/prisma.service.js';
 import { ChangeFeed } from '../sync/change-feed.js';
 import { SyncService } from '../sync/sync.service.js';
 import { inProcessTransport } from './in-process-transport.js';
@@ -64,6 +65,7 @@ export class EngineHub implements OnModuleDestroy {
     private readonly sync: SyncService,
     private readonly feed: ChangeFeed,
     private readonly auth: AuthService,
+    private readonly prisma: PrismaService,
   ) {}
 
   async request(
@@ -72,6 +74,8 @@ export class EngineHub implements OnModuleDestroy {
     id: number,
     command: Command,
   ): Promise<Result> {
+    // Only a cold load waits: a loaded engine takes the request at once.
+    if (!this.engines.has(userId)) await this.assertLive(userId);
     const loaded = this.load(userId);
     clearTimeout(loaded.unload);
     try {
@@ -142,15 +146,27 @@ export class EngineHub implements OnModuleDestroy {
     return this.engines.has(userId);
   }
 
-  /** The 401 the guard would give if access tokens were not stateless. */
-  assertLive(userId: string): void {
+  /** The 401 the guard would give if access tokens were not stateless.
+   *  A loaded engine is live; a cold load asks the database, since
+   *  `deleted` does not outlive a restart. Call `load` right after, with
+   *  no await between. */
+  async assertLive(userId: string): Promise<void> {
+    const live =
+      this.engines.has(userId) ||
+      (await this.prisma.user.count({ where: { id: userId } })) > 0;
+    // `deleted` read after the query: an unload may land while it runs.
+    if (!live) throw new UnauthorizedException('invalid token');
+    this.refuseDeleted(userId);
+  }
+
+  private refuseDeleted(userId: string): void {
     if (this.deleted.has(userId)) {
       throw new UnauthorizedException('invalid token');
     }
   }
 
   private load(userId: string): Loaded {
-    this.assertLive(userId);
+    this.refuseDeleted(userId);
     const known = this.engines.get(userId);
     if (known !== undefined) return known;
     const store = openReplica(':memory:');

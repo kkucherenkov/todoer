@@ -30,7 +30,12 @@ beforeEach(async () => {
   });
   feed = new ChangeFeed();
   sync = new SyncService(prisma, feed);
-  hub = new EngineHub(sync, feed, new AuthService(prisma, new AppConfig()));
+  hub = new EngineHub(
+    sync,
+    feed,
+    new AuthService(prisma, new AppConfig()),
+    prisma,
+  );
 });
 
 const settle = (user: string) =>
@@ -218,21 +223,51 @@ describe('EngineHub', () => {
       UnauthorizedException,
     );
     expect(hub.loaded(U)).toBe(false);
-    expect(() => hub.assertLive(V)).not.toThrow();
+    await expect(hub.assertLive(V)).resolves.toBeUndefined();
   });
 
-  it('refuses a deleted user that had no engine loaded', () => {
+  it('refuses a deleted user that had no engine loaded', async () => {
     hub.unload(U);
-    expect(() => hub.assertLive(U)).toThrow(UnauthorizedException);
+    await expect(hub.assertLive(U)).rejects.toThrow(UnauthorizedException);
   });
 
-  it('forgets a deleted user once their last token has expired', () => {
+  it('refuses a user deleted before a restart, which it never unloaded', async () => {
+    await prisma.user.delete({ where: { id: U } });
+    await expect(hub.request(U, T1, 1, watch('today'))).rejects.toThrow(
+      UnauthorizedException,
+    );
+    expect(hub.loaded(U)).toBe(false);
+  });
+
+  it('refuses a load whose account is deleted while the lookup runs', async () => {
+    const live = hub.assertLive(U);
+    hub.unload(U);
+    await expect(live).rejects.toThrow(UnauthorizedException);
+  });
+
+  it('asks the database only on a cold load', async () => {
+    stream(U, T1);
+    const count = vi.spyOn(prisma.user, 'count');
+    try {
+      await hub.assertLive(U);
+      expect(count).not.toHaveBeenCalled();
+      await hub.assertLive(V);
+      expect(count).toHaveBeenCalledOnce();
+    } finally {
+      count.mockRestore();
+    }
+  });
+
+  it('forgets a deleted user once their last token has expired', async () => {
     vi.useFakeTimers();
     hub.unload(U);
     vi.advanceTimersByTime(TOKEN_TTL_MS - 1);
-    expect(() => hub.assertLive(U)).toThrow(UnauthorizedException);
+    expect(() => hub.open(U, T1, () => {}, vi.fn())).toThrow(
+      UnauthorizedException,
+    );
     vi.advanceTimersByTime(1);
-    expect(() => hub.assertLive(U)).not.toThrow();
+    vi.useRealTimers();
+    await expect(hub.assertLive(U)).resolves.toBeUndefined();
   });
 
   it('shutting down unloads every engine', async () => {
