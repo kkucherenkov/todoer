@@ -60,6 +60,18 @@ describe('reloadOntoNewBuild', () => {
     expect(reload).toHaveBeenCalledOnce();
   });
 
+  it('reloads when the registration lookup fails', async () => {
+    const activate = vi.fn(() => Promise.resolve());
+    const reload = vi.fn();
+    const broken = {
+      controller: {},
+      getRegistration: () => Promise.reject(new Error('invalid state')),
+    } as unknown as ServiceWorkerContainer;
+    await reloadOntoNewBuild(broken, activate, reload);
+    expect(activate).not.toHaveBeenCalled();
+    expect(reload).toHaveBeenCalledOnce();
+  });
+
   it('reloads a page no worker controls', async () => {
     const reg = registration('new');
     const reload = vi.fn();

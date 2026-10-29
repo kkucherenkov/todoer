@@ -9,11 +9,11 @@ export async function reloadOntoNewBuild(
   activate: () => Promise<void>,
   reload: () => void,
 ): Promise<void> {
-  const registration = container?.controller
-    ? await container.getRegistration()
-    : undefined;
-  if (registration === undefined) return reload();
+  if (!container?.controller) return reload();
+  let registration: ServiceWorkerRegistration | undefined;
   try {
+    registration = await container.getRegistration();
+    if (registration === undefined) return reload();
     await registration.update();
   } catch {
     // Offline or the server is gone: the old build is all there is.
