@@ -134,13 +134,13 @@ describe('EngineController over HTTP', () => {
 });
 
 describe('EngineController: the stream', () => {
-  const events = () => {
+  const events = async () => {
     const req = new EventEmitter();
     const res = { writeHead: vi.fn(), write: vi.fn(), end: vi.fn() };
     const closer = vi.fn();
     const hub = {
       open: vi.fn(() => closer),
-      assertLive: vi.fn(),
+      assertLive: vi.fn(() => Promise.resolve()),
     } as unknown as EngineHub;
     const auth = {
       verifyWithExpiry: vi.fn(() => ({
@@ -149,7 +149,7 @@ describe('EngineController: the stream', () => {
       })),
     } as unknown as AuthService;
     const controller = new EngineController(hub, auth);
-    controller.events(
+    await controller.events(
       USER,
       TAB,
       {
@@ -162,10 +162,10 @@ describe('EngineController: the stream', () => {
     return { controller, req, res, closer };
   };
 
-  it('writes a ping comment every 25 s', () => {
+  it('writes a ping comment every 25 s', async () => {
     vi.useFakeTimers();
     try {
-      const { res } = events();
+      const { res } = await events();
       vi.advanceTimersByTime(24_999);
       expect(res.write).not.toHaveBeenCalledWith(': ping\n\n');
       vi.advanceTimersByTime(1);
@@ -175,10 +175,10 @@ describe('EngineController: the stream', () => {
     }
   });
 
-  it('ends when its token expires, and not before', () => {
+  it('ends when its token expires, and not before', async () => {
     vi.useFakeTimers();
     try {
-      const { res, closer } = events();
+      const { res, closer } = await events();
       vi.advanceTimersByTime(TTL - 1);
       expect(res.end).not.toHaveBeenCalled();
       vi.advanceTimersByTime(1);
@@ -189,7 +189,7 @@ describe('EngineController: the stream', () => {
     }
   });
 
-  it('registers nothing when the expiry lookup throws', () => {
+  it('registers nothing when the expiry lookup throws', async () => {
     vi.useFakeTimers();
     try {
       const open = vi.fn();
@@ -202,14 +202,14 @@ describe('EngineController: the stream', () => {
           },
         } as unknown as AuthService,
       );
-      expect(() =>
+      await expect(
         controller.events(
           USER,
           TAB,
           { on: vi.fn(), headers: {} } as unknown as Request,
           { writeHead } as unknown as Response,
         ),
-      ).toThrow('expired');
+      ).rejects.toThrow('expired');
       expect(open).not.toHaveBeenCalled();
       expect(writeHead).not.toHaveBeenCalled();
       expect(vi.getTimerCount()).toBe(0);
@@ -218,15 +218,14 @@ describe('EngineController: the stream', () => {
     }
   });
 
-  it('refuses a deleted user before it writes the head', () => {
+  it('refuses a deleted user before it writes the head', async () => {
     const open = vi.fn();
     const writeHead = vi.fn();
     const controller = new EngineController(
       {
         open,
-        assertLive: () => {
-          throw new UnauthorizedException('invalid token');
-        },
+        assertLive: () =>
+          Promise.reject(new UnauthorizedException('invalid token')),
       } as unknown as EngineHub,
       {
         verifyWithExpiry: () => ({
@@ -235,20 +234,20 @@ describe('EngineController: the stream', () => {
         }),
       } as unknown as AuthService,
     );
-    expect(() =>
+    await expect(
       controller.events(
         USER,
         TAB,
         { on: vi.fn(), headers: {} } as unknown as Request,
         { writeHead } as unknown as Response,
       ),
-    ).toThrow('invalid token');
+    ).rejects.toThrow('invalid token');
     expect(open).not.toHaveBeenCalled();
     expect(writeHead).not.toHaveBeenCalled();
   });
 
-  it('shutting down ends every open stream once', () => {
-    const { controller, req, res, closer } = events();
+  it('shutting down ends every open stream once', async () => {
+    const { controller, req, res, closer } = await events();
     controller.onModuleDestroy();
     expect(res.end).toHaveBeenCalledOnce();
     // The client's close then finds the stream already ended.
